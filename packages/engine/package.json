@@ -10,6 +10,11 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@kampong/spec": "*"
+    "@ai-sdk/anthropic": "^4.0.49",
+    "@ai-sdk/openai": "^4.0.57",
+    "@kampong/spec": "*",
+    "@mastra/core": "^1.64.0",
+    "ai": "^7.0.91",
+    "zod": "^3.25.76"
   }
 }
