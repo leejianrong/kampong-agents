@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { modelProviderSchema } from "@kampong/spec";
 
 // Finding #3 (post-PR-#8 review): docs/adr/0010-exported-runtime-is-
 // vendored-not-retemplated.md justifies vendoring packages/engine's source
@@ -133,4 +134,42 @@ describe("vendored runtime stays in sync with packages/engine/src (docs/adr/0010
       ).toBe(true);
     });
   }
+
+  // spec-types.ts (above) is deliberately exempt from the byte/functional
+  // parity check above -- it has no packages/engine/src counterpart to diff
+  // against, since its actual source of truth is packages/spec/src/schema.ts's
+  // Zod schema (a different package entirely, and one this exported project
+  // can never depend on -- ADR-0010). That's exactly the gap that let a real
+  // bug through: adding "openrouter" to modelProviderSchema's enum
+  // (packages/spec) didn't touch this hand-vendored file, and nothing caught
+  // the resulting drift because it's outside packages/exporter/tsconfig.json's
+  // `include` (only "templates/", not "src/", so `npm run typecheck` never
+  // sees it) -- the break was invisible until someone actually exported and
+  // built a project using the new provider. This test targets that specific
+  // failure mode directly: the vendored ModelProvider union's literal values
+  // must exactly match the real schema's enum, every time either changes.
+  it("spec-types.ts's ModelProvider union matches packages/spec's modelProviderSchema enum", () => {
+    const vendoredSource = readFileSync(join(RUNTIME_DIR, "spec-types.ts"), "utf8");
+    const match = /export type ModelProvider = (.+);/.exec(vendoredSource);
+    expect(
+      match,
+      "templates/runtime/spec-types.ts's `export type ModelProvider = ...` line " +
+        "wasn't found in the expected shape -- update this test's regex if the " +
+        "file's structure changed intentionally.",
+    ).not.toBeNull();
+
+    const vendoredProviders = match![1]!
+      .split("|")
+      .map((literal) => literal.trim().replace(/^"|"$/g, ""))
+      .sort();
+    const schemaProviders = [...modelProviderSchema.options].sort();
+
+    expect(
+      vendoredProviders,
+      "templates/runtime/spec-types.ts's ModelProvider union has drifted from " +
+        "packages/spec/src/schema.ts's modelProviderSchema enum -- a provider " +
+        "was added/removed in one but not the other. Update spec-types.ts's " +
+        "ModelProvider type to match.",
+    ).toEqual(schemaProviders);
+  });
 });

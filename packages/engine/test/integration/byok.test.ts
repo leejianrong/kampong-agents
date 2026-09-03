@@ -87,3 +87,52 @@ describe("createMastraModelClient (BYOK resolution)", () => {
     );
   });
 });
+
+// OpenRouter is a cloud aggregator like anthropic/openai -- unlike ollama it
+// requires a real BYOK api_key -- so it goes through the exact same
+// resolution path exercised above. Separate describe block (rather than
+// parametrizing the ones above) so the SPEC fixture above stays untouched.
+describe("createMastraModelClient (BYOK resolution) -- openrouter", () => {
+  const ENV_VAR = "KAMPONG_TEST_OPENROUTER_API_KEY";
+
+  const OPENROUTER_SPEC: AgentSpec = {
+    version: "1.0",
+    agent: {
+      id: "test-agent",
+      name: "Test Agent",
+      role: "Tester",
+      goal: "Say hello.",
+      model: {
+        provider: "openrouter",
+        name: "anthropic/claude-3.5-haiku",
+        api_key: `\${${ENV_VAR}}`,
+      },
+      workflow: [{ step: "greet", action: "say_hello" }],
+    },
+  };
+
+  beforeEach(() => {
+    delete process.env[ENV_VAR];
+  });
+
+  afterEach(() => {
+    delete process.env[ENV_VAR];
+  });
+
+  it("throws MissingApiKeyError when the referenced env var is unset -- openrouter is a cloud provider, not ollama", () => {
+    expect(() => createMastraModelClient(OPENROUTER_SPEC, process.env)).toThrow(MissingApiKeyError);
+    try {
+      createMastraModelClient(OPENROUTER_SPEC, process.env);
+    } catch (err) {
+      expect((err as Error).message).toContain(ENV_VAR);
+      expect((err as Error).message).toContain("openrouter");
+    }
+  });
+
+  it("succeeds once the env var is set, with zero network call made", () => {
+    process.env[ENV_VAR] = "sk-or-fake-test-key-not-real";
+    const client = createMastraModelClient(OPENROUTER_SPEC, process.env);
+    expect(typeof client.generateText).toBe("function");
+    expect(typeof client.generateStructured).toBe("function");
+  });
+});

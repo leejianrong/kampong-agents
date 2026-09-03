@@ -49,7 +49,7 @@ export function buildReadme(spec: AgentSpec): string {
     "  guardrails/model config, wired against the runtime below.",
     "- `src/runtime/` -- the execution engine (condition evaluation, the guardrail check, the",
     "  HTTP tool wrapper, the workflow step-sequencer, and model-provider resolution for",
-    "  anthropic/openai/ollama). This is real, tested logic copied in at export time, not",
+    "  anthropic/openai/ollama/openrouter). This is real, tested logic copied in at export time, not",
     "  generated from a template -- see `docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md`",
     "  in the originating repo if you want the full reasoning. It's yours now; edit it freely.",
     "",

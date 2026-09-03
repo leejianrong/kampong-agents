@@ -59,11 +59,14 @@ make down    # stop the stack
 If `4310` is taken by another project, copy `.env.example` to `.env` (`make up` does this for
 you automatically) and change `HOST_PORT` there. Your spec lives in `./workspace/agent.yaml`
 (gitignored, bind-mounted into the container) — edit it by hand or through the canvas at the
-printed URL; either way it persists across `make down`/`make up`. To run the example spec's
-Ollama model, point Ollama at your laptop first (`ollama serve`, `ollama pull llama3.2`) — a
-spec's `model.base_url` needs `http://host.docker.internal:11434` to reach your host's Ollama
-from inside the container, not `localhost` (which means the container itself). For BYOK cloud
-providers, set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in `.env`.
+printed URL; either way it persists across `make down`/`make up`. To run the example spec as-is,
+set `OPENROUTER_API_KEY` in `.env` (get one at [openrouter.ai/keys](https://openrouter.ai/keys)) —
+its default model defaults to a free-tier OpenRouter model, so this needs no other setup. Prefer
+fully offline/free instead? `examples/agent.yaml` has a commented-out Ollama block right below
+the OpenRouter one — point Ollama at your laptop first (`ollama serve`, `ollama pull llama3.2`),
+then swap the two blocks; a spec's `model.base_url` needs `http://host.docker.internal:11434` to
+reach your host's Ollama from inside the container, not `localhost` (which means the container
+itself). For other BYOK cloud providers, set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in `.env`.
 
 `make help` lists every target, including the non-Docker local gate (`make check`, `make test`,
 `make lint`, ...) as a thin wrapper over the npm scripts in [`AGENTS.md`](./AGENTS.md).

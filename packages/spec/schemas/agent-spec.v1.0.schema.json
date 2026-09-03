@@ -32,7 +32,7 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "enum": ["anthropic", "openai", "ollama"]
+                  "enum": ["anthropic", "openai", "ollama", "openrouter"]
                 },
                 "name": {
                   "type": "string",

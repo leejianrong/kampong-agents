@@ -8,7 +8,7 @@
 // itself, which also isn't a package this project could resolve standalone
 // (no @kampong/* dependency, per this export's zero-lock-in guarantee).
 
-export type ModelProvider = "anthropic" | "openai" | "ollama";
+export type ModelProvider = "anthropic" | "openai" | "ollama" | "openrouter";
 
 export interface Model {
   provider: ModelProvider;

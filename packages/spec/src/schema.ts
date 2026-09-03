@@ -51,7 +51,11 @@ export const envVarPlaceholderSchema = z
 // adapter -- it needs no cloud API key and typically runs on
 // http://localhost:11434, which is why `api_key` below is optional at the
 // schema level rather than gaining an ollama-shaped exception to the regex.
-export const modelProviderSchema = z.enum(["anthropic", "openai", "ollama"]);
+// "openrouter" (follow-up to V3) is a cloud aggregator like anthropic/openai
+// -- it needs a real BYOK `api_key` (its `model.name` also conventionally
+// carries a vendor prefix, e.g. "anthropic/claude-3.5-haiku", but that's
+// already just a free-form string here, no schema change needed for it).
+export const modelProviderSchema = z.enum(["anthropic", "openai", "ollama", "openrouter"]);
 
 export const modelSchema = z
   .object({

@@ -9,14 +9,28 @@ agent:
   name: "Hello Agent"
   role: "Friendly assistant"
   goal: "Greet the user warmly and answer one question in a concise, helpful tone."
+  # Default: OpenRouter -- zero local setup, just an API key. Cheap by
+  # design: liquid/lfm-2.5-2.6b:free is a free-tier OpenRouter model (see
+  # openrouter.ai/models), good enough for this hello-world workflow.
+  # Set OPENROUTER_API_KEY in .env (get one at openrouter.ai/keys).
   model:
-    provider: ollama
-    name: llama3.2
-    # Via `make up` (Docker), this must point at your HOST's Ollama --
-    # "localhost" from inside a container means the container itself, not
-    # your machine. Running `kampong dev`/`kampong run` directly instead (no
-    # Docker)? Change this to http://localhost:11434.
-    base_url: http://host.docker.internal:11434
+    provider: openrouter
+    name: liquid/lfm-2.5-2.6b:free
+    api_key: ${OPENROUTER_API_KEY}
+
+  # Alternative: Ollama -- fully offline and free, but needs `ollama serve`
+  # running locally (and `ollama pull llama3.2`) plus, via `make up`
+  # (Docker), a host-reachable base_url ("localhost" from inside the
+  # container means the container itself, not your machine -- that's what
+  # host.docker.internal is for). Uncomment this and comment out the
+  # openrouter block above to use it instead; running `kampong dev`/
+  # `kampong run` directly (no Docker) instead, change base_url to
+  # http://localhost:11434.
+  # model:
+  #   provider: ollama
+  #   name: llama3.2
+  #   base_url: http://host.docker.internal:11434
+
   workflow:
     - step: greet
       action: generate_text

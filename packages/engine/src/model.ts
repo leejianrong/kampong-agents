@@ -17,14 +17,32 @@ import type { z } from "zod";
 // pointed at the local server with a throwaway api key (Ollama doesn't
 // check it). This still goes straight through Mastra's AI SDK provider
 // interface (ADR-0004); nothing about it is a gateway/proxy layer.
+//
+// OpenRouter is the same story for the same reason: it speaks an
+// OpenAI-compatible Chat Completions API too (its own docs: "OpenRouter's
+// request and response schemas are very similar to the OpenAI Chat API"),
+// so it reuses `@ai-sdk/openai` rather than a dedicated OpenRouter SDK
+// package. Unlike Ollama it's a real cloud service with a fixed host --
+// no per-spec `base_url` override -- and it does require a BYOK `api_key`.
 
 export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
+
+// OpenRouter's API host is fixed (unlike Ollama's, which is typically local
+// and sometimes remote/tunneled) -- no spec-level override for this one.
+export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+// OpenRouter's docs recommend (not require) these for attribution on
+// openrouter.ai's own leaderboards/rankings; harmless to always send.
+const OPENROUTER_HEADERS: Record<string, string> = {
+  "HTTP-Referer": "https://github.com/leejianrong/kampong-agents",
+  "X-Title": "Kampong Agents",
+};
 
 // Which providers require a real BYOK `${ENV_VAR}` api_key (schema.ts made
 // `api_key` optional across the board specifically so "ollama" -- which has
 // no key to check -- doesn't need to fake one; this is where that split is
 // actually enforced).
-const CLOUD_PROVIDERS: ReadonlySet<ModelProvider> = new Set(["anthropic", "openai"]);
+const CLOUD_PROVIDERS: ReadonlySet<ModelProvider> = new Set(["anthropic", "openai", "openrouter"]);
 
 interface ProviderFactoryOptions {
   apiKey: string;
@@ -47,6 +65,21 @@ const PROVIDERS: Record<ModelProvider, ProviderFactory> = {
     createOpenAI({
       apiKey: "ollama",
       baseURL: `${baseUrl ?? DEFAULT_OLLAMA_BASE_URL}/v1`,
+      fetch: fetchImpl,
+    }).chat(name),
+  // Same `.chat(name)` reasoning as Ollama above, verified against
+  // OpenRouter's own docs rather than assumed just because Ollama needed
+  // it: OpenRouter documents a single `POST /api/v1/chat/completions`
+  // endpoint (Chat Completions shape) and does not implement OpenAI's
+  // newer Responses API (`POST /v1/responses`) that the bare
+  // `createOpenAI(...)(name)` factory call defaults to. See
+  // test/integration/openrouter.test.ts for a fake-server regression test
+  // that would catch a regression back to the bare (Responses-API) call.
+  openrouter: (name, { apiKey, fetchImpl }) =>
+    createOpenAI({
+      apiKey,
+      baseURL: OPENROUTER_BASE_URL,
+      headers: OPENROUTER_HEADERS,
       fetch: fetchImpl,
     }).chat(name),
 };
