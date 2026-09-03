@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createApiClient, type ApiClient } from "./api.js";
 import { Canvas } from "./Canvas.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
+import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
 import { YamlPreview } from "./YamlPreview.js";
@@ -22,7 +23,7 @@ export interface AppProps {
   apiBaseUrl?: string;
 }
 
-type OpenForm = "tool" | "workflow" | "guardrails" | null;
+type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null;
 
 export function App({ apiBaseUrl = "" }: AppProps) {
   const api = useMemo<ApiClient>(() => createApiClient(apiBaseUrl), [apiBaseUrl]);
@@ -99,6 +100,14 @@ export function App({ apiBaseUrl = "" }: AppProps) {
         <button onClick={() => setOpenForm("tool")}>Add Tool</button>
         <button onClick={() => setOpenForm("workflow")}>Add Workflow Step</button>
         <button onClick={() => setOpenForm("guardrails")}>Set Guardrails</button>
+        <button
+          className="md3-button md3-button-filled"
+          onClick={() => setOpenForm(openForm === "run" ? null : "run")}
+        >
+          Test Run
+        </button>
+
+        {openForm === "run" && <RunPanel api={api} />}
 
         {openForm === "tool" && (
           <ToolForm
