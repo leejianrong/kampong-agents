@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Dev-first, canvas-code-duality agent workflow builder (local-first, TypeScript/Mastra).",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22"
   },
