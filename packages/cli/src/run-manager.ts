@@ -5,6 +5,7 @@ import {
   type ModelClient,
   type RunEvent,
   type RunState,
+  type ToolFetchImpl,
 } from "@kampong/engine";
 import type { AgentSpec } from "@kampong/spec";
 
@@ -35,7 +36,7 @@ export interface StartRunResult {
 
 export interface RunManagerOptions {
   env?: NodeJS.ProcessEnv;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: ToolFetchImpl;
   /** Test-only seam: overrides real BYOK/Mastra model resolution with a fake ModelClient. */
   createModel?: (spec: AgentSpec) => ModelClient;
   /** Test-only seam: how long a terminal run stays in `runs` before eviction (default 10 minutes). */

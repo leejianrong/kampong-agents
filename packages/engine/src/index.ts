@@ -23,8 +23,9 @@ export {
   toMastraTool,
   substitutePlaceholders,
   extractField,
-  TOOL_NAME_HEADER,
   type HttpToolCallOptions,
+  type ToolContext,
+  type ToolFetchImpl,
 } from "./http-tool.js";
 
 export {

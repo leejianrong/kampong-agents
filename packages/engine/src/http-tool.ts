@@ -30,18 +30,39 @@ export function extractField(payload: unknown, path?: string): unknown {
   }, payload);
 }
 
-export interface HttpToolCallOptions {
-  fetchImpl?: typeof fetch;
+// Context about which AgentSpec tool a call belongs to, passed alongside
+// the request rather than smuggled into it. `tool.name` is an
+// author-controlled string (schema only requires `z.string().min(1)` --
+// no character restriction), so it must never end up as a literal HTTP
+// header value on a call that can reach a real third-party endpoint: the
+// Headers/ByteString conversion throws a `TypeError` on a newline or any
+// non-Latin1 character, and even a "safe" name is an internal
+// implementation detail no remote API asked for. Consumers that need the
+// tool name (the mock/record fixture layer -- tool-fixtures.ts) receive it
+// as this explicit third argument instead.
+export interface ToolContext {
+  readonly toolName: string;
 }
 
-// Stamped on every outgoing call so the mock/record tool layer (V3,
-// tool-fixtures.ts) can key a fixture on {tool name, method, substituted
-// URL} without this file's caller (workflow.ts) changing at all -- the
-// fixture layer wraps `fetchImpl` and reads this header back off; it
-// doesn't need a modified `fetchImpl` signature to learn which tool a call
-// belongs to. Harmless on a real live call (an extra header a real HTTP
-// endpoint just ignores).
-export const TOOL_NAME_HEADER = "x-kampong-tool-name";
+// The `fetchImpl` seam used specifically for *tool* HTTP calls. Distinct
+// from plain `typeof fetch` (which the model-call path still uses
+// unchanged) so the mock/record layer can be told which tool a call
+// belongs to without reading it back off the request itself. A function
+// declaring fewer parameters (e.g. the global `fetch`, or a test's plain
+// `(url, init) => ...` fake) is assignable here -- TS allows a callback
+// with fewer declared params than the type it's assigned to, since the
+// runtime call always tolerates extra ignored arguments.
+export type ToolFetchImpl = (
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1] | undefined,
+  context: ToolContext,
+) => Promise<Response>;
+
+const defaultFetch: ToolFetchImpl = (input, init) => fetch(input, init);
+
+export interface HttpToolCallOptions {
+  fetchImpl?: ToolFetchImpl;
+}
 
 /**
  * Substitutes `{placeholder}` params into the tool's URL, performs the HTTP
@@ -54,15 +75,12 @@ export const TOOL_NAME_HEADER = "x-kampong-tool-name";
 export async function callHttpTool(
   tool: Tool,
   params: Record<string, string>,
-  { fetchImpl = fetch }: HttpToolCallOptions = {},
+  { fetchImpl = defaultFetch }: HttpToolCallOptions = {},
 ): Promise<unknown> {
   const url = substitutePlaceholders(tool.url, params);
   let response: Response;
   try {
-    response = await fetchImpl(url, {
-      method: tool.method,
-      headers: { [TOOL_NAME_HEADER]: tool.name },
-    });
+    response = await fetchImpl(url, { method: tool.method }, { toolName: tool.name });
   } catch (err) {
     throw new Error(`Tool "${tool.name}" HTTP call to ${url} failed: ${(err as Error).message}`);
   }

@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { callHttpTool, TOOL_NAME_HEADER } from "../../src/http-tool.js";
+import { callHttpTool } from "../../src/http-tool.js";
 import { createFixtureFetch, MissingFixtureError } from "../../src/tool-fixtures.js";
 import type { Tool } from "@kampong/spec";
 
@@ -32,7 +32,7 @@ describe("createFixtureFetch", () => {
     const inner = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch;
     const wrapped = createFixtureFetch({ mode: "live", fixturesDir: dir, fetchImpl: inner });
 
-    await wrapped("https://example.test/x", { method: "GET" });
+    await wrapped("https://example.test/x", { method: "GET" }, { toolName: "unused" });
 
     expect(inner).toHaveBeenCalledTimes(1);
   });
@@ -76,10 +76,11 @@ describe("createFixtureFetch", () => {
 
     // Directly against the wrapped fetch: proves the *specific* error type.
     await expect(
-      replayFetch("https://api.stripe.test/v1/charges/ch_999", {
-        method: "GET",
-        headers: { [TOOL_NAME_HEADER]: "check_stripe_charge" },
-      }),
+      replayFetch(
+        "https://api.stripe.test/v1/charges/ch_999",
+        { method: "GET" },
+        { toolName: "check_stripe_charge" },
+      ),
     ).rejects.toThrow(MissingFixtureError);
     expect(inner).not.toHaveBeenCalled();
 
@@ -91,20 +92,33 @@ describe("createFixtureFetch", () => {
     ).rejects.toThrow(/No recorded fixture/);
   });
 
-  it("keys fixtures on the tool-name header set by callHttpTool, not a caller-supplied name", async () => {
+  it("keys fixtures on the tool name passed via ToolContext, not anything read off the request", async () => {
     const wrapped = createFixtureFetch({
       mode: "record",
       fixturesDir: dir,
       fetchImpl: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
     });
 
-    await wrapped("https://example.test/x", {
-      method: "GET",
-      headers: { [TOOL_NAME_HEADER]: "my_tool" },
-    });
+    await wrapped("https://example.test/x", { method: "GET" }, { toolName: "my_tool" });
 
     const written = readdirSync(dir);
     expect(written.some((f) => f.startsWith("my_tool."))).toBe(true);
+  });
+
+  it("never sends the tool name as a literal HTTP header, even in record mode (finding #1)", async () => {
+    const seenInits: (RequestInit | undefined)[] = [];
+    const inner = (async (_url, init?: RequestInit) => {
+      seenInits.push(init);
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const recordFetch = createFixtureFetch({ mode: "record", fixturesDir: dir, fetchImpl: inner });
+
+    // A tool name with characters that would throw building a real Headers
+    // object -- proves it never reaches one.
+    await recordFetch("https://example.test/x", { method: "GET" }, { toolName: "weird\nname☃" });
+
+    expect(seenInits).toHaveLength(1);
+    expect(seenInits[0]?.headers).toBeUndefined();
   });
 });
 
