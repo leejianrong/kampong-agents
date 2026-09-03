@@ -82,6 +82,26 @@ describe("parseSpec", () => {
     expect(result.spec?.agent.model?.base_url).toBe("http://localhost:22222");
   });
 
+  it("rejects a cloud-provider model missing api_key (finding #2 -- must fail at schema validation, not deep inside the engine)", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
+  });
+
+  it("rejects an openai model missing api_key the same way", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: openai\n    name: gpt-4o-mini\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
+  });
+
   it("rejects an unknown model provider", () => {
     const bad = VALID_FIXTURE_WITH_MODEL.replace("provider: anthropic", "provider: azure");
     const result = parseSpec(bad);

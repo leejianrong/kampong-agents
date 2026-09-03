@@ -53,21 +53,46 @@ export const envVarPlaceholderSchema = z
 // schema level rather than gaining an ollama-shaped exception to the regex.
 export const modelProviderSchema = z.enum(["anthropic", "openai", "ollama"]);
 
-export const modelSchema = z.object({
-  provider: modelProviderSchema,
-  name: z.string().min(1),
-  // Optional here so a local-only spec never has to invent a placeholder
-  // env var it doesn't need; packages/engine (not the schema) is what
-  // enforces this as required for the cloud providers ("anthropic"/
-  // "openai") and treats it as irrelevant for "ollama" -- keeping that
-  // provider-specific policy out of the schema layer, consistent with how
-  // `agent.model` itself is optional until a real run needs it.
-  api_key: envVarPlaceholderSchema.optional(),
-  // Only meaningful for "ollama" today (points at a non-default local
-  // server, e.g. a remote/tunneled Ollama host); harmless no-op for the
-  // cloud providers, which always call their own fixed API host.
-  base_url: z.string().url().optional(),
-});
+export const modelSchema = z
+  .object({
+    provider: modelProviderSchema,
+    name: z.string().min(1),
+    // Optional at the field level so a local-only ("ollama") spec never has
+    // to invent a placeholder env var it doesn't need; the `.superRefine`
+    // below is what actually enforces this as required for the cloud
+    // providers ("anthropic"/"openai") so a spec missing it fails schema
+    // validation (exit 1) rather than surfacing later as a raw `Error` out
+    // of packages/engine's model-resolution path (exit 2).
+    api_key: envVarPlaceholderSchema.optional(),
+    // Only meaningful for "ollama" today (points at a non-default local
+    // server, e.g. a remote/tunneled Ollama host); harmless no-op for the
+    // cloud providers, which always call their own fixed API host.
+    base_url: z.string().url().optional(),
+  })
+  .superRefine((model, ctx) => {
+    if (model.provider !== "ollama" && model.api_key === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `api_key is required for provider "${model.provider}" (only "ollama" may omit it)`,
+        path: ["api_key"],
+      });
+    }
+  });
+
+// KNOWN LIMITATION (finding #8, ADR-0008): `zod-to-json-schema` (see
+// json-schema.ts) does not translate a `.superRefine` cross-field
+// constraint into the emitted JSON Schema at all -- the published
+// `agent-spec.v1.0.schema.json` artifact still shows `model.api_key` as
+// unconditionally optional, so an external editor (Cursor, yaml-language-
+// server, etc.) validating a cloud-provider spec missing `api_key` will NOT
+// flag it, even though `parseSpec()` (this package's own Zod-backed
+// validator, which every real `kampong` code path actually runs through)
+// does. Only this file's `agentSpecSchema.safeParse` enforces the "api_key
+// required unless ollama" rule; the JSON Schema is a (deliberately)
+// looser approximation for editor tooling. Revisit if this gap proves
+// costly enough to warrant a hand-authored `oneOf`/`if`/`then` addition to
+// the generated artifact, or a switch to a JSON-Schema generator that
+// supports refinements.
 
 export const workflowStepSchema = z.union([
   z.object({
