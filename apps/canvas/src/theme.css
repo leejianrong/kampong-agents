@@ -1,0 +1,149 @@
+/*
+ * Material Design 3 tokens (SLICES.md V2 KAN-1107; AGENTS.md's "any
+ * frontend/UI work uses Material Design 3" convention). Hand-rolled tokens
+ * scoped as CSS custom properties rather than a component library -- the
+ * canvas has no MD3 library today (V1 shipped plain elements), and pulling
+ * one in for a single new panel isn't this slice's scope. Seed color is a
+ * calm teal (`#2F6F62`), not the M3 baseline purple, since this is a real
+ * product surface, not a brand-less demo. Light scheme only -- the canvas
+ * is a local dev tool, not a themed public page.
+ */
+:root {
+  --md-sys-color-primary: #2f6f62;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #a9f2df;
+  --md-sys-color-on-primary-container: #00201a;
+  --md-sys-color-secondary: #4a6358;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #cce8da;
+  --md-sys-color-on-secondary-container: #062016;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-surface: #f6fbf7;
+  --md-sys-color-surface-container: #ebf1ec;
+  --md-sys-color-surface-container-high: #e5ebe6;
+  --md-sys-color-on-surface: #171d1a;
+  --md-sys-color-on-surface-variant: #3f4945;
+  --md-sys-color-outline: #6f7975;
+  --md-sys-color-outline-variant: #bfc9c4;
+
+  --md-shape-corner-medium: 12px;
+  --md-shape-corner-large: 16px;
+  --md-shape-corner-full: 999px;
+
+  --md-elevation-level1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-elevation-level3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+
+  --md-type-title-medium-size: 1rem;
+  --md-type-title-medium-line: 1.5rem;
+  --md-type-body-medium-size: 0.875rem;
+  --md-type-body-medium-line: 1.25rem;
+  --md-type-label-large-size: 0.875rem;
+  --md-type-label-large-line: 1.25rem;
+}
+
+.md3-title-medium {
+  font-size: var(--md-type-title-medium-size);
+  line-height: var(--md-type-title-medium-line);
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  margin: 0 0 0.5rem 0;
+}
+
+.md3-body-medium {
+  font-size: var(--md-type-body-medium-size);
+  line-height: var(--md-type-body-medium-line);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-card {
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-shape-corner-medium);
+  box-shadow: var(--md-elevation-level1);
+  padding: 1rem;
+}
+
+.md3-elevated-surface {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-shape-corner-large);
+  box-shadow: var(--md-elevation-level3);
+  padding: 1.25rem;
+}
+
+.md3-button {
+  font-size: var(--md-type-label-large-size);
+  line-height: var(--md-type-label-large-line);
+  font-weight: 500;
+  border-radius: var(--md-shape-corner-full);
+  border: none;
+  padding: 0.5rem 1.25rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.md3-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.md3-button-filled {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.md3-button-filled:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 92%, black);
+}
+
+.md3-button-outlined {
+  background: transparent;
+  color: var(--md-sys-color-error);
+  border: 1px solid var(--md-sys-color-outline);
+}
+
+.md3-button-outlined:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-error) 8%, transparent);
+}
+
+.md3-status-pill {
+  display: inline-block;
+  border-radius: var(--md-shape-corner-full);
+  padding: 0.125rem 0.75rem;
+  font-size: var(--md-type-label-large-size);
+  font-weight: 500;
+}
+
+.md3-status-pill--running {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-status-pill--awaiting_approval {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-status-pill--completed {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-status-pill--rejected,
+.md3-status-pill--failed {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.md3-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}

@@ -10,3 +10,4 @@ export { createDevServer, type CreateDevServerOptions } from "./server.js";
 export { SpecStore } from "./spec-store.js";
 export { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 export { classifyFileChange, type FileChangeClassification } from "./watch-decision.js";
+export { RunManager, type RunManagerOptions, type StartRunResult } from "./run-manager.js";

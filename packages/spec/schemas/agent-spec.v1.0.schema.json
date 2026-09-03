@@ -27,6 +27,25 @@
               "type": "string",
               "minLength": 1
             },
+            "model": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "enum": ["anthropic", "openai"]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "api_key": {
+                  "type": "string",
+                  "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                }
+              },
+              "required": ["provider", "name", "api_key"],
+              "additionalProperties": false
+            },
             "knowledge_base": {
               "type": "array",
               "items": {
@@ -86,7 +105,8 @@
                   "maximum": 1
                 },
                 "fallback_action": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": ["escalate_to_human"]
                 }
               },
               "additionalProperties": false
@@ -141,6 +161,9 @@
                       },
                       "query": {
                         "type": "string"
+                      },
+                      "confidence_gate": {
+                        "type": "boolean"
                       }
                     },
                     "required": ["step", "action"],

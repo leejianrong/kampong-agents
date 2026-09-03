@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { buildGuardrailsFromForm, type Guardrails } from "@kampong/spec";
+import { buildGuardrailsFromForm, type FallbackAction, type Guardrails } from "@kampong/spec";
+
+// Fallback action is a fixed choice, not free text (packages/spec's
+// guardrailsSchema constrains it to what packages/engine actually
+// implements) -- a select with the supported value(s) means the form can
+// never submit something the schema would reject anyway.
+const FALLBACK_ACTIONS: FallbackAction[] = ["escalate_to_human"];
 
 // The "Set Guardrails" affordance -- confidence-threshold + fallback-action
 // (PLAN.md Affordances "Confidence-threshold guardrail control"), the same
@@ -12,7 +18,7 @@ export interface GuardrailsFormProps {
 
 export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
   const [confidenceThreshold, setConfidenceThreshold] = useState("0.8");
-  const [fallbackAction, setFallbackAction] = useState("escalate_to_human");
+  const [fallbackAction, setFallbackAction] = useState<FallbackAction>("escalate_to_human");
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
@@ -43,7 +49,16 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
       </label>
       <label>
         Fallback action
-        <input value={fallbackAction} onChange={(e) => setFallbackAction(e.target.value)} />
+        <select
+          value={fallbackAction}
+          onChange={(e) => setFallbackAction(e.target.value as FallbackAction)}
+        >
+          {FALLBACK_ACTIONS.map((action) => (
+            <option key={action} value={action}>
+              {action}
+            </option>
+          ))}
+        </select>
       </label>
       {errors.length > 0 && (
         <ul role="alert">

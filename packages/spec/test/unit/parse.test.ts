@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSpec } from "../../src/parse.js";
-import { VALID_FIXTURE } from "../fixtures.js";
+import { VALID_FIXTURE, VALID_FIXTURE_WITH_MODEL } from "../fixtures.js";
 
 describe("parseSpec", () => {
   it("parses a valid fixture", () => {
@@ -39,6 +39,27 @@ describe("parseSpec", () => {
 
     expect(result.success).toBe(false);
     expect(result.errors.some((e) => e.path.join(".") === "agent.goal")).toBe(true);
+  });
+
+  it("parses a model field with a ${ENV_VAR} api_key placeholder", () => {
+    const result = parseSpec(VALID_FIXTURE_WITH_MODEL);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model).toEqual({
+      provider: "anthropic",
+      name: "claude-3-5-haiku-latest",
+      api_key: "${ANTHROPIC_API_KEY}",
+    });
+  });
+
+  it("rejects a model api_key that is a literal secret instead of a ${ENV_VAR} placeholder", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "api_key: ${ANTHROPIC_API_KEY}",
+      "api_key: sk-ant-literal-secret-value",
+    );
+    const result = parseSpec(bad);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
   });
 
   it("rejects a YAML syntax error with a line number, not a generic parse failure", () => {

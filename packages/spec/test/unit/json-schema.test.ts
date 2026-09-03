@@ -6,6 +6,7 @@ import {
   VALID_FIXTURE,
   VALID_FIXTURE_NO_TOOLS,
   VALID_FIXTURE_WITH_CONDITION,
+  VALID_FIXTURE_WITH_MODEL,
 } from "../fixtures.js";
 
 // The published JSON Schema (S7) is what external editors and agentic
@@ -20,6 +21,7 @@ describe("generateAgentSpecJsonSchema", () => {
     ["single tool, no conditionals", VALID_FIXTURE],
     ["two tools with a conditional step", VALID_FIXTURE_WITH_CONDITION],
     ["no tools", VALID_FIXTURE_NO_TOOLS],
+    ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
   ])("accepts a fixture the Zod validator accepts: %s", (_name, source) => {
     const { spec, success } = parseSpec(source);
     expect(success).toBe(true);
@@ -43,6 +45,38 @@ describe("generateAgentSpecJsonSchema", () => {
       },
     ],
     ["not an object at all", "not-a-spec"],
+    [
+      "a fallback_action the engine doesn't implement",
+      {
+        version: "1.0",
+        agent: {
+          id: "x",
+          name: "x",
+          role: "x",
+          goal: "x",
+          guardrails: { confidence_threshold: 0.85, fallback_action: "retry_automatically" },
+          workflow: [{ step: "s", action: "a" }],
+        },
+      },
+    ],
+    [
+      "a literal secret instead of an ${ENV_VAR} placeholder",
+      {
+        version: "1.0",
+        agent: {
+          id: "x",
+          name: "x",
+          role: "x",
+          goal: "x",
+          model: {
+            provider: "anthropic",
+            name: "claude-3-5-haiku-latest",
+            api_key: "sk-ant-literal-secret",
+          },
+          workflow: [{ step: "s", action: "a" }],
+        },
+      },
+    ],
   ])("rejects a fixture the Zod validator would also reject: %s", (_name, candidate) => {
     expect(validate(candidate)).toBe(false);
   });

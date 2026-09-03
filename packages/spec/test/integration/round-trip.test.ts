@@ -5,6 +5,7 @@ import {
   VALID_FIXTURE,
   VALID_FIXTURE_NO_TOOLS,
   VALID_FIXTURE_WITH_CONDITION,
+  VALID_FIXTURE_WITH_MODEL,
 } from "../fixtures.js";
 
 // The highest-leverage test in the whole plan (PLAN.md "Testing approach",
@@ -18,6 +19,7 @@ describe("AgentSpec round-trip duality", () => {
     ["single tool, no conditionals", VALID_FIXTURE],
     ["two tools with a conditional step", VALID_FIXTURE_WITH_CONDITION],
     ["no tools", VALID_FIXTURE_NO_TOOLS],
+    ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
   ])("re-serializes %s byte-for-byte with zero mutations", (_name, source) => {
     const { doc, success } = parseSpec(source);
     expect(success).toBe(true);
