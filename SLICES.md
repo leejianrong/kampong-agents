@@ -205,3 +205,33 @@ These are real commitments on the roadmap per product direction — not "someday
 
 - Audit log entries are structurally valid against the documented schema for SIEM ingestion.
 - Cost-limit comparison logic correctly halts at the configured threshold.
+
+## V7: Multi-Agent Org-Chart Orchestration
+
+**Delivers:** R9.1
+
+Further out than V5/V6, not sequenced in detail yet — real design work (delegation semantics,
+the org-chart canvas metaphor, a `sub_agents` spec extension) waits until the single-agent
+duality/execution/export loop (V1–V4) is proven in practice (ADR-0001). Tracked on the roadmap
+so it isn't lost, not planned to the same depth as the earlier slices.
+
+**Sketch:** a manager agent delegates to worker agents (Researcher, Writer, Fact Checker, etc.);
+users wire the org chart by drawing reporting/reassignment arrows, per the original ideation
+(`ideation.md` §3.3.C). Design questions to resolve when this is actually scoped: how a
+delegated call is represented in the single-agent execution engine, whether sub-agents are
+separate spec files or nested in one, and what "duality" means for an org chart.
+
+## V8: Natural-Language Prompt-to-Workflow Generator
+
+**Delivers:** R9.2
+
+Further out than V5/V6, not sequenced in detail yet — a separate, nondeterministic R&D problem
+(Q13) that needs a stable spec/execution target to generate reliably against, which V1–V4
+provide. Tracked on the roadmap so it isn't lost, not planned to the same depth as the earlier
+slices.
+
+**Sketch:** a user types "build me an agent that monitors my inbox for refund requests, checks
+Stripe, and drafts a response" and the tool generates an initial `AgentSpec` (`ideation.md`
+§3.2). Design questions to resolve when this is actually scoped: how generation quality gets
+evaluated, what the fallback is when generation produces an invalid or nonsensical spec, and
+whether this runs against BYOK models only or needs a dedicated fine-tuned/prompted approach.

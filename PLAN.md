@@ -40,25 +40,29 @@ On conflict: the technical builder's expectations win. The canvas must never pro
 - **Enterprise governance (V6).** SSO/SCIM, RBAC, PII scrubbing/egress firewalls, SIEM-exportable audit logs, per-run cost circuit breakers, department chargebacks. Sequenced after hosted mode exists, because these features exist to satisfy IT/security review of a _shared_ system — there's nothing to review in a single-user local tool.
 - **LLM gateway with automatic cross-provider failover** — folds into V5, once shared infrastructure makes reliability-at-scale a real concern (ADR-0004).
 
+**Further out on the roadmap — not sequenced in detail yet (see SLICES.md V7–V8):**
+
+- **Multi-agent org-chart orchestration (V7, ADR-0001).** Manager/worker delegation, an org-chart canvas view. The spec schema leaves room for a `sub_agents` field, but the real design work waits until the single-agent spec and execution model (V1–V4) are proven.
+- **Natural-language prompt-to-workflow generation (V8, Q13).** "Type a sentence, get a generated harness." A separate, nondeterministic R&D problem in its own right — waits until there's a stable spec/execution target to generate reliably against.
+
 **Out and not currently roadmapped (revisit only if it becomes a real blocker):**
 
-- Multi-agent org-chart orchestration (ADR-0001) — the spec schema leaves room for it, but no v1 work assumes it's coming soon.
-- Natural-language "type a sentence, get a generated workflow" (Q13) — separate R&D problem.
 - Real-time multi-user collaborative editing (Q24).
 
 ## Requirements
 
-| ID  | Requirement                                                                                                                                                                                           | Status       |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.                                           | Core goal    |
-| R1  | Canvas edits and direct YAML edits — including specs authored entirely in an external editor or agentic coding tool — stay bidirectionally synced with zero data loss, for every supported node type. | Must-have    |
-| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                                                                 | Must-have    |
-| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry.                                         | Must-have    |
-| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.                                           | Must-have    |
-| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                                                                      | Must-have    |
-| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                                                                      | Must-have    |
-| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                                                                    | Roadmap (V5) |
-| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                                                                       | Roadmap (V6) |
+| ID  | Requirement                                                                                                                                                                                           | Status          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.                                           | Core goal       |
+| R1  | Canvas edits and direct YAML edits — including specs authored entirely in an external editor or agentic coding tool — stay bidirectionally synced with zero data loss, for every supported node type. | Must-have       |
+| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                                                                 | Must-have       |
+| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry.                                         | Must-have       |
+| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.                                           | Must-have       |
+| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                                                                      | Must-have       |
+| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                                                                      | Must-have       |
+| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                                                                    | Roadmap (V5)    |
+| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                                                                       | Roadmap (V6)    |
+| R9  | Further-future, not yet sequenced in detail: R9.1 multi-agent org-chart orchestration; R9.2 natural-language prompt-to-workflow generation.                                                           | Roadmap (V7/V8) |
 
 ## Shape
 

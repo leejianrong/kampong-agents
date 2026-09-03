@@ -22,7 +22,7 @@ _(empty — round 1 closed all three)_
 | Q10 | Two writers, one possibly external (a text editor): who wins?                                          | ASSUMED               | File-watch + reload prompt. The canvas detects an external change and offers to reload rather than silently overwriting. Real-time multi-user editing is a hosted-era concern.                                               | PLAN §Implementation decisions |
 | Q11 | What does a human-approval (HITL) step actually do locally, with no backend?                           | ASSUMED               | A blocking interactive prompt — a browser modal during a canvas test run, or a CLI stdin prompt for headless `kampong run`. Slack/email escalation needs OAuth/webhook infra and is deferred.                                | PLAN §Shape S3; SLICES V2      |
 | Q12 | Is tool definition natural-language-parsed or a structured form?                                       | ASSUMED               | A structured form (name, HTTP method, URL with `{placeholders}`, response-extraction path) is the primary, zero-LLM-calls path. NL-assisted drafting is an optional layer on top, not load-bearing.                          | PLAN §Affordances              |
-| Q13 | Is "type a sentence, get a generated harness" (prompt-to-workflow) in scope?                           | DEFERRED              | No — a separate, nondeterministic R&D problem, not required to prove canvas-code duality.                                                                                                                                    | n/a                            |
+| Q13 | Is "type a sentence, get a generated harness" (prompt-to-workflow) in scope?                           | DECIDED (mid-session) | Not in v1 — a separate, nondeterministic R&D problem, not required to prove canvas-code duality. Roadmapped (not cut) as V8, sequenced after V1–V4 give it a stable target to generate against.                              | SLICES V8                      |
 | Q14 | Can secrets ever live inside the YAML spec?                                                            | ASSUMED               | No. API keys live in `.env`/OS keychain; the spec references `${ENV_VAR}` placeholders only, so any spec file is always safe to commit.                                                                                      | PLAN §Security                 |
 | Q15 | Does the local tool phone home by default?                                                             | ASSUMED               | No telemetry leaves the machine by default in local mode — a trust/positioning decision for a "no lock-in" dev tool. Future analytics must be explicit opt-in.                                                               | PLAN §Security                 |
 | Q16 | Does the spec need a version field from day one?                                                       | ASSUMED               | Yes — `version` field plus a simple field-based migration path, no elaborate migration tooling at MVP scale.                                                                                                                 | PLAN §Implementation decisions |
@@ -38,20 +38,21 @@ _(empty — round 1 closed all three)_
 | Q27 | Which YAML parsing library?                                                                            | DECIDED (mid-session) | The `yaml` package (eemeli/yaml), not `js-yaml` — preserves comments/formatting across parse→mutate→stringify.                                                                                                               | ADR-0007                       |
 | Q28 | Is hand-editing YAML in an external IDE/agentic coding tool a primary workflow or an edge case?        | DECIDED (mid-session) | Primary, first-class workflow. Auto-reload on external change by default (no prompt); prompt only on a genuine in-flight-mutation conflict.                                                                                  | ADR-0008                       |
 | Q29 | Should the `AgentSpec` schema be published for external editor/agentic-tool consumption?               | DECIDED (mid-session) | Yes — a standalone JSON Schema, versioned with the spec, referenced via the `yaml-language-server` pragma.                                                                                                                   | ADR-0008, PLAN §Shape S7       |
+| Q30 | Is multi-agent org-chart orchestration cut, or roadmapped for later?                                   | DECIDED (mid-session) | Roadmapped, not cut. Tracked as V7, sequenced after the single-agent duality/execution/export loop (V1-V4) is proven, per user direction.                                                                                    | ADR-0001, SLICES V7            |
 
 ## Coverage
 
-| Category                 | Covered by                 |
-| ------------------------ | -------------------------- |
-| Primary user and actors  | Q4                         |
-| Scope boundary           | F1, Q19, Q21, Q22          |
-| Data model and identity  | F2, Q16, Q17               |
-| State and storage        | Q17, Q9                    |
-| Concurrency and conflict | Q10, Q28                   |
-| Interfaces and contracts | Q6, F3, Q25, Q26, Q29      |
-| Failure behaviour        | Q8, Q11                    |
-| External dependencies    | F3, Q7, Q23, Q25, Q26, Q27 |
-| Runtime and deployment   | Q6, Q5                     |
-| Measurable success       | Q18                        |
-| Security and secrets     | Q14, Q15                   |
-| Versioning and migration | Q16                        |
+| Category                 | Covered by                  |
+| ------------------------ | --------------------------- |
+| Primary user and actors  | Q4                          |
+| Scope boundary           | F1, Q19, Q21, Q22, Q13, Q30 |
+| Data model and identity  | F2, Q16, Q17                |
+| State and storage        | Q17, Q9                     |
+| Concurrency and conflict | Q10, Q28                    |
+| Interfaces and contracts | Q6, F3, Q25, Q26, Q29       |
+| Failure behaviour        | Q8, Q11                     |
+| External dependencies    | F3, Q7, Q23, Q25, Q26, Q27  |
+| Runtime and deployment   | Q6, Q5                      |
+| Measurable success       | Q18                         |
+| Security and secrets     | Q14, Q15                    |
+| Versioning and migration | Q16                         |
