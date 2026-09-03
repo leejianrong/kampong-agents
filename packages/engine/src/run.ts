@@ -69,6 +69,12 @@ export class AgentRun extends EventEmitter {
     if (!this.generator || this.state.status !== "awaiting_approval") {
       throw new Error("resume() called but this run has no pending approval.");
     }
+    // Flip the status synchronously, before the `await` inside advance(),
+    // so the guard above is atomic: a second concurrent resume()/approve()
+    // call on this same run sees a non-"awaiting_approval" status right
+    // away and throws instead of racing to deliver its decision to
+    // whatever the *next* yield point turns out to be.
+    this.state = { ...this.state, status: "running" };
     return this.advance({ approved, reason });
   }
 

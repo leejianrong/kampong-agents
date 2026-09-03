@@ -86,6 +86,25 @@ describe("guardrail-triggered human approval (SLICES.md V2)", () => {
 
     await expect(run.resume(true)).rejects.toThrow(/no pending approval/);
   });
+
+  it("regression: rejects a second concurrent resume() call instead of racing it onto the next pause point", async () => {
+    const run = createAgentRun(GUARDRAIL_SPEC, { model: fixedConfidenceModel(0.4) });
+    await run.start("Refund request for order #42");
+
+    const results = await Promise.allSettled([run.resume(true), run.resume(true)]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      message: expect.stringMatching(/no pending approval/),
+    });
+    const fulfilledResult = fulfilled[0] as PromiseFulfilledResult<
+      Awaited<ReturnType<typeof run.resume>>
+    >;
+    expect(fulfilledResult.value.status).toBe("completed");
+  });
 });
 
 const TOOL_APPROVAL_SPEC: AgentSpec = {
