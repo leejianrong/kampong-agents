@@ -28,6 +28,24 @@ function connectionRefusedFetch(): typeof fetch {
   }) as typeof fetch;
 }
 
+// Shaped after undici's real connect-timeout failure -- verified empirically
+// (not guessed) by pointing Node's built-in fetch at a non-routable address
+// with a short connect timeout: the `.cause` chain bottoms out in an undici
+// `ConnectTimeoutError` carrying `code: "UND_ERR_CONNECT_TIMEOUT"` (finding
+// #7 -- this code, along with `ETIMEDOUT`/`EHOSTUNREACH`, was previously
+// missing from `isConnectionRefused`, so a connect-timeout-shaped failure
+// fell through to the raw underlying error instead of the actionable
+// `OllamaUnavailableError`).
+function connectTimeoutFetch(): typeof fetch {
+  return (async () => {
+    const cause = Object.assign(
+      new Error("Connect Timeout Error (attempted address: 127.0.0.1:11434, timeout: 200ms)"),
+      { code: "UND_ERR_CONNECT_TIMEOUT" },
+    );
+    throw new TypeError("fetch failed", { cause });
+  }) as typeof fetch;
+}
+
 function ollamaSpec(overrides: Partial<AgentSpec["agent"]["model"]> = {}): AgentSpec {
   return {
     version: "1.0",
@@ -102,6 +120,14 @@ describe("Ollama adapter -- server unavailable", () => {
     // No api_key on the spec at all; construction must not throw
     // MissingApiKeyError the way it would for anthropic/openai.
     expect(() => createMastraModelClient(ollamaSpec(), {})).not.toThrow();
+  });
+
+  it("throws OllamaUnavailableError on a connect-timeout-shaped failure, not just outright ECONNREFUSED (finding #7)", async () => {
+    const client = createMastraModelClient(ollamaSpec(), {}, { fetchImpl: connectTimeoutFetch() });
+
+    await expect(client.generateText({ instructions: "x", prompt: "hi" })).rejects.toThrow(
+      OllamaUnavailableError,
+    );
   });
 
   it("a non-connection-refused error from the model call is NOT reinterpreted as OllamaUnavailableError", async () => {

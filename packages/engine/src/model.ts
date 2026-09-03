@@ -123,12 +123,34 @@ export function resolveEnvVarPlaceholder(
   return value;
 }
 
+// Every failure code that means "the local Ollama server could not be
+// reached" -- not just an outright refusal. Verified empirically (see the
+// PR description / commit message for finding #7) rather than guessed:
+// pointing Node's built-in (undici-backed) `fetch` at a non-routable address
+// with a short connect timeout reproduces a real connect-timeout failure,
+// and its `.cause` chain bottoms out in an undici `ConnectTimeoutError` with
+// `code: "UND_ERR_CONNECT_TIMEOUT"` -- distinct from the plain OS-level
+// `ECONNREFUSED` the original code already recognized. `ETIMEDOUT` and
+// `EHOSTUNREACH` are the equivalent plain Node/OS errno codes for a
+// connect-level timeout / unreachable host respectively (e.g. when Node's
+// own TCP-level timeout fires, or a lower-level network stack reports the
+// host unreachable, rather than undici's own connect-timeout machinery).
+const UNREACHABLE_CODES: ReadonlySet<string> = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
 /**
- * True for the shape a Node/undici `fetch` rejection takes when nothing is
- * listening on the target host/port (or DNS/connection resets equivalent to
- * "unavailable") -- walked through `.cause` (and `AggregateError.errors`,
- * which undici uses for multi-address connection attempts) since `fetch`
- * itself always throws a generic `TypeError: fetch failed` wrapper.
+ * True for the shape a Node/undici `fetch` rejection takes when the local
+ * Ollama server can't be reached at all -- refused, timed out connecting,
+ * or otherwise unreachable (see `UNREACHABLE_CODES` above) -- walked through
+ * `.cause` (and `AggregateError.errors`, which undici uses for
+ * multi-address connection attempts) since `fetch` itself always throws a
+ * generic `TypeError: fetch failed` wrapper.
  */
 function isConnectionRefused(err: unknown): boolean {
   const seen = new Set<unknown>();
@@ -138,7 +160,7 @@ function isConnectionRefused(err: unknown): boolean {
     if (!current || typeof current !== "object" || seen.has(current)) continue;
     seen.add(current);
     const code = (current as { code?: unknown }).code;
-    if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ECONNRESET") return true;
+    if (typeof code === "string" && UNREACHABLE_CODES.has(code)) return true;
     const cause = (current as { cause?: unknown }).cause;
     if (cause) queue.push(cause);
     const errors = (current as { errors?: unknown }).errors;
