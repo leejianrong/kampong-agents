@@ -1,0 +1,163 @@
+{
+  "$ref": "#/definitions/AgentSpec",
+  "definitions": {
+    "AgentSpec": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "minLength": 1
+            },
+            "goal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "knowledge_base": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["pdf", "url", "text"]
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["type", "source"],
+                "additionalProperties": false
+              }
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "const": "http_request"
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requires_approval": {
+                    "type": "boolean"
+                  },
+                  "extract": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "action", "method", "url"],
+                "additionalProperties": false
+              }
+            },
+            "guardrails": {
+              "type": "object",
+              "properties": {
+                "confidence_threshold": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "fallback_action": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "workflow": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "condition"
+                      },
+                      "if": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "then": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "else": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["step", "type", "if", "then", "else"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "action": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "inputs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "query": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["step", "action"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": ["id", "name", "role", "goal", "workflow"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["version", "agent"],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
