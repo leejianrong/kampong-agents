@@ -75,6 +75,28 @@ describe("AgentSpec round-trip duality", () => {
     expect(reparsed.spec?.agent.tools).toHaveLength(2);
   });
 
+  it("adds the first item to a collection that doesn't exist yet as a one-item array, not a bare value", () => {
+    // Regression test: yaml's Document.addIn only appends to an existing
+    // collection -- if the target path doesn't exist yet, it sets the path
+    // to the bare value instead of wrapping it in a new array. Caught via
+    // the canvas "Add Tool" flow against a spec with no `tools:` key yet.
+    const { doc, success } = parseSpec(VALID_FIXTURE_NO_TOOLS);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "tools"],
+        value: { name: "check_status", action: "http_request", method: "GET", url: "https://x" },
+      },
+    ]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(Array.isArray(reparsed.spec?.agent.tools)).toBe(true);
+    expect(reparsed.spec?.agent.tools).toHaveLength(1);
+  });
+
   it("removes a field cleanly via a remove patch op", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);
