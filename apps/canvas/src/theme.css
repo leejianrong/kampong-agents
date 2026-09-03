@@ -7,6 +7,16 @@
  * calm teal (`#2F6F62`), not the M3 baseline purple, since this is a real
  * product surface, not a brand-less demo. Light scheme only -- the canvas
  * is a local dev tool, not a themed public page.
+ *
+ * Follow-up MD3 pass (feat/canvas-md3-pass): extended the token set below
+ * (tertiary role, extra surface-container tiers, extra shape/elevation/type
+ * steps) to cover the primary canvas surface (Canvas.tsx nodes + @xyflow/react
+ * chrome), the property-inspector forms, the YAML preview split screen, and
+ * the App.tsx shell -- all of which shipped in V1 with zero MD3 classes.
+ * Tertiary/extra-surface values were derived from the same `#2F6F62` seed
+ * via `@material/material-color-utilities`' CorePalette + the standard M3
+ * light-scheme tone mapping (a1/a2/a3 @ tone 40/90/10 etc.), the same
+ * mechanism the original primary/secondary/error roles trace back to.
  */
 :root {
   --md-sys-color-primary: #2f6f62;
@@ -17,31 +27,87 @@
   --md-sys-color-on-secondary: #ffffff;
   --md-sys-color-secondary-container: #cce8da;
   --md-sys-color-on-secondary-container: #062016;
+  --md-sys-color-tertiary: #436278;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #c8e6ff;
+  --md-sys-color-on-tertiary-container: #001e2f;
   --md-sys-color-error: #ba1a1a;
   --md-sys-color-on-error: #ffffff;
   --md-sys-color-error-container: #ffdad6;
   --md-sys-color-on-error-container: #410002;
   --md-sys-color-surface: #f6fbf7;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f0f6f1;
   --md-sys-color-surface-container: #ebf1ec;
   --md-sys-color-surface-container-high: #e5ebe6;
+  --md-sys-color-surface-container-highest: #dfe5e0;
   --md-sys-color-on-surface: #171d1a;
   --md-sys-color-on-surface-variant: #3f4945;
   --md-sys-color-outline: #6f7975;
   --md-sys-color-outline-variant: #bfc9c4;
 
+  --md-shape-corner-extra-small: 4px;
+  --md-shape-corner-small: 8px;
   --md-shape-corner-medium: 12px;
   --md-shape-corner-large: 16px;
   --md-shape-corner-full: 999px;
 
   --md-elevation-level1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-elevation-level2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
   --md-elevation-level3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
 
+  --md-type-title-large-size: 1.375rem;
+  --md-type-title-large-line: 1.75rem;
   --md-type-title-medium-size: 1rem;
   --md-type-title-medium-line: 1.5rem;
+  --md-type-title-small-size: 0.875rem;
+  --md-type-title-small-line: 1.25rem;
+  --md-type-body-large-size: 1rem;
+  --md-type-body-large-line: 1.5rem;
   --md-type-body-medium-size: 0.875rem;
   --md-type-body-medium-line: 1.25rem;
+  --md-type-body-small-size: 0.75rem;
+  --md-type-body-small-line: 1rem;
   --md-type-label-large-size: 0.875rem;
   --md-type-label-large-line: 1.25rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    Roboto,
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
+
+.md3-title-large {
+  font-size: var(--md-type-title-large-size);
+  line-height: var(--md-type-title-large-line);
+  font-weight: 400;
+  color: var(--md-sys-color-on-surface);
+  margin: 0;
 }
 
 .md3-title-medium {
@@ -52,10 +118,24 @@
   margin: 0 0 0.5rem 0;
 }
 
+.md3-title-small {
+  font-size: var(--md-type-title-small-size);
+  line-height: var(--md-type-title-small-line);
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  margin: 0;
+}
+
 .md3-body-medium {
   font-size: var(--md-type-body-medium-size);
   line-height: var(--md-type-body-medium-line);
   color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-label-large {
+  font-size: var(--md-type-label-large-size);
+  line-height: var(--md-type-label-large-line);
+  font-weight: 500;
 }
 
 .md3-card {
@@ -66,28 +146,63 @@
   padding: 1rem;
 }
 
+.md3-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.md3-run-trace {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.md3-code-block {
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-shape-corner-small);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--md-type-body-small-size);
+  overflow: auto;
+}
+
 .md3-elevated-surface {
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface);
   border-radius: var(--md-shape-corner-large);
   box-shadow: var(--md-elevation-level3);
   padding: 1.25rem;
+  min-width: 22rem;
+  max-width: min(28rem, calc(100vw - 3rem));
 }
 
 .md3-button {
   font-size: var(--md-type-label-large-size);
   line-height: var(--md-type-label-large-line);
   font-weight: 500;
+  font-family: inherit;
   border-radius: var(--md-shape-corner-full);
   border: none;
   padding: 0.5rem 1.25rem;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .md3-button:disabled {
   opacity: 0.38;
   cursor: not-allowed;
+}
+
+.md3-button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .md3-button-filled {
@@ -99,6 +214,23 @@
   background: color-mix(in srgb, var(--md-sys-color-primary) 92%, black);
 }
 
+.md3-button-filled:active:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 88%, black);
+}
+
+.md3-button-tonal {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-button-tonal:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, black);
+}
+
+.md3-button-tonal:active:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 88%, black);
+}
+
 .md3-button-outlined {
   background: transparent;
   color: var(--md-sys-color-error);
@@ -107,6 +239,24 @@
 
 .md3-button-outlined:hover:not(:disabled) {
   background: color-mix(in srgb, var(--md-sys-color-error) 8%, transparent);
+}
+
+.md3-button-outlined:active:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+}
+
+.md3-button-text {
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  padding: 0.5rem 0.75rem;
+}
+
+.md3-button-text:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+.md3-button-text:active:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
 }
 
 .md3-status-pill {
@@ -146,4 +296,303 @@
   align-items: center;
   justify-content: center;
   z-index: 10;
+}
+
+/* ---- Banners / alerts (App.tsx conflict + spec-error banners) ---- */
+
+.md3-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: var(--md-shape-corner-medium);
+  padding: 0.75rem 1rem;
+  margin: 0.75rem;
+  font-size: var(--md-type-body-medium-size);
+  line-height: var(--md-type-body-medium-line);
+}
+
+.md3-banner--info {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-banner--error {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.md3-banner__action {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.md3-banner__action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.md3-banner__errors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* ---- Property-inspector forms (ToolForm/WorkflowStepForm/GuardrailsForm) and
+   other card-embedded forms (RunPanel's "Input" field) ---- */
+
+.md3-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  width: 100%;
+  max-width: 20rem;
+}
+
+.md3-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.md3-field__label {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-text-field {
+  font-size: var(--md-type-body-large-size);
+  line-height: var(--md-type-body-large-line);
+  font-family: inherit;
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-shape-corner-extra-small);
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.md3-text-field:hover:not(:disabled) {
+  border-color: var(--md-sys-color-on-surface);
+}
+
+.md3-text-field:focus-visible,
+.md3-text-field:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+}
+
+.md3-text-field:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+select.md3-text-field {
+  cursor: pointer;
+}
+
+.md3-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.md3-error-list {
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  border-radius: var(--md-shape-corner-medium);
+  font-size: var(--md-type-body-small-size);
+  line-height: var(--md-type-body-small-line);
+}
+
+/* ---- Canvas nodes (Canvas.tsx: Trigger / Tool / Workflow / Guardrails) ---- */
+
+.md3-flow-wrap {
+  width: 100%;
+  height: 100%;
+  background: var(--md-sys-color-surface);
+}
+
+.md3-flow-wrap .react-flow {
+  --xy-background-color: var(--md-sys-color-surface);
+  --xy-background-pattern-dots-color: var(--md-sys-color-outline-variant);
+  --xy-background-pattern-lines-color: var(--md-sys-color-outline-variant);
+  --xy-node-color: var(--md-sys-color-on-surface);
+  --xy-node-border: 1px solid var(--md-sys-color-outline-variant);
+  --xy-node-background-color: var(--md-sys-color-surface-container);
+  --xy-node-border-radius: var(--md-shape-corner-medium);
+  --xy-node-boxshadow-hover: var(--md-elevation-level2);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--md-sys-color-primary);
+  --xy-edge-stroke: var(--md-sys-color-outline);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-stroke-selected: var(--md-sys-color-primary);
+  --xy-connectionline-stroke: var(--md-sys-color-primary);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-attribution-background-color: transparent;
+  --xy-controls-button-background-color: var(--md-sys-color-surface-container-high);
+  --xy-controls-button-background-color-hover: var(--md-sys-color-surface-container-highest);
+  --xy-controls-button-color: var(--md-sys-color-on-surface);
+  --xy-controls-button-color-hover: var(--md-sys-color-primary);
+  --xy-controls-button-border-color: var(--md-sys-color-outline-variant);
+  --xy-controls-box-shadow: var(--md-elevation-level1);
+  --xy-selection-background-color: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+  --xy-selection-border: 1px dotted var(--md-sys-color-primary);
+}
+
+.md3-flow-wrap .react-flow__controls {
+  border-radius: var(--md-shape-corner-small);
+  overflow: hidden;
+  box-shadow: var(--md-elevation-level1);
+}
+
+.md3-flow-wrap .react-flow__controls-button {
+  border-bottom-color: var(--md-sys-color-outline-variant);
+}
+
+.md3-flow-wrap .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-flow-wrap .react-flow__attribution {
+  font-size: var(--md-type-body-small-size);
+}
+
+.md3-node {
+  width: auto;
+  min-width: 150px;
+  max-width: 220px;
+  padding: 0.625rem 0.875rem !important;
+  font-size: var(--md-type-body-medium-size) !important;
+  font-family: inherit;
+  text-align: left !important;
+  white-space: normal;
+}
+
+.md3-node--agent {
+  background-color: var(--md-sys-color-primary-container) !important;
+  color: var(--md-sys-color-on-primary-container) !important;
+  border-color: var(--md-sys-color-primary) !important;
+}
+
+.md3-node--tool {
+  background-color: var(--md-sys-color-secondary-container) !important;
+  color: var(--md-sys-color-on-secondary-container) !important;
+  border-color: var(--md-sys-color-secondary) !important;
+}
+
+.md3-node--workflow {
+  background-color: var(--md-sys-color-tertiary-container) !important;
+  color: var(--md-sys-color-on-tertiary-container) !important;
+  border-color: var(--md-sys-color-tertiary) !important;
+}
+
+.md3-node--guardrails {
+  background-color: var(--md-sys-color-error-container) !important;
+  color: var(--md-sys-color-on-error-container) !important;
+  border-color: var(--md-sys-color-error) !important;
+}
+
+/* ---- YAML preview split screen (YamlPreview.tsx) ---- */
+
+.md3-yaml-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.md3-yaml-panel__header {
+  flex: none;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-yaml-panel__body {
+  flex: 1;
+  margin: 0;
+  padding: 1rem;
+  overflow: auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--md-type-body-small-size);
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface);
+  white-space: pre-wrap;
+}
+
+/* ---- App shell (App.tsx) ---- */
+
+.md3-app {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  background: var(--md-sys-color-surface);
+}
+
+.md3-app__canvas-pane {
+  flex: 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.md3-app__toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: var(--md-elevation-level1);
+  z-index: 5;
+  position: relative;
+}
+
+.md3-app__title {
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.md3-app__toolbar-spacer {
+  flex: 1;
+}
+
+.md3-app__canvas-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.md3-app__overlay {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 6;
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+}
+
+.md3-app__side-pane {
+  flex: 1;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  min-width: 0;
 }

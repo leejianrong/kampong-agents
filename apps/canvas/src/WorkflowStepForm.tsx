@@ -26,30 +26,43 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Workflow Step">
-      <label>
-        Step ID
-        <input value={step} onChange={(e) => setStep(e.target.value)} />
+    <form onSubmit={handleSubmit} aria-label="Add Workflow Step" className="md3-card md3-form">
+      <h2 className="md3-title-medium">Add Workflow Step</h2>
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Step ID</span>
+        <input className="md3-text-field" value={step} onChange={(e) => setStep(e.target.value)} />
       </label>
-      <label>
-        Action
-        <input value={action} onChange={(e) => setAction(e.target.value)} />
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Action</span>
+        <input
+          className="md3-text-field"
+          value={action}
+          onChange={(e) => setAction(e.target.value)}
+        />
       </label>
-      <label>
-        Inputs (comma-separated)
-        <input value={inputs} onChange={(e) => setInputs(e.target.value)} />
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Inputs (comma-separated)</span>
+        <input
+          className="md3-text-field"
+          value={inputs}
+          onChange={(e) => setInputs(e.target.value)}
+        />
       </label>
       {errors.length > 0 && (
-        <ul role="alert">
+        <ul role="alert" className="md3-error-list">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>
       )}
-      <button type="submit">Save Step</button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <div className="md3-form-actions">
+        <button type="submit" className="md3-button md3-button-filled">
+          Save Step
+        </button>
+        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

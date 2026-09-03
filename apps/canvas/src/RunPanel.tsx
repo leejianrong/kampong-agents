@@ -70,15 +70,15 @@ export function RunPanel({ api }: RunPanelProps) {
     starting || state?.status === "running" || state?.status === "awaiting_approval";
 
   return (
-    <div className="md3-card" data-testid="run-panel">
+    <div className="md3-card md3-stack" data-testid="run-panel">
       <h2 className="md3-title-medium">Test run</h2>
-      <form onSubmit={(e) => void handleStart(e)}>
-        <label className="md3-body-medium">
-          Input
+      <form onSubmit={(e) => void handleStart(e)} className="md3-form">
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Input</span>
           <input
+            className="md3-text-field"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            style={{ display: "block", width: "100%" }}
           />
         </label>
         <button type="submit" className="md3-button md3-button-filled" disabled={isRunning}>
@@ -87,7 +87,7 @@ export function RunPanel({ api }: RunPanelProps) {
       </form>
 
       {error && (
-        <div role="alert" data-testid="run-error">
+        <div role="alert" data-testid="run-error" className="md3-banner md3-banner--error">
           {error}
         </div>
       )}
@@ -100,7 +100,7 @@ export function RunPanel({ api }: RunPanelProps) {
               {state.status}
             </span>
           </div>
-          <ol data-testid="run-trace" className="md3-body-medium">
+          <ol data-testid="run-trace" className="md3-run-trace md3-body-medium">
             {state.trace.map((entry, i) => (
               <li key={`${entry.step}-${i}`}>
                 {entry.step}: {entry.status}
@@ -110,10 +110,12 @@ export function RunPanel({ api }: RunPanelProps) {
             ))}
           </ol>
           {state.status === "completed" && (
-            <pre data-testid="run-final-output">{JSON.stringify(state.finalOutput, null, 2)}</pre>
+            <pre data-testid="run-final-output" className="md3-code-block">
+              {JSON.stringify(state.finalOutput, null, 2)}
+            </pre>
           )}
           {(state.status === "rejected" || state.status === "failed") && (
-            <div role="alert" data-testid="run-halted">
+            <div role="alert" data-testid="run-halted" className="md3-banner md3-banner--error">
               Run {state.status}: {state.error}
             </div>
           )}
