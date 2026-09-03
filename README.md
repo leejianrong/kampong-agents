@@ -71,6 +71,15 @@ itself). For other BYOK cloud providers, set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY
 `make help` lists every target, including the non-Docker local gate (`make check`, `make test`,
 `make lint`, ...) as a thin wrapper over the npm scripts in [`AGENTS.md`](./AGENTS.md).
 
+### Stable hostname via a machine-wide Traefik proxy (optional)
+
+Running several dev stacks and don't want to track a port per project at all? If you have a
+machine-wide Traefik reverse proxy set up (see the `traefik-dev-proxy` skill/reference), copy
+`docker-compose.override.yml.example` to `docker-compose.override.yml` (gitignored) and this
+stack is also reachable at `http://kampong-agents.localhost/` — no port to remember, and the
+directly-published `HOST_PORT` keeps working at the same time. Nothing here is required:
+`docker-compose.yml` stays complete and CI-runnable with no override present.
+
 Issues and PRs are welcome. Read `AGENTS.md` first, since several of the design decisions
 there (YAML as source of truth, TypeScript/Mastra only, no telemetry by default) are
 intentional and load-bearing, not oversights.
