@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApiClient } from "./api.js";
 import type { RunState } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
@@ -19,23 +19,41 @@ export function RunPanel({ api }: RunPanelProps) {
   const [state, setState] = useState<RunState | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Closes the SSE subscription on unmount too, not just on the next
+  // handleStart -- otherwise navigating away from this panel mid-run (e.g.
+  // switching canvas tabs) leaks the EventSource connection indefinitely.
+  useEffect(() => {
+    return () => unsubscribeRef.current?.();
+  }, []);
 
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
+    if (starting) return;
+    // Set synchronously, before the `await` below, so a fast double-click
+    // can't get past this guard twice and start two concurrent runs -- the
+    // `isRunning` (server-state-derived) disabled check alone has a window
+    // between click and the POST /api/runs response resolving.
+    setStarting(true);
     setError(null);
-    const result = await api.startRun(input);
-    if (!result.success || !result.id || !result.state) {
-      setError(result.error ?? "Failed to start run.");
-      return;
-    }
-    setRunId(result.id);
-    setState(result.state);
+    try {
+      const result = await api.startRun(input);
+      if (!result.success || !result.id || !result.state) {
+        setError(result.error ?? "Failed to start run.");
+        return;
+      }
+      setRunId(result.id);
+      setState(result.state);
 
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = api.subscribeToRunEvents(result.id, (message) => {
-      setState(message.state);
-    });
+      unsubscribeRef.current?.();
+      unsubscribeRef.current = api.subscribeToRunEvents(result.id, (message) => {
+        setState(message.state);
+      });
+    } finally {
+      setStarting(false);
+    }
   }
 
   async function handleDecide(approved: boolean, reason?: string) {
@@ -48,7 +66,8 @@ export function RunPanel({ api }: RunPanelProps) {
     }
   }
 
-  const isRunning = state?.status === "running" || state?.status === "awaiting_approval";
+  const isRunning =
+    starting || state?.status === "running" || state?.status === "awaiting_approval";
 
   return (
     <div className="md3-card" data-testid="run-panel">

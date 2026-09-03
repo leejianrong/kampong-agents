@@ -9,9 +9,15 @@ import { createApiClient } from "../../src/api.js";
 // mirroring App.test.tsx's conventions.
 
 class FakeEventSource {
+  // Records every constructed instance so a test can grab the one a
+  // component under test opened without needing to alias `this`.
+  static instances: FakeEventSource[] = [];
   onmessage: ((event: MessageEvent) => void) | null = null;
   close = vi.fn();
-  constructor(public url: string) {}
+
+  constructor(public url: string) {
+    FakeEventSource.instances.push(this);
+  }
 
   emit(data: unknown) {
     this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
@@ -22,6 +28,7 @@ describe("RunPanel", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    FakeEventSource.instances = [];
   });
 
   it("starts a run, shows the awaiting-approval modal, and reflects completion after approving", async () => {
@@ -123,5 +130,75 @@ describe("RunPanel", () => {
     });
     expect(screen.getByTestId("run-halted").textContent).toContain("Not confident enough.");
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("regression: disables Run synchronously so a fast double-click can't start two concurrent runs", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+
+    let resolveStart!: (value: Response) => void;
+    const startPromise = new Promise<Response>((resolve) => {
+      resolveStart = resolve;
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/runs") return startPromise;
+      throw new Error(`Unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = createApiClient();
+    render(<RunPanel api={api} />);
+
+    const runButton = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
+    fireEvent.click(runButton);
+    // Still in-flight (startPromise unresolved): the button must already be
+    // disabled from the synchronous flag, not only once server state (which
+    // doesn't exist yet) reflects "running".
+    expect(runButton.disabled).toBe(true);
+    fireEvent.click(runButton);
+
+    resolveStart({
+      json: async () => ({
+        success: true,
+        id: "run-1",
+        state: { status: "running", trace: [] },
+      }),
+    } as Response);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status").textContent).toContain("running");
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("regression: closes the SSE subscription on unmount, not only when a new run starts", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/runs") {
+        return {
+          json: async () => ({
+            success: true,
+            id: "run-1",
+            state: { status: "running", trace: [] },
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const api = createApiClient();
+    const { unmount } = render(<RunPanel api={api} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("run-status").textContent).toContain("running");
+    });
+    const openedSource = FakeEventSource.instances[0];
+    expect(openedSource?.close).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(openedSource?.close).toHaveBeenCalledTimes(1);
   });
 });
