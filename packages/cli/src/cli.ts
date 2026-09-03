@@ -13,6 +13,7 @@ import {
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
+import { exportProject } from "@kampong/exporter";
 import { createDevServer } from "./server.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
@@ -64,6 +65,8 @@ Commands:
   dev [dir]                          Start the local dev server: spec-CRUD API, SSE run
                                       stream, and the canvas UI, all at one localhost origin.
   run <spec>.yaml --input "<text>"   Run a spec headlessly -- no server, no browser.
+  export <spec>.yaml <output-dir>    Export a spec to a standalone, runnable TypeScript
+                                      project -- one-way, zero dependency on this tool.
 
 Run "kampong <command> --help" for command-specific options.`;
 
@@ -138,6 +141,8 @@ export async function runCli(
       return runDevCommand(rest, io);
     case "run":
       return runRunCommand(rest, io, testOptions);
+    case "export":
+      return runExportCommand(rest, io);
     case "-v":
     case "--version":
       io.stdout(getVersion());
@@ -588,6 +593,113 @@ async function runRunCommand(
     io.stderr(`kampong run: run ${state.status}: ${state.error ?? "(no error message)"}`);
   }
   return EXIT_EXECUTION_FAILURE;
+}
+
+// --- kampong export -------------------------------------------------------
+// PLAN.md Shape S6, SLICES.md V4 KAN-1115. Thin wrapper -- load + validate
+// the spec (the exact same `parseSpec` every other command already goes
+// through, per Shape S1's "single write/read path"), then hand the
+// validated spec to `@kampong/exporter`'s `exportProject` and report what
+// it wrote. No execution happens here: unlike `run`, there's no model call
+// or tool call to make, so there's no "awaiting_approval"/network-failure
+// case to handle -- only validation failure (exit 1) and a write failure
+// (exit 2, e.g. an unwritable output directory).
+
+const EXPORT_HELP_TEXT = `kampong export <spec>.yaml <output-dir> [options]
+
+Exports a spec to a standalone, runnable Mastra TypeScript project (PLAN.md Shape S6,
+ADR-0002) -- one-way, never re-imported by this tool. The exported project has zero
+dependency on Kampong Agents itself (docs/adr/0010); see its generated README.md for how
+to run it.
+
+Arguments:
+  <spec>.yaml           Path to the AgentSpec YAML file to export
+  <output-dir>          Directory to write the exported project into (created if missing)
+
+Options:
+  -h, --help             Show this help
+
+Exit codes:
+  0   the project was exported successfully
+  1   the spec failed validation (malformed YAML or a schema violation)
+  2   the output directory could not be written to`;
+
+interface ExportArgs {
+  specPath: string;
+  outputDir: string;
+}
+
+function parseExportArgs(
+  args: string[],
+): { ok: true; value: ExportArgs } | { ok: false; error: string } {
+  const positional: string[] = [];
+  for (const arg of args) {
+    if (arg.startsWith("--")) {
+      return { ok: false, error: `Unrecognized option "${arg}".` };
+    }
+    positional.push(arg);
+  }
+
+  if (positional.length === 0)
+    return { ok: false, error: "Missing required <spec>.yaml argument." };
+  if (positional.length === 1)
+    return { ok: false, error: "Missing required <output-dir> argument." };
+  if (positional.length > 2) {
+    return { ok: false, error: `Unexpected extra argument "${positional[2]}".` };
+  }
+
+  return {
+    ok: true,
+    value: { specPath: resolve(positional[0]!), outputDir: resolve(positional[1]!) },
+  };
+}
+
+async function runExportCommand(args: string[], io: CliIO): Promise<number> {
+  if (args.includes("-h") || args.includes("--help")) {
+    io.stdout(EXPORT_HELP_TEXT);
+    return EXIT_SUCCESS;
+  }
+
+  const parsed = parseExportArgs(args);
+  if (!parsed.ok) {
+    io.stderr(`kampong export: ${parsed.error}\n`);
+    io.stderr(EXPORT_HELP_TEXT);
+    return EXIT_USAGE_ERROR;
+  }
+  const { specPath, outputDir } = parsed.value;
+
+  let source: string;
+  try {
+    source = readFileSync(specPath, "utf8");
+  } catch (err) {
+    io.stderr(`kampong export: could not read spec file at ${specPath}: ${(err as Error).message}`);
+    return EXIT_VALIDATION_FAILURE;
+  }
+
+  const { success, spec, errors } = parseSpec(source);
+  if (!success || !spec) {
+    io.stderr(`kampong export: spec validation failed: ${specPath}`);
+    for (const e of errors) {
+      io.stderr(
+        `  ${e.path.join(".") || "(root)"}: ${e.message}${e.line ? ` (line ${e.line})` : ""}`,
+      );
+    }
+    return EXIT_VALIDATION_FAILURE;
+  }
+
+  let result: ReturnType<typeof exportProject>;
+  try {
+    result = exportProject(spec, outputDir);
+  } catch (err) {
+    io.stderr(
+      `kampong export: failed to write the exported project to ${outputDir}: ${(err as Error).message}`,
+    );
+    return EXIT_EXECUTION_FAILURE;
+  }
+
+  io.stdout(`Exported "${spec.agent.id}" to ${outputDir} (${result.files.length} files).`);
+  io.stdout(`  cd ${outputDir} && npm install && npm start`);
+  return EXIT_SUCCESS;
 }
 
 // --- entry point ----------------------------------------------------------

@@ -37,7 +37,14 @@ export default defineConfig({
           name: "e2e",
           include: ["e2e/**/*.test.ts"],
           environment: "node",
-          testTimeout: 60_000,
+          // KAN-1117's exported-project test genuinely shells out to `npm
+          // install && npm start` in a clean temp directory (SLICES.md V4:
+          // "don't cut corners... a test that just inspects generated file
+          // contents without executing them doesn't prove behavioral
+          // equivalence") -- `npm install` alone can take well over 60s on a
+          // cold cache, so the original 60s budget (fine for V3's in-process
+          // offline-run test) isn't enough here.
+          testTimeout: 300_000,
         },
       },
     ],
