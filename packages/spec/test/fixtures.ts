@@ -54,6 +54,40 @@ agent:
       else: "request_human_approval"
 `;
 
+export const VALID_FIXTURE_WITH_MODEL = `version: "1.0"
+agent:
+  id: refund-agent
+  name: "Customer Refund Agent"
+  role: "Customer Support Specialist"
+  goal: "Review incoming refund requests and process eligible ones."
+  model:
+    provider: anthropic
+    name: claude-3-5-haiku-latest
+    api_key: \${ANTHROPIC_API_KEY}
+  tools:
+    - name: issue_refund
+      action: http_request
+      method: POST
+      url: "https://api.stripe.com/v1/refunds"
+      requires_approval: true
+  guardrails:
+    confidence_threshold: 0.85
+    fallback_action: escalate_to_human
+  workflow:
+    - step: parse_request
+      action: extract_entities
+      inputs: [customer_email, order_id]
+    - step: evaluate_policy
+      action: check_knowledge
+      query: "Is {order_id} eligible for refund?"
+      confidence_gate: true
+    - step: handle_approval
+      type: condition
+      if: "evaluate_policy.eligible == true"
+      then: "execute_tool(issue_refund)"
+      else: "request_human_approval"
+`;
+
 export const VALID_FIXTURE_NO_TOOLS = `version: "1.0"
 agent:
   id: greeter
