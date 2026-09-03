@@ -4,13 +4,13 @@ import type { FastifyInstance } from "fastify";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.js";
 
-// The real acceptance criterion (SLICES.md V1): a spec written entirely
-// outside the app renders on the canvas with zero import step, and a
-// canvas action (Add Tool) really mutates the file on disk. This runs the
+// The real acceptance criterion (SLICES.md V1): build a two-step agent with
+// a tool and a guardrail entirely on the canvas, and a spec written
+// entirely outside the app renders with zero import step. This runs the
 // real Fastify server from @kampong/cli (not mocked) over real HTTP against
 // a real temp file, and renders the real React tree via testing-library --
 // about as close to true end-to-end as this suite gets without browser
@@ -44,6 +44,29 @@ agent:
       action: run
 `;
 
+const MINIMAL_SPEC = `version: "1.0"
+agent:
+  id: refund-agent
+  name: "Refund Agent"
+  role: "Support"
+  goal: "Handle refunds."
+  workflow:
+    - step: parse_request
+      action: extract_entities
+`;
+
+async function fillAndSubmit(
+  formLabel: string,
+  fields: Record<string, string>,
+  submitLabel: string,
+) {
+  const form = screen.getByRole("form", { name: formLabel });
+  for (const [label, value] of Object.entries(fields)) {
+    fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(within(form).getByText(submitLabel));
+}
+
 describe("canvas against a real local server (no mocks)", () => {
   let dir: string;
   let specPath: string;
@@ -55,12 +78,6 @@ describe("canvas against a real local server (no mocks)", () => {
     dir = mkdtempSync(join(tmpdir(), "kampong-live-"));
     specPath = join(dir, "agent.yaml");
     layoutPath = join(dir, "layout.json");
-    writeFileSync(specPath, EXTERNALLY_WRITTEN_SPEC);
-
-    app = createDevServer({ specPath, layoutPath });
-    const address = await app.listen({ port: 0, host: "127.0.0.1" });
-    baseUrl = address;
-
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
@@ -71,7 +88,14 @@ describe("canvas against a real local server (no mocks)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  async function startServer(source: string) {
+    writeFileSync(specPath, source);
+    app = createDevServer({ specPath, layoutPath });
+    baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
+  }
+
   it("renders a spec written entirely outside the app with zero import step", async () => {
+    await startServer(EXTERNALLY_WRITTEN_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
 
     await waitFor(() => {
@@ -82,16 +106,65 @@ describe("canvas against a real local server (no mocks)", () => {
     );
   });
 
+  it("builds a two-step agent with a tool and a guardrail entirely on the canvas", async () => {
+    await startServer(MINIMAL_SPEC);
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+
+    fireEvent.click(screen.getByText("Add Tool"));
+    await fillAndSubmit(
+      "Add Tool",
+      { Name: "check_status", URL: "https://api.example.com/status" },
+      "Save Tool",
+    );
+    await waitFor(() => {
+      expect(readFileSync(specPath, "utf8")).toContain("check_status");
+    });
+
+    fireEvent.click(screen.getByText("Add Workflow Step"));
+    await fillAndSubmit(
+      "Add Workflow Step",
+      { "Step ID": "evaluate_policy", Action: "check_knowledge" },
+      "Save Step",
+    );
+    await waitFor(() => {
+      expect(readFileSync(specPath, "utf8")).toContain("evaluate_policy");
+    });
+
+    fireEvent.click(screen.getByText("Set Guardrails"));
+    await fillAndSubmit(
+      "Set Guardrails",
+      { "Confidence threshold": "0.9", "Fallback action": "escalate_to_human" },
+      "Save Guardrails",
+    );
+    await waitFor(() => {
+      expect(readFileSync(specPath, "utf8")).toContain("escalate_to_human");
+    });
+
+    const onDisk = readFileSync(specPath, "utf8");
+    expect(onDisk).toContain("check_status");
+    expect(onDisk).toContain("evaluate_policy");
+    expect(onDisk).toContain("confidence_threshold: 0.9");
+
+    // the canvas reflects all three additions, not just the file on disk
+    await waitFor(() => {
+      expect(screen.getByText(/Tool: check_status/)).toBeTruthy();
+      expect(screen.getByText(/Workflow: evaluate_policy/)).toBeTruthy();
+      expect(screen.getByText(/Guardrails:/)).toBeTruthy();
+    });
+  });
+
   it("adding a tool through the canvas really mutates the file on disk, preserving comments", async () => {
+    await startServer(EXTERNALLY_WRITTEN_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Externally Authored Agent/));
 
     fireEvent.click(screen.getByText("Add Tool"));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "check_status" } });
-    fireEvent.change(screen.getByLabelText("URL"), {
-      target: { value: "https://api.example.com/status" },
-    });
-    fireEvent.click(screen.getByText("Save Tool"));
+    await fillAndSubmit(
+      "Add Tool",
+      { Name: "check_status", URL: "https://api.example.com/status" },
+      "Save Tool",
+    );
 
     await waitFor(() => {
       const onDisk = readFileSync(specPath, "utf8");

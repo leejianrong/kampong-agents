@@ -12,5 +12,6 @@ export * from "./mutate.js";
 export * from "./layout.js";
 export * from "./graph.js";
 export * from "./tool-form.js";
+export * from "./workflow-form.js";
 export * from "./json-schema.js";
 export * from "./pragma.js";

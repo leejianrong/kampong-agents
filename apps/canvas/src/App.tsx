@@ -1,8 +1,16 @@
-import { specToGraph, type AgentSpec, type Tool } from "@kampong/spec";
+import {
+  specToGraph,
+  type AgentSpec,
+  type Guardrails,
+  type Tool,
+  type WorkflowStep,
+} from "@kampong/spec";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createApiClient, type ApiClient } from "./api.js";
 import { Canvas } from "./Canvas.js";
+import { GuardrailsForm } from "./GuardrailsForm.js";
 import { ToolForm } from "./ToolForm.js";
+import { WorkflowStepForm } from "./WorkflowStepForm.js";
 import { YamlPreview } from "./YamlPreview.js";
 
 // The canvas app's top-level orchestration (PLAN.md Shape S2). Owns the
@@ -14,6 +22,8 @@ export interface AppProps {
   apiBaseUrl?: string;
 }
 
+type OpenForm = "tool" | "workflow" | "guardrails" | null;
+
 export function App({ apiBaseUrl = "" }: AppProps) {
   const api = useMemo<ApiClient>(() => createApiClient(apiBaseUrl), [apiBaseUrl]);
 
@@ -21,7 +31,7 @@ export function App({ apiBaseUrl = "" }: AppProps) {
   const [source, setSource] = useState("");
   const [layout, setLayout] = useState<Record<string, { x: number; y: number }>>({});
   const [errors, setErrors] = useState<{ path: (string | number)[]; message: string }[]>([]);
-  const [showToolForm, setShowToolForm] = useState(false);
+  const [openForm, setOpenForm] = useState<OpenForm>(null);
   const [conflict, setConflict] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -52,7 +62,19 @@ export function App({ apiBaseUrl = "" }: AppProps) {
 
   async function handleAddTool(tool: Tool) {
     await api.applyPatch([{ op: "add", path: ["agent", "tools"], value: tool }]);
-    setShowToolForm(false);
+    setOpenForm(null);
+    await refresh();
+  }
+
+  async function handleAddWorkflowStep(step: WorkflowStep) {
+    await api.applyPatch([{ op: "add", path: ["agent", "workflow"], value: step }]);
+    setOpenForm(null);
+    await refresh();
+  }
+
+  async function handleSetGuardrails(guardrails: Guardrails) {
+    await api.applyPatch([{ op: "set", path: ["agent", "guardrails"], value: guardrails }]);
+    setOpenForm(null);
     await refresh();
   }
 
@@ -74,13 +96,29 @@ export function App({ apiBaseUrl = "" }: AppProps) {
             ))}
           </div>
         )}
-        <button onClick={() => setShowToolForm(true)}>Add Tool</button>
-        {showToolForm && (
+        <button onClick={() => setOpenForm("tool")}>Add Tool</button>
+        <button onClick={() => setOpenForm("workflow")}>Add Workflow Step</button>
+        <button onClick={() => setOpenForm("guardrails")}>Set Guardrails</button>
+
+        {openForm === "tool" && (
           <ToolForm
             onSubmit={(tool) => void handleAddTool(tool)}
-            onCancel={() => setShowToolForm(false)}
+            onCancel={() => setOpenForm(null)}
           />
         )}
+        {openForm === "workflow" && (
+          <WorkflowStepForm
+            onSubmit={(step) => void handleAddWorkflowStep(step)}
+            onCancel={() => setOpenForm(null)}
+          />
+        )}
+        {openForm === "guardrails" && (
+          <GuardrailsForm
+            onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
+            onCancel={() => setOpenForm(null)}
+          />
+        )}
+
         <Canvas graph={graph} layout={layout} />
       </div>
       <div style={{ flex: 1, borderLeft: "1px solid #ccc" }}>
