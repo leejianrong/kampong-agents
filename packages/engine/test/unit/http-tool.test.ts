@@ -21,6 +21,14 @@ describe("substitutePlaceholders", () => {
       "https://api.example.com/{missing}",
     );
   });
+
+  it("substitutes a dotted, step-namespaced placeholder (workflow.ts's buildToolParams convention)", () => {
+    expect(
+      substitutePlaceholders("https://api.example.com/v1/charges/{parse_request.charge_id}", {
+        "parse_request.charge_id": "ch_123",
+      }),
+    ).toBe("https://api.example.com/v1/charges/ch_123");
+  });
 });
 
 describe("extractField", () => {

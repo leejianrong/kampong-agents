@@ -11,7 +11,11 @@ import type { Tool } from "@kampong/spec";
 // model call tools directly via Mastra's own tool-calling loop.
 
 export function substitutePlaceholders(template: string, params: Record<string, string>): string {
-  return template.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key: string) => {
+  // The dot is allowed here specifically so a workflow.ts-namespaced param
+  // like `{step_name.field}` (see buildToolParams) resolves -- params keys
+  // are plain strings, not a nested path, so this is a single flat lookup,
+  // not dot-path traversal (contrast extractField below).
+  return template.replace(/\{([A-Za-z0-9_.]+)\}/g, (match, key: string) => {
     return key in params ? params[key]! : match;
   });
 }

@@ -139,14 +139,17 @@ export async function* runWorkflow(
         continue;
       }
 
-      // An unrecognized branch action is recorded as an opaque annotation
-      // rather than failing the run -- V2 only executes the two branch
-      // shapes exercised by the demo/tests (execute_tool(...) and
-      // request_human_approval); anything else is a label a human or a
-      // future slice can act on.
-      stepOutputs[step.step] = { branch };
-      yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
-      continue;
+      // V2 only implements the two branch shapes above (execute_tool(...)
+      // and request_human_approval); an unrecognized value must fail
+      // loudly here rather than silently "succeed" as an opaque annotation
+      // -- fail-visibly is a load-bearing project convention (AGENTS.md,
+      // ADR-0004), not just a model-call rule.
+      yield {
+        type: "failed",
+        step: step.step,
+        error: `Condition step "${step.step}" resolved to an unsupported branch action "${branch}" (expected "execute_tool(<tool_name>)" or "request_human_approval").`,
+      };
+      return;
     }
 
     let stepResult: { output: unknown; confidence?: number };
@@ -243,25 +246,36 @@ function buildStepPrompt(
 }
 
 /**
- * Tool params for `execute_tool(name)` resolve from a flattened bag of every
- * prior step's scalar output fields plus the run's original input -- V2's
- * schema has no explicit param-mapping syntax (e.g. `{{steps.x.field}}`),
- * so this is a deliberately simple stand-in: a placeholder with no matching
- * key is left as-is in the URL (see substitutePlaceholders), which surfaces
- * as an honest HTTP failure rather than a silent wrong value.
+ * Tool params for `execute_tool(name)` resolve from every prior step's
+ * scalar output fields, namespaced under that step's name (`{step_name.field}`
+ * placeholders in the tool URL), plus the run's original input under its own
+ * top-level `input` key -- V2's schema has no explicit param-mapping syntax
+ * (e.g. `{{steps.x.field}}`), so this is a deliberately simple stand-in.
+ * Namespacing (rather than a flat merge of every step's fields into one bag)
+ * is what stops two steps that happen to share a field name -- or a field
+ * literally named `input` -- from silently clobbering each other before
+ * substitution. A placeholder with no matching key is left as-is in the URL
+ * (see substitutePlaceholders), which surfaces as an honest HTTP failure
+ * rather than a silent wrong value.
  */
 function buildToolParams(
   stepOutputs: Record<string, unknown>,
   input: string,
 ): Record<string, string> {
   const params: Record<string, string> = { input };
-  for (const output of Object.values(stepOutputs)) {
+  for (const [stepName, output] of Object.entries(stepOutputs)) {
     if (output && typeof output === "object") {
       for (const [key, value] of Object.entries(output as Record<string, unknown>)) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-          params[key] = String(value);
+          params[`${stepName}.${key}`] = String(value);
         }
       }
+    } else if (
+      typeof output === "string" ||
+      typeof output === "number" ||
+      typeof output === "boolean"
+    ) {
+      params[stepName] = String(output);
     }
   }
   return params;
