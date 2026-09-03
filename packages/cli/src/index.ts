@@ -1,16 +1,12 @@
-#!/usr/bin/env node
-// `kampong dev` / `kampong run` / `kampong export` (PLAN.md Shape S5,
-// ADR-0005: thin wrapper around the same S1/S3/S6 packages used by the
-// canvas app). `kampong dev` starts a Fastify server (ADR-0007) that serves
-// the built canvas assets, a spec-CRUD REST API, and an SSE run-progress
-// stream. Real commands/routes land with SLICES.md V1/V2/V3/V4 — this file
-// is scaffolding only, to prove the build/lint/test pipeline with the
-// chosen stack wired in.
-
-import Fastify from "fastify";
+// PLAN.md Shape S5 (ADR-0005/0007): the local server `kampong dev` starts.
+// The full CLI command surface (argument parsing, `kampong run`,
+// `kampong export`, JSON output, exit codes) is SLICES.md V3/V4 scope;
+// what V1 needs is a server the canvas can talk to during development,
+// which is what's exported here.
 
 export const PACKAGE_NAME = "@kampong/cli";
 
-export function createDevServer() {
-  return Fastify({ logger: false });
-}
+export { createDevServer, type CreateDevServerOptions } from "./server.js";
+export { SpecStore } from "./spec-store.js";
+export { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
+export { classifyFileChange, type FileChangeClassification } from "./watch-decision.js";

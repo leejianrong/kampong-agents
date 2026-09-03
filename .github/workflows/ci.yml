@@ -36,6 +36,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # Cross-package imports (e.g. apps/canvas -> @kampong/spec) resolve via
+      # each package's "types" field pointing at dist/, which is gitignored
+      # and only exists after a build -- this job runs in a fresh checkout,
+      # so it needs one before typecheck can see other workspaces' types.
+      - run: npm run build
       - run: npm run typecheck
 
   build:
@@ -60,6 +65,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # Cross-package imports resolve via dist/ (see the typecheck job) --
+      # tests that import a workspace package (e.g. apps/canvas importing
+      # @kampong/spec) need it built first in a fresh checkout.
+      - run: npm run build
       - run: npm run test:unit
 
   integration:
@@ -72,6 +81,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: npm run test:integration
 
   e2e:
@@ -84,6 +94,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - run: npm run build
       - run: npm run test:e2e
 
   audit:

@@ -27,7 +27,7 @@ export default defineConfig({
           name: "integration",
           include: [
             "packages/*/test/integration/**/*.test.ts",
-            "apps/*/test/integration/**/*.test.ts",
+            "apps/*/test/integration/**/*.test.{ts,tsx}",
           ],
           environment: "node",
         },
