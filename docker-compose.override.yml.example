@@ -1,0 +1,33 @@
+# Copy to docker-compose.override.yml (gitignored -- `docker compose` loads
+# it automatically alongside docker-compose.yml, no extra flag needed) to
+# route the app through a machine-wide Traefik instance at
+# http://kampong-agents.localhost/ instead of (or alongside) the directly
+# published HOST_PORT. Requires that instance already running with a
+# `proxy` external network -- see the traefik-dev-proxy skill.
+#
+# Nothing here is required: docker-compose.yml keeps working completely
+# standalone with no override present (including in CI), publishing `app`
+# directly on ${HOST_PORT:-4310} as it already does. This file only ever
+# adds a second way in, never replaces the first -- both work at once.
+services:
+  app:
+    # `default` (this project's own implicit network, needed for future
+    # sibling services to reach `app` by name) plus `proxy` (Traefik's
+    # network) -- list both explicitly, since an override's own `networks:`
+    # replaces the base file's implicit one rather than merging with it.
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kampong-agents.rule=Host(`kampong-agents.localhost`)
+      - traefik.http.services.kampong-agents.loadbalancer.server.port=4310
+      # No Host-rewrite middleware needed here: `kampong dev` serves a
+      # pre-built static canvas (@fastify/static) plus SSE (plain long-lived
+      # HTTP GETs at /api/events, /api/runs/:id/events) -- not a Vite dev
+      # server with an HMR websocket upgrade, which is the specific case
+      # that needs one (see the traefik-dev-proxy skill's HMR gotcha).
+
+networks:
+  proxy:
+    external: true

@@ -8,6 +8,10 @@ coverage/
 .DS_Store
 *.log
 
+# Claude Code's own scratch directory for isolated-agent worktrees --
+# never project content.
+.claude/
+
 # Local run artifacts a developer generates while using the tool itself
 # (not this repo's own build output) — recorded mock-tool fixtures and
 # per-user layout files belong to whatever project folder is open in the
@@ -18,3 +22,8 @@ coverage/
 # app container) — seeded from examples/agent.yaml by `make up`, then
 # yours to edit; never the tracked copy.
 /workspace/
+
+# Personal opt-in to a machine-wide Traefik dev proxy (traefik-dev-proxy
+# skill) — commit docker-compose.override.yml.example instead; this is the
+# per-developer copy of it, same idiom as .env/.env.example.
+docker-compose.override.yml
