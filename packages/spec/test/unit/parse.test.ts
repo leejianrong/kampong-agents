@@ -102,6 +102,30 @@ describe("parseSpec", () => {
     expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
   });
 
+  it("parses an openrouter model with a vendor-prefixed name and an api_key placeholder", () => {
+    const withOpenRouter = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: openrouter\n    name: anthropic/claude-3.5-haiku\n    api_key: ${OPENROUTER_API_KEY}\n",
+    );
+    const result = parseSpec(withOpenRouter);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model).toEqual({
+      provider: "openrouter",
+      name: "anthropic/claude-3.5-haiku",
+      api_key: "${OPENROUTER_API_KEY}",
+    });
+  });
+
+  it("rejects an openrouter model missing api_key, same as anthropic/openai (it is a cloud provider, not ollama)", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: openrouter\n    name: anthropic/claude-3.5-haiku\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
+  });
+
   it("rejects an unknown model provider", () => {
     const bad = VALID_FIXTURE_WITH_MODEL.replace("provider: anthropic", "provider: azure");
     const result = parseSpec(bad);

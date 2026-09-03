@@ -22,6 +22,13 @@ describe("generateAgentSpecJsonSchema", () => {
     ["two tools with a conditional step", VALID_FIXTURE_WITH_CONDITION],
     ["no tools", VALID_FIXTURE_NO_TOOLS],
     ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
+    [
+      "openrouter model with a vendor-prefixed name",
+      VALID_FIXTURE_WITH_MODEL.replace(
+        "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+        "  model:\n    provider: openrouter\n    name: anthropic/claude-3.5-haiku\n    api_key: ${OPENROUTER_API_KEY}\n",
+      ),
+    ],
   ])("accepts a fixture the Zod validator accepts: %s", (_name, source) => {
     const { spec, success } = parseSpec(source);
     expect(success).toBe(true);
@@ -73,6 +80,20 @@ describe("generateAgentSpecJsonSchema", () => {
             name: "claude-3-5-haiku-latest",
             api_key: "sk-ant-literal-secret",
           },
+          workflow: [{ step: "s", action: "a" }],
+        },
+      },
+    ],
+    [
+      "an unknown model provider",
+      {
+        version: "1.0",
+        agent: {
+          id: "x",
+          name: "x",
+          role: "x",
+          goal: "x",
+          model: { provider: "azure", name: "gpt-4o", api_key: "${AZURE_API_KEY}" },
           workflow: [{ step: "s", action: "a" }],
         },
       },
