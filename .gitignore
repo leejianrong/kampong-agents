@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# Local run artifacts a developer generates while using the tool itself
+# (not this repo's own build output) — recorded mock-tool fixtures and
+# per-user layout files belong to whatever project folder is open in the
+# canvas, not to this repo.
+.kampong/

@@ -1,0 +1,16 @@
+{
+  "name": "@kampong/canvas-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@kampong/engine": "*",
+    "@kampong/spec": "*"
+  }
+}

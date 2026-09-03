@@ -1,0 +1,20 @@
+{
+  "name": "@kampong/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kampong": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@kampong/engine": "*",
+    "@kampong/exporter": "*",
+    "@kampong/spec": "*"
+  }
+}
