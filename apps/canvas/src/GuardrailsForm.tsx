@@ -35,10 +35,12 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Set Guardrails">
-      <label>
-        Confidence threshold
+    <form onSubmit={handleSubmit} aria-label="Set Guardrails" className="md3-card md3-form">
+      <h2 className="md3-title-medium">Set Guardrails</h2>
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Confidence threshold</span>
         <input
+          className="md3-text-field"
           type="number"
           min={0}
           max={1}
@@ -47,9 +49,10 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
           onChange={(e) => setConfidenceThreshold(e.target.value)}
         />
       </label>
-      <label>
-        Fallback action
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Fallback action</span>
         <select
+          className="md3-text-field"
           value={fallbackAction}
           onChange={(e) => setFallbackAction(e.target.value as FallbackAction)}
         >
@@ -61,16 +64,20 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
         </select>
       </label>
       {errors.length > 0 && (
-        <ul role="alert">
+        <ul role="alert" className="md3-error-list">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>
       )}
-      <button type="submit">Save Guardrails</button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <div className="md3-form-actions">
+        <button type="submit" className="md3-button md3-button-filled">
+          Save Guardrails
+        </button>
+        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

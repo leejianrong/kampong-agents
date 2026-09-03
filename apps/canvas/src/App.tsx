@@ -80,57 +80,87 @@ export function App({ apiBaseUrl = "" }: AppProps) {
   }
 
   return (
-    <div style={{ display: "flex", width: "100vw", height: "100vh" }}>
-      <div style={{ flex: 2, position: "relative" }}>
+    <div className="md3-app">
+      <div className="md3-app__canvas-pane">
+        <div className="md3-app__toolbar">
+          <span className="md3-title-large md3-app__title">Kampong Agents</span>
+          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("tool")}>
+            Add Tool
+          </button>
+          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("workflow")}>
+            Add Workflow Step
+          </button>
+          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("guardrails")}>
+            Set Guardrails
+          </button>
+          <span className="md3-app__toolbar-spacer" />
+          <button
+            className="md3-button md3-button-filled"
+            onClick={() => setOpenForm(openForm === "run" ? null : "run")}
+          >
+            Test Run
+          </button>
+        </div>
+
         {conflict && (
-          <div role="alert" data-testid="conflict-banner">
-            This spec changed externally while you were editing it.{" "}
-            <button onClick={() => void refresh().then(() => setConflict(false))}>Reload</button>
+          <div role="alert" data-testid="conflict-banner" className="md3-banner md3-banner--info">
+            <span>This spec changed externally while you were editing it.</span>
+            <button
+              className="md3-banner__action"
+              onClick={() => void refresh().then(() => setConflict(false))}
+            >
+              Reload
+            </button>
           </div>
         )}
         {errors.length > 0 && (
-          <div role="alert" data-testid="spec-errors">
-            {errors.map((error, i) => (
-              <div key={i}>
-                {error.path.join(".")}: {error.message}
-              </div>
-            ))}
+          <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
+            <ul className="md3-banner__errors">
+              {errors.map((error, i) => (
+                <li key={i}>
+                  {error.path.join(".")}: {error.message}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-        <button onClick={() => setOpenForm("tool")}>Add Tool</button>
-        <button onClick={() => setOpenForm("workflow")}>Add Workflow Step</button>
-        <button onClick={() => setOpenForm("guardrails")}>Set Guardrails</button>
-        <button
-          className="md3-button md3-button-filled"
-          onClick={() => setOpenForm(openForm === "run" ? null : "run")}
-        >
-          Test Run
-        </button>
 
-        {openForm === "run" && <RunPanel api={api} />}
+        <div className="md3-app__canvas-surface">
+          {openForm === "run" && (
+            <div className="md3-app__overlay">
+              <RunPanel api={api} />
+            </div>
+          )}
 
-        {openForm === "tool" && (
-          <ToolForm
-            onSubmit={(tool) => void handleAddTool(tool)}
-            onCancel={() => setOpenForm(null)}
-          />
-        )}
-        {openForm === "workflow" && (
-          <WorkflowStepForm
-            onSubmit={(step) => void handleAddWorkflowStep(step)}
-            onCancel={() => setOpenForm(null)}
-          />
-        )}
-        {openForm === "guardrails" && (
-          <GuardrailsForm
-            onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
-            onCancel={() => setOpenForm(null)}
-          />
-        )}
+          {openForm === "tool" && (
+            <div className="md3-app__overlay">
+              <ToolForm
+                onSubmit={(tool) => void handleAddTool(tool)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </div>
+          )}
+          {openForm === "workflow" && (
+            <div className="md3-app__overlay">
+              <WorkflowStepForm
+                onSubmit={(step) => void handleAddWorkflowStep(step)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </div>
+          )}
+          {openForm === "guardrails" && (
+            <div className="md3-app__overlay">
+              <GuardrailsForm
+                onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </div>
+          )}
 
-        <Canvas graph={graph} layout={layout} />
+          <Canvas graph={graph} layout={layout} />
+        </div>
       </div>
-      <div style={{ flex: 1, borderLeft: "1px solid #ccc" }}>
+      <div className="md3-app__side-pane">
         <YamlPreview source={source} />
       </div>
     </div>

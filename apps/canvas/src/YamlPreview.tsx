@@ -8,19 +8,13 @@ export interface YamlPreviewProps {
 
 export function YamlPreview({ source }: YamlPreviewProps) {
   return (
-    <pre
-      data-testid="yaml-preview"
-      style={{
-        margin: 0,
-        padding: "1rem",
-        height: "100%",
-        overflow: "auto",
-        fontFamily: "monospace",
-        fontSize: "0.85rem",
-        whiteSpace: "pre-wrap",
-      }}
-    >
-      {source}
-    </pre>
+    <div className="md3-yaml-panel">
+      <div className="md3-yaml-panel__header">
+        <span className="md3-title-small">YAML</span>
+      </div>
+      <pre data-testid="yaml-preview" className="md3-yaml-panel__body">
+        {source}
+      </pre>
+    </div>
   );
 }

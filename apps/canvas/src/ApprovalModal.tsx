@@ -22,21 +22,21 @@ export function ApprovalModal({ approval, onDecide }: ApprovalModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Approval required"
-        className="md3-elevated-surface"
+        className="md3-elevated-surface md3-stack"
       >
         <h2 className="md3-title-medium">Approval required</h2>
         <p className="md3-body-medium" data-testid="approval-reason">
           {approval.reason}
         </p>
-        <label className="md3-body-medium">
-          Note (optional)
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Note (optional)</span>
           <input
+            className="md3-text-field"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            style={{ display: "block", width: "100%" }}
           />
         </label>
-        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+        <div className="md3-form-actions">
           <button
             type="button"
             className="md3-button md3-button-filled"

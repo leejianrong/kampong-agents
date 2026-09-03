@@ -33,14 +33,19 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Tool">
-      <label>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} />
+    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-card md3-form">
+      <h2 className="md3-title-medium">Add Tool</h2>
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Name</span>
+        <input className="md3-text-field" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <label>
-        Method
-        <select value={method} onChange={(e) => setMethod(e.target.value)}>
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Method</span>
+        <select
+          className="md3-text-field"
+          value={method}
+          onChange={(e) => setMethod(e.target.value)}
+        >
           <option>GET</option>
           <option>POST</option>
           <option>PUT</option>
@@ -48,25 +53,33 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
           <option>DELETE</option>
         </select>
       </label>
-      <label>
-        URL
-        <input value={url} onChange={(e) => setUrl(e.target.value)} />
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">URL</span>
+        <input className="md3-text-field" value={url} onChange={(e) => setUrl(e.target.value)} />
       </label>
-      <label>
-        Extract field
-        <input value={extract} onChange={(e) => setExtract(e.target.value)} />
+      <label className="md3-field">
+        <span className="md3-field__label md3-label-large">Extract field</span>
+        <input
+          className="md3-text-field"
+          value={extract}
+          onChange={(e) => setExtract(e.target.value)}
+        />
       </label>
       {errors.length > 0 && (
-        <ul role="alert">
+        <ul role="alert" className="md3-error-list">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>
       )}
-      <button type="submit">Save Tool</button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      <div className="md3-form-actions">
+        <button type="submit" className="md3-button md3-button-filled">
+          Save Tool
+        </button>
+        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
