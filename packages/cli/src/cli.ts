@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline/promises";
+import { Writable } from "node:stream";
 import { parseSpec, type AgentSpec } from "@kampong/spec";
 import {
   createAgentRun,
@@ -185,38 +186,56 @@ function parseDevArgs(args: string[]): { ok: true; value: DevArgs } | { ok: fals
   let port = DEFAULT_PORT;
   let host = DEFAULT_HOST;
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    switch (arg) {
-      case "--spec":
-        specFilename = requireValue(args, ++i, "--spec");
-        break;
-      case "--port":
-        port = Number(requireValue(args, ++i, "--port"));
-        if (!Number.isInteger(port) || port <= 0) {
-          return { ok: false, error: `--port must be a positive integer.` };
-        }
-        break;
-      case "--host":
-        host = requireValue(args, ++i, "--host");
-        break;
-      default:
-        if (arg.startsWith("--")) {
-          return { ok: false, error: `Unrecognized option "${arg}".` };
-        }
-        if (dir !== undefined) {
-          return { ok: false, error: `Unexpected extra argument "${arg}".` };
-        }
-        dir = arg;
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      switch (arg) {
+        case "--spec":
+          specFilename = requireValue(args, ++i, "--spec");
+          break;
+        case "--port":
+          port = Number(requireValue(args, ++i, "--port"));
+          if (!Number.isInteger(port) || port <= 0) {
+            return { ok: false, error: `--port must be a positive integer.` };
+          }
+          break;
+        case "--host":
+          host = requireValue(args, ++i, "--host");
+          break;
+        default:
+          if (arg.startsWith("--")) {
+            return { ok: false, error: `Unrecognized option "${arg}".` };
+          }
+          if (dir !== undefined) {
+            return { ok: false, error: `Unexpected extra argument "${arg}".` };
+          }
+          dir = arg;
+      }
     }
+  } catch (err) {
+    // A malformed flag (e.g. --spec with no following value) is a usage
+    // error, not an uncaught exception -- see MissingFlagValueError below.
+    if (err instanceof MissingFlagValueError) return { ok: false, error: err.message };
+    throw err;
   }
 
   return { ok: true, value: { dir: dir ?? ".", specFilename, port, host } };
 }
 
+/**
+ * Thrown by `requireValue` when a flag is given without a following value
+ * (e.g. `kampong run spec.yaml --input` with nothing after `--input`). Its
+ * own type -- rather than a bare `Error` -- so `parseDevArgs`/`parseRunArgs`
+ * can catch *this specific* failure and turn it into their normal
+ * `{ ok: false, error }` usage-error result (exit 64) instead of letting it
+ * escape uncaught to the top-level `.catch()` (which reports it as a
+ * generic unexpected error at exit 2 -- see finding #3).
+ */
+class MissingFlagValueError extends Error {}
+
 function requireValue(args: string[], index: number, flag: string): string {
   const value = args[index];
-  if (value === undefined) throw new Error(`${flag} requires a value.`);
+  if (value === undefined) throw new MissingFlagValueError(`${flag} requires a value.`);
   return value;
 }
 
@@ -329,41 +348,46 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
   let fixturesDir: string | undefined;
   let approveAll = false;
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    switch (arg) {
-      case "--input":
-        input = requireValue(args, ++i, "--input");
-        break;
-      case "--json":
-        json = true;
-        break;
-      case "--tools": {
-        const value = requireValue(args, ++i, "--tools");
-        if (!TOOL_MODES.includes(value as ToolFixtureMode)) {
-          return {
-            ok: false,
-            error: `--tools must be one of ${TOOL_MODES.join("|")}, got "${value}".`,
-          };
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      switch (arg) {
+        case "--input":
+          input = requireValue(args, ++i, "--input");
+          break;
+        case "--json":
+          json = true;
+          break;
+        case "--tools": {
+          const value = requireValue(args, ++i, "--tools");
+          if (!TOOL_MODES.includes(value as ToolFixtureMode)) {
+            return {
+              ok: false,
+              error: `--tools must be one of ${TOOL_MODES.join("|")}, got "${value}".`,
+            };
+          }
+          toolsMode = value as ToolFixtureMode;
+          break;
         }
-        toolsMode = value as ToolFixtureMode;
-        break;
+        case "--fixtures":
+          fixturesDir = requireValue(args, ++i, "--fixtures");
+          break;
+        case "--approve-all":
+          approveAll = true;
+          break;
+        default:
+          if (arg.startsWith("--")) {
+            return { ok: false, error: `Unrecognized option "${arg}".` };
+          }
+          if (specPath !== undefined) {
+            return { ok: false, error: `Unexpected extra argument "${arg}".` };
+          }
+          specPath = arg;
       }
-      case "--fixtures":
-        fixturesDir = requireValue(args, ++i, "--fixtures");
-        break;
-      case "--approve-all":
-        approveAll = true;
-        break;
-      default:
-        if (arg.startsWith("--")) {
-          return { ok: false, error: `Unrecognized option "${arg}".` };
-        }
-        if (specPath !== undefined) {
-          return { ok: false, error: `Unexpected extra argument "${arg}".` };
-        }
-        specPath = arg;
     }
+  } catch (err) {
+    if (err instanceof MissingFlagValueError) return { ok: false, error: err.message };
+    throw err;
   }
 
   if (!specPath) return { ok: false, error: "Missing required <spec>.yaml argument." };
@@ -393,10 +417,29 @@ function collectSecrets(spec: AgentSpec, env: NodeJS.ProcessEnv): string[] {
   return secrets;
 }
 
+/**
+ * Adapts an injected `CliIO` sink (`(line: string) => void`) into a Node
+ * `Writable` stream, for the one place in this file (`readline`) that needs
+ * a real stream rather than a per-message callback -- keeps
+ * `readline.createInterface` routed through the same injectable `io` every
+ * other output in this file already goes through (finding #6), instead of
+ * writing straight to `process.stdout`/`process.stderr` and bypassing a
+ * caller's custom `CliIO` (e.g. the test suite's `capture()` helper).
+ */
+function ioWritable(sink: (chunk: string) => void): Writable {
+  return new Writable({
+    write(chunk: Buffer | string, _encoding, callback) {
+      sink(chunk.toString());
+      callback();
+    },
+  });
+}
+
 async function promptApproval(
   state: RunState,
   io: CliIO,
   approveAll: boolean,
+  json: boolean,
 ): Promise<{ approved: boolean; reason?: string }> {
   const pending = state.pendingApproval;
   if (!pending) {
@@ -405,13 +448,20 @@ async function promptApproval(
   }
 
   if (approveAll) {
-    io.stdout(
+    // Always stderr, never stdout: `--json` promises exactly one JSON
+    // object on stdout (finding #4), and this diagnostic must not corrupt
+    // that stream for a machine consumer piping to e.g. `jq` -- stderr
+    // keeps it visible either way.
+    io.stderr(
       `[--approve-all] auto-approving "${pending.step}" (${pending.kind}): ${pending.reason}`,
     );
     return { approved: true };
   }
 
-  const rl = createInterface({ input: io.stdin, output: process.stdout });
+  const rl = createInterface({
+    input: io.stdin,
+    output: ioWritable(json ? io.stderr : io.stdout),
+  });
   try {
     const answer = await rl.question(
       `\nApproval required at step "${pending.step}" (${pending.kind}): ${pending.reason}\nApprove? [y/N]: `,
@@ -500,7 +550,7 @@ async function runRunCommand(
   try {
     state = await run.start(input);
     while (state.status === "awaiting_approval") {
-      const decision = await promptApproval(state, io, approveAll);
+      const decision = await promptApproval(state, io, approveAll, json);
       state = await run.resume(decision.approved, decision.reason);
     }
   } catch (err) {

@@ -149,6 +149,29 @@ describe("kampong run -- exit codes (SLICES.md V3 unit test plan)", () => {
 
     expect(code).toBe(EXIT_USAGE_ERROR);
   });
+
+  it("exits 64, not 2, when a flag is given with no following value (finding #3)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io, err } = capture();
+
+    // `--input` is the last argument -- no value follows it.
+    const code = await runCli(["run", specPath, "--input"], io);
+
+    expect(code).toBe(EXIT_USAGE_ERROR);
+    expect(err.join("\n")).toContain("--input requires a value");
+    expect(err.join("\n")).not.toContain("unexpected error");
+  });
+
+  it("kampong dev also exits 64, not 2, when a flag is given with no following value (finding #3)", async () => {
+    const { io, err } = capture();
+
+    const code = await runCli(["dev", ".", "--spec"], io);
+
+    expect(code).toBe(EXIT_USAGE_ERROR);
+    expect(err.join("\n")).toContain("--spec requires a value");
+    expect(err.join("\n")).not.toContain("unexpected error");
+  });
 });
 
 describe("kampong run --json (SLICES.md V3 unit test plan: parseable JSON output)", () => {
@@ -246,14 +269,34 @@ agent:
   it("--approve-all resolves the pause automatically with no stdin interaction and completes", async () => {
     const specPath = join(dir, "agent.yaml");
     writeFileSync(specPath, GUARDRAIL_SPEC);
-    const { io, out } = capture(); // empty stdin -- would hang forever if actually prompted
+    const { io, out, err } = capture(); // empty stdin -- would hang forever if actually prompted
 
     const code = await runCli(["run", specPath, "--input", "refund #1", "--approve-all"], io, {
       model: lowConfidenceModel(),
     });
 
     expect(code).toBe(EXIT_SUCCESS);
-    expect(out.join("\n")).toContain("auto-approving");
+    // The auto-approve diagnostic goes to stderr, never stdout (finding #4)
+    // -- stdout stays reserved for the run's actual output.
+    expect(err.join("\n")).toContain("auto-approving");
+    expect(out.join("\n")).not.toContain("auto-approving");
+  });
+
+  it("--approve-all with --json emits exactly one JSON object on stdout -- the auto-approve diagnostic never leaks into it (finding #4)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, GUARDRAIL_SPEC);
+    const { io, out, err } = capture();
+
+    const code = await runCli(
+      ["run", specPath, "--input", "refund #1", "--approve-all", "--json"],
+      io,
+      { model: lowConfidenceModel() },
+    );
+
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(out).toHaveLength(1);
+    expect(() => JSON.parse(out[0]!)).not.toThrow();
+    expect(err.join("\n")).toContain("auto-approving");
   });
 
   it("without --approve-all, an explicit stdin 'y' approves and the run completes", async () => {
@@ -267,6 +310,21 @@ agent:
 
     expect(code).toBe(EXIT_SUCCESS);
     expect(out.join("\n")).toContain("Run completed");
+  });
+
+  it("the interactive approval prompt is written through the injected io, not the real process.stdout (finding #6)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, GUARDRAIL_SPEC);
+    const { io, out } = capture(["y"]);
+
+    const code = await runCli(["run", specPath, "--input", "refund #1"], io, {
+      model: lowConfidenceModel(),
+    });
+
+    expect(code).toBe(EXIT_SUCCESS);
+    // If this were still written to the real process.stdout, capture()'s
+    // `out` array -- which readline never touches directly -- wouldn't see it.
+    expect(out.join("\n")).toContain("Approval required");
   });
 
   it("without --approve-all, an explicit stdin 'n' rejects and the run exits with an execution failure", async () => {
