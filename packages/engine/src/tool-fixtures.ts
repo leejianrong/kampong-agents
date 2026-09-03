@@ -1,0 +1,180 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import type { ToolFetchImpl } from "./http-tool.js";
+
+// Mock/record tool layer (PLAN.md Shape S4, SLICES.md V3 KAN-1111; Q17:
+// plain files, no DB, for this storage). Wraps the `fetchImpl` seam
+// `callHttpTool` already threads through `EngineDeps` (workflow.ts) --
+// `callHttpTool` is the ONLY caller of `fetchImpl` in this package, and (see
+// http-tool.ts) it now passes the tool's name as an explicit third
+// `ToolContext` argument on every call, specifically so this wrapper can key
+// a fixture on {tool name, method, substituted URL} -- the exact bar
+// SLICES.md's integration test plan sets ("recording a tool call once and
+// replaying it in mock mode produces identical results across multiple
+// replay runs") -- with zero changes to workflow.ts's call site.
+//
+// The tool name travels as a plain function argument, never as an HTTP
+// header: an AgentSpec tool name is an unrestricted, author-controlled
+// string, and stamping it onto a real outgoing request risked a
+// Headers/ByteString `TypeError` on live calls (a newline or non-Latin1
+// character) as well as leaking an internal implementation detail to
+// third-party endpoints that never asked for it (finding #1).
+//
+// Three modes:
+//  - "live" (default elsewhere in the engine: simply don't use this file):
+//    passthrough to the real fetch, unchanged from pre-V3 behavior.
+//  - "record": makes the real call, then persists a fixture to disk.
+//  - "replay": never touches the network; a fixture miss is a specific,
+//    actionable MissingFixtureError, never a silent fallback to a live call
+//    (AGENTS.md/ADR-0004's fail-visibly convention applies here too, not
+//    just to the model-call path).
+//
+// SECURITY (see AGENTS.md's BYOK convention): a tool as defined by
+// schema.ts's `toolSchema` has no auth-header field -- `callHttpTool` sends
+// no `Authorization` header today -- so nothing is silently dropped by not
+// recording request headers here. What CAN legitimately leak onto disk is a
+// `${ENV_VAR}`-resolved secret value that happens to appear inside the
+// substituted URL (e.g. an API key baked into a query string) or inside the
+// response body itself. `secrets` is the caller-supplied list of resolved
+// values (e.g. every BYOK env var value currently in play) to scrub from
+// anything this module writes to disk, so a fixture is always safe to
+// commit even if a tool URL was written carelessly.
+
+export type ToolFixtureMode = "live" | "record" | "replay";
+
+export interface CreateFixtureFetchOptions {
+  mode: ToolFixtureMode;
+  /** Directory fixture files are read from / written to (plain JSON files, Q17). */
+  fixturesDir: string;
+  /** The real fetch to delegate to in "live"/"record" modes. Defaults to the global fetch. */
+  fetchImpl?: typeof fetch;
+  /** Literal secret values to redact from anything persisted to a fixture file. */
+  secrets?: string[];
+}
+
+export class MissingFixtureError extends Error {
+  constructor(
+    public readonly toolName: string,
+    public readonly fixturePath: string,
+  ) {
+    super(
+      `No recorded fixture for tool "${toolName}" at ${fixturePath}. Run once with tool mode ` +
+        `"record" (against a live network) to create it before replaying in "replay" mode -- ` +
+        `mock mode never falls back to a live call.`,
+    );
+    this.name = "MissingFixtureError";
+  }
+}
+
+interface FixtureFile {
+  toolName: string;
+  method: string;
+  url: string;
+  status: number;
+  body: unknown;
+}
+
+const REDACTED = "[REDACTED]";
+
+function redactString(value: string, secrets: string[]): string {
+  let result = value;
+  for (const secret of secrets) {
+    if (!secret) continue;
+    result = result.split(secret).join(REDACTED);
+  }
+  return result;
+}
+
+function redactDeep(value: unknown, secrets: string[]): unknown {
+  if (secrets.length === 0) return value;
+  if (typeof value === "string") return redactString(value, secrets);
+  if (Array.isArray(value)) return value.map((entry) => redactDeep(entry, secrets));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        redactDeep(entry, secrets),
+      ]),
+    );
+  }
+  return value;
+}
+
+/**
+ * The fixture key: tool name + method + the already-*substituted* URL
+ * (params, e.g. `{charge_id}`, vary run to run -- the substituted URL is
+ * what's actually deterministic across replays of "the same recorded
+ * scenario", per SLICES.md's phrasing). Hashed rather than used verbatim as
+ * a filename since a URL can contain characters that aren't safe/portable
+ * as a path segment.
+ */
+function fixtureKey(toolName: string, method: string, url: string): string {
+  return createHash("sha256").update(`${toolName}::${method}::${url}`).digest("hex").slice(0, 16);
+}
+
+function fixturePathFor(
+  fixturesDir: string,
+  toolName: string,
+  method: string,
+  url: string,
+): string {
+  const safeName = toolName.replace(/[^A-Za-z0-9_-]/g, "_") || "tool";
+  return join(fixturesDir, `${safeName}.${fixtureKey(toolName, method, url)}.json`);
+}
+
+/**
+ * Builds a `fetchImpl`-compatible function (drop-in for `EngineDeps.fetchImpl`
+ * / `HttpToolCallOptions.fetchImpl`) implementing the mode above. Callers
+ * only need this at all for "record"/"replay" -- "live" mode is provided
+ * for completeness/direct testing, but the CLI (KAN-1110) simply omits
+ * `fetchImpl` entirely (falling back to `callHttpTool`'s own `fetch`
+ * default) when the user hasn't asked for mock/record.
+ */
+export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetchImpl {
+  const { mode, fixturesDir, fetchImpl = fetch, secrets = [] } = options;
+
+  const wrapped: ToolFetchImpl = async (input, init, context) => {
+    if (mode === "live") {
+      return fetchImpl(input, init);
+    }
+
+    const url = typeof input === "string" ? input : input.toString();
+    const method = init?.method ?? "GET";
+    const toolName = context.toolName;
+    const path = fixturePathFor(fixturesDir, toolName, method, url);
+
+    if (mode === "replay") {
+      if (!existsSync(path)) {
+        throw new MissingFixtureError(toolName, path);
+      }
+      const fixture = JSON.parse(readFileSync(path, "utf8")) as FixtureFile;
+      return new Response(JSON.stringify(fixture.body), {
+        status: fixture.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    // mode === "record"
+    const response = await fetchImpl(input, init);
+    const cloned = response.clone();
+    let body: unknown;
+    try {
+      body = await cloned.json();
+    } catch {
+      body = await cloned.text();
+    }
+    const fixture: FixtureFile = {
+      toolName,
+      method,
+      url: redactString(url, secrets),
+      status: response.status,
+      body: redactDeep(body, secrets),
+    };
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(fixture, null, 2)}\n`);
+    return response;
+  };
+
+  return wrapped;
+}

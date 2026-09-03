@@ -1,20 +1,27 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import fastifyStatic from "@fastify/static";
 import type { AgentSpec, PatchOp } from "@kampong/spec";
 import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
-// The local server `kampong dev` starts (PLAN.md Shape S5, ADR-0007):
-// serves a spec-CRUD REST API, an SSE stream of file-change events, and
-// (SLICES.md V2, KAN-1107) the in-canvas test-run endpoints -- start a run,
-// stream its step-by-step progress over SSE, and approve/reject a pending
-// guardrail/tool approval -- to the browser canvas, since the canvas itself
-// has no filesystem or process access.
+// The local server `kampong dev` starts (PLAN.md Shape S5, ADR-0005,
+// ADR-0007): serves the built canvas static assets, a spec-CRUD REST API,
+// an SSE stream of file-change events, and (SLICES.md V2, KAN-1107) the
+// in-canvas test-run endpoints -- start a run, stream its step-by-step
+// progress over SSE, and approve/reject a pending guardrail/tool approval
+// -- all as ONE localhost origin, per ADR-0005 ("the canvas is a local web
+// app served by the CLI, not a desktop app"). `staticDir` is optional here
+// (not on the CLI's own `kampong dev` path -- see cli.ts) purely so this
+// package's server-focused tests can keep constructing a server without
+// needing `apps/canvas` built first.
 
 export interface CreateDevServerOptions {
   specPath: string;
   layoutPath: string;
+  /** Directory of the canvas app's built static assets (`apps/canvas/dist`, ADR-0005). Omit to skip serving them (e.g. most of this package's own tests). */
+  staticDir?: string;
   /** Test-only seam, forwarded to RunManager -- see its docstring. Production callers omit this. */
   run?: RunManagerOptions;
 }
@@ -22,6 +29,7 @@ export interface CreateDevServerOptions {
 export function createDevServer({
   specPath,
   layoutPath,
+  staticDir,
   run: runOptions,
 }: CreateDevServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -34,6 +42,14 @@ export function createDevServer({
     watcher.stop();
     done();
   });
+
+  if (staticDir) {
+    // Registered before the API routes below only in source-file order, not
+    // matching precedence: Fastify's router matches the API routes' exact
+    // paths ahead of this plugin's wildcard file-serving, so /api/* and
+    // /api/events are never shadowed by a same-named static file.
+    void app.register(fastifyStatic, { root: staticDir, index: ["index.html"] });
+  }
 
   app.get("/api/spec", async () => store.loadWithLayout());
 

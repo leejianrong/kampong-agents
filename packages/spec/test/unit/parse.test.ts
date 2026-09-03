@@ -62,6 +62,53 @@ describe("parseSpec", () => {
     expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
   });
 
+  it("parses an ollama model with no api_key at all (V3, KAN-1112 -- local provider needs no BYOK key)", () => {
+    const withOllama = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: ollama\n    name: llama3.1\n",
+    );
+    const result = parseSpec(withOllama);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model).toEqual({ provider: "ollama", name: "llama3.1" });
+  });
+
+  it("parses an ollama model with an explicit base_url pointing at a non-default host", () => {
+    const withOllama = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: ollama\n    name: llama3.1\n    base_url: http://localhost:22222\n",
+    );
+    const result = parseSpec(withOllama);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model?.base_url).toBe("http://localhost:22222");
+  });
+
+  it("rejects a cloud-provider model missing api_key (finding #2 -- must fail at schema validation, not deep inside the engine)", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
+  });
+
+  it("rejects an openai model missing api_key the same way", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "  model:\n    provider: anthropic\n    name: claude-3-5-haiku-latest\n    api_key: ${ANTHROPIC_API_KEY}\n",
+      "  model:\n    provider: openai\n    name: gpt-4o-mini\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
+  });
+
+  it("rejects an unknown model provider", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace("provider: anthropic", "provider: azure");
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.provider")).toBe(true);
+  });
+
   it("rejects a YAML syntax error with a line number, not a generic parse failure", () => {
     const bad = 'version: "1.0"\nagent:\n  id: refund-agent\n  tools: [\n';
     const result = parseSpec(bad);

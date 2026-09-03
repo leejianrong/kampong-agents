@@ -164,7 +164,18 @@ export class AgentRun extends EventEmitter {
 export interface CreateAgentRunOptions {
   env?: NodeJS.ProcessEnv;
   model?: ModelClient;
+  /** Overrides the fetch used for HTTP *tool* calls -- e.g. the mock/record layer's createFixtureFetch (V3 KAN-1111). */
   fetchImpl?: EngineDeps["fetchImpl"];
+  /**
+   * Overrides the fetch the *model* provider (e.g. the Ollama adapter, V3
+   * KAN-1112) uses internally. Distinct from `fetchImpl` above -- tool
+   * calls and model calls are separate network seams -- and mainly a test
+   * seam: it's what lets `e2e/`'s fully-offline test (KAN-1113) exercise
+   * the real `ollama` provider-resolution path with a canned response
+   * instead of a live Ollama server, while proving nothing falls back to
+   * the global `fetch`.
+   */
+  modelFetchImpl?: typeof fetch;
 }
 
 /**
@@ -175,6 +186,10 @@ export interface CreateAgentRunOptions {
  * and packages/cli's server tests use this to avoid any live network call).
  */
 export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions = {}): AgentRun {
-  const model = options.model ?? createMastraModelClient(spec, options.env ?? process.env);
+  const model =
+    options.model ??
+    createMastraModelClient(spec, options.env ?? process.env, {
+      fetchImpl: options.modelFetchImpl,
+    });
   return new AgentRun(spec, { model, fetchImpl: options.fetchImpl });
 }

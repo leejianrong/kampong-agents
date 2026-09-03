@@ -89,4 +89,26 @@ describe("callHttpTool", () => {
       callHttpTool(CHECK_TOOL, { charge_id: "ch_123" }, { fetchImpl: fetchImpl as typeof fetch }),
     ).rejects.toThrow(/check_stripe_charge.*ECONNREFUSED/);
   });
+
+  it("passes the tool name as an explicit call argument, never as a literal HTTP header (finding #1)", async () => {
+    // A tool name is an unrestricted, author-controlled string (schema only
+    // requires z.string().min(1)) -- if it were ever stamped onto a real
+    // Headers object, a newline or non-Latin1 character would throw a
+    // TypeError from the ByteString conversion, breaking even a plain live
+    // call. Prove no header carries the tool name: the fetch call receives
+    // no `headers` at all, and the tool name instead arrives as the third
+    // argument.
+    const unsafeName = "weird\ntool☃name";
+    const unsafeTool: Tool = { ...CHECK_TOOL, name: unsafeName };
+    const fetchImpl = vi.fn(async (_url, init, context) => {
+      expect(init?.headers).toBeUndefined();
+      expect(context).toEqual({ toolName: unsafeName });
+      // A real live call: proves this doesn't throw building/sending headers.
+      new Headers(init?.headers);
+      return new Response(JSON.stringify({ data: { status: "succeeded" } }), { status: 200 });
+    });
+
+    const result = await callHttpTool(unsafeTool, { charge_id: "ch_123" }, { fetchImpl });
+    expect(result).toBe("succeeded");
+  });
 });

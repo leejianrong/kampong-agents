@@ -6,13 +6,15 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "kampong": "./dist/index.js"
+    "kampong": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && chmod +x dist/cli.js",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@fastify/static": "^10.1.3",
+    "@kampong/canvas-app": "*",
     "@kampong/engine": "*",
     "@kampong/exporter": "*",
     "@kampong/spec": "*",
