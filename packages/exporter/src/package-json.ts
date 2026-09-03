@@ -14,7 +14,12 @@ import type { AgentSpec } from "@kampong/spec";
 // copy), which is itself an instance of ADR-0010's accepted "two places"
 // tradeoff -- keep this in sync by hand if packages/engine/package.json's
 // versions change.
-const ENGINE_DEPENDENCY_VERSIONS = {
+// Exported (rather than kept module-private) specifically so
+// test/integration/dependency-version-sync.test.ts -- finding #4's
+// automated check -- can assert this stays equal to the actual
+// `dependencies` field of packages/engine/package.json, so a version bump
+// there (e.g. a security fix) can't silently go stale here.
+export const ENGINE_DEPENDENCY_VERSIONS = {
   "@ai-sdk/anthropic": "^4.0.49",
   "@ai-sdk/openai": "^4.0.57",
   "@mastra/core": "^1.64.0",

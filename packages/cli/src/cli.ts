@@ -13,7 +13,7 @@ import {
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
-import { exportProject } from "@kampong/exporter";
+import { exportProject, ExportDirectoryNotEmptyError } from "@kampong/exporter";
 import { createDevServer } from "./server.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
@@ -617,23 +617,33 @@ Arguments:
   <output-dir>          Directory to write the exported project into (created if missing)
 
 Options:
+  --force                Overwrite <output-dir> even if it already exists and is non-empty
+                          (default: refuse -- re-running export on a directory you've since
+                          hand-edited would otherwise silently overwrite those edits)
   -h, --help             Show this help
 
 Exit codes:
   0   the project was exported successfully
   1   the spec failed validation (malformed YAML or a schema violation)
-  2   the output directory could not be written to`;
+  2   the output directory could not be written to, or already exists and is non-empty
+      without --force`;
 
 interface ExportArgs {
   specPath: string;
   outputDir: string;
+  force: boolean;
 }
 
 function parseExportArgs(
   args: string[],
 ): { ok: true; value: ExportArgs } | { ok: false; error: string } {
   const positional: string[] = [];
+  let force = false;
   for (const arg of args) {
+    if (arg === "--force") {
+      force = true;
+      continue;
+    }
     if (arg.startsWith("--")) {
       return { ok: false, error: `Unrecognized option "${arg}".` };
     }
@@ -650,7 +660,7 @@ function parseExportArgs(
 
   return {
     ok: true,
-    value: { specPath: resolve(positional[0]!), outputDir: resolve(positional[1]!) },
+    value: { specPath: resolve(positional[0]!), outputDir: resolve(positional[1]!), force },
   };
 }
 
@@ -666,7 +676,7 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
     io.stderr(EXPORT_HELP_TEXT);
     return EXIT_USAGE_ERROR;
   }
-  const { specPath, outputDir } = parsed.value;
+  const { specPath, outputDir, force } = parsed.value;
 
   let source: string;
   try {
@@ -676,6 +686,12 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
     return EXIT_VALIDATION_FAILURE;
   }
 
+  // parseSpec runs the full agentSpecSchema, including
+  // envVarPlaceholderSchema's `^\${[A-Za-z_][A-Za-z0-9_]*}$` regex on
+  // `model.api_key` (packages/spec/src/schema.ts) -- so a spec carrying a
+  // literal secret instead of a `${ENV_VAR}` placeholder fails validation
+  // right here, before exportProject ever runs. There is no path from a
+  // literal secret to generated output.
   const { success, spec, errors } = parseSpec(source);
   if (!success || !spec) {
     io.stderr(`kampong export: spec validation failed: ${specPath}`);
@@ -689,8 +705,14 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
 
   let result: ReturnType<typeof exportProject>;
   try {
-    result = exportProject(spec, outputDir);
+    result = exportProject(spec, outputDir, { force });
   } catch (err) {
+    if (err instanceof ExportDirectoryNotEmptyError) {
+      io.stderr(
+        `kampong export: ${outputDir} already exists and is not empty. Pass --force to overwrite it.`,
+      );
+      return EXIT_EXECUTION_FAILURE;
+    }
     io.stderr(
       `kampong export: failed to write the exported project to ${outputDir}: ${(err as Error).message}`,
     );

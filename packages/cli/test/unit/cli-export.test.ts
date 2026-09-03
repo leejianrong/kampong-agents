@@ -1,34 +1,20 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  EXIT_EXECUTION_FAILURE,
   EXIT_SUCCESS,
   EXIT_USAGE_ERROR,
   EXIT_VALIDATION_FAILURE,
   runCli,
-  type CliIO,
 } from "../../src/cli.js";
+import { capture } from "./test-helpers.js";
 
 // SLICES.md V4 (KAN-1115) unit test plan: `kampong export` follows the same
 // flag-parsing/exit-code convention `run`/`dev` already established
 // (packages/cli/test/unit/cli.test.ts) -- 0 success, 1 validation failure,
 // 64 usage error.
-
-function capture(): { io: CliIO; out: string[]; err: string[] } {
-  const out: string[] = [];
-  const err: string[] = [];
-  return {
-    io: {
-      stdout: (line) => out.push(line),
-      stderr: (line) => err.push(line),
-      stdin: Readable.from([""]),
-    },
-    out,
-    err,
-  };
-}
 
 const SIMPLE_SPEC = `version: "1.0"
 agent:
@@ -134,5 +120,50 @@ describe("kampong export -- exit codes and output (SLICES.md V4 KAN-1115)", () =
     const code = await runCli(["--help"], io);
     expect(code).toBe(EXIT_SUCCESS);
     expect(out.join("\n")).toContain("export <spec>.yaml <output-dir>");
+  });
+
+  // Finding #2: a bare re-export must never silently clobber an output
+  // directory the user has since hand-edited (the normal export workflow --
+  // edits never sync back, ADR-0002).
+  describe("--force", () => {
+    it("exits 2 and writes nothing when the output directory already has content and --force is omitted", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, SIMPLE_SPEC);
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(join(outputDir, "hand-edited.txt"), "keep me");
+      const { io, err } = capture();
+
+      const code = await runCli(["export", specPath, outputDir], io);
+
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(err.join("\n")).toContain("--force");
+      expect(existsSync(join(outputDir, "package.json"))).toBe(false);
+      expect(readFileSync(join(outputDir, "hand-edited.txt"), "utf8")).toBe("keep me");
+    });
+
+    it("exits 0 and overwrites when the output directory already has content and --force is given", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, SIMPLE_SPEC);
+      mkdirSync(outputDir, { recursive: true });
+      writeFileSync(join(outputDir, "hand-edited.txt"), "stale");
+      const { io, out } = capture();
+
+      const code = await runCli(["export", specPath, outputDir, "--force"], io);
+
+      expect(code).toBe(EXIT_SUCCESS);
+      expect(out.join("\n")).toContain("Exported");
+      expect(existsSync(join(outputDir, "package.json"))).toBe(true);
+    });
+
+    it("exits 0 without --force when the output directory doesn't exist yet", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, SIMPLE_SPEC);
+      const { io } = capture();
+
+      const code = await runCli(["export", specPath, outputDir], io);
+
+      expect(code).toBe(EXIT_SUCCESS);
+      expect(existsSync(join(outputDir, "package.json"))).toBe(true);
+    });
   });
 });

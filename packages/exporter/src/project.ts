@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentSpec } from "@kampong/spec";
 import { buildPackageJson } from "./package-json.js";
@@ -26,7 +26,44 @@ export interface ExportResult {
   files: string[];
 }
 
-export function exportProject(spec: AgentSpec, outputDir: string): ExportResult {
+export interface ExportProjectOptions {
+  /**
+   * Overwrite a pre-existing, non-empty `outputDir` instead of refusing.
+   * Defaults to `false` -- re-running `kampong export` on the same output
+   * directory is exactly the normal workflow the generated README
+   * describes (hand-edit the exported project, no sync-back per ADR-0002),
+   * so a bare re-export must not silently truncate those hand edits.
+   */
+  force?: boolean;
+}
+
+/**
+ * Thrown by `exportProject` when `outputDir` already exists, is non-empty,
+ * and the caller didn't opt into `{ force: true }`. Its own error type
+ * (rather than a generic `Error`) so a caller like `packages/cli/src/cli.ts`
+ * can distinguish "you need --force" from any other write failure (a
+ * permissions error, a full disk, ...) and report it with different,
+ * more actionable guidance.
+ */
+export class ExportDirectoryNotEmptyError extends Error {
+  constructor(public readonly outputDir: string) {
+    super(
+      `Output directory "${outputDir}" already exists and is not empty. ` +
+        `Pass { force: true } (the CLI: --force) to overwrite it.`,
+    );
+    this.name = "ExportDirectoryNotEmptyError";
+  }
+}
+
+export function exportProject(
+  spec: AgentSpec,
+  outputDir: string,
+  options: ExportProjectOptions = {},
+): ExportResult {
+  if (!options.force && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
+    throw new ExportDirectoryNotEmptyError(outputDir);
+  }
+
   const written: string[] = [];
 
   const write = (relativePath: string, contents: string): void => {

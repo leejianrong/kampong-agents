@@ -1,9 +1,13 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSpec } from "@kampong/spec";
-import { exportProject, slugifyPackageName } from "../../src/index.js";
+import {
+  exportProject,
+  slugifyPackageName,
+  ExportDirectoryNotEmptyError,
+} from "../../src/index.js";
 
 // SLICES.md V4 (KAN-1114) unit test plan: "Codegen correctly translates
 // each spec construct (tool, conditional, guardrail) into its TypeScript
@@ -187,9 +191,43 @@ describe("exportProject", () => {
     expect(envExample).toContain("ANTHROPIC_API_KEY=");
   });
 
-  it("is idempotent -- exporting the same spec twice to the same directory overwrites cleanly", () => {
+  it("is idempotent -- exporting the same spec twice to the same directory with force:true overwrites cleanly", () => {
     exportProject(FULL_SPEC, outputDir);
-    const result = exportProject(FULL_SPEC, outputDir);
+    const result = exportProject(FULL_SPEC, outputDir, { force: true });
     expect(result.files.length).toBeGreaterThan(0);
+  });
+
+  // Finding #2: re-running `kampong export` on an output directory the user
+  // has since hand-edited (the normal workflow the generated README
+  // describes -- edits never sync back, ADR-0002) must not silently
+  // overwrite those edits.
+  describe("refuses to overwrite a non-empty output directory by default", () => {
+    it("throws ExportDirectoryNotEmptyError without writing anything when outputDir already has content", () => {
+      writeFileSync(join(outputDir, "hand-edited.txt"), "don't clobber me");
+
+      expect(() => exportProject(FULL_SPEC, outputDir)).toThrow(ExportDirectoryNotEmptyError);
+      // Nothing from this export landed -- the pre-existing file is untouched and
+      // no export files were written alongside it.
+      expect(readFileSync(join(outputDir, "hand-edited.txt"), "utf8")).toBe("don't clobber me");
+      expect(() => readFileSync(join(outputDir, "package.json"), "utf8")).toThrow();
+    });
+
+    it("does not throw when outputDir doesn't exist yet", () => {
+      const freshDir = join(outputDir, "fresh-subdir");
+      expect(() => exportProject(FULL_SPEC, freshDir)).not.toThrow();
+    });
+
+    it("does not throw when outputDir exists but is empty", () => {
+      expect(() => exportProject(FULL_SPEC, outputDir)).not.toThrow();
+    });
+
+    it("{ force: true } overwrites a non-empty output directory instead of refusing", () => {
+      writeFileSync(join(outputDir, "hand-edited.txt"), "stale content");
+
+      const result = exportProject(FULL_SPEC, outputDir, { force: true });
+
+      expect(result.files).toContain("package.json");
+      expect(readFileSync(join(outputDir, "package.json"), "utf8")).toContain("refund-agent");
+    });
   });
 });

@@ -5,8 +5,17 @@
 
 export const PACKAGE_NAME = "@kampong/exporter";
 
-export { exportProject, type ExportResult } from "./project.js";
-export { buildPackageJson, slugifyPackageName } from "./package-json.js";
+export {
+  exportProject,
+  ExportDirectoryNotEmptyError,
+  type ExportResult,
+  type ExportProjectOptions,
+} from "./project.js";
+export {
+  buildPackageJson,
+  slugifyPackageName,
+  ENGINE_DEPENDENCY_VERSIONS,
+} from "./package-json.js";
 export { buildEntryPointSource } from "./entry-point.js";
 export { buildReadme } from "./readme.js";
 export {
