@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ModelClient } from "@kampong/engine";
 import {
@@ -10,25 +9,14 @@ import {
   EXIT_USAGE_ERROR,
   EXIT_VALIDATION_FAILURE,
   runCli,
-  type CliIO,
 } from "../../src/cli.js";
+import { capture } from "./test-helpers.js";
 
 // SLICES.md V3 unit test plan: "CLI exit codes are correct for success,
 // validation failure, and execution failure cases" and "CLI output is
 // valid, parseable JSON when requested." Uses the `RunCliTestOptions.model`
 // test seam (cli.ts) to exercise the "success" path with zero network
 // dependency -- the real `kampong` binary never has this seam available.
-
-function capture(stdinLines: string[] = []): { io: CliIO; out: string[]; err: string[] } {
-  const out: string[] = [];
-  const err: string[] = [];
-  const stdin = Readable.from(stdinLines.length > 0 ? stdinLines.map((l) => `${l}\n`) : [""]);
-  return {
-    io: { stdout: (line) => out.push(line), stderr: (line) => err.push(line), stdin },
-    out,
-    err,
-  };
-}
 
 function textModel(text = "ok"): ModelClient {
   return {
