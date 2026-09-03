@@ -105,7 +105,8 @@
                   "maximum": 1
                 },
                 "fallback_action": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": ["escalate_to_human"]
                 }
               },
               "additionalProperties": false

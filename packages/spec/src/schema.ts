@@ -23,9 +23,15 @@ export const toolSchema = z.object({
   extract: z.string().optional(),
 });
 
+// Constrained to what packages/engine actually implements (checked directly
+// -- workflow.ts only branches on this literal) rather than an open string,
+// so an unsupported value is a spec-validation error, not a runtime failure
+// mid-run.
+export const fallbackActionSchema = z.enum(["escalate_to_human"]);
+
 export const guardrailsSchema = z.object({
   confidence_threshold: z.number().min(0).max(1).optional(),
-  fallback_action: z.string().optional(),
+  fallback_action: fallbackActionSchema.optional(),
 });
 
 // BYOK (SLICES.md V2, KAN-1106, Q14): a secret is never a literal in the
@@ -95,5 +101,6 @@ export type AgentSpec = z.infer<typeof agentSpecSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type Guardrails = z.infer<typeof guardrailsSchema>;
+export type FallbackAction = z.infer<typeof fallbackActionSchema>;
 export type Model = z.infer<typeof modelSchema>;
 export type ModelProvider = z.infer<typeof modelProviderSchema>;

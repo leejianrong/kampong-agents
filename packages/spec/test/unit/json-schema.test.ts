@@ -46,6 +46,20 @@ describe("generateAgentSpecJsonSchema", () => {
     ],
     ["not an object at all", "not-a-spec"],
     [
+      "a fallback_action the engine doesn't implement",
+      {
+        version: "1.0",
+        agent: {
+          id: "x",
+          name: "x",
+          role: "x",
+          goal: "x",
+          guardrails: { confidence_threshold: 0.85, fallback_action: "retry_automatically" },
+          workflow: [{ step: "s", action: "a" }],
+        },
+      },
+    ],
+    [
       "a literal secret instead of an ${ENV_VAR} placeholder",
       {
         version: "1.0",

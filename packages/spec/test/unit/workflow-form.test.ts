@@ -41,4 +41,14 @@ describe("buildGuardrailsFromForm", () => {
     const result = buildGuardrailsFromForm({ confidenceThreshold: 1.5 });
     expect(result.success).toBe(false);
   });
+
+  it("rejects a fallback_action the engine doesn't implement", () => {
+    const result = buildGuardrailsFromForm({
+      // Cast: only "escalate_to_human" is a valid FallbackAction; this
+      // exercises the schema rejecting a value the type system would
+      // otherwise catch at compile time (e.g. a hand-edited YAML spec).
+      fallbackAction: "retry_automatically" as never,
+    });
+    expect(result.success).toBe(false);
+  });
 });

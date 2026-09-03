@@ -1,6 +1,7 @@
 import {
   guardrailsSchema,
   workflowStepSchema,
+  type FallbackAction,
   type Guardrails,
   type WorkflowStep,
 } from "./schema.js";
@@ -43,7 +44,7 @@ export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): Workflo
 
 export interface GuardrailsFormInput {
   confidenceThreshold?: number;
-  fallbackAction?: string;
+  fallbackAction?: FallbackAction;
 }
 
 export interface GuardrailsFormResult {
