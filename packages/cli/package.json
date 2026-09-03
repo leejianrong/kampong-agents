@@ -15,6 +15,7 @@
   "dependencies": {
     "@kampong/engine": "*",
     "@kampong/exporter": "*",
-    "@kampong/spec": "*"
+    "@kampong/spec": "*",
+    "fastify": "^5.2.0"
   }
 }

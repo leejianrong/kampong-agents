@@ -4,7 +4,6 @@
     { "path": "packages/spec" },
     { "path": "packages/engine" },
     { "path": "packages/exporter" },
-    { "path": "packages/cli" },
-    { "path": "apps/canvas" }
+    { "path": "packages/cli" }
   ]
 }

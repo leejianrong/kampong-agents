@@ -16,7 +16,7 @@ It feels like: `npx kampong dev` opens a local canvas in the browser, pointed at
 
 ## Users and actors
 
-- **Primary: the technical builder** — a developer or agency engineer building an agent workflow for their own ops or for a client. They are the buyer and the one who ultimately owns the spec/code.
+- **Primary: the technical builder** — a developer or agency engineer building an agent workflow for their own ops or for a client. They are the buyer and the one who ultimately owns the spec/code. In practice, many will author or edit the YAML spec entirely outside this app — in Cursor, or via an agentic coding tool (Claude Code, Codex) — rather than through the in-app editor (ADR-0008).
 - **Secondary: the non-technical collaborator** — a teammate or client who views and lightly edits the same workflow through the canvas's plain-language blocks, without touching YAML directly.
 - **Non-human actor: the CLI**, used the same way by a human at a terminal or by CI (e.g., validating a spec, running a regression test on every commit).
 
@@ -27,7 +27,8 @@ On conflict: the technical builder's expectations win. The canvas must never pro
 **In this milestone (v1).**
 
 - A single-agent `AgentSpec` YAML format: role/goal, knowledge references, HTTP tools, guardrails, a linear/conditional workflow (per the schema already sketched in `ideation.md` §4.2, trimmed to one agent — ADR-0001).
-- A local web canvas (served via CLI, not a desktop app — ADR-0005) that reads and writes this YAML bidirectionally, with zero data loss on round-trip, for every supported node type.
+- A local web canvas (served via CLI, not a desktop app — ADR-0005) that reads and writes this YAML bidirectionally, with zero data loss on round-trip, for every supported node type — including specs authored or edited entirely outside the app, which render with zero import step and auto-reload on change by default (ADR-0008).
+- A published JSON Schema for the `AgentSpec`, wired via the `yaml-language-server` pragma convention, so external editors and agentic coding tools get real validation/autocomplete on Kampong specs (ADR-0008).
 - Local execution of a spec against a BYOK cloud model or a local Ollama model, including HTTP tool calls, conditional branching, and a blocking human-approval step for guardrail-triggered escalation.
 - Fully offline test capability: mock/record tool responses, no required network calls, no telemetry by default.
 - One-way TypeScript export ("eject") to a standalone, independently runnable Mastra project — no bidirectional code sync (ADR-0002).
@@ -47,42 +48,43 @@ On conflict: the technical builder's expectations win. The canvas must never pro
 
 ## Requirements
 
-| ID  | Requirement                                                                                                                                                   | Status       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.   | Core goal    |
-| R1  | Canvas edits and direct YAML edits stay bidirectionally synced with zero data loss, for every supported node type.                                            | Must-have    |
-| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                         | Must-have    |
-| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry. | Must-have    |
-| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.   | Must-have    |
-| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                              | Must-have    |
-| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                              | Must-have    |
-| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                            | Roadmap (V5) |
-| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                               | Roadmap (V6) |
+| ID  | Requirement                                                                                                                                                                                           | Status       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.                                           | Core goal    |
+| R1  | Canvas edits and direct YAML edits — including specs authored entirely in an external editor or agentic coding tool — stay bidirectionally synced with zero data loss, for every supported node type. | Must-have    |
+| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                                                                 | Must-have    |
+| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry.                                         | Must-have    |
+| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.                                           | Must-have    |
+| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                                                                      | Must-have    |
+| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                                                                      | Must-have    |
+| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                                                                    | Roadmap (V5) |
+| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                                                                       | Roadmap (V6) |
 
 ## Shape
 
-| Part | Mechanism                                                                                                                                                                                                                                                                        | ADR                |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| S1   | `AgentSpec` YAML schema + validator: single source of truth, versioned (`version` field), single write path — every mutation (canvas action, CLI edit, or external file edit) is parsed and validated before anything else reads it.                                             | ADR-0002           |
-| S2   | Canvas renderer/editor: reads/writes `AgentSpec` + sidecar `.kampong/layout.json`; file-watcher detects external changes and prompts to reload rather than overwriting.                                                                                                          | ADR-0002, ADR-0006 |
-| S3   | Execution engine: maps a validated `AgentSpec` to a Mastra agent (system prompt, HTTP tools, conditional workflow steps); `requires_approval` steps block on an interactive prompt (browser modal for canvas test-runs, CLI stdin for headless runs) until approved or rejected. | ADR-0003, ADR-0004 |
-| S4   | Mock/record tool layer: captures a real HTTP tool response once, replays it deterministically on later runs; Ollama adapter for local-model execution with a hard error (never silent fallback) if unavailable.                                                                  | —                  |
-| S5   | CLI (`kampong dev` / `kampong run` / `kampong export`): thin wrapper around S1–S3/S6, the single entry point whether invoked by a human or a script/CI job.                                                                                                                      | ADR-0005           |
-| S6   | TypeScript exporter: `AgentSpec → standalone Mastra project` codegen, one-way, never re-imported.                                                                                                                                                                                | ADR-0002, ADR-0003 |
+| Part | Mechanism                                                                                                                                                                                                                                                                                                                     | ADR                                    |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| S1   | `AgentSpec` YAML schema + validator (parsed via the `yaml` package for comment/format-preserving round trips, not `js-yaml`): single source of truth, versioned (`version` field), single write path — every mutation (canvas action, CLI edit, or external file edit) is parsed and validated before anything else reads it. | ADR-0002, ADR-0007                     |
+| S2   | Canvas renderer/editor (React + `@xyflow/react`): reads/writes `AgentSpec` + sidecar `.kampong/layout.json`; file-watcher auto-reloads on external changes by default, prompting only on a genuine in-flight-mutation conflict.                                                                                               | ADR-0002, ADR-0006, ADR-0007, ADR-0008 |
+| S3   | Execution engine: maps a validated `AgentSpec` to a Mastra agent (system prompt, HTTP tools, conditional workflow steps); `requires_approval` steps block on an interactive prompt (browser modal for canvas test-runs, CLI stdin for headless runs) until approved or rejected.                                              | ADR-0003, ADR-0004                     |
+| S4   | Mock/record tool layer: captures a real HTTP tool response once, replays it deterministically on later runs; Ollama adapter for local-model execution with a hard error (never silent fallback) if unavailable.                                                                                                               | —                                      |
+| S5   | CLI (`kampong dev` / `kampong run` / `kampong export`) + the local Fastify server `kampong dev` starts (static canvas assets, spec-CRUD REST API, SSE run-progress stream): thin wrapper around S1–S3/S6, the single entry point whether invoked by a human or a script/CI job.                                               | ADR-0005, ADR-0007                     |
+| S6   | TypeScript exporter: `AgentSpec → standalone Mastra project` codegen, one-way, never re-imported.                                                                                                                                                                                                                             | ADR-0002, ADR-0003                     |
+| S7   | Published JSON Schema artifact for the `AgentSpec`, versioned alongside S1, referenced via a `# yaml-language-server: $schema=...` pragma so external editors/agentic tools validate specs without touching this app.                                                                                                         | ADR-0008                               |
 
 ## Affordances
 
 **UI.**
 
-| Affordance                                             | Place                                  | Wires to                              |
-| ------------------------------------------------------ | -------------------------------------- | ------------------------------------- |
-| Block canvas (Trigger → Tools → Workflow → Guardrails) | Main canvas view                       | S2 → S1                               |
-| Property inspector side panel                          | Opens on block click                   | S2 → S1                               |
-| Split-screen YAML preview                              | Toggleable panel beside canvas         | S1 (read-only render of current spec) |
-| Tool builder form (name, method, URL, extract path)    | Modal from "Add Tool"                  | S1                                    |
-| Confidence-threshold guardrail control                 | Guardrails block inspector             | S1                                    |
-| Test-run sandbox + approval modal                      | "Run" button, in-canvas panel          | S3                                    |
-| External-change reload prompt                          | Toast/banner when file changes on disk | S2                                    |
+| Affordance                                             | Place                                                                          | Wires to                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------- |
+| Block canvas (Trigger → Tools → Workflow → Guardrails) | Main canvas view                                                               | S2 → S1                               |
+| Property inspector side panel                          | Opens on block click                                                           | S2 → S1                               |
+| Split-screen YAML preview                              | Toggleable panel beside canvas                                                 | S1 (read-only render of current spec) |
+| Tool builder form (name, method, URL, extract path)    | Modal from "Add Tool"                                                          | S1                                    |
+| Confidence-threshold guardrail control                 | Guardrails block inspector                                                     | S1                                    |
+| Test-run sandbox + approval modal                      | "Run" button, in-canvas panel                                                  | S3                                    |
+| External-change auto-reload notice                     | Non-blocking toast when file changes on disk (prompt only on genuine conflict) | S2                                    |
 
 **Non-UI.**
 
@@ -98,7 +100,9 @@ On conflict: the technical builder's expectations win. The canvas must never pro
 ## Implementation decisions
 
 - **Module boundaries:** a spec-parser/validator package (S1) that every other package depends on and none of them bypass; a canvas web app (S2) and CLI (S5) that are two front ends to the same S1/S3/S6 packages, not separate implementations.
-- **Concurrency:** the canvas file-watches the spec on disk; on an external change while the canvas has it open, it prompts "reload?" rather than silently overwriting (Q10). There is no merge — last explicit save wins, consistent with a single-user local tool.
+- **Concurrency:** the canvas file-watches the spec on disk. Because every canvas mutation flushes to disk immediately (no sustained "unsaved state"), an external change auto-reloads by default with a lightweight notice — the canvas prompts only in the narrow case where a local mutation is in flight but not yet flushed when the external write lands (Q10, ADR-0008). There is no merge — the most recent write wins, consistent with a single-user local tool.
+- **Stack:** canvas app in React + `@xyflow/react`; local server in Fastify with SSE for run-progress streaming; YAML parsed via the `yaml` package for comment/format-preserving round trips; no database in v1 (ADR-0007).
+- **External-editor support:** the `AgentSpec` JSON Schema (S7) is published and referenced via the `yaml-language-server` pragma so Cursor/VS Code/agentic coding tools validate specs natively; the in-app YAML view is a light viewer/editor, not a competing IDE (ADR-0008).
 - **Failure behavior:** invalid YAML surfaces a specific line/field error in both the code preview and the canvas (not a generic parse failure); a failed tool call or LLM error during a run halts that run and reports which step failed, rather than continuing silently; an unavailable local model is a hard, visible CLI error, never a silent fallback to a paid API (Q8).
 - **Secrets:** the spec references credentials only as `${ENV_VAR}` placeholders (Q14); actual values live in `.env`/the OS environment and are never written into a spec file, so any spec is always safe to commit.
 - **Telemetry:** none by default in local mode (Q15); any future usage analytics is explicit opt-in.
@@ -111,15 +115,16 @@ The highest-leverage seam is the round trip: `YAML → canvas render → canvas 
 
 ## Assumed defaults
 
-| ID  | Assumed                                                                 | Cost if wrong                                                                                                                   |
-| --- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Q5  | MVP must execute agents locally, not just design+export                 | Rebuilding slice sequencing; guardrail/HITL UX would be untestable and undemonstrated                                           |
-| Q6  | Canvas is a local web app, not a desktop app                            | Repackaging effort (Electron wrapper) if developers reject browser-based local tools; moderate                                  |
-| Q7  | No separate LLM gateway needed for v1                                   | Have to retrofit resilience logic if BYOK direct-call failures prove too disruptive even locally; low-moderate                  |
-| Q9  | Layout lives in a sidecar file, not the YAML                            | Migration script needed if this is wrong once specs exist in the wild; low                                                      |
-| Q11 | HITL approval is a blocking local prompt, not remote escalation         | Acceptable gap for local-first MVP; becomes a real requirement only once hosted mode (V5) has real users needing async approval |
-| Q12 | Structured form is the primary tool-definition path, NL-assist optional | Low cost either way; additive if wrong                                                                                          |
-| Q17 | Plain files, no database, for spec/layout/mock storage                  | Migration to a DB-backed store would be needed for hosted mode (V5) regardless — not wasted work                                |
+| ID  | Assumed                                                                   | Cost if wrong                                                                                                                       |
+| --- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Q5  | MVP must execute agents locally, not just design+export                   | Rebuilding slice sequencing; guardrail/HITL UX would be untestable and undemonstrated                                               |
+| Q6  | Canvas is a local web app, not a desktop app                              | Repackaging effort (Electron wrapper) if developers reject browser-based local tools; moderate                                      |
+| Q7  | No separate LLM gateway needed for v1                                     | Have to retrofit resilience logic if BYOK direct-call failures prove too disruptive even locally; low-moderate                      |
+| Q9  | Layout lives in a sidecar file, not the YAML                              | Migration script needed if this is wrong once specs exist in the wild; low                                                          |
+| Q10 | External changes auto-reload by default (prompt only on genuine conflict) | If auto-reload ever feels data-lossy to real users, need to add back an explicit confirmation step; low-moderate, easy to add later |
+| Q11 | HITL approval is a blocking local prompt, not remote escalation           | Acceptable gap for local-first MVP; becomes a real requirement only once hosted mode (V5) has real users needing async approval     |
+| Q12 | Structured form is the primary tool-definition path, NL-assist optional   | Low cost either way; additive if wrong                                                                                              |
+| Q17 | Plain files, no database, for spec/layout/mock storage                    | Migration to a DB-backed store would be needed for hosted mode (V5) regardless — not wasted work                                    |
 
 ## Open risks
 

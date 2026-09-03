@@ -11,7 +11,7 @@ for reading those when you're actually implementing a slice.
 contains a placeholder `src/index.ts` and a smoke test proving the pipeline works — lint,
 typecheck, build, and all three test layers are green, but none of it does anything real yet.
 Trust the code over this file or the planning docs for what's actually implemented; trust
-`PLAN.md`/`SLICES.md`/`docs/adr/` for what's *supposed* to get built and why.
+`PLAN.md`/`SLICES.md`/`docs/adr/` for what's _supposed_ to get built and why.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`) — one epic per
 slice in `SLICES.md`, V1–V4 as immediate MVP work, V5–V6 explicitly labeled `[ROADMAP]`.
@@ -36,6 +36,16 @@ slice in `SLICES.md`, V1–V4 as immediate MVP work, V5–V6 explicitly labeled 
   (ADR-0005)
 - **Canvas node layout lives in a sidecar `.kampong/layout.json`, never in the spec YAML.**
   Keeps the spec hand-authorable and diff-clean. (ADR-0006)
+- **Stack: React + Vite + `@xyflow/react` for the canvas; Fastify + SSE for the local server;
+  the `yaml` package (not `js-yaml`) for comment-preserving parsing; no database in v1.**
+  (ADR-0007)
+- **Hand-editing a spec in Cursor or an agentic coding tool (Claude Code, Codex) is a primary
+  workflow, not an edge case.** A folder of externally-authored specs renders on the canvas with
+  zero import step; external file changes auto-reload by default (no prompt) — the canvas only
+  prompts on a genuine in-flight-mutation conflict. The `AgentSpec` JSON Schema is published and
+  wired via the `yaml-language-server` pragma so external tools get real validation/autocomplete
+  without any custom editor tooling on our side. The in-app YAML view stays a light viewer/editor,
+  not a competing IDE. (ADR-0008)
 - **Local-first, no telemetry by default.** Nothing phones home unless a user explicitly
   opts in. Secrets are never written into a spec file — specs reference `${ENV_VAR}`
   placeholders only, actual values live in `.env`/the environment.
@@ -51,11 +61,11 @@ slice in `SLICES.md`, V1–V4 as immediate MVP work, V5–V6 explicitly labeled 
 ## Repo layout
 
 ```
-packages/spec/       AgentSpec YAML schema + validator (S1) — the single source of truth
+packages/spec/       AgentSpec YAML schema + validator (S1, S7) — yaml pkg, JSON Schema artifact
 packages/engine/      Mastra-backed execution engine, guardrails/HITL, mock/record + Ollama (S3/S4)
 packages/exporter/    AgentSpec -> standalone TypeScript project codegen, one-way (S6)
-packages/cli/         kampong dev / kampong run / kampong export (S5)
-apps/canvas/          local web canvas app (S2)
+packages/cli/         kampong dev / kampong run / kampong export + the Fastify local server (S5)
+apps/canvas/          local web canvas app — React + Vite + @xyflow/react (S2)
 e2e/                  cross-package acceptance tests (e.g. exporter behavioral equivalence)
 docs/adr/             architectural decisions, one per file
 ```
@@ -90,14 +100,16 @@ is fine for a scoped, deliberate exception.
   real slice lands).
 - A new architectural decision, or a default from `QUESTIONS.md` that turns out to be load-bearing,
   gets its own `docs/adr/NNNN-*.md` — number sequentially from the highest existing ADR (currently
-  0006).
+  0008).
 - Every bug or flake becomes a regression test before the fix, not after.
 
 ## Testing approach (see PLAN.md §Testing approach for the full reasoning)
 
 - **Highest-leverage test:** the `AgentSpec` round-trip — `YAML → canvas render → mutation →
-  YAML serialize → re-parse` must be a fixed point for every fixture. This lives at the
-  integration layer (`packages/spec/test/integration/round-trip.test.ts` has the placeholder).
+YAML serialize → re-parse` must be a fixed point for every fixture, including preserved
+  comments/formatting (the reason we use the `yaml` package, not `js-yaml` — ADR-0007). This
+  lives at the integration layer (`packages/spec/test/integration/round-trip.test.ts` has the
+  placeholder).
 - **Exporter correctness is behavioral equivalence, not code-shape comparison:** actually
   `npm install && npm start` the generated project in a clean directory and diff its output
   against the canvas/CLI-run output on the same input. This is an e2e-layer test

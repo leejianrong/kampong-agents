@@ -2,7 +2,7 @@
 
 Vertical increments. Each ends in something you can demonstrate. Slice 1 confronts the riskiest unknown: whether canvas↔YAML duality can actually be lossless.
 
-**Cross-cutting note:** any frontend/UI work in any slice below (canvas app, property panels, guardrail controls, hosted V5 UI) uses Material Design 3 (`/material-design-3`) rather than ad hoc styling.
+**Cross-cutting notes:** any frontend/UI work in any slice below (canvas app, property panels, guardrail controls, hosted V5 UI) uses Material Design 3 (`/material-design-3`) rather than ad hoc styling. The stack is React + Vite + `@xyflow/react` for the canvas, Fastify + SSE for the local server, and the `yaml` package for comment-preserving parsing (ADR-0007) — external editing (Cursor, agentic coding tools) is a first-class workflow, not an edge case (ADR-0008).
 
 ## V1: Canvas ↔ YAML Duality
 
@@ -15,30 +15,34 @@ Vertical increments. Each ends in something you can demonstrate. Slice 1 confron
 3. Build the canvas web app's read path: parse a spec + layout file, render blocks (Trigger → Tools → Workflow → Guardrails) at their stored (or auto-laid-out) positions.
 4. Build the canvas write path: every canvas mutation (add/edit/remove a block, rewire a connection) re-serializes through the validator back to the YAML file and updates the layout file.
 5. Build the tool-definition form (structured: name, HTTP method, URL with `{placeholders}`, response-extraction path) as the "Add Tool" affordance, with zero LLM calls required (Q12, R5).
-6. Add the file-watcher: detect external changes to the YAML while the canvas has it open, prompt to reload (Q10).
-7. Add the split-screen YAML preview panel.
+6. Add the file-watcher: auto-reload on an external change by default (no prompt); surface a prompt only in the rare case of a local mutation still in flight when the external write lands (Q10, ADR-0008).
+7. Add the split-screen YAML preview panel (React + `@xyflow/react` for the canvas itself, per ADR-0007).
+8. Publish the `AgentSpec` JSON Schema (S7) and wire the `yaml-language-server` pragma into spec files, so a spec authored in Cursor or by an agentic coding tool gets real validation/autocomplete with zero setup (ADR-0008).
 
-**Demo:** Build a two-step agent (one tool defined via the structured form, one conditional guardrail branch) entirely on the canvas; show the live YAML preview updating as you build. Then open the YAML file in a plain text editor, hand-edit a field, save, and watch the canvas prompt to reload and re-render correctly with no data loss.
+**Demo:** Build a two-step agent (one tool defined via the structured form, one conditional guardrail branch) entirely on the canvas; show the live YAML preview updating as you build. Then, separately, hand-write or agent-generate a spec file in a plain text editor / Cursor / Claude Code with no prior canvas involvement, point `kampong dev` at that folder, and watch it render on the canvas immediately with no import step. Edit that same file externally again while the canvas is open and watch it auto-reload with no prompt.
 
-**Rests on assumptions:** Q9 (sidecar layout file) — if wrong, layout data needs migrating into the spec format later. Q6 (local web app) — if wrong, this slice's UI would need porting to a desktop shell.
+**Rests on assumptions:** Q9 (sidecar layout file) — if wrong, layout data needs migrating into the spec format later. Q6/ADR-0007 (local web app, React + `@xyflow/react`) — if wrong, this slice's UI would need porting to a desktop shell or a different graph library. Q10/ADR-0008 (auto-reload by default) — if this reads as data-lossy to real users, an explicit confirmation step needs adding back.
 
 ### Test plan
 
 #### End-to-end
 
 - Building a 2-step agent on canvas produces a YAML file that validates against the schema and matches an expected fixture.
-- Hand-editing that YAML file externally and reloading the canvas re-renders it with all blocks, connections, and properties intact.
+- A spec file written entirely outside the app (no canvas involvement) renders correctly on the canvas the moment `kampong dev` opens that folder — zero import step.
+- Editing that YAML file externally while the canvas has it open auto-reloads it with no prompt, re-rendering with all blocks, connections, and properties intact; comments and formatting in the original file survive the round trip.
 
 #### Integration
 
-- Round-trip property test: for a corpus of fixture specs (varying tool counts, conditional depths), `parse → render → re-serialize` produces byte-for-byte-equivalent YAML (modulo key ordering) to the original.
+- Round-trip property test: for a corpus of fixture specs (varying tool counts, conditional depths, and hand-written comments), `parse → render → re-serialize` produces byte-for-byte-equivalent YAML (modulo key ordering) to the original, including preserved comments (ADR-0007's `yaml`-package choice).
 - Layout store correctly assigns auto-layout positions to a node with no existing sidecar entry.
+- A local mutation in flight when an external write lands surfaces the conflict prompt instead of silently auto-reloading (the one case ADR-0008 does NOT auto-resolve).
 
 #### Unit
 
 - Schema validator rejects malformed specs with a specific field/line-level error.
 - Each canvas node type serializes to and deserializes from its corresponding YAML fragment correctly.
 - Tool-definition form produces a valid tool spec fragment from structured input alone, with no LLM call involved.
+- The published JSON Schema artifact validates a corpus of both valid and intentionally-invalid fixture specs correctly (this is what external editors/agentic tools rely on, so it needs its own direct test, not just indirect coverage via the in-app validator).
 
 ## V2: Local Execution Engine + Guardrail/HITL
 

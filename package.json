@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test:unit": "vitest run --project unit",
+    "test:unit": "vitest run --project unit --project unit-web",
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "test": "npm run test:unit && npm run test:integration",

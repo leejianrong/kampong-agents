@@ -11,8 +11,15 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["packages/*/test/unit/**/*.test.ts", "apps/*/test/unit/**/*.test.ts"],
+          include: ["packages/*/test/unit/**/*.test.ts"],
           environment: "node",
+        },
+      },
+      {
+        test: {
+          name: "unit-web",
+          include: ["apps/*/test/unit/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
         },
       },
       {
