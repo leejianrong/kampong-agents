@@ -32,7 +32,7 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "enum": ["anthropic", "openai"]
+                  "enum": ["anthropic", "openai", "ollama"]
                 },
                 "name": {
                   "type": "string",
@@ -41,9 +41,13 @@
                 "api_key": {
                   "type": "string",
                   "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                },
+                "base_url": {
+                  "type": "string",
+                  "format": "uri"
                 }
               },
-              "required": ["provider", "name", "api_key"],
+              "required": ["provider", "name"],
               "additionalProperties": false
             },
             "knowledge_base": {

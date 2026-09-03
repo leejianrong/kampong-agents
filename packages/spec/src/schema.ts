@@ -47,14 +47,26 @@ export const envVarPlaceholderSchema = z
 
 // Kept to provider + model name (ADR-0004): generic enough that a future
 // gateway (roadmap V5) slots in behind resolution, not into the spec shape.
-// V2 ships anthropic/openai; the local Ollama adapter (V3) adds a provider
-// value here without changing this schema.
-export const modelProviderSchema = z.enum(["anthropic", "openai"]);
+// V2 shipped anthropic/openai; "ollama" (V3, SLICES.md KAN-1112) is the local
+// adapter -- it needs no cloud API key and typically runs on
+// http://localhost:11434, which is why `api_key` below is optional at the
+// schema level rather than gaining an ollama-shaped exception to the regex.
+export const modelProviderSchema = z.enum(["anthropic", "openai", "ollama"]);
 
 export const modelSchema = z.object({
   provider: modelProviderSchema,
   name: z.string().min(1),
-  api_key: envVarPlaceholderSchema,
+  // Optional here so a local-only spec never has to invent a placeholder
+  // env var it doesn't need; packages/engine (not the schema) is what
+  // enforces this as required for the cloud providers ("anthropic"/
+  // "openai") and treats it as irrelevant for "ollama" -- keeping that
+  // provider-specific policy out of the schema layer, consistent with how
+  // `agent.model` itself is optional until a real run needs it.
+  api_key: envVarPlaceholderSchema.optional(),
+  // Only meaningful for "ollama" today (points at a non-default local
+  // server, e.g. a remote/tunneled Ollama host); harmless no-op for the
+  // cloud providers, which always call their own fixed API host.
+  base_url: z.string().url().optional(),
 });
 
 export const workflowStepSchema = z.union([
