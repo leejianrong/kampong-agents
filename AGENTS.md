@@ -78,7 +78,7 @@ project or otherwise exercise the full stack.
 
 ```
 npm install              # install all workspaces
-npm run build             # tsc -b across every package
+npm run build             # tsc -b (dependency-order-aware) + vite build for apps/canvas
 npm run lint               # eslint .
 npm run format:check       # prettier --check .
 npm run typecheck          # tsc --noEmit per package
@@ -88,8 +88,16 @@ npm run test:e2e           # full-stack acceptance layer
 npm test                   # unit + integration (what CI's fast path expects)
 ```
 
-The pre-push hook (`.husky/pre-push`) runs lint + format:check + typecheck + test:unit — the
-same fast, no-infra gate as the first four CI jobs, so a push rarely lands red. `--no-verify`
+**Run `npm run build` before `typecheck`/`test:unit`/`test:integration`/`test:e2e` on a fresh
+checkout.** Cross-package imports (e.g. `apps/canvas` importing `@kampong/spec`) resolve via each
+package's `"types"`/`"main"` field pointing at `dist/`, which is gitignored — without a build
+first, those imports fail to resolve with `TS2307: Cannot find module`. `npm run build` itself
+must stay `tsc -b` at the root (not `npm run build --workspaces`, which iterates by directory name,
+not the dependency graph, and will try to build `apps/canvas` before `packages/spec` exists) —
+this bit a real CI run once; don't reintroduce it.
+
+The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typecheck + test:unit —
+the same fast, no-infra gate as the first five CI jobs, so a push rarely lands red. `--no-verify`
 is fine for a scoped, deliberate exception.
 
 ## Workflow conventions

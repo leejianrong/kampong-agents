@@ -13,7 +13,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "tsc -b && npm run build --workspace=apps/canvas",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspaces --if-present",
