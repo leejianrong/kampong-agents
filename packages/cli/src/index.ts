@@ -1,8 +1,11 @@
-// PLAN.md Shape S5 (ADR-0005/0007): the local server `kampong dev` starts.
-// The full CLI command surface (argument parsing, `kampong run`,
-// `kampong export`, JSON output, exit codes) is SLICES.md V3/V4 scope;
-// what V1 needs is a server the canvas can talk to during development,
-// which is what's exported here.
+// Library barrel for @kampong/cli (PLAN.md Shape S5, ADR-0005/0007): the
+// dev server, spec store, file watcher, and run manager the actual CLI
+// entry point (cli.ts, package.json's `bin`) is built on top of. Kept
+// separate from cli.ts deliberately -- importing this module (as
+// apps/canvas's tests do, for `createDevServer`) must never have the side
+// effect of parsing argv or starting a process; only running cli.ts
+// directly does that. `kampong export` (SLICES.md V4) is still out of
+// scope here.
 
 export const PACKAGE_NAME = "@kampong/cli";
 

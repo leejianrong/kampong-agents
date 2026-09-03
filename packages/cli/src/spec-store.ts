@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import {
   applyPatch,
   parseLayout,
@@ -45,6 +46,11 @@ export class SpecStore {
   }
 
   writeLayout(layout: LayoutMap): void {
+    // ADR-0006's convention is a nested sidecar (`.kampong/layout.json`),
+    // whose parent directory won't exist yet the first time a brand-new
+    // spec directory is opened (e.g. `kampong dev`'s default layout path) --
+    // create it rather than let a first-run `kampong dev` 500 on this.
+    mkdirSync(dirname(this.layoutPath), { recursive: true });
     writeFileSync(this.layoutPath, serializeLayout(layout));
   }
 
