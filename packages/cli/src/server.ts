@@ -98,13 +98,18 @@ export function createDevServer({
   app.post<{ Params: { id: string }; Body: { approved: boolean; reason?: string } }>(
     "/api/runs/:id/approve",
     async (request, reply) => {
-      const run = runManager.get(request.params.id);
-      if (!run) {
-        reply.code(404);
-        return { success: false, error: `Unknown run id "${request.params.id}".` };
-      }
+      // Routed through runManager.approve() (not run.resume() directly) so
+      // the run map and its eviction bookkeeping have one entry point.
       try {
-        const state = await run.resume(request.body.approved, request.body.reason);
+        const state = await runManager.approve(
+          request.params.id,
+          request.body.approved,
+          request.body.reason,
+        );
+        if (state === undefined) {
+          reply.code(404);
+          return { success: false, error: `Unknown run id "${request.params.id}".` };
+        }
         return { success: true, state };
       } catch (err) {
         reply.code(409);
