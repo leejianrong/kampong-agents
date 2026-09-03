@@ -1,0 +1,40 @@
+# Local dev stack: builds and runs the kampong app in a container, publishing
+# it on one configurable host port. Point is to make the *host* port the
+# one and only thing you ever have to change when it collides with another
+# project's stack on this laptop. See .env.example / Makefile.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["dev", "/workspace", "--host", "0.0.0.0", "--spec", "${SPEC_FILENAME:-agent.yaml}"]
+    ports:
+      - "${HOST_PORT:-4310}:4310"
+    # Optional: absent on a first `docker compose up` before `make up`'s
+    # .env bootstrap runs; present once it does, so BYOK vars (e.g.
+    # ANTHROPIC_API_KEY) reach the container the same way they'd reach a
+    # locally-run `kampong` process.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./workspace:/workspace
+    # Lets a spec's `model.base_url` reach Ollama running on the host (e.g.
+    # `http://host.docker.internal:11434`) -- "localhost" from inside this
+    # container means the container itself, never the host, so a spec's
+    # default base_url only works if it's pointed here explicitly. The
+    # `host-gateway` value is what Linux needs for this to resolve; Docker
+    # Desktop (macOS/Windows) already provides it and ignores this no-op.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4310/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../packages/spec/schemas/agent-spec.v1.0.schema.json
+#
+# Starter spec for trying the canvas + kampong run. `make up` copies this
+# into ./workspace/agent.yaml (gitignored, so your own edits there never
+# touch this tracked copy) the first time you bring the stack up.
+version: "1.0"
+agent:
+  id: hello_agent
+  name: "Hello Agent"
+  role: "Friendly assistant"
+  goal: "Greet the user warmly and answer one question in a concise, helpful tone."
+  model:
+    provider: ollama
+    name: llama3.2
+    # Via `make up` (Docker), this must point at your HOST's Ollama --
+    # "localhost" from inside a container means the container itself, not
+    # your machine. Running `kampong dev`/`kampong run` directly instead (no
+    # Docker)? Change this to http://localhost:11434.
+    base_url: http://host.docker.internal:11434
+  workflow:
+    - step: greet
+      action: generate_text
+      inputs: [input]

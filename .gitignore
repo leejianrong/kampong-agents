@@ -13,3 +13,8 @@ coverage/
 # per-user layout files belong to whatever project folder is open in the
 # canvas, not to this repo.
 .kampong/
+
+# The docker-compose stack's live spec directory (bind-mounted into the
+# app container) — seeded from examples/agent.yaml by `make up`, then
+# yours to edit; never the tracked copy.
+/workspace/
