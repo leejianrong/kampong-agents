@@ -63,7 +63,7 @@ export class MissingApiKeyError extends Error {
   ) {
     super(
       `Missing API key: environment variable "${envVar}" (required by model provider "${provider}") is not set. ` +
-        `Set it in your shell or a local .env file before running this agent -- never in a source file.`,
+        `Set it in your shell or a local .env file before running this agent -- never in the spec file itself.`,
     );
     this.name = "MissingApiKeyError";
   }
