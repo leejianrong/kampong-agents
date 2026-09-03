@@ -34,6 +34,15 @@ export interface HttpToolCallOptions {
   fetchImpl?: typeof fetch;
 }
 
+// Stamped on every outgoing call so the mock/record tool layer (V3,
+// tool-fixtures.ts) can key a fixture on {tool name, method, substituted
+// URL} without this file's caller (workflow.ts) changing at all -- the
+// fixture layer wraps `fetchImpl` and reads this header back off; it
+// doesn't need a modified `fetchImpl` signature to learn which tool a call
+// belongs to. Harmless on a real live call (an extra header a real HTTP
+// endpoint just ignores).
+export const TOOL_NAME_HEADER = "x-kampong-tool-name";
+
 /**
  * Substitutes `{placeholder}` params into the tool's URL, performs the HTTP
  * call, and extracts the configured response field -- the exact mapping
@@ -50,7 +59,10 @@ export async function callHttpTool(
   const url = substitutePlaceholders(tool.url, params);
   let response: Response;
   try {
-    response = await fetchImpl(url, { method: tool.method });
+    response = await fetchImpl(url, {
+      method: tool.method,
+      headers: { [TOOL_NAME_HEADER]: tool.name },
+    });
   } catch (err) {
     throw new Error(`Tool "${tool.name}" HTTP call to ${url} failed: ${(err as Error).message}`);
   }
