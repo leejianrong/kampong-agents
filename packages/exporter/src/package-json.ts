@@ -24,7 +24,7 @@ export const ENGINE_DEPENDENCY_VERSIONS = {
   "@ai-sdk/openai": "^4.0.57",
   "@mastra/core": "^1.64.0",
   ai: "^7.0.91",
-  zod: "^3.25.76",
+  zod: "^4.5.4",
 } as const;
 
 const DEV_DEPENDENCY_VERSIONS = {

@@ -83,20 +83,20 @@ export const modelSchema = z
     }
   });
 
-// KNOWN LIMITATION (finding #8, ADR-0008): `zod-to-json-schema` (see
-// json-schema.ts) does not translate a `.superRefine` cross-field
-// constraint into the emitted JSON Schema at all -- the published
-// `agent-spec.v1.0.schema.json` artifact still shows `model.api_key` as
-// unconditionally optional, so an external editor (Cursor, yaml-language-
-// server, etc.) validating a cloud-provider spec missing `api_key` will NOT
-// flag it, even though `parseSpec()` (this package's own Zod-backed
-// validator, which every real `kampong` code path actually runs through)
-// does. Only this file's `agentSpecSchema.safeParse` enforces the "api_key
-// required unless ollama" rule; the JSON Schema is a (deliberately)
-// looser approximation for editor tooling. Revisit if this gap proves
-// costly enough to warrant a hand-authored `oneOf`/`if`/`then` addition to
-// the generated artifact, or a switch to a JSON-Schema generator that
-// supports refinements.
+// KNOWN LIMITATION (finding #8, ADR-0008): `z.toJSONSchema` (Zod's native
+// JSON Schema generator, see json-schema.ts) does not translate a
+// `.superRefine` cross-field constraint into the emitted JSON Schema at all
+// -- the published `agent-spec.v1.0.schema.json` artifact still shows
+// `model.api_key` as unconditionally optional, so an external editor
+// (Cursor, yaml-language-server, etc.) validating a cloud-provider spec
+// missing `api_key` will NOT flag it, even though `parseSpec()` (this
+// package's own Zod-backed validator, which every real `kampong` code path
+// actually runs through) does. Only this file's `agentSpecSchema.safeParse`
+// enforces the "api_key required unless ollama" rule; the JSON Schema is a
+// (deliberately) looser approximation for editor tooling. Revisit if this
+// gap proves costly enough to warrant a hand-authored `oneOf`/`if`/`then`
+// addition to the generated artifact, or a switch to a JSON-Schema
+// generator that supports refinements.
 
 export const workflowStepSchema = z.union([
   z.object({
