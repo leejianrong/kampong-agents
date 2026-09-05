@@ -408,6 +408,78 @@ select.md3-text-field {
   margin-top: 0.25rem;
 }
 
+/* Segmented button (M3 outlined segmented button) -- WorkflowStepForm's
+   "Step kind" (action vs. condition) picker, KAN-1175. */
+
+.md3-segmented-button {
+  display: flex;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-shape-corner-full);
+  overflow: hidden;
+}
+
+.md3-segmented-button__segment {
+  flex: 1;
+  font-size: var(--md-type-label-large-size);
+  line-height: var(--md-type-label-large-line);
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  border: none;
+  border-right: 1px solid var(--md-sys-color-outline);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.md3-segmented-button__segment:last-child {
+  border-right: none;
+}
+
+.md3-segmented-button__segment:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-segmented-button__segment:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-segmented-button__segment--selected {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-segmented-button__segment--selected:hover {
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, black);
+}
+
+/* Checkbox (M3 selection control) -- WorkflowStepForm's "Requires
+   confidence gate" toggle, KAN-1175. Tokens-only per this file's existing
+   convention (no component library) rather than a hand-rolled SVG checkmark
+   for a single field -- `accent-color` themes the native control with the
+   same primary role every other selected/filled state on this canvas uses. */
+
+.md3-checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.md3-checkbox {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--md-sys-color-primary);
+  cursor: pointer;
+}
+
+.md3-checkbox:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
 .md3-error-list {
   margin: 0;
   padding: 0.625rem 0.875rem;

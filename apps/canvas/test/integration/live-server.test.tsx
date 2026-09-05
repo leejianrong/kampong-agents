@@ -154,6 +154,62 @@ describe("canvas against a real local server (no mocks)", () => {
     });
   });
 
+  it("builds a two-step agent with a confidence-gated action step and a conditional guardrail branch entirely on the canvas (KAN-1175)", async () => {
+    // Before KAN-1175 there was no way to author a `type: "condition"` step
+    // or set `confidence_gate` from the canvas at all -- this is the literal
+    // SLICES.md V1 demo script ("one tool defined via the structured form,
+    // one conditional guardrail branch"), now unblocked.
+    await startServer(MINIMAL_SPEC);
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+
+    fireEvent.click(screen.getByText("Add Workflow Step"));
+    let form = screen.getByRole("form", { name: "Add Workflow Step" });
+    fireEvent.change(within(form).getByLabelText("Step ID"), {
+      target: { value: "evaluate_policy" },
+    });
+    fireEvent.change(within(form).getByLabelText("Action"), {
+      target: { value: "check_knowledge" },
+    });
+    fireEvent.click(within(form).getByLabelText("Requires confidence gate"));
+    fireEvent.click(within(form).getByText("Save Step"));
+    await waitFor(() => {
+      expect(readFileSync(specPath, "utf8")).toContain("confidence_gate: true");
+    });
+
+    fireEvent.click(screen.getByText("Add Workflow Step"));
+    form = screen.getByRole("form", { name: "Add Workflow Step" });
+    fireEvent.click(within(form).getByText("Conditional branch"));
+    fireEvent.change(within(form).getByLabelText("Step ID"), {
+      target: { value: "handle_approval" },
+    });
+    fireEvent.change(within(form).getByLabelText("If (condition)"), {
+      target: { value: "evaluate_policy.eligible == true" },
+    });
+    fireEvent.change(within(form).getByLabelText("Then (target step id)"), {
+      target: { value: "execute_tool(issue_refund)" },
+    });
+    fireEvent.change(within(form).getByLabelText("Else (target step id)"), {
+      target: { value: "request_human_approval" },
+    });
+    fireEvent.click(within(form).getByText("Save Step"));
+    await waitFor(() => {
+      expect(readFileSync(specPath, "utf8")).toContain("type: condition");
+    });
+
+    const onDisk = readFileSync(specPath, "utf8");
+    expect(onDisk).toContain("confidence_gate: true");
+    expect(onDisk).toContain("handle_approval");
+    expect(onDisk).toContain("evaluate_policy.eligible == true");
+    expect(onDisk).toContain("request_human_approval");
+
+    // the canvas reflects both additions, not just the file on disk
+    await waitFor(() => {
+      expect(screen.getByText(/Workflow: evaluate_policy/)).toBeTruthy();
+      expect(screen.getByText(/Workflow: handle_approval/)).toBeTruthy();
+    });
+  });
+
   it("adding a tool through the canvas really mutates the file on disk, preserving comments", async () => {
     await startServer(EXTERNALLY_WRITTEN_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
