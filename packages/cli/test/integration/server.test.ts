@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -73,5 +73,43 @@ describe("createDevServer", () => {
     expect(response.statusCode).toBe(422);
     expect(response.json().success).toBe(false);
     expect(readFileSync(specPath, "utf8")).toBe(before);
+  });
+
+  // KAN-1216: deleting the spec file out from under a running `kampong dev`
+  // used to make GET /api/spec throw an uncaught ENOENT, which Fastify's
+  // default error handler turned into a bare 500 leaking the raw fs error
+  // (including the absolute server path) straight into the response body.
+  describe("when the spec file has been deleted out from under a running server", () => {
+    beforeEach(() => {
+      unlinkSync(specPath);
+    });
+
+    it("GET /api/spec returns a clean 404 instead of a raw ENOENT 500", async () => {
+      const response = await app.inject({ method: "GET", url: "/api/spec" });
+
+      expect(response.statusCode).toBe(404);
+      const body = response.json();
+      expect(body.success).toBe(false);
+      expect(typeof body.error).toBe("string");
+      expect(body.error).not.toContain("ENOENT");
+      expect(body.error).not.toContain(dir);
+      expect(body.error).not.toContain(specPath);
+    });
+
+    it("PUT /api/spec returns a clean 404 instead of a raw ENOENT 500 and does not mask it in a finally block", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/spec",
+        payload: { ops: [{ op: "set", path: ["agent", "goal"], value: "Say hi warmly" }] },
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = response.json();
+      expect(body.success).toBe(false);
+      expect(typeof body.error).toBe("string");
+      expect(body.error).not.toContain("ENOENT");
+      expect(body.error).not.toContain(dir);
+      expect(body.error).not.toContain(specPath);
+    });
   });
 });

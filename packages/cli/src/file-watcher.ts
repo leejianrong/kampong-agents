@@ -20,8 +20,24 @@ import { classifyFileChange, type FileChangeClassification } from "./watch-decis
 // replaced -- so we watch the directory and filter events down to the one
 // filename we care about.
 
+// KAN-1216: a genuine deletion (as opposed to the transient mid-write gap
+// this file already tolerated) used to be swallowed by handleChange()'s
+// catch-and-return-silently -- the watcher went deaf forever and the canvas
+// never found out. `handleChange` now retries once, a tick later, before
+// declaring the file genuinely missing -- that one retry is what preserves
+// tolerance for a real transient gap (e.g. an editor that unlinks then
+// recreates rather than atomically renaming) -- and only THEN emits a
+// distinct "missing" event so a live canvas tab can show a real error
+// instead of going blank. This is deliberately not a "recover the file"
+// feature: once it reappears, the next directory event's successful read
+// falls through to the normal self/conflict/reload classification, which is
+// how the existing auto-reload machinery (ADR-0008) picks it back up.
+const MISSING_FILE_RETRY_DELAY_MS = 50;
+
+export type WatchEventType = FileChangeClassification | "missing";
+
 export interface FileWatchEvent {
-  type: FileChangeClassification;
+  type: WatchEventType;
   source: string;
 }
 
@@ -29,6 +45,7 @@ export class SpecFileWatcher extends EventEmitter {
   private watcher: FSWatcher | null = null;
   private lastWrittenHash: string | null = null;
   private pendingMutation = false;
+  private retryTimer: NodeJS.Timeout | null = null;
   private readonly fileName: string;
   private readonly watchDir: string;
 
@@ -53,6 +70,10 @@ export class SpecFileWatcher extends EventEmitter {
   stop(): void {
     this.watcher?.close();
     this.watcher = null;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
   }
 
   /** Call before validating/writing a canvas-triggered mutation. */
@@ -68,12 +89,23 @@ export class SpecFileWatcher extends EventEmitter {
     }
   }
 
-  private handleChange(): void {
+  private handleChange(isRetry = false): void {
     let source: string;
     try {
       source = readFileSync(this.path, "utf8");
     } catch {
-      // The file can be transiently missing mid-write on some platforms/editors.
+      // The file can be transiently missing mid-write on some platforms/
+      // editors -- give it one retry a tick later before treating this as a
+      // genuine deletion, rather than declaring it missing on the very
+      // first failed read.
+      if (!isRetry) {
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          this.handleChange(true);
+        }, MISSING_FILE_RETRY_DELAY_MS);
+        return;
+      }
+      this.emit("change", { type: "missing", source: "" } satisfies FileWatchEvent);
       return;
     }
 

@@ -55,10 +55,47 @@ export type RunEventMessage =
 
 export type { PendingApproval, RunEvent, RunState };
 
+// KAN-1216: a non-2xx /api/spec response (e.g. the 404 the server now
+// returns for a spec file deleted out from under a running `kampong dev`,
+// SLICES.md V1/ADR-0008) used to get parsed and cast to the success-shaped
+// DTO anyway -- `success` came back `undefined` (not `false`), so callers
+// that only checked `.success`/`.errors` treated it as "nothing to report"
+// and silently no-op'd instead of surfacing anything. `loadSpec`/
+// `applyPatch` now check `res.ok` first and throw this instead, so App.tsx
+// can catch it and show a real error banner.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function errorMessageFor(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string; errors?: { message: string }[] };
+    if (typeof body.error === "string" && body.error.length > 0) return body.error;
+    if (Array.isArray(body.errors) && body.errors.length > 0) {
+      return body.errors.map((e) => e.message).join("; ");
+    }
+  } catch {
+    // Body wasn't JSON (or was empty) -- fall through to the generic message.
+  }
+  return fallback;
+}
+
 export function createApiClient(baseUrl = "") {
   return {
     async loadSpec(): Promise<LoadSpecResponse> {
       const res = await fetch(`${baseUrl}/api/spec`);
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Failed to load the spec (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
       return (await res.json()) as LoadSpecResponse;
     },
 
@@ -68,6 +105,12 @@ export function createApiClient(baseUrl = "") {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ops }),
       });
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Failed to save the change (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
       return (await res.json()) as ApplyPatchResponse;
     },
 

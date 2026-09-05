@@ -39,7 +39,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ json: async () => SPEC_RESPONSE }) as Response),
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => SPEC_RESPONSE }) as Response),
     );
     vi.stubGlobal("EventSource", FakeEventSource);
   });

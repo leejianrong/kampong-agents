@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { createDevServer } from "@kampong/cli";
 import type { FastifyInstance } from "fastify";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -228,5 +228,40 @@ describe("canvas against a real local server (no mocks)", () => {
     });
     const onDisk = readFileSync(specPath, "utf8");
     expect(onDisk).toContain("# Written entirely outside the app");
+  });
+
+  // KAN-1216: the exact repro from the ticket -- delete the spec file out
+  // from under a running server while its tab is still open, then try to
+  // save a mutation in that tab. Before the fix: the dialog closed as if
+  // the save had succeeded, and the canvas went completely blank with no
+  // error anywhere (GET/PUT /api/spec 500'd with a raw ENOENT leaking the
+  // server filesystem path; api.ts never checked res.ok so the malformed
+  // body was cast straight to a success-shaped DTO). Now: PUT /api/spec
+  // returns a clean 404, api.ts throws, and the dialog must stay open with
+  // a visible error instead of silently no-opping.
+  it("shows a real error and keeps the dialog open when saving after the spec file was deleted (KAN-1216)", async () => {
+    await startServer(MINIMAL_SPEC);
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+
+    unlinkSync(specPath);
+
+    fireEvent.click(screen.getByText("Add Workflow Step"));
+    await fillAndSubmit(
+      "Add Workflow Step",
+      { "Step ID": "evaluate_policy", Action: "check_knowledge" },
+      "Save Step",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("spec-error-banner")).toBeTruthy();
+    });
+    expect(screen.getByTestId("spec-error-banner").textContent).not.toContain("ENOENT");
+    expect(screen.getByTestId("spec-error-banner").textContent).not.toContain(dir);
+    // The dialog must still be open -- the save did not actually succeed.
+    expect(screen.getByRole("form", { name: "Add Workflow Step" })).toBeTruthy();
+    // The canvas itself (toolbar + the trigger node) must still be showing,
+    // not blanked out.
+    expect(screen.getByText(/Trigger: Refund Agent/)).toBeTruthy();
   });
 });
