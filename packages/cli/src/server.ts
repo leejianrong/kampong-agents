@@ -90,6 +90,12 @@ export function createDevServer({
     }
 
     try {
+      // KAN-1187: returns as soon as the run is registered and kicked off --
+      // `state` here is always the untouched initial "running" snapshot, not
+      // the first pause/terminal state. The canvas (or any client) opens
+      // `/api/runs/:id/events` with this `id` right away and drives all
+      // further UI off that SSE stream, which is what makes the very first
+      // step_started event (and everything after it) actually observable.
       const { id, state } = await runManager.start(spec as AgentSpec, request.body.input);
       return { success: true, id, state };
     } catch (err) {
