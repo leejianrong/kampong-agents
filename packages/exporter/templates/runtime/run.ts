@@ -26,7 +26,7 @@ export interface PendingApproval {
 
 export interface StepRecord {
   step: string;
-  status: "completed" | "failed";
+  status: "completed" | "rejected" | "failed";
   output?: unknown;
   confidence?: number;
   error?: string;
@@ -149,7 +149,10 @@ export class AgentRun extends EventEmitter {
           status: "rejected",
           error: event.reason,
           pendingApproval: undefined,
-          trace: [...this.state.trace, { step: event.step, status: "failed", error: event.reason }],
+          trace: [
+            ...this.state.trace,
+            { step: event.step, status: "rejected", error: event.reason },
+          ],
         };
         break;
       case "failed":

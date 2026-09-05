@@ -72,6 +72,27 @@ describe("guardrail-triggered human approval (SLICES.md V2)", () => {
     expect(rejected.pendingApproval).toBeUndefined();
   });
 
+  // Regression coverage for KAN-1217: "Rejected-approval trace entry says
+  // status:failed while the run's own status says rejected". The trace
+  // entry for the step whose rejection ended the run must itself carry
+  // status "rejected" -- not "failed", which is reserved for a genuine
+  // error (see the model-timeout/workflow "failed" coverage elsewhere) --
+  // so a consumer reading the trace array alone (kampong run --json, the
+  // canvas trace list) sees the same outcome the top-level status reports.
+  it("records the rejected step's trace entry with status 'rejected', not 'failed'", async () => {
+    const run = createAgentRun(GUARDRAIL_SPEC, { model: fixedConfidenceModel(0.4) });
+
+    await run.start("Refund request for order #42");
+    const rejected = await run.resume(false, "Confidence too low to trust automatically.");
+
+    const rejectedEntry = rejected.trace[rejected.trace.length - 1];
+    expect(rejectedEntry).toEqual({
+      step: "evaluate_policy",
+      status: "rejected",
+      error: "Confidence too low to trust automatically.",
+    });
+  });
+
   it("does not pause when confidence is at or above the threshold", async () => {
     const run = createAgentRun(GUARDRAIL_SPEC, { model: fixedConfidenceModel(0.9) });
 
