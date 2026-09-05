@@ -7,14 +7,20 @@ for reading those when you're actually implementing a slice.
 
 ## Build status
 
-**Scaffolding only. No feature code exists yet.** Every package (`packages/*`, `apps/canvas`)
-contains a placeholder `src/index.ts` and a smoke test proving the pipeline works — lint,
-typecheck, build, and all three test layers are green, but none of it does anything real yet.
-Trust the code over this file or the planning docs for what's actually implemented; trust
-`PLAN.md`/`SLICES.md`/`docs/adr/` for what's _supposed_ to get built and why.
+**V1–V4 (the full MVP) are implemented and merged to `main`.** Concretely: the `AgentSpec`
+YAML schema + validator and published JSON Schema (`packages/spec`); the sidecar layout store,
+canvas read/write path, tool- and workflow-step forms, file-watcher auto-reload, and YAML
+preview panel (`apps/canvas`); the Mastra-backed execution engine with guardrail/HITL approval
+and BYOK model config (`packages/engine`); `kampong dev`/`run`/`export` and the Fastify local
+server, including the mock/record tool layer and Ollama adapter (`packages/cli`); and the
+one-way TypeScript exporter (`packages/exporter`). Lint, typecheck, build, and all three test
+layers are green. V5–V8 (hosted/BYOK SaaS, enterprise governance, multi-agent orchestration,
+NL-to-workflow generation) remain roadmap — not started. Trust the code over this file or the
+planning docs for exactly what's implemented and how; trust `PLAN.md`/`SLICES.md`/`docs/adr/`
+for what's _supposed_ to get built next and why.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`) — one epic per
-slice in `SLICES.md`, V1–V4 as immediate MVP work, V5–V6 explicitly labeled `[ROADMAP]`.
+slice in `SLICES.md`. V1–V4 epics are done; V5–V8 epics are open and labeled `[ROADMAP]`.
 
 ## Load-bearing conventions (don't re-litigate these — see the cited ADR if you need the why)
 
