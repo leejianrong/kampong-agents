@@ -98,15 +98,16 @@ describe("createDevServer run endpoints", () => {
     expect(start.statusCode).toBe(200);
     const startBody = start.json();
     expect(startBody.success).toBe(true);
-    expect(startBody.state.status).toBe("awaiting_approval");
-    expect(startBody.state.pendingApproval).toMatchObject({
+    // POST /api/runs returns the run's untouched initial state (KAN-1187) --
+    // it no longer waits for the workflow to reach its first pause.
+    expect(startBody.state).toEqual({ status: "running", trace: [] });
+
+    const runId = startBody.id as string;
+    const pausedState = await waitForRunState(app, runId, ["awaiting_approval"]);
+    expect(pausedState.pendingApproval).toMatchObject({
       kind: "tool",
       toolName: "issue_refund",
     });
-
-    const runId = startBody.id as string;
-    const getResponse = await app.inject({ method: "GET", url: `/api/runs/${runId}` });
-    expect(getResponse.json().state.status).toBe("awaiting_approval");
 
     const approve = await app.inject({
       method: "POST",
@@ -181,4 +182,92 @@ describe("createDevServer run endpoints", () => {
     });
     expect(response.statusCode).toBe(404);
   });
+
+  // KAN-1187 regression: POST /api/runs used to block until the workflow's
+  // first pause/terminal state (RunManager.start() awaited AgentRun.start(),
+  // which only resolves there), so the run's id -- and therefore the SSE
+  // subscription that shows a step in progress -- was unreachable for the
+  // entire duration of the first step's model call. For a single-step
+  // workflow, that made the whole run invisible in the canvas until it was
+  // already done. This proves the fix at the HTTP boundary: POST /api/runs
+  // returns while the first step's model call is deliberately still in
+  // flight, and GET /api/runs/:id -- reachable only because POST already
+  // returned the run's id -- shows "running" (never "awaiting_approval" or
+  // any terminal status) while that call is still pending.
+  it("returns from POST /api/runs, and GET /api/runs/:id shows 'running', while the first step's model call is still in flight", async () => {
+    writeFileSync(specPath, TOOL_APPROVAL_SOURCE);
+    let resolveModelCall: (() => void) | undefined;
+    const slowModel: ModelClient = {
+      async generateText() {
+        return "hello";
+      },
+      async generateStructured<T>() {
+        await new Promise<void>((resolve) => {
+          resolveModelCall = resolve;
+        });
+        return { result: { eligible: true }, confidence: 0.99 } as T;
+      },
+    };
+    app = createDevServer({ specPath, layoutPath, run: { createModel: () => slowModel } });
+    await app.ready();
+
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: { input: "Refund order #1" },
+    });
+    // Deterministic regardless of how the background workflow generator
+    // happens to interleave with this request: RunManager.start() reads
+    // run.getState() synchronously before kicking off the workflow, so this
+    // is the run's untouched initial state -- proving the request did not
+    // block on the (still in-flight) model call below.
+    expect(start.statusCode).toBe(200);
+    const startBody = start.json();
+    expect(startBody.success).toBe(true);
+    expect(startBody.state).toEqual({ status: "running", trace: [] });
+
+    const runId = startBody.id as string;
+
+    // The model call is genuinely still in flight -- the run hasn't
+    // progressed past it, and won't until we resolve it ourselves below.
+    await waitUntil(() => resolveModelCall !== undefined);
+    const whileRunning = await app.inject({ method: "GET", url: `/api/runs/${runId}` });
+    expect(whileRunning.json().state).toEqual({ status: "running", trace: [] });
+
+    resolveModelCall!();
+    const finalState = await waitForRunState(app, runId, ["awaiting_approval"]);
+    expect(finalState.pendingApproval).toMatchObject({ kind: "tool", toolName: "issue_refund" });
+  });
 });
+
+// Polls (never a fixed sleep) until `predicate()` is true, yielding to the
+// event loop's macrotask queue between checks so pending microtask chains
+// (e.g. the workflow generator's own internal awaits) get to run.
+async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error("Timed out waiting for condition.");
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+/** Polls GET /api/runs/:id (an SSE stream would push this same state over the wire, but `app.inject()` doesn't stream) until the run reaches one of `statuses`, the way a real client would. */
+async function waitForRunState(
+  app: FastifyInstance,
+  runId: string,
+  statuses: string[],
+  timeoutMs = 2000,
+): Promise<{ status: string; pendingApproval?: { kind: string; toolName?: string } }> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const response = await app.inject({ method: "GET", url: `/api/runs/${runId}` });
+    const state = response.json().state;
+    if (statuses.includes(state.status)) return state;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Timed out waiting for run ${runId} to reach one of [${statuses.join(", ")}]; last status was "${state.status}".`,
+      );
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}

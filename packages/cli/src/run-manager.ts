@@ -31,6 +31,7 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<RunEvent["type"]> = new Set([
 
 export interface StartRunResult {
   id: string;
+  /** The run's state at the moment it was registered -- always `{ status: "running", trace: [] }` (KAN-1187). Callers drive all further state off the run's "event" stream (e.g. the `/api/runs/:id/events` SSE route), not this snapshot. */
   state: RunState;
 }
 
@@ -52,6 +53,21 @@ export class RunManager {
     this.evictAfterMs = options.evictAfterMs ?? DEFAULT_EVICT_AFTER_MS;
   }
 
+  // KAN-1187: this used to `await run.start(input)` before returning, but
+  // AgentRun.start() (packages/engine) only resolves once the workflow's
+  // async generator reaches its FIRST pause/terminal yield (an
+  // awaiting_approval/completed/rejected/failed event) -- never on the very
+  // first step_started. Awaiting it here meant POST /api/runs itself
+  // blocked for that same duration, so the canvas couldn't even learn the
+  // run's id -- and therefore couldn't open its per-run SSE subscription --
+  // until the run was already paused or done. For a single-step workflow
+  // (the common case) that made the entire run invisible while in flight.
+  // The fix: register the run and kick off run.start() without awaiting
+  // it, and return immediately with the id and the run's untouched initial
+  // state ("running", empty trace). Every event from that point on --
+  // including the first step_started -- is driven purely by the AgentRun's
+  // "event" emitter, which server.ts's /api/runs/:id/events SSE route (and
+  // this class's own eviction hook, below) already subscribe to.
   async start(spec: AgentSpec, input: string): Promise<StartRunResult> {
     const id = randomUUID();
     const run = createAgentRun(spec, {
@@ -63,8 +79,16 @@ export class RunManager {
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
     });
     this.runs.set(id, run);
-    const state = await run.start(input);
-    return { id, state };
+    // Fire-and-forget: workflow.ts (packages/engine) already catches every
+    // real failure mode itself and yields a "failed" RunEvent instead of
+    // throwing, so a rejection here means something broke unexpectedly
+    // upstream of that. Logging (rather than silently swallowing it) keeps
+    // that visible without turning it into an unhandled rejection that
+    // could crash the `kampong dev` process.
+    run.start(input).catch((err: unknown) => {
+      console.error(`Run ${id} failed unexpectedly:`, err);
+    });
+    return { id, state: run.getState() };
   }
 
   get(id: string): AgentRun | undefined {
