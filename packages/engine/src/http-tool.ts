@@ -82,7 +82,9 @@ export async function callHttpTool(
   try {
     response = await fetchImpl(url, { method: tool.method }, { toolName: tool.name });
   } catch (err) {
-    throw new Error(`Tool "${tool.name}" HTTP call to ${url} failed: ${(err as Error).message}`);
+    throw new Error(`Tool "${tool.name}" HTTP call to ${url} failed: ${(err as Error).message}`, {
+      cause: err,
+    });
   }
   if (!response.ok) {
     throw new Error(
