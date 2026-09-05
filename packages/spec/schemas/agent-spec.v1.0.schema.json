@@ -1,190 +1,185 @@
 {
-  "$ref": "#/definitions/AgentSpec",
-  "definitions": {
-    "AgentSpec": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent": {
       "type": "object",
       "properties": {
-        "version": {
+        "id": {
           "type": "string",
           "minLength": 1
         },
-        "agent": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
           "type": "object",
           "properties": {
-            "id": {
+            "provider": {
               "type": "string",
-              "minLength": 1
+              "enum": ["anthropic", "openai", "ollama", "openrouter"]
             },
             "name": {
               "type": "string",
               "minLength": 1
             },
-            "role": {
+            "api_key": {
               "type": "string",
-              "minLength": 1
+              "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
             },
-            "goal": {
+            "base_url": {
               "type": "string",
-              "minLength": 1
-            },
-            "model": {
-              "type": "object",
-              "properties": {
-                "provider": {
-                  "type": "string",
-                  "enum": ["anthropic", "openai", "ollama", "openrouter"]
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "api_key": {
-                  "type": "string",
-                  "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
-                },
-                "base_url": {
-                  "type": "string",
-                  "format": "uri"
-                }
+              "format": "uri"
+            }
+          },
+          "required": ["provider", "name"],
+          "additionalProperties": false
+        },
+        "knowledge_base": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["pdf", "url", "text"]
               },
-              "required": ["provider", "name"],
-              "additionalProperties": false
+              "source": {
+                "type": "string",
+                "minLength": 1
+              }
             },
-            "knowledge_base": {
-              "type": "array",
-              "items": {
+            "required": ["type", "source"],
+            "additionalProperties": false
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "action": {
+                "type": "string",
+                "const": "http_request"
+              },
+              "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requires_approval": {
+                "type": "boolean"
+              },
+              "extract": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "action", "method", "url"],
+            "additionalProperties": false
+          }
+        },
+        "guardrails": {
+          "type": "object",
+          "properties": {
+            "confidence_threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "fallback_action": {
+              "type": "string",
+              "enum": ["escalate_to_human"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "workflow": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
                 "type": "object",
                 "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "type": {
                     "type": "string",
-                    "enum": ["pdf", "url", "text"]
+                    "const": "condition"
                   },
-                  "source": {
+                  "if": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "then": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "else": {
                     "type": "string",
                     "minLength": 1
                   }
                 },
-                "required": ["type", "source"],
+                "required": ["step", "type", "if", "then", "else"],
                 "additionalProperties": false
-              }
-            },
-            "tools": {
-              "type": "array",
-              "items": {
+              },
+              {
                 "type": "object",
                 "properties": {
-                  "name": {
+                  "step": {
                     "type": "string",
                     "minLength": 1
                   },
                   "action": {
                     "type": "string",
-                    "const": "http_request"
-                  },
-                  "method": {
-                    "type": "string",
-                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
-                  },
-                  "url": {
-                    "type": "string",
                     "minLength": 1
                   },
-                  "requires_approval": {
-                    "type": "boolean"
+                  "inputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   },
-                  "extract": {
+                  "query": {
                     "type": "string"
+                  },
+                  "confidence_gate": {
+                    "type": "boolean"
                   }
                 },
-                "required": ["name", "action", "method", "url"],
+                "required": ["step", "action"],
                 "additionalProperties": false
               }
-            },
-            "guardrails": {
-              "type": "object",
-              "properties": {
-                "confidence_threshold": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1
-                },
-                "fallback_action": {
-                  "type": "string",
-                  "enum": ["escalate_to_human"]
-                }
-              },
-              "additionalProperties": false
-            },
-            "workflow": {
-              "type": "array",
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "step": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "type": {
-                        "type": "string",
-                        "const": "condition"
-                      },
-                      "if": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "then": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "else": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    },
-                    "required": ["step", "type", "if", "then", "else"],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "step": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "action": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "inputs": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "query": {
-                        "type": "string"
-                      },
-                      "confidence_gate": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": ["step", "action"],
-                    "additionalProperties": false
-                  }
-                ]
-              },
-              "minItems": 1
-            }
-          },
-          "required": ["id", "name", "role", "goal", "workflow"],
-          "additionalProperties": false
+            ]
+          }
         }
       },
-      "required": ["version", "agent"],
+      "required": ["id", "name", "role", "goal", "workflow"],
       "additionalProperties": false
     }
   },
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "required": ["version", "agent"],
+  "additionalProperties": false
 }

@@ -49,11 +49,20 @@ export function parseSpec(source: string): ParseResult {
   return { success: true, spec: result.data, doc, errors: [] };
 }
 
+// Zod v4 widened `ZodIssue.path` to `PropertyKey[]` (adding `symbol`) to
+// cover schemas keyed by symbol (ours never are -- AgentSpec is plain
+// object/array paths only). Narrow back to the `(string | number)[]` this
+// module's `SpecError` and `yaml`'s `Document#getIn` both expect.
+function toSafePath(path: readonly PropertyKey[]): (string | number)[] {
+  return path.map((segment) => (typeof segment === "symbol" ? String(segment) : segment));
+}
+
 function toSpecError(issue: ZodIssue, doc: Document, lineCounter: LineCounter): SpecError {
+  const path = toSafePath(issue.path);
   let line: number | undefined;
   let column: number | undefined;
   try {
-    const node = doc.getIn(issue.path, true) as { range?: [number, number, number] } | null;
+    const node = doc.getIn(path, true) as { range?: [number, number, number] } | null;
     if (node && typeof node === "object" && "range" in node && node.range) {
       const pos = lineCounter.linePos(node.range[0]);
       line = pos.line;
@@ -63,7 +72,7 @@ function toSpecError(issue: ZodIssue, doc: Document, lineCounter: LineCounter): 
     // The path doesn't resolve to a concrete node (e.g. a missing required
     // field has nothing to point at) — position stays undefined.
   }
-  return { path: issue.path, message: issue.message, line, column };
+  return { path, message: issue.message, line, column };
 }
 
 export function toYamlString(doc: Document): string {
