@@ -100,7 +100,7 @@ describe("RunPanel", () => {
     };
     const rejectedState = {
       status: "rejected",
-      trace: [{ step: "evaluate_policy", status: "failed", error: "Not confident enough." }],
+      trace: [{ step: "evaluate_policy", status: "rejected", error: "Not confident enough." }],
       error: "Not confident enough.",
     };
 
@@ -130,6 +130,16 @@ describe("RunPanel", () => {
     });
     expect(screen.getByTestId("run-halted").textContent).toContain("Not confident enough.");
     expect(screen.queryByRole("dialog")).toBeNull();
+
+    // Regression coverage for KAN-1217: the trace line for the step whose
+    // rejection ended the run must itself read "rejected", not "failed" --
+    // pre-fix, StepRecord had no "rejected" variant and this line hardcoded
+    // "failed" even though the run-level status (asserted above) was
+    // correctly "rejected".
+    expect(screen.getByTestId("run-trace").textContent).toContain(
+      "evaluate_policy: rejected: Not confident enough.",
+    );
+    expect(screen.getByTestId("run-trace").textContent).not.toContain("evaluate_policy: failed");
   });
 
   it("regression: disables Run synchronously so a fast double-click can't start two concurrent runs", async () => {

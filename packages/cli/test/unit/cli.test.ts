@@ -430,6 +430,30 @@ agent:
     expect(code).toBe(EXIT_EXECUTION_FAILURE);
   });
 
+  // Regression coverage for KAN-1217: "kampong run --json"'s trace array
+  // must show "rejected" for the step whose rejection ended the run, not
+  // "failed" -- pre-fix, the top-level `status` correctly read "rejected"
+  // while the trace entry for the exact same event hardcoded "failed".
+  it("--json's trace array shows the rejected step's status as 'rejected', not 'failed'", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, GUARDRAIL_SPEC);
+    const { io, out } = capture(["n:not sure about this one"]);
+
+    const code = await runCli(["run", specPath, "--input", "refund #1", "--json"], io, {
+      model: lowConfidenceModel(),
+    });
+
+    expect(code).toBe(EXIT_EXECUTION_FAILURE);
+    const parsed = JSON.parse(out[0]!);
+    expect(parsed.status).toBe("rejected");
+    const rejectedEntry = parsed.trace[parsed.trace.length - 1];
+    expect(rejectedEntry).toEqual({
+      step: "evaluate",
+      status: "rejected",
+      error: "not sure about this one",
+    });
+  });
+
   it('a combined "n:<reason>" answer rejects and carries the reason through to the report', async () => {
     const specPath = join(dir, "agent.yaml");
     writeFileSync(specPath, GUARDRAIL_SPEC);
