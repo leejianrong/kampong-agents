@@ -87,6 +87,25 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 /**
+ * Parses a single combined approval answer -- "y"/"yes" approves; anything
+ * else rejects, optionally carrying a reason via "n:<reason>" (or
+ * "no:<reason>"). See \`promptApproval\` below for why this has to be a
+ * single answer rather than two sequential prompts (KAN-1186).
+ */
+function parseApprovalAnswer(raw: string): { approved: boolean; reason?: string } {
+  const trimmed = raw.trim();
+  if (/^y(es)?$/i.test(trimmed)) {
+    return { approved: true };
+  }
+  const withReason = /^no?\\s*:\\s*(.*)$/is.exec(trimmed);
+  if (withReason) {
+    const reason = withReason[1].trim();
+    return { approved: false, reason: reason.length > 0 ? reason : undefined };
+  }
+  return { approved: false };
+}
+
+/**
  * Mirrors \`kampong run\`'s stdin approval prompt (packages/cli/src/cli.ts
  * in the originating repo), adapted to write directly to process.stdout/
  * stderr instead of an injectable CliIO -- this project has no test-harness
@@ -113,15 +132,18 @@ async function promptApproval(
     output: json ? process.stderr : process.stdout,
   });
   try {
+    // A SINGLE \`rl.question()\` call, deliberately -- KAN-1186. Two
+    // sequential \`question()\` calls against the same readline Interface
+    // hang against piped/non-TTY stdin: Node eagerly drains all buffered
+    // input on the first read, so a second \`question()\` can be left with
+    // no pending line to resolve it, and the process silently exits 0
+    // instead of ever reporting a rejected run. Asking once and parsing the
+    // combined answer avoids that entirely.
     const answer = await rl.question(
-      \`\\nApproval required at step "\${pending.step}" (\${pending.kind}): \${pending.reason}\\nApprove? [y/N]: \`,
+      \`\\nApproval required at step "\${pending.step}" (\${pending.kind}): \${pending.reason}\\n\` +
+        \`Approve? [y/N] (reject with a reason via "n:<reason>"): \`,
     );
-    const approved = /^y(es)?$/i.test(answer.trim());
-    let reason: string | undefined;
-    if (!approved) {
-      reason = (await rl.question("Reason for rejection (optional): ")).trim() || undefined;
-    }
-    return { approved, reason };
+    return parseApprovalAnswer(answer);
   } finally {
     rl.close();
   }
