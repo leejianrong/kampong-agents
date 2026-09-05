@@ -45,6 +45,19 @@ agent:
   id: broken
 `;
 
+const TWO_STEP_SPEC = `version: "1.0"
+agent:
+  id: greeter
+  name: "Greeter"
+  role: "Front desk"
+  goal: "Greet visitors."
+  workflow:
+    - step: greet
+      action: say_hello
+    - step: farewell
+      action: say_bye
+`;
+
 describe("runCli -- top level", () => {
   it("no command prints usage to stderr and exits with a usage error", async () => {
     const { io, err } = capture();
@@ -138,6 +151,40 @@ describe("kampong run -- exit codes (SLICES.md V3 unit test plan)", () => {
     expect(code).toBe(EXIT_USAGE_ERROR);
   });
 
+  it("exits 64 on a non-numeric --timeout value (KAN-1185)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io, err } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi", "--timeout", "soon"], io);
+
+    expect(code).toBe(EXIT_USAGE_ERROR);
+    expect(err.join("\n")).toContain("--timeout must be a positive integer");
+  });
+
+  it("exits 64 on a zero/negative --timeout value (KAN-1185)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi", "--timeout", "0"], io);
+
+    expect(code).toBe(EXIT_USAGE_ERROR);
+  });
+
+  it("accepts a valid --timeout and runs normally (KAN-1185)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io, out } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi", "--timeout", "5000"], io, {
+      model: textModel(),
+    });
+
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(out.join("\n")).toContain("Run completed");
+  });
+
   it("exits 64, not 2, when a flag is given with no following value (finding #3)", async () => {
     const specPath = join(dir, "agent.yaml");
     writeFileSync(specPath, SIMPLE_SPEC);
@@ -214,6 +261,62 @@ describe("kampong run --json (SLICES.md V3 unit test plan: parseable JSON output
     const parsed = JSON.parse(out[0]!);
     expect(parsed.success).toBe(false);
     expect(typeof parsed.error).toBe("string");
+  });
+});
+
+describe("kampong run -- progress output in non-JSON mode (KAN-1185)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "kampong-cli-progress-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("prints a progress line for each step BEFORE the run completes, in non-JSON mode", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, TWO_STEP_SPEC);
+    const { io, out } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi"], io, { model: textModel() });
+
+    expect(code).toBe(EXIT_SUCCESS);
+    // Both steps' progress lines appear...
+    expect(out.some((line) => line.includes("greet") && line.includes("running"))).toBe(true);
+    expect(out.some((line) => line.includes("farewell") && line.includes("running"))).toBe(true);
+    // ...and strictly before the "Run completed" line, not after (proves
+    // this is genuine *progress* output -- printed as each step starts --
+    // not something printed retroactively once the whole run is done).
+    const completedIndex = out.findIndex((line) => line.includes("Run completed"));
+    const progressIndexes = out
+      .map((line, i) => ({ line, i }))
+      .filter(
+        ({ line }) =>
+          line.includes("running") && (line.includes("greet") || line.includes("farewell")),
+      )
+      .map(({ i }) => i);
+    expect(completedIndex).toBeGreaterThan(-1);
+    expect(progressIndexes.length).toBeGreaterThan(0);
+    for (const i of progressIndexes) {
+      expect(i).toBeLessThan(completedIndex);
+    }
+  });
+
+  it("--json mode stays exactly one parseable JSON line -- no progress lines mixed into stdout", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, TWO_STEP_SPEC);
+    const { io, out } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi", "--json"], io, {
+      model: textModel(),
+    });
+
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(out).toHaveLength(1);
+    expect(() => JSON.parse(out[0]!)).not.toThrow();
+    expect(out[0]).not.toContain("running");
   });
 });
 

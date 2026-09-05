@@ -12,6 +12,8 @@ export {
   UnknownModelProviderError,
   OllamaUnavailableError,
   DEFAULT_OLLAMA_BASE_URL,
+  ModelCallTimeoutError,
+  DEFAULT_MODEL_TIMEOUT_MS,
   type ModelClient,
   type GenerateTextInput,
   type GenerateStructuredInput,

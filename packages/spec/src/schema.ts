@@ -72,6 +72,14 @@ export const modelSchema = z
     // server, e.g. a remote/tunneled Ollama host); harmless no-op for the
     // cloud providers, which always call their own fixed API host.
     base_url: z.string().url().optional(),
+    // KAN-1185 (R6, ADR-0004): how long a single model call may run before
+    // the engine aborts it and fails visibly, rather than hanging forever
+    // with zero progress output. Optional -- packages/engine's own
+    // DEFAULT_MODEL_TIMEOUT_MS applies when omitted -- and overridable per
+    // run from the CLI (`kampong run --timeout <ms>`), which takes
+    // precedence over this spec-level value so a CI job can tune it without
+    // editing the spec file.
+    timeout_ms: z.number().int().positive().optional(),
   })
   .superRefine((model, ctx) => {
     if (model.provider !== "ollama" && model.api_key === undefined) {

@@ -174,6 +174,12 @@ export interface CreateAgentRunOptions {
   fetchImpl?: EngineDeps["fetchImpl"];
   /** Overrides the fetch the *model* provider (e.g. the Ollama adapter) uses internally. Distinct from `fetchImpl` above -- tool calls and model calls are separate network seams. */
   modelFetchImpl?: typeof fetch;
+  /**
+   * Forwarded straight through to `createMastraModelClient`, where it takes
+   * precedence over `agent.model.timeout_ms` on the spec. Ignored when a
+   * fake `model` (above) is injected instead of building the real one.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -187,6 +193,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     options.model ??
     createMastraModelClient(spec, options.env ?? process.env, {
       fetchImpl: options.modelFetchImpl,
+      timeoutMs: options.timeoutMs,
     });
   return new AgentRun(spec, { model, fetchImpl: options.fetchImpl });
 }

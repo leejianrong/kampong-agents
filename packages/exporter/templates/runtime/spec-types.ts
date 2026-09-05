@@ -15,6 +15,7 @@ export interface Model {
   name: string;
   api_key?: string;
   base_url?: string;
+  timeout_ms?: number;
 }
 
 export interface KnowledgeItem {
