@@ -440,6 +440,26 @@ function ioWritable(sink: (chunk: string) => void): Writable {
   });
 }
 
+/**
+ * Parses a single combined approval answer -- "y"/"yes" approves; anything
+ * else rejects, optionally carrying a reason via "n:<reason>" (or
+ * "no:<reason>") -- e.g. "n:not sure about this one". See `promptApproval`
+ * below for why this has to be a single answer rather than two sequential
+ * prompts (KAN-1186).
+ */
+function parseApprovalAnswer(raw: string): { approved: boolean; reason?: string } {
+  const trimmed = raw.trim();
+  if (/^y(es)?$/i.test(trimmed)) {
+    return { approved: true };
+  }
+  const withReason = /^no?\s*:\s*(.*)$/is.exec(trimmed);
+  if (withReason) {
+    const reason = withReason[1]!.trim();
+    return { approved: false, reason: reason.length > 0 ? reason : undefined };
+  }
+  return { approved: false };
+}
+
 async function promptApproval(
   state: RunState,
   io: CliIO,
@@ -468,15 +488,25 @@ async function promptApproval(
     output: ioWritable(json ? io.stderr : io.stdout),
   });
   try {
+    // A SINGLE `rl.question()` call, deliberately -- KAN-1186. Two
+    // sequential `question()` calls against the same `readline/promises`
+    // Interface work fine against a real TTY (each keystroke arrives after
+    // the previous prompt is already awaiting it), but against piped/
+    // non-TTY stdin (e.g. `printf 'n\nreason\n' | kampong run ...`) Node's
+    // readline eagerly drains every buffered chunk on its first read pass.
+    // By the time this function would `await` a *second* `question()`,
+    // readline may have already consumed (and dropped, with nothing
+    // pending to receive it) whatever line was meant to answer it -- that
+    // second `await` then never resolves, and since nothing else keeps the
+    // event loop alive, the process quietly exits 0 once the loop drains,
+    // without ever reaching the rejected-run report below. Asking once and
+    // parsing the combined answer (`parseApprovalAnswer`) has no second
+    // `question()` to strand a line against, so it can't hang either way.
     const answer = await rl.question(
-      `\nApproval required at step "${pending.step}" (${pending.kind}): ${pending.reason}\nApprove? [y/N]: `,
+      `\nApproval required at step "${pending.step}" (${pending.kind}): ${pending.reason}\n` +
+        `Approve? [y/N] (reject with a reason via "n:<reason>"): `,
     );
-    const approved = /^y(es)?$/i.test(answer.trim());
-    let reason: string | undefined;
-    if (!approved) {
-      reason = (await rl.question("Reason for rejection (optional): ")).trim() || undefined;
-    }
-    return { approved, reason };
+    return parseApprovalAnswer(answer);
   } finally {
     rl.close();
   }

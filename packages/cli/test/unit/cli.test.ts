@@ -10,7 +10,7 @@ import {
   EXIT_VALIDATION_FAILURE,
   runCli,
 } from "../../src/cli.js";
-import { capture } from "./test-helpers.js";
+import { capture, capturePipedStdin } from "./test-helpers.js";
 
 // SLICES.md V3 unit test plan: "CLI exit codes are correct for success,
 // validation failure, and execution failure cases" and "CLI output is
@@ -325,6 +325,84 @@ agent:
     });
 
     expect(code).toBe(EXIT_EXECUTION_FAILURE);
+  });
+
+  it('a combined "n:<reason>" answer rejects and carries the reason through to the report', async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, GUARDRAIL_SPEC);
+    const { io, out } = capture(["n:not sure about this one"]);
+
+    const code = await runCli(["run", specPath, "--input", "refund #1", "--json"], io, {
+      model: lowConfidenceModel(),
+    });
+
+    expect(code).toBe(EXIT_EXECUTION_FAILURE);
+    const parsed = JSON.parse(out[0]!);
+    expect(parsed.success).toBe(false);
+    expect(parsed.status).toBe("rejected");
+    expect(parsed.error).toBe("not sure about this one");
+  });
+
+  // Regression coverage for KAN-1186: "kampong run: rejecting a guardrail/
+  // approval prompt via piped stdin silently hangs and exits 0 instead of
+  // reporting a rejected run (exit 2)". Root cause was `promptApproval`
+  // making TWO sequential `rl.question()` calls against the same
+  // `readline/promises` Interface -- fine against a real TTY, but against a
+  // piped/non-TTY stdin delivered as a single chunk (what `capturePipedStdin`
+  // reproduces, unlike `capture`'s one-chunk-per-line delivery -- see its
+  // docstring), Node's readline eagerly drains the whole chunk on the first
+  // read, stranding the second `question()` with nothing left to resolve it.
+  // That hung forever and, since nothing else kept the event loop alive, the
+  // process silently exited 0 without ever reaching this report. The fix
+  // reads the y/N answer and an optional "n:<reason>" in a single
+  // `question()`, so there's no second call to strand.
+  describe("KAN-1186: piped/non-TTY stdin (single-chunk delivery) must never hang on rejection", () => {
+    it("an old-style two-line 'n' + reason answer, delivered as one chunk, does not hang and reports a rejected run", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, GUARDRAIL_SPEC);
+      // Exactly the bug report's repro shape: `printf 'n\nsome reason\n' | ...`
+      // arrives as ONE chunk containing both lines -- pre-fix, this hung.
+      const { io, out } = capturePipedStdin("n\nsome reason\n");
+
+      const code = await runCli(["run", specPath, "--input", "refund #1", "--json"], io, {
+        model: lowConfidenceModel(),
+      });
+
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(out).toHaveLength(1);
+      const parsed = JSON.parse(out[0]!);
+      expect(parsed.success).toBe(false);
+      expect(parsed.status).toBe("rejected");
+    });
+
+    it('a single-chunk "n:<reason>" answer does not hang, rejects, and carries the reason through', async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, GUARDRAIL_SPEC);
+      const { io, out } = capturePipedStdin("n:not sure about this one\n");
+
+      const code = await runCli(["run", specPath, "--input", "refund #1", "--json"], io, {
+        model: lowConfidenceModel(),
+      });
+
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      const parsed = JSON.parse(out[0]!);
+      expect(parsed.success).toBe(false);
+      expect(parsed.status).toBe("rejected");
+      expect(parsed.error).toBe("not sure about this one");
+    });
+
+    it("a single-chunk 'y' answer approves and completes without hanging", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, GUARDRAIL_SPEC);
+      const { io, out } = capturePipedStdin("y\n");
+
+      const code = await runCli(["run", specPath, "--input", "refund #1"], io, {
+        model: lowConfidenceModel(),
+      });
+
+      expect(code).toBe(EXIT_SUCCESS);
+      expect(out.join("\n")).toContain("Run completed");
+    });
   });
 });
 
