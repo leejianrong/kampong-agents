@@ -34,14 +34,30 @@ export function App({ apiBaseUrl = "" }: AppProps) {
   const [errors, setErrors] = useState<{ path: (string | number)[]; message: string }[]>([]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
   const [conflict, setConflict] = useState(false);
+  // KAN-1216: a distinct error state for "the last spec load/save failed" --
+  // e.g. the spec file was deleted/renamed out from under a running
+  // `kampong dev`, or is otherwise unreadable. Deliberately separate from
+  // `conflict` (an in-flight-mutation race ADR-0008 already handles): this
+  // is a genuine failure, not a resolvable duplicate edit, so it gets its
+  // own banner rather than silently blanking the canvas or closing a form
+  // dialog as though the save had succeeded.
+  const [specError, setSpecError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const result = await api.loadSpec();
-    setErrors(result.errors ?? []);
-    setSource(result.source);
-    setLayout(result.layout);
-    if (result.success && result.spec) {
-      setSpec(result.spec as AgentSpec);
+    try {
+      const result = await api.loadSpec();
+      setSpecError(null);
+      setErrors(result.errors ?? []);
+      setSource(result.source);
+      setLayout(result.layout);
+      if (result.success && result.spec) {
+        setSpec(result.spec as AgentSpec);
+      }
+    } catch (err) {
+      // Deliberately leaves source/layout/spec at their last-good values --
+      // the point is to keep showing the last known-good canvas alongside
+      // the error, not blank it.
+      setSpecError(err instanceof Error ? err.message : "Failed to load the spec.");
     }
   }, [api]);
 
@@ -54,6 +70,17 @@ export function App({ apiBaseUrl = "" }: AppProps) {
       }
       if (event.type === "reload") {
         void refresh();
+        return;
+      }
+      if (event.type === "missing") {
+        // Surfaced even with no canvas-triggered mutation in flight -- the
+        // file-watcher now reacts to a genuine deletion instead of going
+        // silently deaf (KAN-1216). No auto-reload attempt here: there's
+        // nothing to reload into. Recreating the file lets the existing
+        // "reload" path pick it back up once it reappears.
+        setSpecError(
+          "The spec file no longer exists on disk (deleted or moved). Restore or recreate it to keep editing -- this will pick it back up automatically.",
+        );
       }
     });
     return unsubscribe;
@@ -61,20 +88,40 @@ export function App({ apiBaseUrl = "" }: AppProps) {
 
   const graph = useMemo(() => (spec ? specToGraph(spec) : { nodes: [], edges: [] }), [spec]);
 
+  async function applyPatchOrReportError(ops: Parameters<ApiClient["applyPatch"]>[0]) {
+    try {
+      await api.applyPatch(ops);
+    } catch (err) {
+      // A failed save must not close its dialog as if it had succeeded
+      // (KAN-1216) -- the caller checks this return value and leaves the
+      // form open so the user's input isn't lost.
+      setSpecError(err instanceof Error ? err.message : "Failed to save the change.");
+      return false;
+    }
+    return true;
+  }
+
   async function handleAddTool(tool: Tool) {
-    await api.applyPatch([{ op: "add", path: ["agent", "tools"], value: tool }]);
+    if (!(await applyPatchOrReportError([{ op: "add", path: ["agent", "tools"], value: tool }])))
+      return;
     setOpenForm(null);
     await refresh();
   }
 
   async function handleAddWorkflowStep(step: WorkflowStep) {
-    await api.applyPatch([{ op: "add", path: ["agent", "workflow"], value: step }]);
+    if (!(await applyPatchOrReportError([{ op: "add", path: ["agent", "workflow"], value: step }])))
+      return;
     setOpenForm(null);
     await refresh();
   }
 
   async function handleSetGuardrails(guardrails: Guardrails) {
-    await api.applyPatch([{ op: "set", path: ["agent", "guardrails"], value: guardrails }]);
+    if (
+      !(await applyPatchOrReportError([
+        { op: "set", path: ["agent", "guardrails"], value: guardrails },
+      ]))
+    )
+      return;
     setOpenForm(null);
     await refresh();
   }
@@ -102,6 +149,18 @@ export function App({ apiBaseUrl = "" }: AppProps) {
           </button>
         </div>
 
+        {specError && (
+          <div
+            role="alert"
+            data-testid="spec-error-banner"
+            className="md3-banner md3-banner--error"
+          >
+            <span>{specError}</span>
+            <button className="md3-banner__action" onClick={() => void refresh()}>
+              Retry
+            </button>
+          </div>
+        )}
         {conflict && (
           <div role="alert" data-testid="conflict-banner" className="md3-banner md3-banner--info">
             <span>This spec changed externally while you were editing it.</span>

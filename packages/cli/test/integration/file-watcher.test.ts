@@ -1,4 +1,4 @@
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -106,6 +106,33 @@ describe("SpecFileWatcher", () => {
 
     expect(event.type).toBe("reload");
     expect(event.source).toContain("plain-after-renames");
+  });
+
+  // KAN-1216: handleChange() used to catch a readFileSync failure and just
+  // return silently, forever -- meant to tolerate a transient mid-write gap,
+  // but it swallowed a genuine deletion identically, so a live canvas tab
+  // never found out the file was gone. It must now emit a distinct
+  // "missing" event instead of going silently deaf.
+  it("emits a 'missing' event for a genuine deletion, not silence", async () => {
+    const pending = waitForEvent(watcher);
+    unlinkSync(path);
+    const event = await pending;
+
+    expect(event.type).toBe("missing");
+  });
+
+  it("recovers via the normal 'reload' path once the deleted file is recreated", async () => {
+    const missingPending = waitForEvent(watcher);
+    unlinkSync(path);
+    const missingEvent = await missingPending;
+    expect(missingEvent.type).toBe("missing");
+
+    const reloadPending = waitForEvent(watcher);
+    writeFileSync(path, 'version: "1.0"\nagent:\n  id: recreated\n');
+    const reloadEvent = await reloadPending;
+
+    expect(reloadEvent.type).toBe("reload");
+    expect(reloadEvent.source).toContain("recreated");
   });
 
   it("ignores directory events for unrelated sibling files (e.g. an editor's temp file)", async () => {

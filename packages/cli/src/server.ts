@@ -1,3 +1,4 @@
+import { basename, relative } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import type { AgentSpec, PatchOp } from "@kampong/spec";
@@ -5,6 +6,48 @@ import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
+
+// KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
+// error (ENOENT when the spec file is deleted/renamed out from under a
+// running `kampong dev`, EACCES if it becomes unreadable, etc.) -- letting
+// that reach a route handler uncaught means Fastify's default error handler
+// returns a bare 500 whose body is the raw error, absolute server
+// filesystem path included. Both spec routes below catch that and translate
+// it into a clean, specific 4xx/5xx JSON body instead -- never the raw
+// error/path -- matching the { success: false, error } shape the /api/runs
+// routes already use for their own error responses.
+function shownSpecPath(specPath: string): string {
+  // Relative to cwd (where `kampong dev` was launched, normally the project
+  // root containing the spec) rather than the raw absolute path -- for the
+  // normal case this collapses to something short like "agent.yaml". If cwd
+  // and the spec path share no meaningful common ancestor, `relative()`
+  // walks all the way up via `..` and back down through every real
+  // directory name on the way -- which would leak just as much of the
+  // host's absolute layout as the raw path. Fall back to just the file's
+  // own name in that case.
+  const rel = relative(process.cwd(), specPath);
+  return rel.startsWith("..") ? basename(specPath) : rel;
+}
+
+function specFileErrorResponse(
+  err: unknown,
+  specPath: string,
+): { status: number; body: { success: false; error: string } } {
+  const shownPath = shownSpecPath(specPath);
+  if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: `Spec file not found: ${shownPath}. It may have been deleted or moved.`,
+      },
+    };
+  }
+  return {
+    status: 500,
+    body: { success: false, error: `Spec file could not be read: ${shownPath}.` },
+  };
+}
 
 // The local server `kampong dev` starts (PLAN.md Shape S5, ADR-0005,
 // ADR-0007): serves the built canvas static assets, a spec-CRUD REST API,
@@ -51,19 +94,37 @@ export function createDevServer({
     void app.register(fastifyStatic, { root: staticDir, index: ["index.html"] });
   }
 
-  app.get("/api/spec", async () => store.loadWithLayout());
+  app.get("/api/spec", async (_request, reply) => {
+    try {
+      return store.loadWithLayout();
+    } catch (err) {
+      const { status, body } = specFileErrorResponse(err, specPath);
+      reply.code(status);
+      return body;
+    }
+  });
 
   app.put<{ Body: { ops: PatchOp[] } }>("/api/spec", async (request, reply) => {
     watcher.beginMutation();
     try {
       const result = store.applyPatchAndSave(request.body.ops);
       if (!result.success) {
+        watcher.endMutation();
         reply.code(422);
         return { success: false, errors: result.errors };
       }
+      // `result.source` is the exact bytes just written -- reusing it here
+      // (rather than re-reading the file) is what avoids a second
+      // store.readSource() call that used to throw its own ENOENT and mask
+      // whatever error/response was already in flight if the file got
+      // deleted mid-request.
+      watcher.endMutation(result.source);
       return { success: true, spec: result.spec };
-    } finally {
-      watcher.endMutation(store.readSource());
+    } catch (err) {
+      watcher.endMutation();
+      const { status, body } = specFileErrorResponse(err, specPath);
+      reply.code(status);
+      return body;
     }
   });
 
