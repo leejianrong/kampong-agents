@@ -99,6 +99,66 @@ describe("AgentSpec round-trip duality", () => {
     expect(reparsed.spec?.agent.tools).toHaveLength(1);
   });
 
+  it("adds a canvas-authored conditional (type: 'condition') workflow step without disturbing existing steps or comments", () => {
+    // KAN-1175: what the "Add Workflow Step" modal's new "Conditional
+    // branch" kind produces, built via buildWorkflowStepFromForm({ kind:
+    // "condition", ... }) and applied the same way the canvas applies every
+    // other mutation -- through a patch, not a direct YAML edit.
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "workflow"],
+        value: {
+          step: "handle_approval",
+          type: "condition",
+          if: "evaluation.eligible == true",
+          then: "execute_tool(issue_refund)",
+          else: "request_human_approval",
+        },
+      },
+    ]);
+    const output = toYamlString(doc);
+
+    expect(output).toContain("# Refund processing agent");
+    expect(output).toContain("parse_request");
+
+    const reparsed = parseSpec(output);
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.workflow).toHaveLength(2);
+    expect(reparsed.spec?.agent.workflow[1]).toEqual({
+      step: "handle_approval",
+      type: "condition",
+      if: "evaluation.eligible == true",
+      then: "execute_tool(issue_refund)",
+      else: "request_human_approval",
+    });
+  });
+
+  it("adds a canvas-authored confidence-gated action step", () => {
+    // KAN-1175: the "Requires confidence gate" checkbox on an action step.
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "workflow"],
+        value: { step: "evaluate_policy", action: "check_knowledge", confidence_gate: true },
+      },
+    ]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.workflow[1]).toEqual({
+      step: "evaluate_policy",
+      action: "check_knowledge",
+      confidence_gate: true,
+    });
+  });
+
   it("removes a field cleanly via a remove patch op", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);

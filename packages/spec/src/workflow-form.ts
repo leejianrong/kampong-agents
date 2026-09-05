@@ -11,11 +11,34 @@ import {
 // building a two-step agent with a guardrail entirely on the canvas doesn't
 // require touching YAML by hand.
 
-export interface WorkflowStepFormInput {
+// The two workflowStepSchema union variants (schema.ts), each as its own
+// form-input shape (KAN-1175): a plain action step -- optionally
+// confidence-gated (KAN-1105) -- versus an if/then/else conditional branch.
+// `kind` discriminates which one to build; it defaults to "action" when
+// omitted so every pre-existing caller (WorkflowStepForm before this change,
+// the unit test below) that never set it keeps building an action step
+// exactly as before.
+
+export interface WorkflowActionStepFormInput {
+  kind?: "action";
   step: string;
   action: string;
   inputs?: string;
+  // Sets `confidence_gate: true` on the built step (KAN-1105/ADR-0009) --
+  // only meaningful alongside a spec-level `guardrails.confidence_threshold`,
+  // which is configured separately via buildGuardrailsFromForm below.
+  confidenceGate?: boolean;
 }
+
+export interface WorkflowConditionStepFormInput {
+  kind: "condition";
+  step: string;
+  if: string;
+  then: string;
+  else: string;
+}
+
+export type WorkflowStepFormInput = WorkflowActionStepFormInput | WorkflowConditionStepFormInput;
 
 export interface WorkflowStepFormResult {
   success: boolean;
@@ -24,16 +47,26 @@ export interface WorkflowStepFormResult {
 }
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
-  const candidate = {
-    step: input.step,
-    action: input.action,
-    ...(input.inputs && {
-      inputs: input.inputs
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    }),
-  };
+  const candidate =
+    input.kind === "condition"
+      ? {
+          step: input.step,
+          type: "condition" as const,
+          if: input.if,
+          then: input.then,
+          else: input.else,
+        }
+      : {
+          step: input.step,
+          action: input.action,
+          ...(input.inputs && {
+            inputs: input.inputs
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }),
+          ...(input.confidenceGate && { confidence_gate: true }),
+        };
 
   const result = workflowStepSchema.safeParse(candidate);
   if (!result.success) {
