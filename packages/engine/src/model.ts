@@ -27,6 +27,17 @@ import type { z } from "zod";
 
 export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
+// KAN-1185 (R6, ADR-0004): a model call with no timeout can hang a `kampong
+// run` indefinitely with zero progress output -- confirmed via a live repro
+// against a real, unusually slow Ollama daemon. Tens-of-seconds is the right
+// order of magnitude for a real LLM call (long enough not to false-positive
+// on a slow-but-alive provider, short enough that a CI job notices a hang
+// instead of burning its own job timeout). Overridable per spec
+// (`agent.model.timeout_ms`) and, taking precedence over that, per CLI
+// invocation (`kampong run --timeout <ms>`) so a CI job can tune it without
+// editing the spec file.
+export const DEFAULT_MODEL_TIMEOUT_MS = 60_000;
+
 // OpenRouter's API host is fixed (unlike Ollama's, which is typically local
 // and sometimes remote/tunneled) -- no spec-level override for this one.
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -134,6 +145,108 @@ export class OllamaUnavailableError extends Error {
 }
 
 /**
+ * The specific, actionable error thrown when a model call runs longer than
+ * its configured timeout (KAN-1185, R6: "CLI commands scriptable/CI-friendly
+ * with meaningful exit codes" -- a silent, indefinite hang is the opposite of
+ * that). Follows ADR-0004's "a failed call fails visibly, never a silent
+ * retry/fallback" spirit: this is never caught and retried, just surfaced
+ * with a clear, specific message naming the provider and the exact timeout
+ * that elapsed, instead of a generic `TypeError: fetch failed` or an
+ * indefinite hang.
+ */
+export class ModelCallTimeoutError extends Error {
+  constructor(
+    public readonly provider: string,
+    public readonly timeoutMs: number,
+    options?: { cause?: unknown },
+  ) {
+    super(
+      `Model call to "${provider}" timed out after ${timeoutMs}ms. Increase the timeout via ` +
+        "`agent.model.timeout_ms` in the spec, or pass `--timeout <ms>` to `kampong run`, " +
+        "or check that the provider is actually responding.",
+      options,
+    );
+    this.name = "ModelCallTimeoutError";
+  }
+}
+
+/**
+ * Wraps a `fetch` implementation so every request it makes is aborted after
+ * `timeoutMs` -- the actual network-call layer, not just client
+ * construction (a `fetch` option threaded through to `createAnthropic`/
+ * `createOpenAI` does nothing on its own unless something actually attaches
+ * an `AbortSignal` to each request, which is what this does). A caller-
+ * supplied `signal` in `init` (the AI SDK doesn't pass one today, but a
+ * future version might) is honored too -- either one aborting the request is
+ * enough -- while `timedOut` specifically tracks *our* timer firing, so a
+ * caller-initiated abort is never misreported as a timeout.
+ */
+function createTimeoutFetch(
+  fetchImpl: typeof fetch | undefined,
+  timeoutMs: number,
+  provider: string,
+): typeof fetch {
+  const baseFetch = fetchImpl ?? fetch;
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    // `timer` would otherwise keep the process (and a test runner) alive
+    // for the full timeout even after the request settles normally.
+    timer.unref?.();
+
+    const callerSignal = init?.signal;
+    const onCallerAbort = () => controller.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) controller.abort();
+      else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+
+    try {
+      return await baseFetch(input, { ...init, signal: controller.signal });
+    } catch (err) {
+      if (timedOut) {
+        throw new ModelCallTimeoutError(provider, timeoutMs, { cause: err });
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    }
+  }) as typeof fetch;
+}
+
+/**
+ * Finds a `ModelCallTimeoutError` anywhere in `err`'s `.cause` chain (and
+ * `AggregateError.errors`) -- same walk shape as `isConnectionRefused` below.
+ * Whatever the AI SDK/Mastra wrap a fetch rejection into on its way back up
+ * through `agent.generate(...)`, the original `ModelCallTimeoutError` thrown
+ * by `createTimeoutFetch` above is preserved somewhere in that chain (as a
+ * `.cause`, directly or nested), so unwrapping it here -- rather than
+ * depending on exactly how many layers of wrapping happen to exist today --
+ * is what lets the CLI/caller see the specific, actionable message and type
+ * instead of whatever generic wrapper error sits on top of it.
+ */
+function findTimeoutError(err: unknown): ModelCallTimeoutError | undefined {
+  const seen = new Set<unknown>();
+  const queue: unknown[] = [err];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+    if (current instanceof ModelCallTimeoutError) return current;
+    const cause = (current as { cause?: unknown }).cause;
+    if (cause) queue.push(cause);
+    const errors = (current as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) queue.push(...errors);
+  }
+  return undefined;
+}
+
+/**
  * Resolves a `${ENV_VAR}` placeholder from `env`. Never returns/logs a
  * value that isn't the resolved secret itself, and the error path never
  * echoes the (absent) value -- only the variable *name* -- so a missing key
@@ -211,6 +324,19 @@ function wrapOllamaConnectionError(err: unknown, modelConfig: Model): never {
   throw err;
 }
 
+/**
+ * The single dispatch point both `generateText` and `generateStructured`
+ * funnel a caught model-call error through: a timeout takes priority (it's
+ * unambiguous -- `createTimeoutFetch` only ever produces this shape when its
+ * own timer fired) over the connection-refused/unavailable check below it,
+ * though in practice the two are mutually exclusive failure modes anyway.
+ */
+function rethrowModelCallError(err: unknown, modelConfig: Model): never {
+  const timeoutError = findTimeoutError(err);
+  if (timeoutError) throw timeoutError;
+  wrapOllamaConnectionError(err, modelConfig);
+}
+
 export interface GenerateTextInput {
   instructions: string;
   prompt: string;
@@ -241,9 +367,18 @@ export interface CreateMastraModelClientOptions {
    * connection failure -- or a canned response -- can be exercised
    * deterministically without a real Ollama server (or cloud endpoint)
    * reachable. Production callers omit this; `undefined` here just means
-   * "use the AI SDK's own default fetch".
+   * "use the AI SDK's own default fetch". Still gets wrapped in the
+   * timeout-enforcing fetch below -- this is the *underlying* fetch a test
+   * substitutes in, not an escape hatch from the timeout itself.
    */
   fetchImpl?: typeof fetch;
+  /**
+   * CLI override (`kampong run --timeout <ms>`, KAN-1185): takes precedence
+   * over `agent.model.timeout_ms` on the spec, which in turn takes
+   * precedence over `DEFAULT_MODEL_TIMEOUT_MS`, so a CI job can tune this
+   * without editing the spec file.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -282,10 +417,13 @@ export function createMastraModelClient(
     apiKey = resolveEnvVarPlaceholder(modelConfig.api_key, modelConfig.provider, env);
   }
 
+  const timeoutMs = options.timeoutMs ?? modelConfig.timeout_ms ?? DEFAULT_MODEL_TIMEOUT_MS;
+  const timeoutFetch = createTimeoutFetch(options.fetchImpl, timeoutMs, modelConfig.provider);
+
   const model = factory(modelConfig.name, {
     apiKey,
     baseUrl: modelConfig.base_url,
-    fetchImpl: options.fetchImpl,
+    fetchImpl: timeoutFetch,
   });
 
   const agent = new Agent({
@@ -301,7 +439,7 @@ export function createMastraModelClient(
         const result = await agent.generate(prompt, { instructions });
         return result.text;
       } catch (err) {
-        wrapOllamaConnectionError(err, modelConfig);
+        rethrowModelCallError(err, modelConfig);
       }
     },
     async generateStructured<T>({ instructions, prompt, schema }: GenerateStructuredInput<T>) {
@@ -309,7 +447,7 @@ export function createMastraModelClient(
         const result = await agent.generate(prompt, { instructions, structuredOutput: { schema } });
         return result.object as T;
       } catch (err) {
-        wrapOllamaConnectionError(err, modelConfig);
+        rethrowModelCallError(err, modelConfig);
       }
     },
   };

@@ -88,6 +88,25 @@ agent:
       else: "request_human_approval"
 `;
 
+// KAN-1185: exercises the optional `agent.model.timeout_ms` field alongside
+// the rest of a model config, so the round-trip suite covers it too.
+export const VALID_FIXTURE_WITH_TIMEOUT = `version: "1.0"
+agent:
+  id: refund-agent
+  name: "Customer Refund Agent"
+  role: "Customer Support Specialist"
+  goal: "Review incoming refund requests and process eligible ones."
+  model:
+    provider: anthropic
+    name: claude-3-5-haiku-latest
+    api_key: \${ANTHROPIC_API_KEY}
+    timeout_ms: 15000
+  workflow:
+    - step: parse_request
+      action: extract_entities
+      inputs: [customer_email, order_id]
+`;
+
 export const VALID_FIXTURE_NO_TOOLS = `version: "1.0"
 agent:
   id: greeter

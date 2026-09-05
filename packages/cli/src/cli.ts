@@ -10,6 +10,7 @@ import {
   createAgentRun,
   createFixtureFetch,
   type ModelClient,
+  type RunEvent,
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
@@ -108,6 +109,10 @@ Options:
                           prompting on stdin -- for non-interactive/CI use. Without it, a
                           paused run prompts on stdin exactly like the canvas's approval
                           modal does for a browser test-run.
+  --timeout <ms>         Milliseconds a single model call may run before it's aborted and
+                          the run fails visibly instead of hanging (default: 60000, or
+                          \`agent.model.timeout_ms\` on the spec if set -- this flag wins
+                          over both). Tune this from CI without editing the spec file.
   -h, --help              Show this help
 
 Exit codes:
@@ -343,6 +348,7 @@ interface RunArgs {
   toolsMode: ToolFixtureMode;
   fixturesDir?: string;
   approveAll: boolean;
+  timeoutMs?: number;
 }
 
 function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: false; error: string } {
@@ -352,6 +358,7 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
   let toolsMode: ToolFixtureMode = "live";
   let fixturesDir: string | undefined;
   let approveAll = false;
+  let timeoutMs: number | undefined;
 
   try {
     for (let i = 0; i < args.length; i++) {
@@ -380,6 +387,17 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
         case "--approve-all":
           approveAll = true;
           break;
+        case "--timeout": {
+          const value = requireValue(args, ++i, "--timeout");
+          timeoutMs = Number(value);
+          if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+            return {
+              ok: false,
+              error: `--timeout must be a positive integer (milliseconds), got "${value}".`,
+            };
+          }
+          break;
+        }
         default:
           if (arg.startsWith("--")) {
             return { ok: false, error: `Unrecognized option "${arg}".` };
@@ -400,7 +418,15 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
 
   return {
     ok: true,
-    value: { specPath: resolve(specPath), input, json, toolsMode, fixturesDir, approveAll },
+    value: {
+      specPath: resolve(specPath),
+      input,
+      json,
+      toolsMode,
+      fixturesDir,
+      approveAll,
+      timeoutMs,
+    },
   };
 }
 
@@ -538,7 +564,7 @@ async function runRunCommand(
     io.stderr(RUN_HELP_TEXT);
     return EXIT_USAGE_ERROR;
   }
-  const { specPath, input, json, toolsMode, fixturesDir, approveAll } = parsed.value;
+  const { specPath, input, json, toolsMode, fixturesDir, approveAll, timeoutMs } = parsed.value;
 
   let source: string;
   try {
@@ -576,9 +602,28 @@ async function runRunCommand(
 
   let run: ReturnType<typeof createAgentRun>;
   try {
-    run = createAgentRun(spec, { fetchImpl, model: testOptions.model });
+    run = createAgentRun(spec, { fetchImpl, model: testOptions.model, timeoutMs });
   } catch (err) {
     return reportExecutionFailure(err, json, io);
+  }
+
+  // Progress output (KAN-1185, R6): a step can legitimately take a while (a
+  // real model call, up to --timeout) with nothing printed in between
+  // otherwise -- a silent terminal is then indistinguishable from a hang.
+  // `--json` promises exactly one JSON object on stdout (see the tests this
+  // guards -- e.g. "emits exactly one parseable JSON object on success" --
+  // and reportExecutionFailure/the completion branch below), so this only
+  // fires in human-readable mode, and prints BEFORE the step actually runs
+  // (`step_started`, not `step_completed`), matching the same
+  // "<step>: <status>" vocabulary the canvas's own run trace already uses
+  // (apps/canvas/src/RunPanel.tsx's `${entry.step}: ${entry.status}`) rather
+  // than inventing new formatting.
+  if (!json) {
+    run.on("event", (event: RunEvent) => {
+      if (event.type === "step_started") {
+        io.stdout(`${event.step}: running...`);
+      }
+    });
   }
 
   let state: RunState;

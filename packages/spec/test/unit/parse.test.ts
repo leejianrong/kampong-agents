@@ -126,6 +126,42 @@ describe("parseSpec", () => {
     expect(result.errors.some((e) => e.path.join(".") === "agent.model.api_key")).toBe(true);
   });
 
+  it("parses a model with an explicit timeout_ms (KAN-1185)", () => {
+    const withTimeout = VALID_FIXTURE_WITH_MODEL.replace(
+      "api_key: ${ANTHROPIC_API_KEY}\n",
+      "api_key: ${ANTHROPIC_API_KEY}\n    timeout_ms: 15000\n",
+    );
+    const result = parseSpec(withTimeout);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model?.timeout_ms).toBe(15000);
+  });
+
+  it("omitting timeout_ms is still valid (packages/engine's DEFAULT_MODEL_TIMEOUT_MS applies)", () => {
+    const result = parseSpec(VALID_FIXTURE_WITH_MODEL);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.model?.timeout_ms).toBeUndefined();
+  });
+
+  it("rejects a non-integer timeout_ms", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "api_key: ${ANTHROPIC_API_KEY}\n",
+      "api_key: ${ANTHROPIC_API_KEY}\n    timeout_ms: 1500.5\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.timeout_ms")).toBe(true);
+  });
+
+  it("rejects a zero/negative timeout_ms", () => {
+    const bad = VALID_FIXTURE_WITH_MODEL.replace(
+      "api_key: ${ANTHROPIC_API_KEY}\n",
+      "api_key: ${ANTHROPIC_API_KEY}\n    timeout_ms: 0\n",
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.model.timeout_ms")).toBe(true);
+  });
+
   it("rejects an unknown model provider", () => {
     const bad = VALID_FIXTURE_WITH_MODEL.replace("provider: anthropic", "provider: azure");
     const result = parseSpec(bad);

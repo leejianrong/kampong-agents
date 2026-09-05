@@ -176,6 +176,13 @@ export interface CreateAgentRunOptions {
    * the global `fetch`.
    */
   modelFetchImpl?: typeof fetch;
+  /**
+   * CLI override (`kampong run --timeout <ms>`, KAN-1185): forwarded
+   * straight through to `createMastraModelClient`, where it takes
+   * precedence over `agent.model.timeout_ms` on the spec. Ignored when a
+   * fake `model` (below) is injected instead of building the real one.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -190,6 +197,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     options.model ??
     createMastraModelClient(spec, options.env ?? process.env, {
       fetchImpl: options.modelFetchImpl,
+      timeoutMs: options.timeoutMs,
     });
   return new AgentRun(spec, { model, fetchImpl: options.fetchImpl });
 }
