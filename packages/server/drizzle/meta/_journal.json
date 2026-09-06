@@ -8,6 +8,13 @@
       "when": 1788675803471,
       "tag": "0000_spicy_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788691655792,
+      "tag": "0001_enable_row_level_security",
+      "breakpoints": true
     }
   ]
 }
