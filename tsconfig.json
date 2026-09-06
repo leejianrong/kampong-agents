@@ -4,6 +4,7 @@
     { "path": "packages/spec" },
     { "path": "packages/engine" },
     { "path": "packages/exporter" },
-    { "path": "packages/cli" }
+    { "path": "packages/cli" },
+    { "path": "packages/server" }
   ]
 }

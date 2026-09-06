@@ -1,0 +1,5 @@
+# Helm chart templates contain Go template syntax ({{ ... }}) inside .yaml
+# files -- not valid YAML on its own, so Prettier's YAML parser can't handle
+# them (KAN-1221). Chart.yaml/values.yaml (plain YAML, no templating) are
+# deliberately NOT excluded here and still get checked/formatted normally.
+deploy/helm/**/templates/**/*.yaml
