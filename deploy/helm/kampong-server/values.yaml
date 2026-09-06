@@ -1,9 +1,13 @@
-# Default values for kampong-server (ADR-0013, KAN-1221).
-# This chart alone stands up the packages/server Deployment/Service/Ingress
-# only -- no Postgres (KAN-1222/1223 -- CloudNativePG per ADR-0013),
-# no cert-manager ClusterIssuer, no LiteLLM Deployment. Those are separate,
-# later charts/cards; wiring this chart's Ingress TLS or a DB connection
-# string is out of scope here.
+# Default values for kampong-server (ADR-0013, KAN-1221; migrationJob added
+# by KAN-1223, ADR-0014).
+# This chart stands up the packages/server Deployment/Service/Ingress, plus
+# (as of KAN-1223) a Helm-hook Job that applies Drizzle migrations against
+# the Postgres this same server will eventually consume (KAN-1224+). It does
+# not stand up Postgres itself (KAN-1222 -- CloudNativePG per ADR-0013, a
+# separate chart), no cert-manager ClusterIssuer, no LiteLLM Deployment.
+# Those are separate, later charts/cards; wiring this chart's Ingress TLS or
+# actually consuming a DB connection string from packages/server's own
+# routes is out of scope here (KAN-1224+).
 
 replicaCount: 1
 
@@ -59,6 +63,27 @@ resources:
 # DATABASE_URL/session-secret entries from later cards) -- a list of
 # Kubernetes EnvVar objects, passed through as-is.
 extraEnv: []
+
+# The deploy-time Drizzle migration Job (ADR-0014, KAN-1223) --
+# templates/migrate-job.yaml -- runs `node packages/server/dist/db/migrate.js`
+# (the same image as the Deployment below) as a Helm pre-install/pre-upgrade
+# hook, before the Deployment's new revision is rolled out. DATABASE_URL is
+# sourced from the CNPG-generated `<cluster-name>-app` Secret (KAN-1222,
+# deploy/helm/kampong-postgres) -- this chart does not create that Secret,
+# only references it, so it must already exist in this release's namespace.
+migrationJob:
+  enabled: true
+  # Name of the Secret CNPG auto-generates for the kampong-postgres Cluster
+  # (deploy/helm/kampong-postgres/README.md: "<cluster-name>-app", e.g.
+  # "kampong-postgres-app" for a release named "kampong-postgres" -- change
+  # this if your Postgres release is named differently).
+  databaseSecretName: "kampong-postgres-app"
+  # Key inside that Secret holding a full postgres:// connection string --
+  # CNPG's documented shape (username/password/dbname/host/port/uri/
+  # jdbc-uri); `uri` is the DATABASE_URL-equivalent value.
+  databaseSecretKey: "uri"
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
 
 podAnnotations: {}
 podLabels: {}
