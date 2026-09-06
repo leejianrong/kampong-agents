@@ -1,0 +1,82 @@
+# Default values for kampong-server (ADR-0013, KAN-1221).
+# This chart alone stands up the packages/server Deployment/Service/Ingress
+# only -- no Postgres (KAN-1222/1223 -- CloudNativePG per ADR-0013),
+# no cert-manager ClusterIssuer, no LiteLLM Deployment. Those are separate,
+# later charts/cards; wiring this chart's Ingress TLS or a DB connection
+# string is out of scope here.
+
+replicaCount: 1
+
+image:
+  repository: kampong-server
+  # Defaults to the chart's appVersion (Chart.yaml) when empty, matching
+  # Helm's own convention (see templates/deployment.yaml) -- override with a
+  # real registry tag (e.g. a git SHA or semver) at deploy time.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Overrides the chart/release name used to derive object names and the
+# `app.kubernetes.io/name` label (templates/_helpers.tpl) -- leave empty to
+# use the chart name.
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  # The container's own listening port (packages/server/src/main.ts's
+  # `PORT` env var, EXPOSE 8080 in packages/server/Dockerfile).
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  # k3s ships Traefik as its default ingress controller (ADR-0013) -- reuse
+  # it via a plain networking.k8s.io/v1 Ingress rather than installing a
+  # second controller or reaching for Traefik's own IngressRoute CRD, which
+  # this deployment has no specific reason to prefer yet.
+  className: traefik
+  host: kampong.example.com
+  # TLS is deliberately left disabled by default: cert-manager's
+  # ClusterIssuer (ADR-0013) is a separate, later piece of cluster setup,
+  # not something this scaffold chart should assume already exists. Flip
+  # this on and name a real Secret once cert-manager is wired up.
+  tls:
+    enabled: false
+    secretName: kampong-server-tls
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Extra environment variables merged onto the container (e.g. future
+# DATABASE_URL/session-secret entries from later cards) -- a list of
+# Kubernetes EnvVar objects, passed through as-is.
+extraEnv: []
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10

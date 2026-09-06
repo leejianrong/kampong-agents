@@ -1,0 +1,18 @@
+apiVersion: v2
+name: kampong-server
+description: >-
+  Kampong Agents V5 hosted server (ADR-0013, KAN-1221) -- a single Deployment
+  serving the built canvas static assets and the Fastify API from one origin.
+  This is a foundational scaffold: no database, no auth, no real multi-tenancy
+  yet (those land in later cards -- KAN-1222 onward). This chart alone does
+  not stand up Postgres, cert-manager, or LiteLLM; it deploys packages/server
+  itself into a cluster that already has those (or will grow them in
+  follow-up cards).
+type: application
+version: 0.1.0
+appVersion: "0.0.0"
+home: https://github.com/leejianrong/kampong-agents
+sources:
+  - https://github.com/leejianrong/kampong-agents
+maintainers:
+  - name: Jian
