@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname } from "node:path";
 import {
   applyPatchToSource,
@@ -28,11 +27,32 @@ import {
 // spells it that way.
 //
 // Interface methods are `Promise`-returning (the shape `SpecRepository`
-// requires, since the Postgres-backed implementation is inherently async) --
-// implemented here via `node:fs/promises` rather than the old sync calls
-// wrapped in `Promise.resolve()`, so a real ENOENT/EACCES still surfaces as
-// the same `NodeJS.ErrnoException` shape `server.ts`'s error-translation
-// logic already depends on (`err.code === "ENOENT"`), not a different one.
+// requires, since the Postgres-backed implementation is inherently async),
+// but every method's BODY still uses the original synchronous `node:fs`
+// calls (wrapped in an `async` function, which returns an already-resolved
+// Promise without ever yielding to the libuv threadpool) rather than
+// `node:fs/promises`. This is a deliberate correction, not an oversight: an
+// earlier version of this class used `node:fs/promises` throughout, and that
+// genuinely-async I/O measurably reintroduced a real, reproducible flake in
+// apps/canvas/test/integration/live-server.test.tsx ("adding a tool through
+// the canvas really mutates the file on disk...") -- roughly 30-40% of runs
+// hung in that test's `afterEach` on `await app.close()` until the vitest
+// hookTimeout. A/B testing confirmed the pre-refactor `main` (synchronous fs)
+// passed 5/5 with no flake, `fs/promises` failed ~2-3/5, and reverting this
+// class's internals to synchronous fs (unchanged Promise-returning surface)
+// passed 10/10. The exact mechanism wasn't chased further than that (a likely
+// candidate: shifting real event-loop/threadpool timing changes when a
+// `/api/events` SSE connection's teardown lands relative to `app.close()`'s
+// own connection-draining wait, given server.ts's SSE route (`/api/events`)
+// keeps a raw hijacked connection open) -- what matters operationally is that
+// this class must keep its one-spec-per-process, single-synchronous-tick
+// read/write behavior (`kampong dev`'s original guarantee) rather than
+// introducing genuine async I/O latency here, since nothing about this
+// card's actual requirement (a `Promise`-returning interface so the
+// Postgres-backed implementation can share it) needed real async I/O on the
+// filesystem side. A real ENOENT/EACCES still surfaces as the same
+// `NodeJS.ErrnoException` shape `server.ts`'s error-translation logic
+// depends on (`err.code === "ENOENT"`) either way, sync or async.
 
 export type { ApplyPatchResult, LoadResult };
 
@@ -43,21 +63,17 @@ export class SpecStore implements SpecRepository {
   ) {}
 
   async readSource(): Promise<string> {
-    return readFile(this.specPath, "utf8");
+    return readFileSync(this.specPath, "utf8");
   }
 
   async readLayout(): Promise<LayoutMap> {
     if (!existsSync(this.layoutPath)) return {};
-    return parseLayout(await readFile(this.layoutPath, "utf8"));
+    return parseLayout(readFileSync(this.layoutPath, "utf8"));
   }
 
   async writeLayout(layout: LayoutMap): Promise<void> {
-    // ADR-0006's convention is a nested sidecar (`.kampong/layout.json`),
-    // whose parent directory won't exist yet the first time a brand-new
-    // spec directory is opened (e.g. `kampong dev`'s default layout path) --
-    // create it rather than let a first-run `kampong dev` 500 on this.
-    await mkdir(dirname(this.layoutPath), { recursive: true });
-    await writeFile(this.layoutPath, serializeLayout(layout));
+    mkdirSync(dirname(this.layoutPath), { recursive: true });
+    writeFileSync(this.layoutPath, serializeLayout(layout));
   }
 
   /**
@@ -71,7 +87,7 @@ export class SpecStore implements SpecRepository {
     const dir = dirname(this.specPath);
     let entries: string[];
     try {
-      entries = await readdir(dir);
+      entries = readdirSync(dir);
     } catch {
       return [];
     }
@@ -93,7 +109,7 @@ export class SpecStore implements SpecRepository {
     if (!result.success) {
       return result;
     }
-    await writeFile(this.specPath, result.source);
+    writeFileSync(this.specPath, result.source);
     return result;
   }
 }
