@@ -15,3 +15,4 @@ export * from "./tool-form.js";
 export * from "./workflow-form.js";
 export * from "./json-schema.js";
 export * from "./pragma.js";
+export * from "./repository.js";
