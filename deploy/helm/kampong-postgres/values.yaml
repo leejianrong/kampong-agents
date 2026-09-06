@@ -1,0 +1,126 @@
+# Default values for kampong-postgres (ADR-0013, ADR-0014, KAN-1222).
+#
+# This chart renders three kinds of CNPG-ecosystem custom resources -- a
+# `Cluster` (postgresql.cnpg.io/v1), an `ObjectStore` + `ScheduledBackup` pair
+# wired through the Barman Cloud CNPG-I plugin -- plus one small Secret
+# holding the (non-sensitive) S3 region value. It assumes, as one-time
+# cluster-wide prerequisites installed OUTSIDE this chart (README.md):
+#   - the CloudNativePG operator (targeting v1.30.x)
+#   - the Barman Cloud CNPG-I plugin (targeting v0.15.x)
+#   - an externally-created Secret in this namespace holding real S3
+#     access-key/secret-key credentials (README.md documents its shape)
+#
+# Wiring packages/server to actually use the resulting `<cluster-name>-app`
+# connection Secret is a separate, later card (KAN-1223/1224) -- this chart
+# only stands up the database.
+
+nameOverride: ""
+fullnameOverride: ""
+
+cluster:
+  # Number of Postgres instances (1 primary + N-1 streaming replicas). 2 is a
+  # sane homelab default (adds failover without needing a 3-node quorum);
+  # bump to 3 if the cluster has the spare nodes/storage for it.
+  instances: 2
+
+  # Postgres major version, pinned explicitly rather than left to drift --
+  # CNPG 1.30's own default image as of this chart's authoring (2026-09).
+  # Bump deliberately (and re-check CNPG's release notes for the then-current
+  # default) rather than silently.
+  imageName: "ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie"
+
+  storage:
+    size: 10Gi
+    # Deliberately empty -- homelab clusters use whatever CSI driver/
+    # StorageClass they were set up with (local-path-provisioner, Longhorn,
+    # a NAS-backed one, ...). Set this explicitly per-cluster; do not assume
+    # a class name that may not exist.
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  # Extra, raw `Cluster.spec.postgresql` (postgresql.conf-shaped) parameter
+  # overrides, e.g. `max_connections: "200"`. Merged in as-is.
+  postgresqlParameters: {}
+
+  podAnnotations: {}
+  podLabels: {}
+  # Both merged into the Cluster's `spec.affinity` (CNPG's
+  # AffinityConfiguration type) -- not a Kubernetes-style top-level
+  # affinity/tolerations pair.
+  nodeSelector: {}
+  tolerations: []
+
+backup:
+  # Scheduled backups are configured from day one (ADR-0013) -- flipping
+  # this off is meant for a throwaway/dev cluster only, never for anything
+  # holding real tenant data.
+  enabled: true
+
+  objectStore:
+    # S3-compatible bucket name (no s3:// prefix, no path) -- works
+    # identically for a self-hosted MinIO instance or a real cloud bucket
+    # (ADR-0013). Required when backup.enabled is true.
+    bucket: ""
+    # Optional path/prefix inside the bucket, e.g. "kampong-postgres/prod".
+    pathPrefix: ""
+    # S3-compatible endpoint, e.g. "https://minio.kampong.svc:9000" for a
+    # self-hosted MinIO instance. Leave empty against real AWS S3 to let
+    # barman-cloud auto-discover the regional AWS endpoint.
+    endpointURL: ""
+    # AWS/S3 region. Not treated as sensitive, but CNPG's own S3Credentials
+    # API (github.com/cloudnative-pg/barman-cloud pkg/api) models `region`
+    # as a SecretKeySelector, not a plain string -- there is no inline-string
+    # field to set it on the ObjectStore CR directly. This chart resolves
+    # that by materializing a small chart-managed Secret from this plain
+    # values.yaml string and pointing the ObjectStore at it, so only the
+    # real credentials (below) need to live in an externally-created Secret.
+    region: "us-east-1"
+
+    # Name of the externally-created Secret holding real S3 credentials --
+    # see README.md for its required shape. Never put real credentials in
+    # this file or commit them anywhere.
+    credentialsSecretName: "kampong-postgres-s3-credentials"
+    # Key names inside that Secret (override if your Secret uses different
+    # key names; these match README.md's documented default shape).
+    credentialsSecretKeys:
+      accessKeyId: ACCESS_KEY_ID
+      secretAccessKey: ACCESS_SECRET_KEY
+
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+      jobs: 2
+
+    # Optional: override the Barman "server name" (defaults to the release's
+    # Cluster name if left empty) -- only needed if multiple clusters must
+    # share one bucket/path and would otherwise collide.
+    serverName: ""
+
+  # Barman's own retention policy (e.g. "30d", "8w", "6m") -- how long
+  # backups/WALs are kept before being pruned from the object store.
+  retentionPolicy: "30d"
+
+  scheduledBackup:
+    # Six-field cron (seconds first, per CNPG's schedule format) -- daily at
+    # 02:00 by default.
+    schedule: "0 0 2 * * *"
+    # "self" (default here) lets deleting the ScheduledBackup clean up the
+    # Backup objects it created; "cluster" ties them to the Cluster instead;
+    # "none" leaves them unowned.
+    backupOwnerReference: self
+    immediate: false
+    suspend: false
+
+# Names of the plugin/operator this chart depends on, exposed as values only
+# so a future bump doesn't require touching template logic -- see README.md
+# for the exact versions this chart was authored and validated against.
+barmanCloudPlugin:
+  name: barman-cloud.cloudnative-pg.io

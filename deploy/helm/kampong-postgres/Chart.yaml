@@ -1,0 +1,22 @@
+apiVersion: v2
+name: kampong-postgres
+description: >-
+  Kampong Agents V5 hosted Postgres (ADR-0013, ADR-0014, KAN-1222) -- a
+  CloudNativePG `Cluster`, an `ObjectStore` + `ScheduledBackup` pair wired to
+  the Barman Cloud CNPG-I plugin, and the small Secret that carries the
+  (non-sensitive) S3 region value. This chart assumes the CNPG operator and
+  the Barman Cloud CNPG-I plugin are already installed cluster-wide (see
+  README.md) and that an externally-created Secret with real S3 credentials
+  already exists in this namespace -- it never creates or embeds credentials
+  itself. Wiring packages/server to actually use the resulting connection
+  Secret is a separate, later card (KAN-1223/1224).
+type: application
+version: 0.1.0
+appVersion: "18.4"
+home: https://github.com/leejianrong/kampong-agents
+sources:
+  - https://github.com/leejianrong/kampong-agents
+  - https://github.com/cloudnative-pg/cloudnative-pg
+  - https://github.com/cloudnative-pg/plugin-barman-cloud
+maintainers:
+  - name: Jian

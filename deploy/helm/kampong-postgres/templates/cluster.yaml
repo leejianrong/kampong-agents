@@ -1,0 +1,71 @@
+# CNPG Cluster (postgresql.cnpg.io/v1) -- requires the CloudNativePG operator
+# (README.md: install cluster-wide first, this chart does not do it).
+#
+# Backups are wired through the Barman Cloud CNPG-I plugin's `spec.plugins`
+# entry, NOT the older in-CR `spec.backup.barmanObjectStore` field -- that
+# field is deprecated in current CNPG releases in favor of the plugin
+# architecture (see README.md for why this chart targets the plugin instead).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "kampong-postgres.fullname" . }}
+  labels:
+    {{- include "kampong-postgres.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cluster.instances }}
+  imageName: {{ .Values.cluster.imageName | quote }}
+
+  storage:
+    size: {{ .Values.cluster.storage.size | quote }}
+    {{- with .Values.cluster.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+
+  resources:
+    {{- toYaml .Values.cluster.resources | nindent 4 }}
+
+  {{- if .Values.cluster.postgresqlParameters }}
+  postgresql:
+    parameters:
+      {{- toYaml .Values.cluster.postgresqlParameters | nindent 6 }}
+  {{- end }}
+
+  {{- if .Values.backup.enabled }}
+  # Marks this plugin as the WAL archiver -- at most one plugin/mechanism can
+  # hold that role, and it cannot coexist with spec.backup.barmanObjectStore
+  # (enforced by the operator itself).
+  plugins:
+    - name: {{ .Values.barmanCloudPlugin.name }}
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ include "kampong-postgres.objectStoreName" . }}
+        {{- with .Values.backup.objectStore.serverName }}
+        serverName: {{ . | quote }}
+        {{- end }}
+  {{- end }}
+
+  {{- if or .Values.cluster.podAnnotations .Values.cluster.podLabels }}
+  # Propagated onto every generated pod (instances, jobs, ...) -- CNPG's
+  # `inheritedMetadata`, not a plain top-level annotations/labels field.
+  inheritedMetadata:
+    {{- with .Values.cluster.podAnnotations }}
+    annotations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.podLabels }}
+    labels:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if or .Values.cluster.nodeSelector .Values.cluster.tolerations }}
+  affinity:
+    {{- with .Values.cluster.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
