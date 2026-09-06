@@ -113,7 +113,7 @@ is fine for a scoped, deliberate exception.
   yet; set that up before this repo has more than one contributor.
 - A new architectural decision, or a default from `QUESTIONS.md` that turns out to be load-bearing,
   gets its own `docs/adr/NNNN-*.md` — number sequentially from the highest existing ADR (currently
-  0008).
+  0017).
 - Every bug or flake becomes a regression test before the fix, not after.
 
 ## Testing approach (see PLAN.md §Testing approach for the full reasoning)

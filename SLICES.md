@@ -148,63 +148,165 @@ These are real commitments on the roadmap per product direction — not "someday
 
 **Delivers:** R7
 
+**Scoped by:** ADR-0013 (hosting/deployment/gateway topology), ADR-0014 (database & multi-tenancy
+model), ADR-0015 (auth & account model), ADR-0016 (BYOK secret custody). Deploys to a self-hosted
+k3s homelab cluster as a real multi-tenant SaaS with public signup (not a private/internal-only
+deployment) — every design choice below assumes untrusted strangers will have accounts.
+
 **Build plan**
 
-1. Deploy the same canvas web app (S2) multi-tenant, backed by a real backend instead of the local filesystem (accounts, workspaces, per-workspace spec storage).
-2. Add workspace-scoped BYOK key storage (encrypted at rest).
-3. Introduce an LLM gateway (e.g. LiteLLM or a hosted equivalent) for cross-provider failover/retry, now that shared infrastructure makes this a real reliability concern (revisits ADR-0004).
-4. Add hosted execution (the same S3 engine, now running server-side per workspace).
+1. Scaffold `packages/server`: a new Fastify app (new workspace package alongside `packages/cli`,
+   `packages/spec`, `packages/engine`, `packages/exporter`) reusing `packages/spec` and
+   `packages/engine` unchanged. Containerize it (single image bundling built `apps/canvas` assets +
+   API, per ADR-0013); check in a Helm chart at `deploy/helm/kampong-server/`.
+2. Stand up Postgres on k3s via the CloudNativePG operator, with scheduled backups to
+   S3-compatible object storage configured from day one (ADR-0013) — not added after the fact.
+3. Wire `drizzle-kit` migrations and the initial schema (`workspaces`, `workspace_members`,
+   `specs`, `layouts`; ADR-0014) into a deploy-time Kubernetes `Job`.
+4. Define the `SpecRepository` interface and refactor `packages/cli`'s `SpecStore` to implement it
+   against the filesystem (paying down the gap ADR-0014 identified: this interface was implied by
+   ADR-0005 but never actually built); add a Postgres-backed implementation for `packages/server`.
+5. Add Postgres Row-Level Security policies on every tenant-scoped table, keyed on a per-request
+   `app.workspace_id` session variable set by request-handling middleware (ADR-0014).
+6. Integrate Better Auth (Drizzle adapter) into `packages/server`: email+password and GitHub OAuth
+   sign-in, session cookies, the `organization` plugin for workspace/member modeling (ADR-0015).
+   Adopt the `sso` plugin now (dormant, activated in V6).
+7. Wire authenticated, workspace-scoped versions of the existing spec-CRUD routes
+   (`/api/spec`-equivalent) against the new `SpecRepository` + RLS, reusing `packages/spec`'s
+   validator unchanged.
+8. Point `apps/canvas`'s already-origin-agnostic API client (`createApiClient(baseUrl)`) at the
+   hosted server; add auth-aware request handling (session cookie forwarding, a login screen) —
+   the first and only canvas-side change this slice requires, confirming ADR-0005's "one UI
+   codebase" design.
+9. Build workspace-scoped BYOK key storage: the `byok_keys` table (ADR-0014), app-level
+   AES-256-GCM envelope encryption under a root key held only in a Kubernetes `Secret` (ADR-0016),
+   and a masked key-management UI/API (add/replace/delete a key; never display or return a
+   decrypted value).
+10. Deploy self-hosted LiteLLM as its own cluster Deployment (ADR-0013); point the hosted
+    `ModelClient` resolution path (the DB-backed successor to `createMastraModelClient`,
+    decrypting a workspace's key via ADR-0016 at call time) at LiteLLM's internal service address
+    instead of calling providers directly.
+11. Add hosted execution: replace `RunManager`'s in-memory `Map` with a durable `runs` table
+    (ADR-0014); wire the existing `AgentRun`/`runWorkflow` engine (unchanged) to run server-side per
+    workspace, with SSE run-progress streaming and the browser-modal approval path both scoped to
+    the authenticated user's workspace.
+12. Add cross-tenant-isolation tests (a new test shape this repo hasn't needed before) proving RLS
+    actually blocks cross-workspace reads even under a maliciously-crafted query.
 
-**Demo:** Sign up, paste an API key, build and run an agent entirely in the browser with no local install.
+**Demo:** Sign up (email+password or GitHub), create a workspace, paste a real provider API key,
+build an agent entirely in the browser with no local install, and run it — the run executes
+server-side against the pasted key (relayed through the self-hosted LLM gateway), with the same
+step-by-step trace and approval-modal UX V2 already built, now backed by durable, workspace-scoped
+storage instead of local files and an in-memory run map.
 
-**Rests on assumptions:** Q6/ADR-0005 (canvas as a reusable web app) — this slice is the direct payoff of that decision; a desktop app choice in V1 would have blocked this entirely.
+**Rests on assumptions:** Q6/ADR-0005 (canvas as a reusable web app) — this slice is the direct
+payoff of that decision, confirmed concretely by how little `apps/canvas` itself needs to change
+(build plan step 8). ADR-0007's Postgres placeholder — this slice is where that assumption becomes
+a real, ADR-graded decision (ADR-0014). The homelab/k3s hosting choice (ADR-0013) means backup/DR
+and public-network exposure are first-class concerns from step 2 onward, not deferred hardening.
 
 ### Test plan
 
 #### End-to-end
 
-- A new hosted account can build, run, and export an agent through the browser with no local tool installed.
+- A new hosted account can sign up, create a workspace, build an agent on the canvas, paste a BYOK
+  key, and run it to completion through the browser with no local tool installed.
+- A guardrail-triggering run pauses with a browser approval modal, is approved, and completes —
+  the same V2 acceptance test, now proven against the hosted execution path.
+- Restoring the CNPG-managed Postgres backup into a fresh cluster recovers all workspace/spec/run
+  data (a real restore drill, not just a configured backup schedule).
 
 #### Integration
 
-- Gateway failover correctly reroutes on a simulated provider outage without failing the user's run.
+- RLS cross-tenant-isolation test: a query executed under workspace A's session context cannot
+  read or write workspace B's rows, including via a deliberately malformed/injection-shaped query.
+- The `SpecRepository` interface's filesystem-backed (`packages/cli`) and Postgres-backed
+  (`packages/server`) implementations both pass the same round-trip property test suite V1 already
+  established (SLICES.md V1) — proving the new abstraction didn't regress local-mode behavior.
+- A stored BYOK key round-trips through encryption/decryption correctly, and a tampered ciphertext
+  (GCM auth tag mismatch) is rejected rather than silently decrypted into garbage.
+- LiteLLM gateway failover correctly reroutes on a simulated provider outage without failing the
+  user's run.
 
 #### Unit
 
-- Per-workspace key storage is encrypted at rest and inaccessible cross-workspace.
+- Per-workspace BYOK key storage is encrypted at rest (verified by inspecting the raw
+  `byok_keys.ciphertext` value in the database, not just via the application API) and inaccessible
+  cross-workspace at the repository layer.
+- RLS session-variable-setting middleware correctly scopes every request to exactly one
+  `workspace_id`, with no code path that can omit it.
+- Auth middleware correctly rejects an unauthenticated request and correctly resolves the current
+  user + active workspace for an authenticated one.
 
 ## V6: Enterprise Governance
 
 **Delivers:** R8
 
+**Scoped by:** ADR-0017 (enterprise governance model). Requires V5 (hosted mode) as a hard
+prerequisite — every V6 mechanism below is additive to V5's Postgres/RLS (ADR-0014) and Better Auth
+(ADR-0015) foundations, not new infrastructure of its own.
+
 **Build plan**
 
-1. SSO/SCIM (SAML/OIDC) for hosted workspaces.
-2. RBAC roles: Agent Creator, Agent Operator, Compliance Auditor, Tool Manager.
-3. PII scrubbing middleware and egress policy rules (e.g. "no SQL DELETE," "no emails outside @company.com").
-4. Immutable, SIEM-exportable audit logs (structured JSON, per-run).
-5. Per-run cost/token circuit breakers and department-level cost attribution.
+1. Activate Better Auth's `sso` plugin (adopted-but-dormant since V5, ADR-0015): per-workspace OIDC/
+   SAML configuration, so a workspace admin can point their workspace at their own identity
+   provider (Okta, Azure AD, Google Workspace, etc.) as its sign-in source. SCIM (automated user
+   provisioning from the customer's IdP) is a separate, explicitly unscoped research spike — budget
+   dedicated time for it rather than assuming the SSO plugin covers it (ADR-0017 §1).
+2. Define the four RBAC roles (Creator/Operator/Auditor/Tool Manager) as a fixed permission matrix
+   over `packages/server`'s existing routes, built on Better Auth's `organization` access-control
+   primitive; add the auth-middleware enforcement (a denied route returns a clear 403, not a
+   generic error) (ADR-0017 §2).
+3. Build PII scrubbing/egress policy middleware around `packages/engine`'s HTTP tool-call path
+   (`http-tool.ts`): workspace-configurable rules (blocked verbs, destination-domain allowlist,
+   PII-pattern redaction), evaluated before dispatch, with a violation reusing the existing
+   `requires_approval`/`fallback_action` pause mechanism from ADR-0009 rather than a new blocking
+   protocol (ADR-0017 §3).
+4. Add the `audit_events` table (ADR-0014's shared-schema-plus-RLS pattern) and write entries at
+   the RBAC-middleware and PII/egress-gate enforcement points already built in steps 2–3; add a
+   structured-JSON export endpoint for SIEM ingestion (ADR-0017 §4).
+5. Add per-run cost/token estimation (from Vercel AI SDK response usage metadata) recorded on the
+   `runs` table, with a configurable per-workspace threshold that halts further runs once crossed,
+   surfaced via the existing fail-visibly convention (ADR-0004) rather than a silent throttle
+   (ADR-0017 §5).
 
-**Demo:** An admin configures SSO via an identity provider, invites a user with the Compliance Auditor role (read-only), and that user can view an audit log entry for a real run but cannot edit or run agents.
+**Demo:** An admin configures SSO via an identity provider, invites a user with the Compliance
+Auditor role (read-only), and that user can view an audit log entry for a real run but cannot edit
+or run agents; a workspace configured with an egress policy blocking non-allowlisted domains has a
+tool call attempting one of those domains pause for approval instead of executing; a workspace that
+crosses its configured per-run cost threshold has its run halted with a clear, visible error.
 
-**Rests on assumptions:** Requires V5 (hosted mode) as a prerequisite — none of this is meaningful in a single-user local tool.
+**Rests on assumptions:** Requires V5 as a prerequisite (Postgres/RLS for `audit_events` and
+per-workspace policy config; Better Auth for the `sso` plugin and `organization`-based RBAC) — none
+of this is meaningful in a single-user local tool, and none of it is deployable before V5 exists.
+SCIM is a known, explicitly flagged gap this slice's own build plan does not claim to close.
 
 ### Test plan
 
 #### End-to-end
 
 - A Compliance Auditor-role user can view audit logs and cannot create, edit, or execute agents.
-- An SSO-provisioned user can log in without a separate local password.
+- An SSO-configured workspace's user can log in via the customer's identity provider without a
+  separate local password.
+- A tool call attempting a non-allowlisted destination is paused for approval rather than executed,
+  and the pause is visible in the run trace exactly like any other guardrail pause.
 
 #### Integration
 
-- Egress policy rules block a disallowed tool action (e.g., an email to a domain outside the allowlist) before it executes.
-- A run exceeding its configured cost limit halts mid-execution and is logged as such.
+- Egress policy rules block a disallowed tool action (e.g., a request to a domain outside the
+  allowlist) before it executes, reusing the existing approval-pause event stream rather than a
+  parallel mechanism.
+- A run exceeding its configured cost/token limit halts and is recorded as such in the `runs` table.
+- RBAC middleware correctly denies every mutating route for the Auditor role while allowing
+  read-only routes, for all four defined roles' full permission matrices.
 
 #### Unit
 
-- Audit log entries are structurally valid against the documented schema for SIEM ingestion.
-- Cost-limit comparison logic correctly halts at the configured threshold.
+- Audit log entries are structurally valid against the documented, versioned JSON schema.
+- Cost-limit comparison logic correctly halts at the configured threshold, at and around the
+  boundary value.
+- PII-pattern redaction rules correctly match and redact configured patterns without over-matching
+  unrelated content.
 
 ## V7: Multi-Agent Org-Chart Orchestration
 
