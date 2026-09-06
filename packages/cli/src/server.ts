@@ -1,7 +1,7 @@
 import { basename, relative } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import type { AgentSpec, PatchOp } from "@kampong/spec";
+import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } from "@kampong/spec";
 import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
@@ -76,7 +76,12 @@ export function createDevServer({
   run: runOptions,
 }: CreateDevServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
-  const store = new SpecStore(specPath, layoutPath);
+  // Typed as the `SpecRepository` interface (KAN-1224, ADR-0014), not the
+  // concrete `SpecStore` -- every route below reads/writes through the
+  // interface (and the shared `loadWithLayout` helper), so this is the one
+  // place that would need to change to point `kampong dev` at a different
+  // `SpecRepository` implementation later.
+  const store: SpecRepository = new SpecStore(specPath, layoutPath);
   const watcher = new SpecFileWatcher(specPath);
   const runManager = new RunManager(runOptions);
   watcher.start();
@@ -96,7 +101,7 @@ export function createDevServer({
 
   app.get("/api/spec", async (_request, reply) => {
     try {
-      return store.loadWithLayout();
+      return await loadWithLayout(store);
     } catch (err) {
       const { status, body } = specFileErrorResponse(err, specPath);
       reply.code(status);
@@ -107,7 +112,7 @@ export function createDevServer({
   app.put<{ Body: { ops: PatchOp[] } }>("/api/spec", async (request, reply) => {
     watcher.beginMutation();
     try {
-      const result = store.applyPatchAndSave(request.body.ops);
+      const result = await store.applyPatchAndSave(request.body.ops);
       if (!result.success) {
         watcher.endMutation();
         reply.code(422);
@@ -144,7 +149,7 @@ export function createDevServer({
   });
 
   app.post<{ Body: { input: string } }>("/api/runs", async (request, reply) => {
-    const { success, spec, errors } = store.loadWithLayout();
+    const { success, spec, errors } = await loadWithLayout(store);
     if (!success || !spec) {
       reply.code(422);
       return { success: false, errors };

@@ -8,3 +8,4 @@ export const PACKAGE_NAME = "@kampong/server";
 
 export { createServer, type CreateServerOptions } from "./server.js";
 export { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js";
+export { PgSpecRepository, SpecNotFoundError } from "./db/spec-repository.js";

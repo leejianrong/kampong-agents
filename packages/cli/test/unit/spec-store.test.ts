@@ -33,8 +33,8 @@ describe("SpecStore", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("loads a spec and auto-assigns + persists layout for nodes with no stored position", () => {
-    const result = store.loadWithLayout();
+  it("loads a spec and auto-assigns + persists layout for nodes with no stored position", async () => {
+    const result = await store.loadWithLayout();
 
     expect(result.success).toBe(true);
     expect(result.layout["agent:greeter"]).toBeDefined();
@@ -44,8 +44,8 @@ describe("SpecStore", () => {
     expect(onDisk).toEqual(result.layout);
   });
 
-  it("applies a valid patch and writes it to disk", () => {
-    const result = store.applyPatchAndSave([
+  it("applies a valid patch and writes it to disk", async () => {
+    const result = await store.applyPatchAndSave([
       { op: "set", path: ["agent", "goal"], value: "Updated goal" },
     ]);
 
@@ -54,9 +54,9 @@ describe("SpecStore", () => {
     expect(onDisk).toContain("Updated goal");
   });
 
-  it("never writes an invalid mutation to disk", () => {
+  it("never writes an invalid mutation to disk", async () => {
     const before = readFileSync(specPath, "utf8");
-    const result = store.applyPatchAndSave([
+    const result = await store.applyPatchAndSave([
       { op: "set", path: ["agent", "workflow", 0, "step"], value: "" }, // violates min(1)
     ]);
 
@@ -65,5 +65,20 @@ describe("SpecStore", () => {
       expect(result.errors.length).toBeGreaterThan(0);
     }
     expect(readFileSync(specPath, "utf8")).toBe(before);
+  });
+
+  // KAN-1224: `list()` is a new, best-effort discovery capability the
+  // `SpecRepository` interface adds -- it does NOT make `kampong dev`
+  // multi-spec-aware (ADR-0011 is unchanged), it just enumerates whatever
+  // *.yaml/*.yml files happen to sit next to the spec this store is scoped
+  // to.
+  it("list() enumerates yaml files in the spec's directory", async () => {
+    writeFileSync(join(dir, "other.yaml"), VALID_SOURCE);
+    writeFileSync(join(dir, "notes.txt"), "not a spec");
+
+    const specs = await store.list();
+
+    expect(specs.map((s) => s.id).sort()).toEqual(["agent.yaml", "other.yaml"]);
+    expect(specs.find((s) => s.id === "agent.yaml")?.name).toBe("agent");
   });
 });
