@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "./server.js";
+import { createDbClient } from "./db/client.js";
 
 // The process entry point the Dockerfile's runtime stage actually runs
 // (CMD ["node", "packages/server/dist/main.js"]) -- kept separate from
@@ -57,7 +58,13 @@ async function main(): Promise<void> {
   const host = process.env["HOST"] ?? DEFAULT_HOST;
 
   const staticDir = resolveCanvasDistDir();
-  const app = createServer({ staticDir });
+  // KAN-1226 (ADR-0015): Better Auth's own routes (mounted in
+  // createServer/server.ts) need a real Postgres connection to work --
+  // `createDbClient()` reads `DATABASE_URL` and throws a clear error if
+  // unset (getDatabaseUrl, ./db/client.ts), the same "read-env-or-throw"
+  // pattern as everything else this process needs to start for real.
+  const { db } = createDbClient();
+  const app = createServer({ staticDir, db });
 
   await app.listen({ port, host });
   console.log(`kampong server listening at http://${host}:${port}`);

@@ -45,7 +45,7 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     await pool?.end();
   });
 
-  it("creates exactly the four expected tables in the public schema", async () => {
+  it("creates exactly the ten expected tables in the public schema", async () => {
     const { rows } = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -55,10 +55,24 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     expect(tableNames).toEqual(
       expect.arrayContaining(["workspaces", "workspace_members", "specs", "layouts"]),
     );
-    // Exactly these four -- no byok_keys/runs table sneaking in, and no
-    // Drizzle-internal migrations-tracking table counted (it lives in its
-    // own "drizzle" schema, not "public").
-    expect(tableNames.sort()).toEqual(["layouts", "specs", "workspace_members", "workspaces"]);
+    // Exactly these ten -- KAN-1223's original four (workspaces,
+    // workspace_members, specs, layouts) plus KAN-1226's Better Auth tables
+    // (user, session, account, verification, invitation, sso_provider) --
+    // no byok_keys/runs table sneaking in, and no Drizzle-internal
+    // migrations-tracking table counted (it lives in its own "drizzle"
+    // schema, not "public").
+    expect(tableNames.sort()).toEqual([
+      "account",
+      "invitation",
+      "layouts",
+      "session",
+      "specs",
+      "sso_provider",
+      "user",
+      "verification",
+      "workspace_members",
+      "workspaces",
+    ]);
   });
 
   it("gives workspaces the expected columns", async () => {
@@ -66,10 +80,21 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
       `SELECT column_name, data_type FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'workspaces' ORDER BY ordinal_position`,
     );
+    // Physical (ordinal_position) order, not schema.ts's declaration order:
+    // KAN-1223's original three columns keep their original positions,
+    // with KAN-1226's additive `ALTER TABLE ADD COLUMN`s (0002_*.sql,
+    // 0003_*.sql) appended after, in the order those migrations added them.
     expect(rows).toEqual([
       { column_name: "id", data_type: "uuid" },
       { column_name: "name", data_type: "text" },
       { column_name: "created_at", data_type: "timestamp with time zone" },
+      // KAN-1226 (ADR-0015): Better Auth's `organization` plugin's own
+      // default fields, mapped onto this table -- see schema.ts's own
+      // comment on the `workspaces` table for the full reasoning.
+      { column_name: "slug", data_type: "text" },
+      { column_name: "logo", data_type: "text" },
+      { column_name: "metadata", data_type: "text" },
+      { column_name: "member_count", data_type: "integer" },
     ]);
   });
 
