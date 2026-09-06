@@ -10,7 +10,7 @@ V6 (KAN-1122–1126) requires SSO/SCIM, RBAC roles (Creator/Operator/Auditor/Too
 scrubbing/egress policy rules, SIEM-exportable audit logs, and per-run cost circuit breakers — five
 one-line `[ROADMAP]` cards today, none scoped in depth. PLAN.md's own sequencing rationale is that
 none of this is meaningful "in a single-user local tool" — V6 exists to satisfy IT/security review
-of a *shared* system, which only exists once V5 ships. The operator has confirmed strict
+of a _shared_ system, which only exists once V5 ships. The operator has confirmed strict
 sequencing (V5 fully before V6 begins), so this ADR builds entirely on V5's now-decided
 foundations: Postgres + Drizzle + RLS multi-tenancy (ADR-0014) and Better Auth's session/
 organization/SSO-plugin account model (ADR-0015). This ADR is a scoping decision, in the same
@@ -86,8 +86,8 @@ storage, or an application-level append-only convention enforced by Postgres per
 **Firm recommendation.** Because V5 is BYOK, a workspace's own dollar cost is already the
 workspace's own concern, not the operator's — the framing SLICES.md's original one-line sketch
 implies ("per-run cost/token circuit breakers... department-level cost attribution") is only half
-the picture on a self-hosted homelab deployment. The other half is protecting the *operator's own
-compute* (a homelab k3s cluster, not elastically-scaling cloud infrastructure, per ADR-0013) from
+the picture on a self-hosted homelab deployment. The other half is protecting the _operator's own
+compute_ (a homelab k3s cluster, not elastically-scaling cloud infrastructure, per ADR-0013) from
 abusive or runaway workspace usage — run frequency/duration limits matter here regardless of whose
 API key is being billed. Token/cost estimation per run (from whatever usage metadata the Vercel AI
 SDK response already exposes) is recorded in `runs` (ADR-0014), with a configurable per-workspace
@@ -101,16 +101,16 @@ within a workspace is not designed here.
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Self-host Keycloak or Authentik as this app's own IdP for V6 SSO | Conflates being an IdP with accepting SSO from a *customer's* IdP — the same distinction ADR-0015 already drew; this app remains the relying party, not the identity provider, for the customer's own users. |
-| A generic policy engine (OPA/Rego) for RBAC and PII/egress instead of hand-rolled middleware | Disproportionate infrastructure for four fixed roles and a modest rule set; revisit only if the rule surface grows past what a readable middleware chain can express, which nothing today indicates. |
-| A dedicated eval/audit-log service instead of a Postgres table | No identified scale or query pattern justifies a separate system yet; a well-modeled table with RLS already gives per-workspace isolation and fits the existing data layer without new infrastructure. |
-| Building SCIM support as part of this ADR's firm recommendations | No existing library coverage (unlike SSO's OIDC/SAML, which Better Auth already implements) and no concrete design has been done — honestly flagging it as an open gap is more useful than a confident-sounding but ungrounded proposal. |
+| Option                                                                                       | Why not                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Self-host Keycloak or Authentik as this app's own IdP for V6 SSO                             | Conflates being an IdP with accepting SSO from a _customer's_ IdP — the same distinction ADR-0015 already drew; this app remains the relying party, not the identity provider, for the customer's own users.                             |
+| A generic policy engine (OPA/Rego) for RBAC and PII/egress instead of hand-rolled middleware | Disproportionate infrastructure for four fixed roles and a modest rule set; revisit only if the rule surface grows past what a readable middleware chain can express, which nothing today indicates.                                     |
+| A dedicated eval/audit-log service instead of a Postgres table                               | No identified scale or query pattern justifies a separate system yet; a well-modeled table with RLS already gives per-workspace isolation and fits the existing data layer without new infrastructure.                                   |
+| Building SCIM support as part of this ADR's firm recommendations                             | No existing library coverage (unlike SSO's OIDC/SAML, which Better Auth already implements) and no concrete design has been done — honestly flagging it as an open gap is more useful than a confident-sounding but ungrounded proposal. |
 
 ## Consequences
 
-- V6 introduces almost no new *infrastructure* of its own — it is new middleware and new tables
+- V6 introduces almost no new _infrastructure_ of its own — it is new middleware and new tables
   layered entirely on V5's Postgres/Better Auth foundation (ADR-0014, ADR-0015), which is precisely
   the "nothing to review until a shared system exists" sequencing logic PLAN.md already gave for
   putting V6 after V5, now made concrete rather than asserted.

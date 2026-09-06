@@ -41,7 +41,7 @@ first-party adapter for Better Auth (ADR-0015), which is a real, load-bearing sy
 system and the application data layer share one ORM and one migration pipeline rather than two.
 
 **Multi-tenancy model: shared database, shared schema, `workspace_id` column on every tenant-scoped
-table, enforced by both the application's repository layer *and* Postgres Row-Level Security (RLS)
+table, enforced by both the application's repository layer _and_ Postgres Row-Level Security (RLS)
 policies.** Given "real multi-tenant SaaS, others will sign up" (the operator's own framing), an
 application-layer-only scoping discipline — every query must remember to add `WHERE workspace_id =
 $1` — is a realistic and severe failure mode: one missed clause in one route handler is a
@@ -52,7 +52,8 @@ by workspace still cannot see another workspace's rows. Schema-per-tenant or dat
 (the two usual stronger-isolation alternatives) are rejected for now — real operational weight
 (one schema/DB per signup, migrations fan out across all of them) with no corresponding benefit
 until a specific tenant has a real requirement (e.g. contractual data-residency) that shared-schema
-+ RLS can't satisfy; nothing today indicates that need.
+
+- RLS can't satisfy; nothing today indicates that need.
 
 **`SpecRepository` interface, introduced now, implemented twice.** `SpecStore`'s direct
 `readFileSync`/`writeFileSync` calls are replaced by a call through a new `SpecRepository`
@@ -86,7 +87,7 @@ decision):
 not a manual, ad hoc process a human runs by hand against production.
 
 **Does ADR-0002 ("YAML is the single lossless source of truth") still hold, server-side,
-multi-tenant? Yes, unchanged in spirit.** The `specs.yaml_source` column *is* the same lossless YAML
+multi-tenant? Yes, unchanged in spirit.** The `specs.yaml_source` column _is_ the same lossless YAML
 text ADR-0002 already mandates — the database replaces the filesystem as YAML's storage medium, it
 does not replace YAML as the format or introduce a second, parallel representation of a spec's
 content. Canvas mutations still flow through the same `packages/spec` parse/validate/serialize
@@ -96,13 +97,13 @@ functions unchanged; only what's on the other end of "write the resulting text s
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Prisma instead of Drizzle | Heavier codegen-generated client, a separate schema DSL file rather than TypeScript-native schema definitions, and no first-party Better Auth adapter as clean as Drizzle's — more machinery than this project's stack conventions favor for no offsetting benefit here. |
-| Schema-per-tenant or database-per-tenant | Real operational cost (migrations, connection management, and backups all fan out per tenant) with no currently-identified requirement driving the need for that level of isolation; shared-schema + RLS gives strong-enough isolation at far lower operational weight. |
-| Application-layer scoping only, no RLS | A single forgotten `WHERE workspace_id = ...` clause becomes a cross-tenant data leak — unacceptable risk once real strangers' data and BYOK credentials are involved, per the operator's own "real SaaS" framing. |
-| Keep `RunManager` in-memory-only for V5, add persistence later | Defeats the actual point of hosted mode (surviving a process restart, letting a user return to see past runs) — an in-memory-only run store is a regression from what a hosted product needs, not a reasonable first cut. |
-| Skip the `SpecRepository` interface, hardcode `packages/server` against Postgres directly | Repeats exactly the gap this ADR calls out — ADR-0005 already promised this seam exists; leaving it unbuilt again means the next slice inherits the same debt instead of it being paid down here. |
+| Option                                                                                    | Why not                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Prisma instead of Drizzle                                                                 | Heavier codegen-generated client, a separate schema DSL file rather than TypeScript-native schema definitions, and no first-party Better Auth adapter as clean as Drizzle's — more machinery than this project's stack conventions favor for no offsetting benefit here. |
+| Schema-per-tenant or database-per-tenant                                                  | Real operational cost (migrations, connection management, and backups all fan out per tenant) with no currently-identified requirement driving the need for that level of isolation; shared-schema + RLS gives strong-enough isolation at far lower operational weight.  |
+| Application-layer scoping only, no RLS                                                    | A single forgotten `WHERE workspace_id = ...` clause becomes a cross-tenant data leak — unacceptable risk once real strangers' data and BYOK credentials are involved, per the operator's own "real SaaS" framing.                                                       |
+| Keep `RunManager` in-memory-only for V5, add persistence later                            | Defeats the actual point of hosted mode (surviving a process restart, letting a user return to see past runs) — an in-memory-only run store is a regression from what a hosted product needs, not a reasonable first cut.                                                |
+| Skip the `SpecRepository` interface, hardcode `packages/server` against Postgres directly | Repeats exactly the gap this ADR calls out — ADR-0005 already promised this seam exists; leaving it unbuilt again means the next slice inherits the same debt instead of it being paid down here.                                                                        |
 
 ## Consequences
 

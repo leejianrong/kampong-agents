@@ -55,12 +55,12 @@ and to `yaml` for comment-preserving parsing rather than a bespoke parser (ADR-0
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Hand-rolled session/password/OAuth implementation | Security-critical code with an unbounded failure blast radius; no reason to take on that risk when a maintained library exists and fits the stack. |
-| NextAuth/Auth.js | Historically coupled to Next.js conventions; a worse fit for a Fastify-served React SPA than a genuinely framework-agnostic library. |
-| Self-hosting Keycloak or Authentik as this app's own primary identity provider | Conflates two different roles: being an IdP (what Keycloak/Authentik are) versus accepting SSO from a *customer's* IdP (what V6 actually needs, as a relying party). This app is the relying party, not the identity provider, for its own V5 signups. |
-| JWT-based stateless sessions | No multi-region/stateless-validation requirement exists for a single self-hosted backend; cookie sessions give a simpler revocation story with no offsetting benefit foregone. |
+| Option                                                                         | Why not                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Hand-rolled session/password/OAuth implementation                              | Security-critical code with an unbounded failure blast radius; no reason to take on that risk when a maintained library exists and fits the stack.                                                                                                     |
+| NextAuth/Auth.js                                                               | Historically coupled to Next.js conventions; a worse fit for a Fastify-served React SPA than a genuinely framework-agnostic library.                                                                                                                   |
+| Self-hosting Keycloak or Authentik as this app's own primary identity provider | Conflates two different roles: being an IdP (what Keycloak/Authentik are) versus accepting SSO from a _customer's_ IdP (what V6 actually needs, as a relying party). This app is the relying party, not the identity provider, for its own V5 signups. |
+| JWT-based stateless sessions                                                   | No multi-region/stateless-validation requirement exists for a single self-hosted backend; cookie sessions give a simpler revocation story with no offsetting benefit foregone.                                                                         |
 
 ## Consequences
 

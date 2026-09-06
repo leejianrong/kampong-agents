@@ -10,7 +10,7 @@ BYOK key resolution today (`packages/engine/src/model.ts:255-270, 393-454`) is a
 placeholder resolved against `process.env` — literally the developer's own shell environment on
 their own laptop, where "security" is simply that nobody else has access to that machine. V5's
 workspace-scoped BYOK key storage (KAN-1119) is a fundamentally different trust model: storing
-*another person's* real API key at rest, on infrastructure the tool operator controls but the key's
+_another person's_ real API key at rest, on infrastructure the tool operator controls but the key's
 owner does not, with no cloud KMS available to lean on (the homelab deployment target, per
 ADR-0013, has no AWS/GCP account backing it).
 
@@ -45,12 +45,12 @@ actually needed.
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| HashiCorp Vault (self-hosted) | A whole additional stateful service with its own unseal/auto-unseal operational burden — disproportionate infrastructure for what a single well-implemented envelope-encryption scheme handles adequately at this scale. Revisit if a future security audit or V6 governance work specifically demands it; building it preemptively repeats the "governance infra before a customer justifies it" mistake ADR-0004 already named for the LLM gateway. |
-| Cloud KMS (AWS/GCP) | Unavailable — no cloud account backs a homelab deployment. |
-| Plaintext storage, relying on Postgres access control alone | Unacceptable for a real multi-tenant SaaS holding other people's live API credentials — a single misconfigured access grant or a database backup falling into the wrong hands would leak every stored key directly. |
-| Per-workspace root keys instead of one global root key | Stronger cryptographic tenant isolation (a compromised root key for one workspace wouldn't affect others), but no identified requirement drives that need yet, and it substantially complicates key-management/backup for no currently-justified benefit — a global root key is proposed as the V5 starting point, with per-workspace keys as a documented future option. |
+| Option                                                      | Why not                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HashiCorp Vault (self-hosted)                               | A whole additional stateful service with its own unseal/auto-unseal operational burden — disproportionate infrastructure for what a single well-implemented envelope-encryption scheme handles adequately at this scale. Revisit if a future security audit or V6 governance work specifically demands it; building it preemptively repeats the "governance infra before a customer justifies it" mistake ADR-0004 already named for the LLM gateway. |
+| Cloud KMS (AWS/GCP)                                         | Unavailable — no cloud account backs a homelab deployment.                                                                                                                                                                                                                                                                                                                                                                                            |
+| Plaintext storage, relying on Postgres access control alone | Unacceptable for a real multi-tenant SaaS holding other people's live API credentials — a single misconfigured access grant or a database backup falling into the wrong hands would leak every stored key directly.                                                                                                                                                                                                                                   |
+| Per-workspace root keys instead of one global root key      | Stronger cryptographic tenant isolation (a compromised root key for one workspace wouldn't affect others), but no identified requirement drives that need yet, and it substantially complicates key-management/backup for no currently-justified benefit — a global root key is proposed as the V5 starting point, with per-workspace keys as a documented future option.                                                                             |
 
 ## Consequences
 

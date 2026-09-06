@@ -75,7 +75,7 @@ signing up and submitting real API keys over the connection.
 **LLM gateway (revisits ADR-0004, KAN-1120): self-hosted LiteLLM as its own Deployment in the same
 cluster**, not a library-level retry wrapper inside `packages/server`. ADR-0004's objection to a
 local gateway — "adds an extra local service/process to run and configure for a single-user local
-tool" — is specific to the *local* single-user case and does not carry over once a Kubernetes
+tool" — is specific to the _local_ single-user case and does not carry over once a Kubernetes
 cluster, an operator model, and a real ops surface already exist for V5 regardless. `packages/
 server`'s `ModelClient` construction (the DB-backed successor to today's `createMastraModelClient`,
 `packages/engine/src/model.ts:393-454`) points at LiteLLM's internal cluster-DNS service address
@@ -92,7 +92,7 @@ Secrets should encrypt these before they're committed — flagged as an operatio
 not a blocking decision for this ADR.
 
 **CI/CD.** Extend the existing GitHub Actions CI (`.github/workflows/ci.yml`) with an image
-build-and-push step on merge to `main` (or on tag). Full continuous *deployment* (auto-apply to the
+build-and-push step on merge to `main` (or on tag). Full continuous _deployment_ (auto-apply to the
 cluster) is explicitly **not** decided here — start with a manual `helm upgrade` or a
 manually-triggered pipeline step, and revisit GitOps automation (Argo CD, Flux) once V5 has run
 in production for a while and the manual step is a real, felt friction — building full CD
@@ -101,19 +101,19 @@ guidance already warns against for other infrastructure.
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Managed cloud hosting (AWS/GCP/Fly.io/Render) | Directly contradicts the operator's stated k3s-homelab deployment target; would also mean paying for infrastructure already owned. |
-| Raw Kubernetes manifests instead of a Helm chart | Works for exactly one environment but has no templating story if a second environment (staging, a future non-homelab deploy) is ever needed; Helm's marginal cost over raw YAML is low. |
-| Generic community Postgres Helm chart or a bare `StatefulSet` | Requires hand-rolling failover and backup/restore logic CNPG already implements and operationally tests; a bare `StatefulSet` in particular has no backup story at all without extra tooling. |
+| Option                                                                            | Why not                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Managed cloud hosting (AWS/GCP/Fly.io/Render)                                     | Directly contradicts the operator's stated k3s-homelab deployment target; would also mean paying for infrastructure already owned.                                                                                                                                                         |
+| Raw Kubernetes manifests instead of a Helm chart                                  | Works for exactly one environment but has no templating story if a second environment (staging, a future non-homelab deploy) is ever needed; Helm's marginal cost over raw YAML is low.                                                                                                    |
+| Generic community Postgres Helm chart or a bare `StatefulSet`                     | Requires hand-rolling failover and backup/restore logic CNPG already implements and operationally tests; a bare `StatefulSet` in particular has no backup story at all without extra tooling.                                                                                              |
 | Build a custom retry/failover wrapper inside `packages/server` instead of LiteLLM | Re-derives logic LiteLLM already implements and maintains; repeats the exact "build governance/reliability infra before it's justified" mistake ADR-0004 warned against, except now the infra genuinely is justified (shared, multi-tenant traffic), so there's no reason to hand-roll it. |
-| nginx-ingress instead of Traefik | k3s already ships Traefik; installing a second ingress controller adds operational surface for no functional gain, and diverges from the operator's existing local Traefik familiarity. |
-| Full GitOps (Argo CD/Flux) from day one | Real value once deploy cadence is high and multiple people/environments are involved; premature operational complexity for a first deployment with one operator. |
+| nginx-ingress instead of Traefik                                                  | k3s already ships Traefik; installing a second ingress controller adds operational surface for no functional gain, and diverges from the operator's existing local Traefik familiarity.                                                                                                    |
+| Full GitOps (Argo CD/Flux) from day one                                           | Real value once deploy cadence is high and multiple people/environments are involved; premature operational complexity for a first deployment with one operator.                                                                                                                           |
 
 ## Consequences
 
 - `packages/server` is a new, additive package (per the monorepo's existing `workspaces:
-  ["packages/*", "apps/*"]` convention, root `package.json:11-14`) — it does not replace or modify
+["packages/*", "apps/*"]` convention, root `package.json:11-14`) — it does not replace or modify
   `packages/cli`, keeping the local-first MVP fully intact and independently shippable.
 - Public exposure of a homelab-hosted service (DDNS/port-forwarding vs. a tunnel like Cloudflare
   Tunnel, defending against a hostile public internet hitting home network infrastructure) is a
