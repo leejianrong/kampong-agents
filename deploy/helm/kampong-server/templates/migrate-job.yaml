@@ -1,0 +1,73 @@
+{{- if .Values.migrationJob.enabled -}}
+# Drizzle migration runner (ADR-0014, KAN-1223's "applied via a Kubernetes
+# Job (or Helm pre-upgrade hook)"). Implemented as a Helm hook-annotated Job
+# rather than a plain, standalone Job the operator has to `kubectl apply`
+# and clean up by hand on every deploy: ADR-0013 already establishes
+# `helm upgrade`/`helm install` as the one deploy action this project uses
+# (no full CD yet) -- tying migrations to `pre-install,pre-upgrade` hooks
+# means every such deploy automatically applies pending migrations before
+# the new Deployment revision is rolled out, with zero extra operator steps
+# to remember or forget. `helm.sh/hook-delete-policy:
+# before-hook-creation,hook-succeeded` deletes the previous run's Job right
+# before this one is created (so the fixed name below never collides across
+# releases) and cleans up automatically on success, but deliberately leaves
+# a *failed* Job's pod/logs in place for `kubectl logs`/`kubectl describe`
+# debugging rather than silently vanishing them.
+#
+# Runs the exact same image as the Deployment below -- src/db/migrate.ts's
+# own docstring explains why the migration runner doesn't need drizzle-kit
+# in the image, only drizzle-orm (an existing runtime dependency) plus the
+# checked-in packages/server/drizzle/*.sql files the Dockerfile now copies
+# in alongside dist/.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kampong-server.fullname" . }}-migrate
+  labels:
+    {{- include "kampong-server.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrationJob.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrationJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "kampong-server.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "packages/server/dist/db/migrate.js"]
+          env:
+            # Sourced from the CNPG-generated <cluster-name>-app Secret
+            # (deploy/helm/kampong-postgres/README.md) -- this chart never
+            # creates or embeds real Postgres credentials itself.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.migrationJob.databaseSecretName }}
+                  key: {{ .Values.migrationJob.databaseSecretKey }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

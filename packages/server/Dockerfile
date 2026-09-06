@@ -99,6 +99,17 @@ COPY --from=build /app/packages/engine/dist packages/engine/dist
 
 COPY packages/server/package.json packages/server/package.json
 COPY --from=build /app/packages/server/dist packages/server/dist
+# The checked-in SQL migration files (KAN-1223, ADR-0014) -- static source,
+# not a build artifact, so copied straight from the build context rather
+# than from the "build" stage. Needed at runtime because the deploy-time
+# migration Job (deploy/helm/kampong-server/templates/migrate-job.yaml)
+# runs `node packages/server/dist/db/migrate.js` from inside this same
+# image, and that script reads its migrations from this directory (see its
+# own docstring). `drizzle-kit` itself is deliberately NOT installed in
+# this image -- the migration runner uses drizzle-orm's programmatic
+# migrate() API instead, so only these SQL files (not the CLI/schema-diffing
+# tool that generated them) need to ship here.
+COPY packages/server/drizzle packages/server/drizzle
 
 COPY apps/canvas/package.json apps/canvas/package.json
 COPY --from=build /app/apps/canvas/dist apps/canvas/dist

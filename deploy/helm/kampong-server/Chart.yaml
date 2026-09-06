@@ -1,15 +1,16 @@
 apiVersion: v2
 name: kampong-server
 description: >-
-  Kampong Agents V5 hosted server (ADR-0013, KAN-1221) -- a single Deployment
-  serving the built canvas static assets and the Fastify API from one origin.
-  This is a foundational scaffold: no database, no auth, no real multi-tenancy
-  yet (those land in later cards -- KAN-1222 onward). This chart alone does
-  not stand up Postgres, cert-manager, or LiteLLM; it deploys packages/server
-  itself into a cluster that already has those (or will grow them in
-  follow-up cards).
+  Kampong Agents V5 hosted server (ADR-0013, KAN-1221) -- a Deployment
+  serving the built canvas static assets and the Fastify API from one origin,
+  plus (KAN-1223, ADR-0014) a Helm-hook Job that applies Drizzle migrations
+  against Postgres before each deploy. Still no auth or real multi-tenant
+  data access yet (those land in later cards -- KAN-1224 onward). This chart
+  alone does not stand up Postgres itself, cert-manager, or LiteLLM; it
+  deploys packages/server (and now its migration runner) into a cluster that
+  already has those (or will grow them in follow-up cards).
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.0.0"
 home: https://github.com/leejianrong/kampong-agents
 sources:
