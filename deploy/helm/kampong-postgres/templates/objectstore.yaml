@@ -1,0 +1,36 @@
+{{- if .Values.backup.enabled -}}
+{{- $destination := printf "s3://%s/%s" .Values.backup.objectStore.bucket (.Values.backup.objectStore.pathPrefix | default "") | trimSuffix "/" -}}
+# ObjectStore (barmancloud.cnpg.io/v1) -- the Barman Cloud CNPG-I plugin's
+# own CRD, requires that plugin installed cluster-wide (README.md). This is
+# the current, supported backup mechanism; it replaces the older in-CR
+# `spec.backup.barmanObjectStore` field on the Cluster itself, which is
+# deprecated in current CNPG releases (see README.md).
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ include "kampong-postgres.objectStoreName" . }}
+  labels:
+    {{- include "kampong-postgres.labels" . | nindent 4 }}
+spec:
+  retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
+  configuration:
+    destinationPath: {{ $destination | quote }}
+    {{- with .Values.backup.objectStore.endpointURL }}
+    endpointURL: {{ . | quote }}
+    {{- end }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ .Values.backup.objectStore.credentialsSecretName | quote }}
+        key: {{ .Values.backup.objectStore.credentialsSecretKeys.accessKeyId | quote }}
+      secretAccessKey:
+        name: {{ .Values.backup.objectStore.credentialsSecretName | quote }}
+        key: {{ .Values.backup.objectStore.credentialsSecretKeys.secretAccessKey | quote }}
+      region:
+        name: {{ include "kampong-postgres.regionSecretName" . | quote }}
+        key: REGION
+    wal:
+      compression: {{ .Values.backup.objectStore.wal.compression }}
+    data:
+      compression: {{ .Values.backup.objectStore.data.compression }}
+      jobs: {{ .Values.backup.objectStore.data.jobs }}
+{{- end -}}

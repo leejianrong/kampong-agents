@@ -1,0 +1,23 @@
+{{- if .Values.backup.enabled -}}
+# ScheduledBackup (postgresql.cnpg.io/v1) -- a core CNPG CRD (not part of the
+# Barman Cloud plugin itself). `method: plugin` + `pluginConfiguration.name`
+# hands the actual backup work off to the Barman Cloud CNPG-I plugin
+# configured on the Cluster (cluster.yaml) via the ObjectStore this chart
+# also renders (objectstore.yaml).
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "kampong-postgres.fullname" . }}-daily
+  labels:
+    {{- include "kampong-postgres.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.scheduledBackup.schedule | quote }}
+  backupOwnerReference: {{ .Values.backup.scheduledBackup.backupOwnerReference }}
+  immediate: {{ .Values.backup.scheduledBackup.immediate }}
+  suspend: {{ .Values.backup.scheduledBackup.suspend }}
+  cluster:
+    name: {{ include "kampong-postgres.fullname" . }}
+  method: plugin
+  pluginConfiguration:
+    name: {{ .Values.barmanCloudPlugin.name }}
+{{- end -}}
