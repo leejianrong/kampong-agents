@@ -1,16 +1,15 @@
-// Vendored from packages/engine/src/workflow.ts as part of a `kampong
-// export` -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md.
-// The only change from the source file is the `AgentSpec`/`WorkflowStep`
-// type import, which now comes from the local ./spec-types.js rather than
-// "@kampong/spec" (this project has no dependency on that package --
-// ADR-0002). From here on this file is yours: it will not be touched again
-// by a future export.
+// Vendored from packages/engine/src/workflow.ts as part of a `kampong export`
+// -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
+// only change from the source file is the type import, which now comes from
+// the local ./spec-types.js rather than "@kampong/spec" (this project has no
+// dependency on that package -- ADR-0002). From here on this file is yours: it
+// will not be touched again by a future export.
 //
 import { z } from "zod";
 import type { AgentSpec, WorkflowStep } from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
-import { callHttpTool, type HttpToolCallOptions } from "./http-tool.js";
+import { callHttpTool, substitutePlaceholders, type HttpToolCallOptions } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
@@ -56,24 +55,19 @@ export type RunEvent =
 export interface EngineDeps {
   model: ModelClient;
   fetchImpl?: HttpToolCallOptions["fetchImpl"];
+  /** Resolves connector `${ENV}` tokens (KAN-1430). Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
 const REQUEST_HUMAN_APPROVAL = "request_human_approval";
 
-// KAN-1429 (ADR-0021): `{{ step.field }}` / `{{ input }}` data references,
-// resolvable in an action step's query, a tool step's URL, and an approval
-// step's message. The lookup keys are exactly buildToolParams' flat map
-// (`input` plus namespaced `step.field` scalars), so a reference to a
-// non-scalar output (or an unknown key) is left as-is rather than guessed --
-// an honest miss, consistent with substitutePlaceholders' own behavior.
-const DATA_REF_PATTERN = /\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/g;
-
-function resolveRefs(text: string, params: Record<string, string>): string {
-  return text.replace(DATA_REF_PATTERN, (match, key: string) =>
-    key in params ? params[key]! : match,
-  );
-}
+// KAN-1429 (ADR-0021): `{{ step.field }}` / `{{ input }}` data references
+// resolve in an action step's query, a tool step's fields, and an approval
+// step's message, via the shared substitutePlaceholders resolver (KAN-1430
+// unified it to handle both `{{ ... }}` and the original `{...}` form). The
+// lookup keys are buildToolParams' flat map (`input` plus namespaced
+// `step.field` scalars); an unknown key is left as-is rather than guessed.
 
 const structuredStepSchema = z.object({
   result: z.record(z.string(), z.unknown()),
@@ -154,6 +148,7 @@ export async function* runWorkflow(
         try {
           const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
             fetchImpl: deps.fetchImpl,
+            env: deps.env,
           });
           stepOutputs[step.step] = output;
           yield { type: "step_completed", step: step.step, output };
@@ -208,12 +203,13 @@ export async function* runWorkflow(
         }
       }
       try {
-        const params = buildToolParams(stepOutputs, input);
-        // Resolve `{{ step.field }}` references in the URL first (KAN-1429);
-        // callHttpTool then substitutes the pre-existing `{step.field}` form,
-        // so both syntaxes work and old specs are unaffected.
-        const resolvedTool = { ...tool, url: resolveRefs(tool.url, params) };
-        const output = await callHttpTool(resolvedTool, params, { fetchImpl: deps.fetchImpl });
+        // callHttpTool builds the request (generic HTTP or a connector) and
+        // resolves `{{ step.field }}` / `{placeholder}` references in every
+        // field via substitutePlaceholders (KAN-1429/KAN-1430).
+        const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
+          fetchImpl: deps.fetchImpl,
+          env: deps.env,
+        });
         stepOutputs[step.step] = output;
         yield { type: "step_completed", step: step.step, output };
       } catch (err) {
@@ -227,7 +223,7 @@ export async function* runWorkflow(
     // reject stops the run (reusing the approval/resume machinery).
     if (isApprovalStep(step)) {
       const reason = step.message
-        ? resolveRefs(step.message, buildToolParams(stepOutputs, input))
+        ? substitutePlaceholders(step.message, buildToolParams(stepOutputs, input))
         : `Step "${step.step}" requires human approval.`;
       const decision = yield {
         type: "awaiting_approval",
@@ -341,7 +337,7 @@ function buildStepPrompt(
   const lines = [`User input: ${input}`, `Step: ${step.step}`, `Action: ${step.action}`];
   if (step.inputs?.length) lines.push(`Relevant fields: ${step.inputs.join(", ")}`);
   if (step.query)
-    lines.push(`Query: ${resolveRefs(step.query, buildToolParams(stepOutputs, input))}`);
+    lines.push(`Query: ${substitutePlaceholders(step.query, buildToolParams(stepOutputs, input))}`);
   if (Object.keys(stepOutputs).length > 0) {
     lines.push(`Prior step outputs: ${JSON.stringify(stepOutputs)}`);
   }

@@ -32,4 +32,50 @@ describe("buildToolFromForm", () => {
 
     expect(result.success).toBe(false);
   });
+
+  // KAN-1430 (ADR-0021): the Slack/Gmail connector shapes.
+  it("builds a Slack connector tool", () => {
+    const result = buildToolFromForm({
+      kind: "slack_post_message",
+      name: "notify_support",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#support",
+      text: "{{ draft.text }}",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.tool).toEqual({
+      name: "notify_support",
+      action: "slack_post_message",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#support",
+      text: "{{ draft.text }}",
+    });
+  });
+
+  it("builds a Gmail connector tool", () => {
+    const result = buildToolFromForm({
+      kind: "gmail_send",
+      name: "send_reply",
+      token: "${GMAIL_TOKEN}",
+      to: "c@example.com",
+      subject: "Re: your ticket",
+      body: "{{ draft.text }}",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.tool).toMatchObject({ action: "gmail_send", to: "c@example.com" });
+  });
+
+  it("rejects a connector whose token is a literal, not an ${ENV} placeholder", () => {
+    const result = buildToolFromForm({
+      kind: "slack_post_message",
+      name: "notify",
+      token: "xoxb-real-secret",
+      channel: "#c",
+      text: "hi",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

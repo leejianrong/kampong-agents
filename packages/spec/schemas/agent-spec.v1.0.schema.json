@@ -74,33 +74,107 @@
         "tools": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "const": "http_request"
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requires_approval": {
+                    "type": "boolean"
+                  },
+                  "extract": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "action", "method", "url"],
+                "additionalProperties": false
               },
-              "action": {
-                "type": "string",
-                "const": "http_request"
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "const": "slack_post_message"
+                  },
+                  "token": {
+                    "type": "string",
+                    "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requires_approval": {
+                    "type": "boolean"
+                  },
+                  "extract": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "action", "token", "channel", "text"],
+                "additionalProperties": false
               },
-              "method": {
-                "type": "string",
-                "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
-              },
-              "url": {
-                "type": "string",
-                "minLength": 1
-              },
-              "requires_approval": {
-                "type": "boolean"
-              },
-              "extract": {
-                "type": "string"
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "const": "gmail_send"
+                  },
+                  "token": {
+                    "type": "string",
+                    "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requires_approval": {
+                    "type": "boolean"
+                  },
+                  "extract": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "action", "token", "to", "subject", "body"],
+                "additionalProperties": false
               }
-            },
-            "required": ["name", "action", "method", "url"],
-            "additionalProperties": false
+            ]
           }
         },
         "guardrails": {

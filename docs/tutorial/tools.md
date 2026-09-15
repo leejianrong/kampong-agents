@@ -31,11 +31,33 @@ LLM call to set it up:
 | Field               | Required | What it does                                                                                          |
 | ------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
 | `name`              | yes      | Identifier you reference from the workflow, e.g. `execute_tool(lookup_order)`.                        |
-| `action`            | yes      | Always `http_request` in v1, the one tool kind today.                                                 |
+| `action`            | yes      | The tool kind: `http_request` (generic), or a connector: `slack_post_message`, `gmail_send`.          |
 | `method`            | yes      | `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`.                                                           |
 | `url`               | yes      | The endpoint. Use `{placeholders}` for values filled in at call time.                                 |
 | `extract`           | no       | A dotted path into the JSON response, so the agent gets one field instead of the whole body.          |
 | `requires_approval` | no       | If `true`, the run pauses for a human before the call. See [Guardrails and approvals](guardrails.md). |
+
+The `method` and `url` fields above are the generic `http_request` tool. The **connectors** take
+their own fields instead:
+
+| Connector             | Fields                                    |
+| --------------------- | ----------------------------------------- |
+| `slack_post_message`  | `token` (an `${ENV}` reference), `channel`, `text` |
+| `gmail_send`          | `token` (an `${ENV}` reference), `to`, `subject`, `body` |
+
+```yaml
+tools:
+  - name: notify_support
+    action: slack_post_message
+    token: ${SLACK_BOT_TOKEN} # never a literal, always an env reference
+    channel: "#support"
+    text: "New reply drafted: {{ draft.text }}"
+```
+
+!!! note "Connector credentials are env references, never literals"
+    A connector's `token` follows the same rule as a model key: it must be an `${ENV_VAR}`
+    reference, resolved from the environment at run time. When you export or deploy the agent, set
+    that variable (for example `SLACK_BOT_TOKEN`) in the environment.
 
 ## Placeholders resolve from the run, not thin air
 

@@ -25,14 +25,36 @@ export interface KnowledgeItem {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export interface Tool {
-  name: string;
-  action: "http_request";
-  method: HttpMethod;
-  url: string;
-  requires_approval?: boolean;
-  extract?: string;
-}
+// KAN-1430: tools are a discriminated union on `action` -- the generic HTTP
+// tool plus the Slack/Gmail connectors (credential is an ${ENV} token).
+export type Tool =
+  | {
+      name: string;
+      action: "http_request";
+      method: HttpMethod;
+      url: string;
+      requires_approval?: boolean;
+      extract?: string;
+    }
+  | {
+      name: string;
+      action: "slack_post_message";
+      token: string;
+      channel: string;
+      text: string;
+      requires_approval?: boolean;
+      extract?: string;
+    }
+  | {
+      name: string;
+      action: "gmail_send";
+      token: string;
+      to: string;
+      subject: string;
+      body: string;
+      requires_approval?: boolean;
+      extract?: string;
+    };
 
 export type FallbackAction = "escalate_to_human";
 

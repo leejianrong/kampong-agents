@@ -1,9 +1,9 @@
-// Vendored from packages/engine/src/run.ts as part of a `kampong export` --
-// see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
-// only change from the source file is the `AgentSpec` type import, which now
-// comes from the local ./spec-types.js rather than "@kampong/spec" (this
-// project has no dependency on that package -- ADR-0002). From here on this
-// file is yours: it will not be touched again by a future export.
+// Vendored from packages/engine/src/run.ts as part of a `kampong export`
+// -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
+// only change from the source file is the type import, which now comes from
+// the local ./spec-types.js rather than "@kampong/spec" (this project has no
+// dependency on that package -- ADR-0002). From here on this file is yours: it
+// will not be touched again by a future export.
 //
 import { EventEmitter } from "node:events";
 import type { AgentSpec } from "./spec-types.js";
@@ -212,5 +212,12 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
       fetchImpl: options.modelFetchImpl,
       timeoutMs: options.timeoutMs,
     });
-  return new AgentRun(spec, { model, fetchImpl: options.fetchImpl });
+  return new AgentRun(spec, {
+    model,
+    fetchImpl: options.fetchImpl,
+    // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
+    // key does (process.env by default), so an exported/deployed app just sets
+    // e.g. SLACK_BOT_TOKEN in its environment.
+    env: options.env ?? process.env,
+  });
 }
