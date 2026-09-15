@@ -144,6 +144,55 @@ Vertical increments. Each ends in something you can demonstrate. Slice 1 confron
 
 These are real commitments on the roadmap per product direction — not "someday maybe" — but are intentionally lower-detail here since their design depends on what V1–V4 usage actually reveals.
 
+**Current priority (re-sequenced 2026-09-16):** V9 below is sequenced **ahead of** the rest of V5
+and V6–V8. V5's hosted backend + canvas UI are built and merged but parked until actually deployed
+(its remaining cards KAN-1408/1427/1393/1389 stay open); the near-term push is closing the
+LangGraph/Mastra/n8n expressiveness gap so a real workflow can be built, demoed, and deployed.
+
+## V9: Real-World Workflows (single-agent)
+
+**Scoped by:** ADR-0021 (direction + the workflow-model extension). Board epic EPIC-214.
+
+**Delivers:** the ability to author, on the canvas, a workflow that a real event triggers, that
+calls real apps, pauses for a human out-of-band, and acts — then deploy it. Direction is
+**Mastra-style structured workflows, single-agent** (ADR-0001 holds; multi-agent stays V7),
+keeping the canvas↔YAML duality and one-way export/no-lock-in (ADR-0002). North-star hero:
+**support triage & auto-reply** (classify → look up context → draft → human approve → send).
+
+Deployable **without** the V5 hosted auth/RLS stack: connector creds are `${ENV}` tokens (same
+secrets model as BYOK model keys), and the deployable artifact is the exported standalone Mastra
+app (the exporter is extended to emit the webhook listener, connector calls, and the Slack
+approval callback) or `kampong serve <spec>` for a quick demo.
+
+- **A (KAN-1429): Workflow model core.** First-class **tool step** (`type: tool`) and **approval
+  step** (`type: approval`), plus `{{ step.field }}` / `{{ trigger.field }}` data references in
+  action `query`, tool params, and approval `message`. New canvas node types mirroring YAML;
+  engine executes them (reusing the approval/resume machinery); exporter emits equivalents.
+  Additive and backward-compatible. Demo: build the hero on the canvas with generic HTTP, run
+  with a pasted message, approve in the canvas modal.
+- **B (KAN-1430): Connectors.** Gmail + Slack connector tool kinds (creds via `${ENV}`), keeping
+  `http_request`. Canvas forms per operation; exporter emits real calls; record/replay still
+  works. Demo: posts to a real Slack channel / sends a real email.
+- **C (KAN-1431): Webhook trigger + serve/deploy.** `agent.trigger` (webhook first); `kampong
+serve <spec>` and the exported app expose the endpoint that runs the workflow per event. Demo:
+  a real webhook event drives the flow on a deployed process.
+- **D (KAN-1432): Headless approval via Slack buttons.** A paused deployed run posts an
+  Approve/Reject Slack message; the click resolves the run (verified Slack signatures). Demo:
+  end-to-end real and deployable.
+
+### Test plan
+
+- **A:** round-trip fixture for the two new step kinds (`YAML → canvas → mutation → YAML` fixed
+  point, ADR-0007); engine integration tests driving a tool step and an approval step with a fake
+  model + recorded tool (deterministic, no network); data-reference resolution unit tests.
+- **B:** connector tool unit tests against recorded fixtures; a live-call smoke test gated behind
+  a real token env var (skipped in CI like the DB suites); exporter behavioral-equivalence for a
+  connector spec.
+- **C:** `kampong serve` integration test that POSTs a webhook body and asserts a run starts and
+  completes; exporter test that the generated app boots and serves the same endpoint.
+- **D:** a Slack-interaction callback test (signed payload → run resolves), driven against the
+  engine's approval machinery with a mocked Slack post.
+
 ## V5: Hosted / BYOK SaaS Mode
 
 **Delivers:** R7
