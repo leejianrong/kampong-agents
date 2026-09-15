@@ -224,12 +224,6 @@ export function App({
         )}
 
         <div className="md3-app__canvas-surface">
-          {openForm === "run" && (
-            <div className="md3-app__overlay">
-              <RunPanel api={api} />
-            </div>
-          )}
-
           {openForm === "tool" && (
             <div className="md3-app__overlay">
               <ToolForm
@@ -259,6 +253,14 @@ export function App({
         </div>
       </div>
       <div className="md3-app__side-pane">
+        {/* The run panel docks in the side pane (above the YAML) rather than
+            floating over the canvas, so a run never covers the graph the user
+            is watching. Toggling "Test Run" shows/hides it. */}
+        {openForm === "run" && (
+          <div className="md3-app__run-dock">
+            <RunPanel api={api} />
+          </div>
+        )}
         <YamlPreview source={source} />
       </div>
     </div>
