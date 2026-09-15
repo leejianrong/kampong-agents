@@ -1,0 +1,55 @@
+# Builds the Zensical documentation site and publishes it to GitHub Pages.
+# On a pull request it builds only, so a broken docs build (a bad link, a
+# diagram that won't parse) fails the check before merge. On a push to main
+# it builds and deploys. Scoped to docs paths so unrelated changes don't run
+# it.
+#
+# One-time setup: enable Pages in the repo (Settings -> Pages -> Source:
+# "GitHub Actions"). Keep `site_url` in zensical.toml matching the Pages URL.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", "zensical.toml", ".github/workflows/docs.yml"]
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install zensical
+      # --clean so a stale site/ can never mask a page that stopped building.
+      - run: zensical build --clean
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to Pages
+    # PRs build (the check above) but never deploy.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
