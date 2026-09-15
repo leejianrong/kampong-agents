@@ -88,6 +88,48 @@ describe("createMastraModelClient (BYOK resolution)", () => {
   });
 });
 
+// KAN-1230 (ADR-0016): the hosted-mode key/base-URL seam. `packages/server`
+// resolves a workspace's decrypted BYOK key and injects it here, so the spec
+// needs no `${ENV_VAR}` placeholder and `process.env` needs no key at all --
+// the exact opposite of the local path above. Still zero network at
+// construction.
+describe("createMastraModelClient (hosted apiKeyOverride/baseUrlOverride seam)", () => {
+  const ENV_VAR = "KAMPONG_TEST_API_KEY";
+
+  beforeEach(() => {
+    delete process.env[ENV_VAR];
+  });
+
+  it("uses apiKeyOverride and does NOT require the spec's env var to be set", () => {
+    // The env var this spec references is unset -- local mode would throw
+    // MissingApiKeyError here. With an override, it must succeed instead.
+    const client = createMastraModelClient(SPEC, process.env, {
+      apiKeyOverride: "sk-ant-decrypted-from-byok",
+    });
+    expect(typeof client.generateText).toBe("function");
+    expect(typeof client.generateStructured).toBe("function");
+  });
+
+  it("accepts an apiKeyOverride even for a spec with no api_key placeholder at all", () => {
+    const noPlaceholderSpec: AgentSpec = {
+      ...SPEC,
+      agent: { ...SPEC.agent, model: { provider: "openai", name: "gpt-4o-mini" } },
+    };
+    expect(() =>
+      createMastraModelClient(noPlaceholderSpec, {}, { apiKeyOverride: "sk-decrypted" }),
+    ).not.toThrow();
+  });
+
+  it("accepts a baseUrlOverride (LiteLLM gateway address) without throwing", () => {
+    expect(() =>
+      createMastraModelClient(SPEC, process.env, {
+        apiKeyOverride: "sk-decrypted",
+        baseUrlOverride: "http://litellm.internal:4000",
+      }),
+    ).not.toThrow();
+  });
+});
+
 // OpenRouter is a cloud aggregator like anthropic/openai -- unlike ollama it
 // requires a real BYOK api_key -- so it goes through the exact same
 // resolution path exercised above. Separate describe block (rather than

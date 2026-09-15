@@ -7,6 +7,7 @@ export const PACKAGE_NAME = "@kampong/engine";
 
 export {
   createMastraModelClient,
+  providerRequiresApiKey,
   resolveEnvVarPlaceholder,
   MissingApiKeyError,
   UnknownModelProviderError,

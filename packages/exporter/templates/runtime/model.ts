@@ -53,6 +53,14 @@ const OPENROUTER_HEADERS: Record<string, string> = {
 // no key to check.
 const CLOUD_PROVIDERS: ReadonlySet<ModelProvider> = new Set(["anthropic", "openai", "openrouter"]);
 
+/**
+ * Whether a provider needs a BYOK API key (a cloud provider), as opposed to a
+ * keyless local one like `ollama`.
+ */
+export function providerRequiresApiKey(provider: string): boolean {
+  return CLOUD_PROVIDERS.has(provider as ModelProvider);
+}
+
 interface ProviderFactoryOptions {
   apiKey: string;
   baseUrl?: string;
@@ -347,6 +355,13 @@ export interface CreateMastraModelClientOptions {
    * over `DEFAULT_MODEL_TIMEOUT_MS`.
    */
   timeoutMs?: number;
+  /**
+   * When set, used as the cloud provider's API key directly instead of
+   * resolving the spec's `${ENV_VAR}` `api_key` placeholder against `env`.
+   */
+  apiKeyOverride?: string;
+  /** When set, overrides the spec's `agent.model.base_url`. */
+  baseUrlOverride?: string;
 }
 
 /**
@@ -376,12 +391,16 @@ export function createMastraModelClient(
 
   let apiKey = "";
   if (CLOUD_PROVIDERS.has(modelConfig.provider)) {
-    if (!modelConfig.api_key) {
-      throw new Error(
-        `Model provider "${modelConfig.provider}" requires \`agent.model.api_key\` (a \${ENV_VAR} placeholder).`,
-      );
+    if (options.apiKeyOverride !== undefined) {
+      apiKey = options.apiKeyOverride;
+    } else {
+      if (!modelConfig.api_key) {
+        throw new Error(
+          `Model provider "${modelConfig.provider}" requires \`agent.model.api_key\` (a \${ENV_VAR} placeholder).`,
+        );
+      }
+      apiKey = resolveEnvVarPlaceholder(modelConfig.api_key, modelConfig.provider, env);
     }
-    apiKey = resolveEnvVarPlaceholder(modelConfig.api_key, modelConfig.provider, env);
   }
 
   const timeoutMs = options.timeoutMs ?? modelConfig.timeout_ms ?? DEFAULT_MODEL_TIMEOUT_MS;
@@ -389,7 +408,7 @@ export function createMastraModelClient(
 
   const model = factory(modelConfig.name, {
     apiKey,
-    baseUrl: modelConfig.base_url,
+    baseUrl: options.baseUrlOverride ?? modelConfig.base_url,
     fetchImpl: timeoutFetch,
   });
 

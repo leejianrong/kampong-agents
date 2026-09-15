@@ -55,6 +55,16 @@ const OPENROUTER_HEADERS: Record<string, string> = {
 // actually enforced).
 const CLOUD_PROVIDERS: ReadonlySet<ModelProvider> = new Set(["anthropic", "openai", "openrouter"]);
 
+/**
+ * Whether a provider needs a BYOK API key (a cloud provider), as opposed to a
+ * keyless local one like `ollama`. Exported so hosted-mode key resolution
+ * (`packages/server`, KAN-1230) can decide whether to look up and decrypt a
+ * workspace's stored key for a spec's provider without duplicating this set.
+ */
+export function providerRequiresApiKey(provider: string): boolean {
+  return CLOUD_PROVIDERS.has(provider as ModelProvider);
+}
+
 interface ProviderFactoryOptions {
   apiKey: string;
   baseUrl?: string;
@@ -379,6 +389,29 @@ export interface CreateMastraModelClientOptions {
    * without editing the spec file.
    */
   timeoutMs?: number;
+  /**
+   * Hosted-mode key seam (KAN-1230, ADR-0016). When set, this is used as the
+   * cloud provider's API key directly, INSTEAD of resolving the spec's
+   * `${ENV_VAR}` `api_key` placeholder against `env`. `packages/server`
+   * passes the decrypted BYOK key for the request's workspace here, at the
+   * moment a run actually needs to call the provider -- so a workspace's real
+   * key never lives in `process.env` and never has to be a spec placeholder
+   * server-side. Local mode (`kampong dev`/`run`) omits this and the existing
+   * `${ENV_VAR}` resolution is unchanged. ADR-0016 framed this as living on
+   * the `env` seam; the actual byte-for-byte decryption stays in
+   * `packages/server` (where the database and root key are -- the engine must
+   * not depend on either), and this option is the intentional injection point
+   * it feeds. Ignored for providers that need no key (`ollama`).
+   */
+  apiKeyOverride?: string;
+  /**
+   * Hosted-mode base-URL seam (KAN-1230, ADR-0013). When set, overrides the
+   * spec's `agent.model.base_url` -- `packages/server` points every cloud
+   * provider call at the self-hosted LiteLLM gateway's internal address
+   * without rewriting each spec. Omitted in local mode, where the spec's own
+   * `base_url` (or the provider default) still applies.
+   */
+  baseUrlOverride?: string;
 }
 
 /**
@@ -409,12 +442,19 @@ export function createMastraModelClient(
 
   let apiKey = "";
   if (CLOUD_PROVIDERS.has(modelConfig.provider)) {
-    if (!modelConfig.api_key) {
-      throw new Error(
-        `Model provider "${modelConfig.provider}" requires \`agent.model.api_key\` (a \${ENV_VAR} placeholder).`,
-      );
+    if (options.apiKeyOverride !== undefined) {
+      // Hosted mode (KAN-1230): the caller already resolved the workspace's
+      // real key (decrypted from byok_keys, ADR-0016) and injects it here, so
+      // the spec needs no `${ENV_VAR}` placeholder server-side.
+      apiKey = options.apiKeyOverride;
+    } else {
+      if (!modelConfig.api_key) {
+        throw new Error(
+          `Model provider "${modelConfig.provider}" requires \`agent.model.api_key\` (a \${ENV_VAR} placeholder).`,
+        );
+      }
+      apiKey = resolveEnvVarPlaceholder(modelConfig.api_key, modelConfig.provider, env);
     }
-    apiKey = resolveEnvVarPlaceholder(modelConfig.api_key, modelConfig.provider, env);
   }
 
   const timeoutMs = options.timeoutMs ?? modelConfig.timeout_ms ?? DEFAULT_MODEL_TIMEOUT_MS;
@@ -422,7 +462,7 @@ export function createMastraModelClient(
 
   const model = factory(modelConfig.name, {
     apiKey,
-    baseUrl: modelConfig.base_url,
+    baseUrl: options.baseUrlOverride ?? modelConfig.base_url,
     fetchImpl: timeoutFetch,
   });
 
