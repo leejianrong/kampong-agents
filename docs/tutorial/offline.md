@@ -74,5 +74,13 @@ It completes with the same output.
 Nothing about a local run phones home. There's no telemetry by default, and the tool doesn't
 report your usage anywhere unless you explicitly opt in.
 
-Next: take the finished agent out of the tool entirely, with
-[Ejecting to TypeScript](exporting.md).
+## Recap
+
+- `--tools live|record|replay` controls tool calls; `replay` never touches the network, and a
+  cache miss is a failure, not a silent live call.
+- Pair `replay` with a local Ollama model for a run that touches nothing external.
+- Secrets are scrubbed before a fixture is written, and nothing phones home by default.
+- A missing Ollama server or a missing fixture is a loud error, never a silent fallback.
+
+Next: edit specs from your own editor with the canvas open, in
+[Editing specs in your IDE](external-editing.md).

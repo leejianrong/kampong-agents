@@ -95,4 +95,15 @@ kampong run agent.yaml --input "..." --approve-all
 Each auto-approval is logged to stderr so you can see what was waved through. Use it when you
 trust the input and want the run to complete without stopping.
 
+## Recap
+
+- A run pauses three ways: a tool's `requires_approval`, a `request_human_approval` branch, or a
+  confidence guardrail.
+- The confidence guardrail needs a `guardrails` block plus a `confidence_gate` step; it fires
+  when confidence falls below `confidence_threshold`.
+- The one `fallback_action` today is `escalate_to_human` (pause for approval); anything else
+  fails visibly.
+- Approve on the canvas modal, at the `kampong run` stdin prompt, or with `--approve-all` for
+  unattended runs.
+
 Next: run all of this with no network at all, in [Running offline](offline.md).

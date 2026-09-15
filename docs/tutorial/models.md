@@ -84,4 +84,14 @@ model:
 The default is 60 seconds. The CLI's `--timeout <ms>` flag overrides the spec value for one run,
 which is handy for tuning a CI job without editing the file.
 
+## Recap
+
+- `agent.model` picks the `provider` (`openrouter`, `anthropic`, `openai`, or `ollama`) and the
+  model `name`.
+- Cloud providers require `api_key`, and it must be an `${ENV_VAR}` reference, never a literal.
+- `ollama` needs no key and runs locally; a missing local server is a hard, visible error, never
+  a silent fallback to a paid cloud API.
+- `timeout_ms` (default 60 seconds) caps one model call; `--timeout` overrides it for a single
+  run.
+
 Next: give your agent something to do beyond talk, with [Adding tools](tools.md).

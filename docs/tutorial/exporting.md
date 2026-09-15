@@ -52,6 +52,18 @@ Export when you want to leave the builder behind: to drop the agent into a large
 in your own infrastructure, or customize it beyond what the spec expresses. Keep iterating on the
 spec while it's still changing shape, and export once it's settled.
 
-That's the full loop: design, run, guard, offline-test, and ship. For editing the spec outside the
-app entirely, see [Editing specs in your IDE](external-editing.md). For the exact flags and fields,
-see the [Reference](../reference/cli.md).
+That's the full loop: design, run, guard, offline-test, and ship.
+
+## Recap
+
+- `kampong export <spec> <dir>` generates a standalone TypeScript project on Mastra with zero
+  dependency on Kampong Agents.
+- The exported project runs with `npm install && npm start` and behaves identically to the spec
+  on the canvas or through `kampong run`.
+- Export is one-way: the canvas and CLI never read generated code, and hand-edits to it do not
+  sync back.
+- Re-export refuses to overwrite a non-empty directory unless you pass `--force`.
+
+That is the end of the tutorial ladder. From here, [Concepts](../concepts.md) explains the design
+ideas behind the duality and one-way export, and the [Reference](../reference/cli.md) documents
+every CLI flag and `AgentSpec` field.

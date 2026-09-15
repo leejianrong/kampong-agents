@@ -15,8 +15,8 @@ agent:
       extract: "order.status"
 ```
 
-On the canvas, **Add Tool** opens a structured form for exactly these fields — no code, no LLM
-call to set it up:
+On the canvas, **Add Tool** opens a structured form for exactly these fields, with no code and no
+LLM call to set it up:
 
 ![The Add Tool form open on the canvas](../assets/img/canvas-add-tool.png)
 
@@ -87,5 +87,15 @@ reject and the run stops with a clear status. Full mechanics in
 
 Real API calls are slow and non-deterministic. The mock/record layer records a call once and
 replays it forever after: same result every time, zero network. See [Running offline](offline.md).
+
+## Recap
+
+- A tool is an entry under `agent.tools` with `name`, `action: http_request`, `method`, `url`,
+  and an optional `extract`.
+- Defining a tool only makes it available. It runs only when a condition step calls
+  `execute_tool(<name>)`, covered next.
+- `url` placeholders like `{input}` resolve from the run input and prior step outputs at call
+  time.
+- `requires_approval: true` pauses the run for a person right before the call.
 
 Next: wire the tool into a decision with [Workflows and conditions](workflows.md).
