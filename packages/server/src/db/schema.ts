@@ -7,6 +7,7 @@ import {
   jsonb,
   boolean,
   primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 
 // The V5 initial schema (ADR-0014, KAN-1223): originally exactly the four
@@ -273,3 +274,35 @@ export const layouts = pgTable("layouts", {
   // Postgres types."
   layoutJson: jsonb("layout_json").notNull(),
 });
+
+// KAN-1229 (ADR-0016): workspace-scoped BYOK provider API keys. Another
+// ordinary `workspace_id`-scoped, RLS-protected table (ADR-0014 owns that
+// framing; the RLS policy is hand-authored in
+// drizzle/0007_enable_byok_keys_rls.sql alongside the others). ADR-0016 owns
+// the cryptography: `ciphertext` is the AES-256-GCM encryption of the raw
+// provider key under the deployment's root key (BYOK_ROOT_KEY), self-framed
+// as base64(iv || authTag || ciphertext) by src/crypto/envelope.ts -- the
+// plaintext key is NEVER stored, logged, or returned by any API. `lastFour`
+// is a display-only masking hint (the key's last 4 characters, e.g. shown as
+// "sk-...ab12") so the masked key-management API can prove a key is
+// configured without ever decrypting it. A workspace has at most one key per
+// provider (the unique constraint) -- writing a key for a provider that
+// already has one replaces it.
+export const byokKeys = pgTable(
+  "byok_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    // The provider this key authenticates against (e.g. "openai",
+    // "anthropic") -- the same identifier the model-resolution path
+    // (KAN-1230/1231) will look a workspace's key up by at call time.
+    provider: text("provider").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    lastFour: text("last_four").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique().on(table.workspaceId, table.provider)],
+);

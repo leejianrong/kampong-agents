@@ -45,7 +45,7 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     await pool?.end();
   });
 
-  it("creates exactly the ten expected tables in the public schema", async () => {
+  it("creates exactly the eleven expected tables in the public schema", async () => {
     const { rows } = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -55,14 +55,15 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     expect(tableNames).toEqual(
       expect.arrayContaining(["workspaces", "workspace_members", "specs", "layouts"]),
     );
-    // Exactly these ten -- KAN-1223's original four (workspaces,
-    // workspace_members, specs, layouts) plus KAN-1226's Better Auth tables
-    // (user, session, account, verification, invitation, sso_provider) --
-    // no byok_keys/runs table sneaking in, and no Drizzle-internal
-    // migrations-tracking table counted (it lives in its own "drizzle"
-    // schema, not "public").
+    // Exactly these eleven -- KAN-1223's original four (workspaces,
+    // workspace_members, specs, layouts), KAN-1226's Better Auth tables
+    // (user, session, account, verification, invitation, sso_provider), and
+    // KAN-1229's byok_keys (ADR-0016) -- no runs table sneaking in yet
+    // (KAN-1231's), and no Drizzle-internal migrations-tracking table counted
+    // (it lives in its own "drizzle" schema, not "public").
     expect(tableNames.sort()).toEqual([
       "account",
+      "byok_keys",
       "invitation",
       "layouts",
       "session",

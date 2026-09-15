@@ -279,10 +279,11 @@ describe("layouts table", () => {
 });
 
 describe("scope discipline (KAN-1223 vs later cards)", () => {
-  it("does not export a byok_keys or runs table -- those are KAN-1229/KAN-1231's own migrations", async () => {
+  it("exports byok_keys (added by KAN-1229) but not yet runs (KAN-1231's own migration)", async () => {
     const schemaModule = await import("../../../src/db/schema.js");
     const exportedNames = Object.keys(schemaModule);
-    expect(exportedNames).not.toContain("byokKeys");
+    // KAN-1229 (ADR-0016) added byok_keys; runs is still KAN-1231's to add.
+    expect(exportedNames).toContain("byokKeys");
     expect(exportedNames).not.toContain("runs");
   });
 });
