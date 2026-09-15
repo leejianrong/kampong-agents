@@ -91,6 +91,11 @@ export type WorkflowStep =
       confidence_gate?: boolean;
     };
 
+// KAN-1431: how a workflow starts (webhook only today).
+export interface Trigger {
+  type: "webhook";
+}
+
 export interface AgentSpec {
   version: string;
   agent: {
@@ -98,6 +103,7 @@ export interface AgentSpec {
     name: string;
     role: string;
     goal: string;
+    trigger?: Trigger;
     model?: Model;
     knowledge_base?: KnowledgeItem[];
     tools?: Tool[];

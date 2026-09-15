@@ -11,6 +11,7 @@ is shaped the way it is. The full set lives in `docs/adr/`; here they are groupe
 - [ADR-0005: A local web app, not a desktop app](adr/0005-local-web-app-not-desktop.md)
 - [ADR-0008: External-edit-first workflow](adr/0008-external-edit-first-workflow.md)
 - [ADR-0021: Real-world workflows direction (V9)](adr/0021-real-world-workflows-direction.md)
+- [ADR-0022: Deployment model — two paths, one foundation](adr/0022-deployment-model-two-paths.md)
 
 ## Runtime and execution
 

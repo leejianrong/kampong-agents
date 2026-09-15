@@ -79,6 +79,35 @@ describe("runCli -- top level", () => {
     expect(code).toBe(EXIT_USAGE_ERROR);
     expect(err.join("\n")).toContain('unknown command "frobnicate"');
   });
+
+  it("lists the serve command in usage (KAN-1431)", async () => {
+    const { io, out } = capture();
+    await runCli(["--help"], io);
+    expect(out.join("\n")).toContain("serve <spec>.yaml");
+  });
+});
+
+describe("kampong serve -- usage/validation (KAN-1431)", () => {
+  it("with no spec path is a usage error (exit 64)", async () => {
+    const { io, err } = capture();
+    const code = await runCli(["serve"], io);
+    expect(code).toBe(EXIT_USAGE_ERROR);
+    expect(err.join("\n")).toContain("spec file path is required");
+  });
+
+  it("with a nonexistent spec is a validation failure (exit 1)", async () => {
+    const { io, err } = capture();
+    const code = await runCli(["serve", "/no/such/spec.yaml"], io);
+    expect(code).toBe(1);
+    expect(err.join("\n")).toContain("spec file not found");
+  });
+
+  it("serve --help exits 0", async () => {
+    const { io, out } = capture();
+    const code = await runCli(["serve", "--help"], io);
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(out.join("\n")).toContain("kampong serve");
+  });
 });
 
 describe("kampong run -- exit codes (SLICES.md V3 unit test plan)", () => {
