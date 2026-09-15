@@ -77,6 +77,9 @@ function installFetch(state: MockState) {
         state.session = null;
         return jsonResponse(200, {});
       case "POST /api/auth/organization/create":
+        // Better Auth's organization/create stamps the new org active on the
+        // session (WorkspaceScreen relies on this instead of set-active).
+        state.session = { activeOrganizationId: "w1" };
         return jsonResponse(200, { id: "w1", name: "Acme", slug: "acme-x" });
       case "POST /api/auth/organization/set-active":
         state.session = { activeOrganizationId: "w1" };

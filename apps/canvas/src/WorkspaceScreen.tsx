@@ -31,6 +31,14 @@ export function WorkspaceScreen({ api, onActive }: WorkspaceScreenProps) {
     })();
   }, [api]);
 
+  // KNOWN LIMITATION (tracked as a follow-up card): switching to an *existing*
+  // workspace calls Better Auth's organization/set-active, whose checkMembership
+  // reads workspace_members through an unscoped connection that FORCE RLS blocks
+  // (no app.workspace_id GUC), so it fails with "not a member" even for a real
+  // member. Creating a workspace works (organization/create sets it active
+  // itself). A proper fix is an app-authored, workspace-scoped activate route
+  // (the same KAN-1393 area as retiring the 0004/0005 bootstrap pair). Until
+  // then the error is surfaced honestly rather than hidden.
   async function activate(id: string) {
     setBusy(true);
     setError(null);
@@ -49,8 +57,13 @@ export function WorkspaceScreen({ api, onActive }: WorkspaceScreenProps) {
     setBusy(true);
     setError(null);
     try {
-      const workspace = await api.createWorkspace(newName.trim());
-      await api.setActiveWorkspace(workspace.id);
+      // Better Auth's organization/create stamps the new workspace active on
+      // the session itself (it's how the server's integration tests get a
+      // workspace-scoped cookie). Deliberately NOT followed by set-active: that
+      // endpoint's checkMembership reads workspace_members through an unscoped
+      // connection, which FORCE RLS (no app.workspace_id GUC) blocks with
+      // "not a member" -- see the note on `activate` below.
+      await api.createWorkspace(newName.trim());
       onActive();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create the workspace.");

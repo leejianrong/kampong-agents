@@ -30,3 +30,10 @@ docker-compose.override.yml
 
 # Zensical docs build output
 site/
+
+# Playwright browser E2E artifacts (report, traces, and captured screenshots).
+# The docs build commits its own copies of the screenshots it uses; these are
+# the throwaway run artifacts.
+/playwright-report/
+/test-results/
+/e2e/browser/screenshots/
