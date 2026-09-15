@@ -15,6 +15,34 @@
       "when": 1788691655792,
       "tag": "0001_enable_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788694261699,
+      "tag": "0002_mixed_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788695365224,
+      "tag": "0003_hesitant_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0004_workspace_members_bootstrap_insert",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788700100000,
+      "tag": "0005_guard_member_count_monotonic",
+      "breakpoints": true
     }
   ]
 }

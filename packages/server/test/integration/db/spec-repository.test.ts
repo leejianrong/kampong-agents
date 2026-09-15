@@ -88,8 +88,14 @@ describe.skipIf(!DATABASE_URL)("PgSpecRepository against a real Postgres", () =>
   async function createWorkspace(name: string): Promise<string> {
     // `workspaces` itself has no RLS policy (out of this card's scope --
     // see drizzle/0001_enable_row_level_security.sql's own comment), so
-    // this insert needs no session-var scoping regardless.
-    const [row] = await db.insert(workspaces).values({ name }).returning({ id: workspaces.id });
+    // this insert needs no session-var scoping regardless. `slug` is a
+    // KAN-1226 addition (Better Auth's `organization` plugin requires it,
+    // NOT NULL UNIQUE) -- a random one here, since this suite only cares
+    // about `name`/`id`.
+    const [row] = await db
+      .insert(workspaces)
+      .values({ name, slug: randomUUID() })
+      .returning({ id: workspaces.id });
     if (!row) throw new Error("insert into workspaces did not return an id");
     createdWorkspaceIds.push(row.id);
     return row.id;

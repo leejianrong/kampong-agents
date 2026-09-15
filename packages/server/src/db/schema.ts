@@ -1,9 +1,23 @@
-import { pgTable, uuid, text, integer, timestamp, jsonb, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  timestamp,
+  jsonb,
+  boolean,
+  primaryKey,
+} from "drizzle-orm/pg-core";
 
-// The V5 initial schema (ADR-0014, KAN-1223): exactly the four tables
-// ADR-0014's "Schema sketch" names for this card -- `byok_keys` (ADR-0016)
-// and `runs` are deliberately NOT defined here; they belong to KAN-1229/
-// KAN-1231, which add their own migrations on top of this one later.
+// The V5 initial schema (ADR-0014, KAN-1223): originally exactly the four
+// tables ADR-0014's "Schema sketch" names for that card (`workspaces`,
+// `workspace_members`, `specs`, `layouts`). KAN-1226 (ADR-0015) added
+// Better Auth's own tables below (`user`/`session`/`account`/`verification`/
+// `invitation`/`sso_provider`) plus additive columns on `workspaces`/
+// `workspace_members` -- see each table's own comment. `byok_keys`
+// (ADR-0016) and `runs` are still deliberately NOT defined here; they
+// belong to KAN-1229/KAN-1231, which add their own migrations on top of
+// this one later.
 //
 // This module only defines the schema-as-code; it is not wired into any
 // route or the server's startup path (that's KAN-1224). It exists so
@@ -34,7 +48,36 @@ import { pgTable, uuid, text, integer, timestamp, jsonb, primaryKey } from "driz
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  // KAN-1226 (ADR-0015): Better Auth's `organization` plugin is mapped onto
+  // this table (its `organization` model's modelName is configured to
+  // "workspaces" -- see src/auth/config.ts) rather than introducing a
+  // second, parallel organization table. `slug`/`logo`/`metadata` are that
+  // plugin's own default `organization` fields -- required to exist here
+  // (verified empirically: Better Auth's Drizzle adapter runs a schema
+  // consistency check at startup, `advanced.database.validateSchema`
+  // (default true), and throws a `SchemaMismatchError` if a configured
+  // model's field has no matching column) even though only `slug` is
+  // actually exercised by this card's own tests. `slug` is `NOT NULL UNIQUE`
+  // because the plugin's own schema declares it `required: true, unique:
+  // true` -- every organization/workspace must have one, and Better Auth's
+  // `organization.create` endpoint requires the caller to supply it
+  // explicitly (it is not auto-derived from `name`).
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  metadata: text("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // KAN-1226: maintained by the `workspace_members_bump_member_count`
+  // trigger (drizzle/0004_workspace_members_bootstrap_insert.sql), never
+  // written directly by application code. Exists solely so
+  // `workspace_members`'s own bootstrap-insert RLS policy can ask "does
+  // this workspace already have a member?" without querying
+  // `workspace_members` itself (which, under `FORCE ROW LEVEL SECURITY`,
+  // would recurse into evaluating that same policy again -- verified
+  // empirically while building this card, see that migration's own
+  // comment for the full reasoning and the dead ends ruled out first).
+  // `workspaces` has no RLS at all, so this column's own reads are never
+  // policy-gated.
+  memberCount: integer("member_count").notNull().default(0),
 });
 
 export const workspaceMembers = pgTable(
@@ -43,19 +86,162 @@ export const workspaceMembers = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    // No FK to a `users` table yet: Better Auth (ADR-0015) is what
-    // introduces the users table, in a later card (KAN-1226). This column
-    // exists now per ADR-0014's schema sketch; its FK gets added once that
-    // table exists.
-    userId: uuid("user_id").notNull(),
+    // KAN-1226 (ADR-0015): the `users` table Better Auth introduces (see
+    // `user` below) now exists, so this FK -- promised by KAN-1223's own
+    // comment ("its FK gets added once that table exists") -- is added here.
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     // Placeholder text column -- KAN-1235's RBAC card (ADR-0017) defines
     // the real value set (e.g. "owner" | "admin" | "member"). V5 itself
     // only needs "member of this workspace or not" (ADR-0014), so this
-    // card just needs the column to exist.
+    // card just needs the column to exist. Better Auth's `organization`
+    // plugin (KAN-1226) supplies "owner"/"member" as its own default role
+    // values on top of this same column via the `member` model mapping
+    // below -- no separate roles column was introduced for this.
     role: text("role").notNull(),
+    // KAN-1226 (ADR-0015): Better Auth's `organization` plugin maps its
+    // `member` model onto this table (modelName "workspace_members",
+    // `organizationId` remapped to this table's own `workspaceId` -- see
+    // src/auth/config.ts) and that model requires an `id` (its own
+    // row-identity field, used in the plugin's own WHERE/RETURNING clauses
+    // -- not customizable to point at the composite PK, per Better Auth's
+    // own `Omit<Member, "id">` field-remapping type) and a `createdAt`
+    // column neither of which this table had before. Added as a plain
+    // unique column, not the table's PRIMARY KEY: Better Auth's adapter
+    // only needs `id` to exist and hold unique values it can round-trip
+    // through `eq(table.id, value)`-style queries -- it does not require
+    // `id` to be the Postgres primary key -- so the existing composite
+    // `(workspace_id, user_id)` PRIMARY KEY (the actual uniqueness
+    // constraint this table's rows need) is left untouched rather than
+    // replaced, which would have been a larger, riskier schema change than
+    // this card's brief called for.
+    id: uuid("id").notNull().defaultRandom().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })],
 );
+
+// --- KAN-1226 (ADR-0015): Better Auth's own tables -----------------------
+//
+// `user`/`session`/`account`/`verification` are Better Auth's core tables
+// (every install needs them, regardless of which plugins are enabled);
+// `invitation` and `sso_provider` belong to the `organization` and (dormant)
+// `sso` plugins respectively (ADR-0015's "adopt the sso plugin now, but
+// dormant" -- confirmed empirically that omitting `sso_provider` entirely
+// makes Better Auth's own startup schema-consistency check throw a
+// `SchemaMismatchError`, so it must exist even though this card writes no
+// row into it and builds no SSO UI/config on top of it).
+//
+// None of these five tables have an existing project equivalent to
+// reconcile with (unlike `workspaces`/`workspace_members` above), so they
+// use Better Auth's own default field shapes and modelNames verbatim --
+// see src/auth/config.ts for the full adapter/plugin wiring and the
+// ID-generation note below.
+//
+// Every PK here is `uuid`, generated by Postgres's own `gen_random_uuid()`
+// (`defaultRandom()`), matching every other table in this schema --
+// achieved by setting Better Auth's `advanced.database.generateId: "uuid"`
+// (src/auth/config.ts), which -- per Better Auth's own documented behavior
+// for the Postgres case -- defers ID generation to the database's column
+// default instead of generating an ID value in application code. This is
+// the concrete answer to this card's own "IDs must be genuine Postgres
+// uuids, not Better Auth's more common short-random-string default" brief:
+// verified empirically (packages/server/test/integration/db/auth.test.ts)
+// that a real sign-up/organization-create round trip produces `uuid`-typed
+// primary keys throughout, not text ids.
+
+export const user = pgTable("user", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const session = pgTable("session", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // Added by the `organization` plugin (the "which workspace is currently
+  // active for this browser session" field) -- `set null` on delete (not
+  // `cascade`/`restrict`) so deleting a workspace never blocks on, or
+  // cascades into deleting, an unrelated session row.
+  activeOrganizationId: uuid("active_organization_id").references(() => workspaces.id, {
+    onDelete: "set null",
+  }),
+});
+
+export const account = pgTable("account", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  // A local email+password "account" row stores its password hash here
+  // (Better Auth's own convention -- see `password` below); a GitHub OAuth
+  // account row stores its tokens here instead and leaves `password` null.
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  idToken: text("id_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+  scope: text("scope"),
+  password: text("password"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const verification = pgTable("verification", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// The `organization` plugin's own invite-by-email flow -- no existing
+// project table to reconcile with, so this uses Better Auth's default
+// field shape/modelName ("invitation") unchanged, only remapping nothing.
+export const invitation = pgTable("invitation", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role"),
+  status: text("status").notNull().default("pending"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  inviterId: uuid("inviter_id")
+    .notNull()
+    .references(() => user.id),
+});
+
+// The (dormant, per ADR-0015) `sso` plugin's own provider-registry table --
+// see this section's file-level comment for why this must exist even
+// though no row is ever written to it by this card.
+export const ssoProvider = pgTable("sso_provider", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  issuer: text("issuer").notNull(),
+  oidcConfig: text("oidc_config"),
+  samlConfig: text("saml_config"),
+  userId: uuid("user_id").references(() => user.id),
+  providerId: text("provider_id").notNull().unique(),
+  organizationId: uuid("organization_id").references(() => workspaces.id),
+  domain: text("domain").notNull(),
+});
 
 export const specs = pgTable("specs", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { runMigrations } from "../../../src/db/migrate.js";
 import { createDbClient, type DbClient } from "../../../src/db/client.js";
-import { layouts, specs, workspaceMembers, workspaces } from "../../../src/db/schema.js";
+import { layouts, specs, user, workspaceMembers, workspaces } from "../../../src/db/schema.js";
 import { withWorkspaceScope } from "../../../src/db/workspace-scope.js";
 
 // KAN-1225 (ADR-0014): proves the RLS policies added in
@@ -50,6 +51,7 @@ describe.skipIf(!DATABASE_URL)("Row-Level Security against a real Postgres", () 
   let pool: Pool;
   let db: DbClient;
   const createdWorkspaceIds: string[] = [];
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     if (!DATABASE_URL) return;
@@ -66,13 +68,40 @@ describe.skipIf(!DATABASE_URL)("Row-Level Security against a real Postgres", () 
     for (const id of createdWorkspaceIds) {
       await db.delete(workspaces).where(eq(workspaces.id, id));
     }
+    // `user` has no RLS either (KAN-1226's own tables, out of KAN-1225's
+    // scope), and isn't a child of `workspaces` -- deleted separately.
+    for (const id of createdUserIds) {
+      await db.delete(user).where(eq(user.id, id));
+    }
     await pool?.end();
   });
 
   async function createWorkspace(name: string): Promise<string> {
-    const [row] = await db.insert(workspaces).values({ name }).returning({ id: workspaces.id });
+    // `slug` is a KAN-1226 addition (Better Auth's `organization` plugin
+    // requires it, NOT NULL UNIQUE) -- a random one here, since this suite
+    // only cares about `name`/`id`.
+    const [row] = await db
+      .insert(workspaces)
+      .values({ name, slug: randomUUID() })
+      .returning({ id: workspaces.id });
     if (!row) throw new Error("insert into workspaces did not return an id");
     createdWorkspaceIds.push(row.id);
+    return row.id;
+  }
+
+  /**
+   * Creates a real `user` row -- KAN-1226 adds `workspace_members.user_id`'s
+   * long-promised FK into `user.id` (schema.ts's own comment: "its FK gets
+   * added once that table exists"), so `createMember` below needs a real
+   * row to reference now, not an arbitrary UUID literal.
+   */
+  async function createUser(name: string): Promise<string> {
+    const [row] = await db
+      .insert(user)
+      .values({ name, email: `${randomUUID()}@example.com` })
+      .returning({ id: user.id });
+    if (!row) throw new Error("insert into user did not return an id");
+    createdUserIds.push(row.id);
     return row.id;
   }
 
@@ -175,7 +204,7 @@ describe.skipIf(!DATABASE_URL)("Row-Level Security against a real Postgres", () 
       const workspaceId = await createWorkspace("fail-closed-read-check");
       const specId = await createSpec(workspaceId, "some-spec");
       await createLayout(workspaceId, specId);
-      await createMember(workspaceId, "22222222-2222-2222-2222-222222222222");
+      await createMember(workspaceId, await createUser("fail-closed-read-check-member"));
 
       // Not going through withWorkspaceScope at all: whatever this
       // connection's app.workspace_id happens to currently be (see the
@@ -236,8 +265,8 @@ describe.skipIf(!DATABASE_URL)("Row-Level Security against a real Postgres", () 
       const specBId = await createSpec(workspaceB, "spec-b");
       await createLayout(workspaceA, specAId);
       await createLayout(workspaceB, specBId);
-      await createMember(workspaceA, "33333333-3333-3333-3333-333333333333");
-      await createMember(workspaceB, "44444444-4444-4444-4444-444444444444");
+      await createMember(workspaceA, await createUser("read-isolation-a-member"));
+      await createMember(workspaceB, await createUser("read-isolation-b-member"));
 
       const seenSpecs = await withWorkspaceScope(db, workspaceA, (tx) => tx.select().from(specs));
       const seenLayouts = await withWorkspaceScope(db, workspaceA, (tx) =>
