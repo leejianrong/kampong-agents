@@ -294,4 +294,110 @@ describe.skipIf(!DATABASE_URL)("Better Auth HTTP endpoints against a real Postgr
       );
     });
   });
+
+  describe("member_count is monotonic non-decreasing (guards the 0004 bootstrap window)", () => {
+    // KAN-1226 (ADR-0018, drizzle/0005_guard_member_count_monotonic.sql):
+    // the BEFORE UPDATE trigger on `workspaces` that converts "nothing ever
+    // lowers member_count" from a convention into a database-enforced
+    // guarantee. Without it, `UPDATE workspaces SET member_count = 0` on an
+    // already-populated workspace would reopen 0004's bootstrap-insert
+    // policy, letting an unscoped `role = 'owner'` insert into someone
+    // else's workspace. `workspaces` has no RLS (ADR-0014), so these raw
+    // pool queries need no `app.workspace_id` scoping.
+
+    async function insertBareWorkspace(memberCount = 0): Promise<string> {
+      const slug = `guard-test-${randomUUID()}`;
+      const { rows } = await pool.query<{ id: string }>(
+        `INSERT INTO workspaces (name, slug, member_count) VALUES ($1, $2, $3) RETURNING id`,
+        ["Guard Test", slug, memberCount],
+      );
+      const id = rows[0]!.id;
+      createdWorkspaceIds.push(id);
+      return id;
+    }
+
+    /** Raw pg errors (via `pool.query`, not Drizzle) surface the RAISE message directly on `.message`, with no `.cause` wrapping -- so this is the raw counterpart to `expectRejectionCause`. */
+    async function expectRawRejection(promise: Promise<unknown>, pattern: RegExp): Promise<void> {
+      let caught: unknown;
+      try {
+        await promise;
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toMatch(pattern);
+    }
+
+    it("permits an increment (the legitimate `bump_workspace_member_count` motion)", async () => {
+      const id = await insertBareWorkspace(0);
+      await pool.query(`UPDATE workspaces SET member_count = member_count + 1 WHERE id = $1`, [id]);
+      const { rows } = await pool.query<{ member_count: number }>(
+        `SELECT member_count FROM workspaces WHERE id = $1`,
+        [id],
+      );
+      expect(rows[0]!.member_count).toBe(1);
+    });
+
+    it("permits an UPDATE that leaves member_count unchanged (e.g. a name/slug edit)", async () => {
+      const id = await insertBareWorkspace(1);
+      await pool.query(`UPDATE workspaces SET name = $2 WHERE id = $1`, [id, "Renamed"]);
+      const { rows } = await pool.query<{ member_count: number; name: string }>(
+        `SELECT member_count, name FROM workspaces WHERE id = $1`,
+        [id],
+      );
+      expect(rows[0]).toEqual({ member_count: 1, name: "Renamed" });
+    });
+
+    it("rejects an UPDATE that lowers member_count, leaving the row untouched", async () => {
+      const id = await insertBareWorkspace(2);
+      await expectRawRejection(
+        pool.query(`UPDATE workspaces SET member_count = 1 WHERE id = $1`, [id]),
+        /member_count may only increase/i,
+      );
+      const { rows } = await pool.query<{ member_count: number }>(
+        `SELECT member_count FROM workspaces WHERE id = $1`,
+        [id],
+      );
+      expect(rows[0]!.member_count).toBe(2);
+    });
+
+    it("a populated workspace cannot be reset to member_count = 0, so the bootstrap window cannot be reopened", async () => {
+      // Go through the real org-create path so member_count reaches 1 via
+      // the actual `bump_workspace_member_count` trigger, exactly as a live
+      // workspace does -- then prove the reset that would reopen 0004's
+      // policy is refused.
+      const email = uniqueEmail();
+      const signUpResponse = await signUp(email, "correct-horse-battery-staple");
+      const setCookie = signUpResponse.headers["set-cookie"];
+      const cookieHeader = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+      const cookie = cookieHeader!.split(";")[0]!;
+      const slug = `guard-reopen-${randomUUID()}`;
+      const createResponse = await app.inject({
+        method: "POST",
+        url: "/api/auth/organization/create",
+        headers: { cookie, origin: "http://localhost:3000" },
+        payload: { name: "Reopen Test", slug },
+      });
+      const workspaceId = createResponse.json().id;
+      createdWorkspaceIds.push(workspaceId);
+
+      // Sanity: the bump trigger ran, so the window is already closed by count.
+      const before = await pool.query<{ member_count: number }>(
+        `SELECT member_count FROM workspaces WHERE id = $1`,
+        [workspaceId],
+      );
+      expect(before.rows[0]!.member_count).toBe(1);
+
+      await expectRawRejection(
+        pool.query(`UPDATE workspaces SET member_count = 0 WHERE id = $1`, [workspaceId]),
+        /member_count may only increase/i,
+      );
+
+      const after = await pool.query<{ member_count: number }>(
+        `SELECT member_count FROM workspaces WHERE id = $1`,
+        [workspaceId],
+      );
+      expect(after.rows[0]!.member_count).toBe(1);
+    });
+  });
 });

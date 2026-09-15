@@ -36,6 +36,13 @@
       "when": 1788700000000,
       "tag": "0004_workspace_members_bootstrap_insert",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788700100000,
+      "tag": "0005_guard_member_count_monotonic",
+      "breakpoints": true
     }
   ]
 }
