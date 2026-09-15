@@ -170,6 +170,62 @@ export class HostedRunManager {
    * reconstructed.
    */
   async get(workspaceId: string, id: string): Promise<RunState | undefined> {
+    const owned = await this.resolveOwned(workspaceId, id);
+    if (!owned) return undefined;
+    return owned.run ? owned.run.getState() : owned.persisted;
+  }
+
+  /**
+   * For the SSE stream route (KAN-1425): confirms the run belongs to
+   * `workspaceId` (scoped read, RLS-gated) and returns the live `AgentRun` to
+   * subscribe to if it's still resident, plus the current state to send as the
+   * stream's opening frame. `undefined` (→ 404) if the run isn't this
+   * workspace's. `run` is `undefined` when the run exists but has already
+   * finished and been evicted -- the caller sends `state` once and closes.
+   */
+  async resolveForStream(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ run: AgentRun | undefined; state: RunState } | undefined> {
+    const owned = await this.resolveOwned(workspaceId, id);
+    if (!owned) return undefined;
+    return { run: owned.run, state: owned.run ? owned.run.getState() : owned.persisted };
+  }
+
+  /**
+   * Resolves a run's pending approval (KAN-1425). Returns the resumed state,
+   * `undefined` if no such run exists in this workspace (→ 404), and throws
+   * (→ 409) if the run is no longer live or isn't actually awaiting approval.
+   * Persistence of the resumed run happens through the same per-event handler
+   * `start` registered.
+   */
+  async approve(
+    workspaceId: string,
+    id: string,
+    approved: boolean,
+    reason?: string,
+  ): Promise<RunState | undefined> {
+    const owned = await this.resolveOwned(workspaceId, id);
+    if (!owned) return undefined;
+    if (!owned.run) {
+      throw new Error(`Run "${id}" is no longer live and cannot be approved.`);
+    }
+    // resume() itself throws if the run isn't awaiting approval -- surfaced as
+    // a 409 by the route, same as the CLI's own approve path.
+    return owned.run.resume(approved, reason);
+  }
+
+  /**
+   * Shared ownership gate: one scoped `runs` read (so RLS confirms the run is
+   * this workspace's), plus the live `AgentRun` if resident and the persisted
+   * state as a fallback. Every per-run accessor goes through this so the live
+   * map (id-keyed, cross-workspace) is never consulted without first proving
+   * ownership.
+   */
+  private async resolveOwned(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ run: AgentRun | undefined; persisted: RunState } | undefined> {
     const [row] = await withWorkspaceScope(this.db, workspaceId, (tx) =>
       tx
         .select()
@@ -177,14 +233,14 @@ export class HostedRunManager {
         .where(and(eq(runs.id, id), eq(runs.workspaceId, workspaceId))),
     );
     if (!row) return undefined;
-
-    const liveRun = this.live.get(id);
-    if (liveRun) return liveRun.getState();
     return {
-      status: row.status as RunState["status"],
-      trace: row.traceJson as RunState["trace"],
-      finalOutput: (row.finalOutput as RunState["finalOutput"]) ?? undefined,
-      error: row.error ?? undefined,
+      run: this.live.get(id),
+      persisted: {
+        status: row.status as RunState["status"],
+        trace: row.traceJson as RunState["trace"],
+        finalOutput: (row.finalOutput as RunState["finalOutput"]) ?? undefined,
+        error: row.error ?? undefined,
+      },
     };
   }
 
