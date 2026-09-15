@@ -1,6 +1,6 @@
 # The hosted app
 
-Everything so far has used `kampong dev` — a local server that edits **one** spec file on your
+Everything so far has used `kampong dev`, a local server that edits **one** spec file on your
 disk, with no sign-in. The hosted app is the same canvas, served by the multi-tenant server
 (`packages/server`), where many people share it and each **workspace** keeps its own specs, its
 own model-provider keys, and its own run history in a database.
@@ -11,7 +11,7 @@ workspaces, and server-side key storage.
 !!! info "Same bundle, two servers"
     The canvas figures out which server it is talking to when it loads: if the server answers
     the authentication endpoints, it shows the hosted sign-in flow below; otherwise it behaves
-    exactly like local `kampong dev`. You do not choose a mode — you just open the URL your
+    exactly like local `kampong dev`. You do not choose a mode, you just open the URL your
     server is on.
 
 ## Sign in or create an account
@@ -30,7 +30,7 @@ A brand-new account has none, so you create one.
 
 !!! warning "Switching between existing workspaces"
     Creating a workspace makes it active immediately. Switching to a *different* existing
-    workspace is not wired up yet — it needs a server change that is on the roadmap. If you have
+    workspace is not wired up yet. It needs a server change that is on the roadmap. If you have
     several workspaces, the first one you create is the one you land in.
 
 ## Add a model provider key
@@ -41,7 +41,7 @@ holds no such environment for you, so each workspace stores its own provider key
 
 ![The provider-key screen](assets/img/hosted-byok.png)
 
-The key is encrypted before it is stored and is **never shown again** — the screen only ever
+The key is encrypted before it is stored and is **never shown again**. The screen only ever
 displays the last four characters, enough to recognise which key is there. When a run needs to
 call a model, the server decrypts the key for that one call and no more.
 
@@ -64,7 +64,7 @@ Creating an agent drops you straight onto the canvas for it.
 
 From here the canvas is identical to local mode: the graph on the left, the live YAML on the
 right, and **Add Tool** / **Add Workflow Step** / **Set Guardrails** in the toolbar. Everything
-in the [tutorial](tutorial/first-agent.md) applies unchanged — the only difference is that your
+in the [tutorial](tutorial/first-agent.md) applies unchanged. The only difference is that your
 edits are saved to the workspace's database instead of a file on your disk.
 
 ![Editing an agent on the canvas](assets/img/canvas-editor.png)
@@ -82,7 +82,7 @@ Approve it, and the run finishes; the trace and final output stay on screen.
 
 ![A completed run and its trace](assets/img/run-completed.png)
 
-Runs are durable in hosted mode — they are stored per workspace, so you can come back to a past
+Runs are durable in hosted mode. They are stored per workspace, so you can come back to a past
 run's trace later, which the local in-memory runner does not keep.
 
 ## Recap
@@ -92,7 +92,7 @@ run's trace later, which the local in-memory runner does not keep.
 - Each **workspace** isolates its specs, keys, and runs from every other.
 - Provider keys are stored per workspace, encrypted, and shown only by their last four
   characters; the key's provider must match the spec's `model.provider`.
-- Editing, running, and approving work exactly as they do locally — see the
+- Editing, running, and approving work exactly as they do locally. See the
   [tutorial](tutorial/first-agent.md) for the agent-building details.
 
 Next: **[Your first agent](tutorial/first-agent.md)**, which reads a spec field by field.

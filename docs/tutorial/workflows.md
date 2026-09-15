@@ -102,5 +102,15 @@ Steps run top to bottom, and each one's output is available to everything after 
 any step stops the run with the step named and a clear message. No partial success pretends to be
 a full one.
 
+## Recap
+
+- `agent.workflow` is an ordered list of at least one step, and each step's output is available
+  to every step after it.
+- Action steps run the model; a `confidence_gate` step returns a structured `{ result,
+  confidence }` you can branch on.
+- A condition step branches on one `if` comparison, with `then` and `else` each resolving to
+  `execute_tool(...)` or `request_human_approval`.
+- Anything a branch cannot resolve fails loudly rather than passing silently.
+
 Next: make the agent ask for help when it isn't sure, with
 [Guardrails and approvals](guardrails.md).

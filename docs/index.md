@@ -85,8 +85,8 @@ Both execute the same agent, against the same file. That's the whole idea.
 
 Kampong Agents is early. Today it builds one agent at a time, with no multi-agent org charts. It
 runs and exports that agent, works offline, and treats hand-editing as a first-class workflow.
-There is also a [hosted app](hosted-app.md) — the same canvas with sign-in, workspaces, and
-server-side provider keys — for running it as a shared, multi-tenant service. Enterprise
+There is also a [hosted app](hosted-app.md), the same canvas with sign-in, workspaces, and
+server-side provider keys, for running it as a shared, multi-tenant service. Enterprise
 governance, multi-agent orchestration, and natural-language spec generation are on the roadmap,
 not in the box. See [Design decisions](design-decisions.md) for the reasoning behind the current
 scope.

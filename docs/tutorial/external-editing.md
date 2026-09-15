@@ -62,3 +62,17 @@ stays clean and hand-authorable. See [Concepts](../concepts.md) for the reasonin
 
 The upshot: you can move between the canvas and your editor freely, and commit the result to git
 like any other source file.
+
+## Recap
+
+- `kampong dev <dir>` renders any valid spec in a folder with no import step; the file on disk is
+  the source of truth.
+- The `yaml-language-server` schema pragma gives validation, autocomplete, and hover docs in any
+  YAML-aware editor, with no custom plugin.
+- External edits auto-reload the canvas silently; it prompts only on a genuine conflict with an
+  unsaved in-flight change.
+- The spec round-trips losslessly (comments and formatting survive); node positions live in a
+  separate `.kampong/layout.json` sidecar.
+
+Next: take the finished agent out of the tool entirely, with
+[Ejecting to TypeScript](exporting.md).

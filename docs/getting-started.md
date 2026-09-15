@@ -78,8 +78,8 @@ and the other updates. Press **Run**, type an input, and watch the trace fill in
 
 !!! note "Running it as a shared, signed-in service"
     `kampong dev` is single-user and edits one file. There is also a
-    [hosted app](hosted-app.md) — the same canvas with sign-in, per-workspace specs, and
-    server-side provider keys — for running Kampong Agents as a multi-tenant service. The
+    [hosted app](hosted-app.md), the same canvas with sign-in, per-workspace specs, and
+    server-side provider keys, for running Kampong Agents as a multi-tenant service. The
     agent-building steps in this tutorial are identical in both.
 
 ## What just happened
