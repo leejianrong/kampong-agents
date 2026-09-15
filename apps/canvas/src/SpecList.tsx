@@ -67,9 +67,13 @@ export function SpecList({ api, onOpen }: SpecListProps) {
             ))}
           </ul>
         ) : (
-          <p className="md3-body-medium" data-testid="spec-list-empty">
-            No agents yet. Create your first one below.
-          </p>
+          <div className="md3-stack" data-testid="spec-list-empty">
+            <p className="md3-body-medium">No agents yet. Create your first one below.</p>
+            <p className="md3-body-medium">
+              Tip: add a model provider key under <strong>Manage keys</strong> (top right) so your
+              agent can run — the key’s provider must match the one in the agent’s spec.
+            </p>
+          </div>
         )}
 
         <form className="md3-form" onSubmit={(e) => void handleCreate(e)}>
