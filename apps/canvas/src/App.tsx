@@ -6,7 +6,7 @@ import {
   type WorkflowStep,
 } from "@kampong/spec";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createApiClient, type ApiClient } from "./api.js";
+import { ApiError, createApiClient, type ApiClient } from "./api.js";
 import { Canvas } from "./Canvas.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { RunPanel } from "./RunPanel.js";
@@ -21,12 +21,34 @@ import { YamlPreview } from "./YamlPreview.js";
 
 export interface AppProps {
   apiBaseUrl?: string;
+  /**
+   * A pre-built client to drive the editor with. Hosted mode passes a
+   * per-spec client here (`HostedClient.specClient(id)`); local mode omits it
+   * and one is built from `apiBaseUrl`. Kept behind this seam (ADR-0020) so
+   * the editor never branches on which server it's talking to.
+   */
+  api?: ApiClient;
+  /** Shown in the toolbar in hosted mode so the user knows which spec is open. */
+  specName?: string;
+  /** When provided (hosted mode), renders a "back to specs" action. */
+  onNavigateBack?: () => void;
+  /** Hosted mode: called when a request comes back 401, to re-gate on login. */
+  onUnauthorized?: () => void;
 }
 
 type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null;
 
-export function App({ apiBaseUrl = "" }: AppProps) {
-  const api = useMemo<ApiClient>(() => createApiClient(apiBaseUrl), [apiBaseUrl]);
+export function App({
+  apiBaseUrl = "",
+  api: providedApi,
+  specName,
+  onNavigateBack,
+  onUnauthorized,
+}: AppProps) {
+  const api = useMemo<ApiClient>(
+    () => providedApi ?? createApiClient(apiBaseUrl),
+    [providedApi, apiBaseUrl],
+  );
 
   const [spec, setSpec] = useState<AgentSpec | null>(null);
   const [source, setSource] = useState("");
@@ -54,12 +76,16 @@ export function App({ apiBaseUrl = "" }: AppProps) {
         setSpec(result.spec as AgentSpec);
       }
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       // Deliberately leaves source/layout/spec at their last-good values --
       // the point is to keep showing the last known-good canvas alongside
       // the error, not blank it.
       setSpecError(err instanceof Error ? err.message : "Failed to load the spec.");
     }
-  }, [api]);
+  }, [api, onUnauthorized]);
 
   useEffect(() => {
     void refresh();
@@ -92,6 +118,10 @@ export function App({ apiBaseUrl = "" }: AppProps) {
     try {
       await api.applyPatch(ops);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return false;
+      }
       // A failed save must not close its dialog as if it had succeeded
       // (KAN-1216) -- the caller checks this return value and leaves the
       // form open so the user's input isn't lost.
@@ -130,7 +160,16 @@ export function App({ apiBaseUrl = "" }: AppProps) {
     <div className="md3-app">
       <div className="md3-app__canvas-pane">
         <div className="md3-app__toolbar">
-          <span className="md3-title-large md3-app__title">Kampong Agents</span>
+          {onNavigateBack && (
+            <button
+              className="md3-button md3-button-text"
+              onClick={onNavigateBack}
+              data-testid="back-to-specs"
+            >
+              ← Specs
+            </button>
+          )}
+          <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
           <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("tool")}>
             Add Tool
           </button>
