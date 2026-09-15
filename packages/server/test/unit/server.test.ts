@@ -149,4 +149,26 @@ describe("createServer -- Better Auth mounting (KAN-1226)", () => {
     const response = await app.inject({ method: "GET", url: "/healthz" });
     expect(response.statusCode).toBe(200);
   });
+
+  // KAN-1227: the spec-CRUD routes follow the same "only mounted when a db is
+  // given" shape as Better Auth's own routes above. Their real, DB-backed
+  // behavior (CRUD, RLS isolation, the membership gate) is covered at the
+  // integration layer (test/integration/routes/specs.test.ts); here we only
+  // prove the mounting contract and that the auth gate runs before any DB
+  // query (an anonymous request short-circuits to 401 without touching the
+  // unreachable pool this suite constructs).
+  it("does not mount /api/specs when no db is given", async () => {
+    app = createServer();
+    const response = await app.inject({ method: "GET", url: "/api/specs" });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("mounts /api/specs when a db is given, and rejects an anonymous request with 401 (not 404)", async () => {
+    app = createServer({ db: dbForThisTest() });
+    await app.ready();
+
+    const response = await app.inject({ method: "GET", url: "/api/specs" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ success: false });
+  });
 });

@@ -3,6 +3,7 @@ import fastifyStatic from "@fastify/static";
 import { fromNodeHeaders } from "better-auth/node";
 import { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js";
 import { createAuth } from "./auth/config.js";
+import { registerSpecRoutes } from "./routes/specs.js";
 import type { DbClient } from "./db/client.js";
 
 // The hosted variant of packages/cli/src/server.ts (ADR-0013, KAN-1221 --
@@ -87,6 +88,14 @@ export function createServer({ staticDir, db }: CreateServerOptions = {}): Fasti
       });
       return reply.send(response.body ? await response.text() : null);
     });
+
+    // KAN-1227 (ADR-0014/ADR-0015): the authenticated, workspace-scoped
+    // spec-CRUD routes. Registered only when a `db` is present, the same
+    // "omit db to skip the DB-backed HTTP surface" shape Better Auth's own
+    // routes above already use -- these need both a real Postgres (for RLS
+    // scoping) and the same `auth` instance (to resolve the request's
+    // session/workspace), so they live inside this block alongside it.
+    registerSpecRoutes(app, { db, auth });
   }
 
   app.get("/healthz", async () => {

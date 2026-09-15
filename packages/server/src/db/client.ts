@@ -18,6 +18,22 @@ import * as schema from "./schema.js";
 export type DbClient = NodePgDatabase<typeof schema>;
 
 /**
+ * A Drizzle query handle that is EITHER the pooled top-level `DbClient` OR a
+ * transaction handle yielded by `db.transaction(...)` (which is what
+ * `withWorkspaceScope`'s callback receives). Both expose the same
+ * `select`/`insert`/`update`/`delete` query-builder surface -- they share
+ * the `PgDatabase` base with identical type args -- so code that only builds
+ * queries can accept either.
+ *
+ * KAN-1227: `PgSpecRepository` accepts this rather than only `DbClient`, so
+ * the authenticated spec-CRUD routes can construct it against the
+ * per-request `withWorkspaceScope` transaction (making RLS apply to its
+ * queries), while this package's own lower-level tests can still hand it the
+ * top-level client directly.
+ */
+export type DbExecutor = DbClient | Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/**
  * Reads `DATABASE_URL` from the given env (defaults to `process.env`),
  * throwing a clear, actionable error if it isn't set. Shared by
  * `createDbClient` below and by `migrate.ts`, so both fail the same way.

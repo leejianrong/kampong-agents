@@ -74,6 +74,31 @@ jobs:
   integration:
     name: Integration tests
     runs-on: ubuntu-latest
+    # KAN-1388: packages/server's RLS/auth integration suites
+    # (test/integration/db/*, test/integration/routes/*) skipIf(!DATABASE_URL)
+    # and, until now, skipped in CI entirely -- so the tenant-isolation
+    # coverage they exist for was never actually exercised on a push. This
+    # service + the non-superuser role created below provide a real
+    # DATABASE_URL so they run for real. The role MUST be non-superuser and
+    # non-BYPASSRLS: a superuser silently bypasses FORCE ROW LEVEL SECURITY,
+    # which would make every RLS isolation assertion pass vacuously (and some
+    # negative tests fail). See docs/adr/0018 and docs/adr/0019.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The non-superuser role/database the tables are created in and owned
+      # by (so FORCE RLS applies to it). Created in the setup step below.
+      DATABASE_URL: postgres://app_test:app_test@localhost:5432/kampong_test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -82,6 +107,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # A NON-superuser, NON-BYPASSRLS role owning its own database. The
+      # migrations run as this role (via DATABASE_URL), so it owns the tables
+      # and FORCE ROW LEVEL SECURITY genuinely applies to it -- the whole
+      # point of KAN-1388. `psql` is preinstalled on ubuntu-latest runners.
+      - name: Provision non-superuser Postgres role and database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE app_test LOGIN PASSWORD 'app_test' NOSUPERUSER NOBYPASSRLS;" \
+            -c "CREATE DATABASE kampong_test OWNER app_test;"
       - run: npm run test:integration
 
   e2e:
