@@ -14,14 +14,51 @@ export const knowledgeItemSchema = z.object({
 
 export const httpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 
-export const toolSchema = z.object({
-  name: z.string().min(1),
-  action: z.literal("http_request"),
-  method: httpMethodSchema,
-  url: z.string().min(1),
-  requires_approval: z.boolean().optional(),
-  extract: z.string().optional(),
-});
+// BYOK / connector secrets (SLICES.md V2 KAN-1106, V9 KAN-1430, Q14): a secret
+// is never a literal in the spec -- only a `${ENV_VAR}` placeholder resolved
+// from the environment at run time (packages/engine). This regex is the
+// schema-level guarantee that a spec can never carry a real key/token value.
+export const envVarPlaceholderSchema = z
+  .string()
+  .regex(
+    /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/,
+    "must reference an environment variable as ${ENV_VAR}, never a literal secret",
+  );
+
+// KAN-1430 (ADR-0021): tools are a discriminated union on `action`. `http_request`
+// is the original generic HTTP tool; `slack_post_message` and `gmail_send` are
+// turnkey connectors whose credential is an `${ENV}` token resolved at call
+// time (never a literal). Every connector field supports `{{ step.field }}` /
+// `{placeholder}` data references (resolved by the engine at run time).
+export const toolSchema = z.discriminatedUnion("action", [
+  z.object({
+    name: z.string().min(1),
+    action: z.literal("http_request"),
+    method: httpMethodSchema,
+    url: z.string().min(1),
+    requires_approval: z.boolean().optional(),
+    extract: z.string().optional(),
+  }),
+  z.object({
+    name: z.string().min(1),
+    action: z.literal("slack_post_message"),
+    token: envVarPlaceholderSchema,
+    channel: z.string().min(1),
+    text: z.string().min(1),
+    requires_approval: z.boolean().optional(),
+    extract: z.string().optional(),
+  }),
+  z.object({
+    name: z.string().min(1),
+    action: z.literal("gmail_send"),
+    token: envVarPlaceholderSchema,
+    to: z.string().min(1),
+    subject: z.string().min(1),
+    body: z.string().min(1),
+    requires_approval: z.boolean().optional(),
+    extract: z.string().optional(),
+  }),
+]);
 
 // Constrained to what packages/engine actually implements (checked directly
 // -- workflow.ts only branches on this literal) rather than an open string,
@@ -33,17 +70,6 @@ export const guardrailsSchema = z.object({
   confidence_threshold: z.number().min(0).max(1).optional(),
   fallback_action: fallbackActionSchema.optional(),
 });
-
-// BYOK (SLICES.md V2, KAN-1106, Q14): a secret is never a literal in the
-// spec -- only a `${ENV_VAR}` placeholder resolved from the environment at
-// run time (packages/engine). This regex is the schema-level guarantee that
-// a spec can never carry a real key value, not just a convention.
-export const envVarPlaceholderSchema = z
-  .string()
-  .regex(
-    /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/,
-    "must reference an environment variable as ${ENV_VAR}, never a literal secret",
-  );
 
 // Kept to provider + model name (ADR-0004): generic enough that a future
 // gateway (roadmap V5) slots in behind resolution, not into the spec shape.

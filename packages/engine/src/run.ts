@@ -205,5 +205,12 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
       fetchImpl: options.modelFetchImpl,
       timeoutMs: options.timeoutMs,
     });
-  return new AgentRun(spec, { model, fetchImpl: options.fetchImpl });
+  return new AgentRun(spec, {
+    model,
+    fetchImpl: options.fetchImpl,
+    // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
+    // key does (process.env by default), so an exported/deployed app just sets
+    // e.g. SLACK_BOT_TOKEN in its environment.
+    env: options.env ?? process.env,
+  });
 }

@@ -161,6 +161,35 @@ describe("AgentSpec round-trip duality", () => {
     });
   });
 
+  it("adds a canvas-authored Slack connector tool (KAN-1430)", () => {
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "tools"],
+        value: {
+          name: "notify_support",
+          action: "slack_post_message",
+          token: "${SLACK_BOT_TOKEN}",
+          channel: "#support",
+          text: "{{ draft.text }}",
+        },
+      },
+    ]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.tools?.at(-1)).toEqual({
+      name: "notify_support",
+      action: "slack_post_message",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#support",
+      text: "{{ draft.text }}",
+    });
+  });
+
   it("adds a canvas-authored tool (type: 'tool') workflow step (KAN-1429)", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);
