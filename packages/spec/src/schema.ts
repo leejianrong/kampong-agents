@@ -175,6 +175,16 @@ export const workflowStepSchema = z.union([
   }),
 ]);
 
+// KAN-1431 (ADR-0021/ADR-0022): how a workflow starts. `webhook` is the only
+// kind today (an HTTP POST starts a run, its body becomes the input, driven by
+// `kampong serve` locally or a managed ingress when hosted). Modeled as an
+// object with a `type` discriminant so `schedule` / other triggers slot in
+// later without breaking existing specs. Optional -- a spec with no trigger is
+// still runnable via `kampong run` / the canvas test-run.
+export const triggerSchema = z.object({
+  type: z.literal("webhook"),
+});
+
 export const agentSpecSchema = z.object({
   version: z.string().min(1),
   agent: z.object({
@@ -182,6 +192,7 @@ export const agentSpecSchema = z.object({
     name: z.string().min(1),
     role: z.string().min(1),
     goal: z.string().min(1),
+    trigger: triggerSchema.optional(),
     // Optional so every V1 spec (authored before BYOK existed) keeps
     // validating unchanged; the execution engine (not the schema) is what
     // requires it to be present before a real run can start.
@@ -194,6 +205,7 @@ export const agentSpecSchema = z.object({
 });
 
 export type AgentSpec = z.infer<typeof agentSpecSchema>;
+export type Trigger = z.infer<typeof triggerSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type Guardrails = z.infer<typeof guardrailsSchema>;

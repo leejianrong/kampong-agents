@@ -234,6 +234,17 @@ describe("AgentSpec round-trip duality", () => {
     });
   });
 
+  it("sets a webhook trigger and round-trips it (KAN-1431)", () => {
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [{ op: "set", path: ["agent", "trigger"], value: { type: "webhook" } }]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.trigger).toEqual({ type: "webhook" });
+  });
+
   it("removes a field cleanly via a remove patch op", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);

@@ -16,6 +16,7 @@ import {
 } from "@kampong/engine";
 import { exportProject, ExportDirectoryNotEmptyError } from "@kampong/exporter";
 import { createDevServer } from "./server.js";
+import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
 // 1110). `packages/cli/src/index.ts` stays a pure library barrel (imported
@@ -63,6 +64,8 @@ const HELP_TEXT = `kampong -- local-first agent-workflow builder CLI
 Usage: kampong <command> [options]
 
 Commands:
+  serve <spec>.yaml                  Run a spec as a live webhook service: POST /webhook starts
+                                     a run. The self-host/deploy path (ADR-0022).
   dev [dir]                          Start the local dev server: spec-CRUD API, SSE run
                                       stream, and the canvas UI, all at one localhost origin.
   run <spec>.yaml --input "<text>"   Run a spec headlessly -- no server, no browser.
@@ -144,6 +147,8 @@ export async function runCli(
   switch (command) {
     case "dev":
       return runDevCommand(rest, io);
+    case "serve":
+      return runServeCommand(rest, io, testOptions);
     case "run":
       return runRunCommand(rest, io, testOptions);
     case "export":
@@ -321,6 +326,148 @@ async function runDevCommand(args: string[], io: CliIO): Promise<number> {
   io.stdout(`kampong dev running at http://${host}:${port}`);
   io.stdout(`  spec:   ${specPath}${existsSync(specPath) ? "" : " (does not exist yet)"}`);
   io.stdout(`  layout: ${layoutPath}`);
+  io.stdout("Press Ctrl+C to stop.");
+
+  return new Promise<number>((resolvePromise) => {
+    const shutdown = (): void => {
+      app
+        .close()
+        .catch(() => {
+          /* best-effort shutdown */
+        })
+        .finally(() => resolvePromise(EXIT_SUCCESS));
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
+}
+
+// --- kampong serve ----------------------------------------------------
+
+const SERVE_HELP_TEXT = `kampong serve <spec>.yaml [options]
+
+Runs a spec as a live webhook service (ADR-0021/ADR-0022): the process stays up
+and starts a run each time something POSTs to /webhook, with the request body as
+the run's input. This is the self-host / deploy path -- the same engine and spec
+as \`kampong run\`, just triggerable and long-running. Connector tokens
+(\${SLACK_BOT_TOKEN}, ...) and model keys resolve from this process's
+environment, so deploying is "run this with those env vars set".
+
+Arguments:
+  <spec>.yaml            Path to the AgentSpec YAML file to serve
+
+Options:
+  --port <n>             Port to listen on (default: 8080)
+  --host <host>          Host/interface to bind (default: 0.0.0.0)
+
+Endpoints:
+  POST /webhook          Start a run; body is the input. Returns { id, state }.
+  GET  /runs/:id         The run's current state.
+  GET  /runs/:id/events  Server-Sent Events stream of the run's progress.
+  POST /runs/:id/approve Resolve a paused run: { approved: boolean, reason? }.
+  GET  /healthz          Liveness check.`;
+
+const DEFAULT_SERVE_PORT = 8080;
+const DEFAULT_SERVE_HOST = "0.0.0.0";
+
+interface ServeArgs {
+  specPath: string;
+  port: number;
+  host: string;
+}
+
+function parseServeArgs(
+  args: string[],
+): { ok: true; value: ServeArgs } | { ok: false; error: string } {
+  let specPath: string | undefined;
+  let port = DEFAULT_SERVE_PORT;
+  let host = DEFAULT_SERVE_HOST;
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      switch (arg) {
+        case "--port":
+          port = Number(requireValue(args, ++i, "--port"));
+          if (!Number.isInteger(port) || port <= 0) {
+            return { ok: false, error: `--port must be a positive integer.` };
+          }
+          break;
+        case "--host":
+          host = requireValue(args, ++i, "--host");
+          break;
+        default:
+          if (arg.startsWith("--")) return { ok: false, error: `Unrecognized option "${arg}".` };
+          if (specPath !== undefined) {
+            return { ok: false, error: `Unexpected extra argument "${arg}".` };
+          }
+          specPath = arg;
+      }
+    }
+  } catch (err) {
+    if (err instanceof MissingFlagValueError) return { ok: false, error: err.message };
+    throw err;
+  }
+
+  if (specPath === undefined) {
+    return { ok: false, error: "A spec file path is required (kampong serve <spec>.yaml)." };
+  }
+  return { ok: true, value: { specPath, port, host } };
+}
+
+async function runServeCommand(
+  args: string[],
+  io: CliIO,
+  testOptions: RunCliTestOptions,
+): Promise<number> {
+  if (args.includes("-h") || args.includes("--help")) {
+    io.stdout(SERVE_HELP_TEXT);
+    return EXIT_SUCCESS;
+  }
+
+  const parsed = parseServeArgs(args);
+  if (!parsed.ok) {
+    io.stderr(`kampong serve: ${parsed.error}\n`);
+    io.stderr(SERVE_HELP_TEXT);
+    return EXIT_USAGE_ERROR;
+  }
+  const { specPath, port, host } = parsed.value;
+  const resolvedSpecPath = resolve(specPath);
+
+  if (!existsSync(resolvedSpecPath)) {
+    io.stderr(`kampong serve: spec file not found: ${resolvedSpecPath}`);
+    return EXIT_VALIDATION_FAILURE;
+  }
+
+  let app;
+  try {
+    const fakeModel = testOptions.model;
+    app = createServeServer({
+      specPath: resolvedSpecPath,
+      ...(fakeModel ? { run: { createModel: () => fakeModel } } : {}),
+    });
+  } catch (err) {
+    // An invalid spec (including an unsupported trigger, which the schema
+    // rejects) is a validation failure (exit 1), not an unexpected crash --
+    // same "fail visibly, with a specific message" convention as `kampong run`.
+    if (err instanceof ServeSpecInvalidError) {
+      io.stderr(`kampong serve: ${err.message}`);
+      return EXIT_VALIDATION_FAILURE;
+    }
+    io.stderr(`kampong serve: ${(err as Error).message}`);
+    return EXIT_EXECUTION_FAILURE;
+  }
+
+  try {
+    await app.listen({ port, host });
+  } catch (err) {
+    io.stderr(`kampong serve: failed to start: ${(err as Error).message}`);
+    return EXIT_EXECUTION_FAILURE;
+  }
+
+  io.stdout(`kampong serve running at http://${host}:${port}`);
+  io.stdout(`  spec:    ${resolvedSpecPath}`);
+  io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
   io.stdout("Press Ctrl+C to stop.");
 
   return new Promise<number>((resolvePromise) => {

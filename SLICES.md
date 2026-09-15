@@ -173,12 +173,29 @@ approval callback) or `kampong serve <spec>` for a quick demo.
 - **B (KAN-1430): Connectors.** Gmail + Slack connector tool kinds (creds via `${ENV}`), keeping
   `http_request`. Canvas forms per operation; exporter emits real calls; record/replay still
   works. Demo: posts to a real Slack channel / sends a real email.
-- **C (KAN-1431): Webhook trigger + serve/deploy.** `agent.trigger` (webhook first); `kampong
-serve <spec>` and the exported app expose the endpoint that runs the workflow per event. Demo:
-  a real webhook event drives the flow on a deployed process.
+- **C (KAN-1431): Webhook trigger + serve.** `agent.trigger` (webhook first); `kampong serve
+<spec>` runs the workflow as a live webhook service (POST /webhook → an on-demand run;
+  /runs/:id status/events/approve). The laptop/self-host path (ADR-0022). **C2 (KAN-1431 C2):**
+  the exporter emits the same listener + a Dockerfile, so the exported project is a runnable
+  container image ("deployable = a container image").
 - **D (KAN-1432): Headless approval via Slack buttons.** A paused deployed run posts an
   Approve/Reject Slack message; the click resolves the run (verified Slack signatures). Demo:
   end-to-end real and deployable.
+
+Deployment model (two paths, on-demand execution) is recorded in **ADR-0022**. The managed
+"go-live" SaaS path is its own epic, **V10** below.
+
+## V10: Managed workflow deployments (go-live SaaS)
+
+**Scoped by:** ADR-0022. Board epic EPIC-215. Built on the V5 hosted backend + V9's trigger/
+connector primitives, once the hosted server is actually deployed.
+
+**Delivers:** the low-code "Deploy → it's live" experience. A hosted, workspace-scoped **webhook
+ingress** resolves a workspace's live spec and runs it **on-demand** per event via the durable
+`HostedRunManager` (no always-on worker); connector tokens resolve from the **per-workspace BYOK
+vault** (not `process.env`); a **deployment record + lifecycle** (deploy/pause/redeploy) with a
+Deploy button and a dashboard (webhook URL, status, recent runs, pending approvals). Free/paid
+tier metering sits on the deployment record, later.
 
 ### Test plan
 
