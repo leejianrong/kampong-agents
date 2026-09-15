@@ -3,3 +3,9 @@
 # them (KAN-1221). Chart.yaml/values.yaml (plain YAML, no templating) are
 # deliberately NOT excluded here and still get checked/formatted normally.
 deploy/helm/**/templates/**/*.yaml
+
+# Zensical/MkDocs docs use Material admonition syntax (`!!! note`) whose body
+# MUST stay 4-space indented -- Prettier's Markdown formatter strips that
+# indentation and silently breaks the rendered note boxes. Author docs pages
+# are excluded so Prettier can't mangle them; the Zensical build is their gate.
+docs/**/*.md

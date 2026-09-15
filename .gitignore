@@ -27,3 +27,6 @@ coverage/
 # skill) — commit docker-compose.override.yml.example instead; this is the
 # per-developer copy of it, same idiom as .env/.env.example.
 docker-compose.override.yml
+
+# Zensical docs build output
+site/

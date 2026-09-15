@@ -1,0 +1,40 @@
+# Zensical documentation site config. Build with `uvx zensical build`
+# (or `pip install zensical && zensical build`); output goes to `site/`,
+# which is gitignored. See docs/ for the source pages.
+site_name = "Kampong Agents"
+site_url = "https://leejianrong.github.io/kampong-agents/"
+docs_dir = "docs"
+site_dir = "site"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Tutorial - user guide" = [
+    { "Your first agent" = "tutorial/first-agent.md" },
+    { "Choosing a model" = "tutorial/models.md" },
+    { "Adding tools" = "tutorial/tools.md" },
+    { "Workflows and conditions" = "tutorial/workflows.md" },
+    { "Guardrails and approvals" = "tutorial/guardrails.md" },
+    { "Running offline" = "tutorial/offline.md" },
+    { "Editing specs in your IDE" = "tutorial/external-editing.md" },
+    { "Ejecting to TypeScript" = "tutorial/exporting.md" },
+  ] },
+  { "Concepts" = "concepts.md" },
+  { "Reference" = [
+    { "CLI" = "reference/cli.md" },
+    { "AgentSpec schema" = "reference/agentspec.md" },
+  ] },
+  { "Design decisions" = "design-decisions.md" },
+]
+
+[theme]
+name = "material"
+features = [
+  "navigation.tabs",
+  "navigation.sections",
+  "navigation.top",
+  "content.code.copy",
+  "content.code.annotate",
+  "search.suggest",
+  "search.highlight",
+]

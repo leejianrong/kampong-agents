@@ -5,7 +5,11 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "e2e/fixtures/**"],
+    // `site/` is the generated Zensical docs build output (gitignored). ESLint's
+    // flat config doesn't read .gitignore, so it must be ignored explicitly or a
+    // local `zensical build` leaves thousands of bundled JS files for `eslint .`
+    // (and the pre-push hook) to choke on.
+    ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "e2e/fixtures/**", "site/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
