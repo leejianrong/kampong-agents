@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { OPENROUTER_BASE_URL, UnknownModelProviderError } from "../../src/model.js";
+import {
+  OPENROUTER_BASE_URL,
+  UnknownModelProviderError,
+  providerRequiresApiKey,
+} from "../../src/model.js";
 
 // Fast, no-infra checks for the "openrouter" entry added to model.ts's
 // PROVIDERS map (follow-up to the V3 Ollama adapter, KAN-1112). The
@@ -23,5 +27,19 @@ describe("openrouter provider -- unit-level checks", () => {
     expect(error.message).toContain("anthropic");
     expect(error.message).toContain("openai");
     expect(error.message).toContain("ollama");
+  });
+});
+
+// KAN-1230: the cloud-vs-keyless split hosted key resolution keys off of.
+describe("providerRequiresApiKey", () => {
+  it("is true for cloud providers that need a BYOK key", () => {
+    expect(providerRequiresApiKey("anthropic")).toBe(true);
+    expect(providerRequiresApiKey("openai")).toBe(true);
+    expect(providerRequiresApiKey("openrouter")).toBe(true);
+  });
+
+  it("is false for the keyless local provider and for unknown providers", () => {
+    expect(providerRequiresApiKey("ollama")).toBe(false);
+    expect(providerRequiresApiKey("not-a-provider")).toBe(false);
   });
 });
