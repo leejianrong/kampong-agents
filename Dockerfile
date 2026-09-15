@@ -17,6 +17,7 @@ COPY packages/spec/package.json packages/spec/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/exporter/package.json packages/exporter/package.json
 COPY packages/cli/package.json packages/cli/package.json
+COPY packages/server/package.json packages/server/package.json
 COPY apps/canvas/package.json apps/canvas/package.json
 
 RUN npm ci
