@@ -10,6 +10,7 @@ is shaped the way it is. The full set lives in `docs/adr/`; here they are groupe
 - [ADR-0002: YAML as source of truth, one-way export](adr/0002-yaml-source-of-truth-oneway-export.md)
 - [ADR-0005: A local web app, not a desktop app](adr/0005-local-web-app-not-desktop.md)
 - [ADR-0008: External-edit-first workflow](adr/0008-external-edit-first-workflow.md)
+- [ADR-0021: Real-world workflows direction (V9)](adr/0021-real-world-workflows-direction.md)
 
 ## Runtime and execution
 
@@ -34,6 +35,9 @@ These scope work that's planned but not started: hosted mode, multi-tenancy, aut
 - [ADR-0015: V5 auth and account model](adr/0015-v5-auth-and-account-model.md)
 - [ADR-0016: V5 BYOK secret custody](adr/0016-v5-byok-secret-custody.md)
 - [ADR-0017: V6 enterprise governance model](adr/0017-v6-enterprise-governance-model.md)
+- [ADR-0018: Workspace-member bootstrap under RLS](adr/0018-workspace-member-bootstrap-under-rls.md)
+- [ADR-0019: Authenticated, workspace-scoped routes](adr/0019-authenticated-workspace-scoped-routes.md)
+- [ADR-0020: Canvas hosted mode and spec selection](adr/0020-canvas-hosted-mode-and-spec-selection.md)
 
 ## Adding a new one
 
