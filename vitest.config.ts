@@ -30,6 +30,17 @@ export default defineConfig({
             "apps/*/test/integration/**/*.test.{ts,tsx}",
           ],
           environment: "node",
+          // KAN-1389: packages/server's DB-backed integration suites
+          // (test/integration/db/*, test/integration/routes/*) all run
+          // against one shared Postgres and collide on shared workspace rows
+          // when their files run in parallel -- each file passes alone, the
+          // whole suite passes serialized. Now that CI actually provisions
+          // Postgres and runs these (KAN-1388), serialize the integration
+          // layer so those runs are stable. This is the documented interim
+          // fix; the proper isolation (a database/schema per test file) stays
+          // tracked as KAN-1389. Costs little -- integration is the slow
+          // layer already, and file-level parallelism was never its point.
+          fileParallelism: false,
         },
       },
       {

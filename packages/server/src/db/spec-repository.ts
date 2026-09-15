@@ -8,7 +8,7 @@ import {
   type SpecSummary,
 } from "@kampong/spec";
 import { layouts, specs } from "./schema.js";
-import type { DbClient } from "./client.js";
+import type { DbExecutor } from "./client.js";
 
 // Postgres-backed `SpecRepository` (KAN-1224, ADR-0014). Implements exactly
 // the same interface `packages/cli`'s filesystem-backed `SpecStore` does
@@ -37,10 +37,15 @@ export class SpecNotFoundError extends Error {
 
 export class PgSpecRepository implements SpecRepository {
   constructor(
-    private readonly db: DbClient,
+    private readonly db: DbExecutor,
     private readonly workspaceId: string,
     private readonly specId: string,
   ) {}
+
+  /** The id of the single spec row this repository is scoped to (e.g. the one `create` just inserted). */
+  get id(): string {
+    return this.specId;
+  }
 
   async readSource(): Promise<string> {
     const row = await this.getSpecRow();
@@ -120,7 +125,7 @@ export class PgSpecRepository implements SpecRepository {
    * version of on top of the `specs` table directly.
    */
   static async create(
-    db: DbClient,
+    db: DbExecutor,
     workspaceId: string,
     name: string,
     yamlSource: string,
