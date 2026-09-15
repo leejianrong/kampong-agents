@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { getByokRootKey } from "../auth/env.js";
 import { encryptSecret, maskLastFour } from "../crypto/envelope.js";
-import { resolveWorkspaceContext, type WorkspaceContext } from "../auth/request-context.js";
+import { authorizeWorkspace } from "../auth/request-context.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { byokKeys } from "../db/schema.js";
 
@@ -34,22 +34,10 @@ export interface ByokRoutesDeps {
 const PROVIDER_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoutesDeps): void {
-  async function authorize(
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): Promise<Extract<WorkspaceContext, { ok: true }> | undefined> {
-    const ctx = await resolveWorkspaceContext(auth, db, request);
-    if (!ctx.ok) {
-      void reply.code(ctx.status).send({ success: false, error: ctx.error });
-      return undefined;
-    }
-    return ctx;
-  }
-
   // GET /api/byok -- list the workspace's configured providers, masked. Never
   // selects `ciphertext`, so a decrypted or encrypted key can't leak here.
   app.get("/api/byok", async (request, reply) => {
-    const ctx = await authorize(request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
     if (!ctx) return reply;
 
     const keys = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
@@ -70,7 +58,7 @@ export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoute
   app.put<{ Params: { provider: string }; Body: { key?: unknown } }>(
     "/api/byok/:provider",
     async (request, reply) => {
-      const ctx = await authorize(request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply);
       if (!ctx) return reply;
 
       const provider = request.params.provider;
@@ -116,7 +104,7 @@ export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoute
 
   // DELETE /api/byok/:provider -- remove this workspace's key for a provider.
   app.delete<{ Params: { provider: string } }>("/api/byok/:provider", async (request, reply) => {
-    const ctx = await authorize(request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
     if (!ctx) return reply;
 
     const provider = request.params.provider;

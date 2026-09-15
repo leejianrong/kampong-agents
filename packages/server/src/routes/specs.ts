@@ -1,8 +1,8 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { loadWithLayout, parseSpec, type PatchOp } from "@kampong/spec";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
-import { resolveWorkspaceContext, type WorkspaceContext } from "../auth/request-context.js";
+import { authorizeWorkspace } from "../auth/request-context.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { PgSpecRepository, SpecNotFoundError } from "../db/spec-repository.js";
 
@@ -28,23 +28,8 @@ export interface SpecRoutesDeps {
 }
 
 export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoutesDeps): void {
-  // Resolve + authorize the request's workspace, or send the typed 401/403
-  // body and return `undefined` so the caller bails. Keeps the auth gate in
-  // exactly one place across all four routes.
-  async function authorize(
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ): Promise<Extract<WorkspaceContext, { ok: true }> | undefined> {
-    const ctx = await resolveWorkspaceContext(auth, db, request);
-    if (!ctx.ok) {
-      void reply.code(ctx.status).send({ success: false, error: ctx.error });
-      return undefined;
-    }
-    return ctx;
-  }
-
   app.get("/api/specs", async (request, reply) => {
-    const ctx = await authorize(request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
     if (!ctx) return reply;
 
     const specs = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
@@ -58,7 +43,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   });
 
   app.post<{ Body: { name?: unknown; source?: unknown } }>("/api/specs", async (request, reply) => {
-    const ctx = await authorize(request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
     if (!ctx) return reply;
 
     const { name, source } = request.body ?? {};
@@ -87,7 +72,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   });
 
   app.get<{ Params: { id: string } }>("/api/specs/:id", async (request, reply) => {
-    const ctx = await authorize(request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
     if (!ctx) return reply;
 
     try {
@@ -107,7 +92,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   app.put<{ Params: { id: string }; Body: { ops?: PatchOp[] } }>(
     "/api/specs/:id",
     async (request, reply) => {
-      const ctx = await authorize(request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply);
       if (!ctx) return reply;
 
       const ops = request.body?.ops;

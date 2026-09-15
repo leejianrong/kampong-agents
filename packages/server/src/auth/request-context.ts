@@ -1,6 +1,6 @@
 import { fromNodeHeaders } from "better-auth/node";
 import { eq } from "drizzle-orm";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuthInstance } from "./config.js";
 import type { DbClient } from "../db/client.js";
 import { InvalidWorkspaceIdError, withWorkspaceScope } from "../db/workspace-scope.js";
@@ -93,4 +93,24 @@ export async function resolveWorkspaceContext(
   }
 
   return { ok: true, userId: session.user.id, workspaceId };
+}
+
+/**
+ * The one-line gate every authenticated, workspace-scoped route opens with:
+ * resolve + authorize the request's workspace, or send the typed 401/403 body
+ * and return `undefined` so the caller bails. Shared by the spec, BYOK, and
+ * run routes so the auth-gate shape stays in exactly one place.
+ */
+export async function authorizeWorkspace(
+  auth: AuthInstance,
+  db: DbClient,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<Extract<WorkspaceContext, { ok: true }> | undefined> {
+  const ctx = await resolveWorkspaceContext(auth, db, request);
+  if (!ctx.ok) {
+    void reply.code(ctx.status).send({ success: false, error: ctx.error });
+    return undefined;
+  }
+  return ctx;
 }

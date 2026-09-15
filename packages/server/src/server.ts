@@ -5,6 +5,8 @@ import { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js
 import { createAuth } from "./auth/config.js";
 import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
+import { registerRunRoutes } from "./routes/runs.js";
+import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
 import type { DbClient } from "./db/client.js";
 
 // The hosted variant of packages/cli/src/server.ts (ADR-0013, KAN-1221 --
@@ -31,9 +33,16 @@ export interface CreateServerOptions {
    * deployment needs a real Postgres connection for auth to work at all.
    */
   db?: DbClient;
+  /**
+   * Options forwarded to the `HostedRunManager` (KAN-1231) -- notably its
+   * `createModel` test seam, so this package's own tests can drive a run with
+   * a fake `ModelClient` (no network, no stored BYOK key). Only consulted when
+   * a `db` is given; production callers omit it.
+   */
+  run?: HostedRunManagerOptions;
 }
 
-export function createServer({ staticDir, db }: CreateServerOptions = {}): FastifyInstance {
+export function createServer({ staticDir, db, run }: CreateServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
   // Runs once, synchronously, before any route is registered -- see
@@ -102,6 +111,12 @@ export function createServer({ staticDir, db }: CreateServerOptions = {}): Fasti
     // API. Same db+auth dependency and "only mounted when a db is present"
     // shape as the spec routes above.
     registerByokRoutes(app, { db, auth });
+
+    // KAN-1231 (ADR-0014): durable hosted execution. One HostedRunManager per
+    // server holds the live in-flight runs and persists each to the `runs`
+    // table; the routes start/read them scoped to the request's workspace.
+    const runManager = new HostedRunManager(db, run);
+    registerRunRoutes(app, { db, auth, manager: runManager });
   }
 
   app.get("/healthz", async () => {
