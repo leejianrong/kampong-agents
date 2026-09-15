@@ -6,24 +6,30 @@
 // ADR-0002). From here on this file is yours: it will not be touched again
 // by a future export.
 //
-// The workflow step-sequencer: a purpose-built async generator for the
-// AgentSpec's own small DSL (sequential steps, one condition-step type with
-// if/then/else strings), not built on Mastra's own `workflows` module -- see
-// this repo's docs/adr/0009 for the reasoning, which still applies to your
-// copy of this file.
-//
-// Implemented as an async generator that `yield`s at every meaningful point
-// and `return`s once the run reaches a terminal state; `yield` doubles as
-// the pause point a human-approval flow needs -- whoever drives the
-// generator (run.ts's `AgentRun`) decides what "pending approval" means for
-// its front end (this project's stdin prompt in src/index.ts).
-
 import { z } from "zod";
 import type { AgentSpec, WorkflowStep } from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
 import { callHttpTool, type HttpToolCallOptions } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
+
+// The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
+// 1105). Deliberately NOT built on Mastra's own `workflows` module: the
+// AgentSpec's workflow is its own small DSL (sequential steps, one
+// condition-step type with if/then/else strings) rather than Mastra's
+// workflow primitives, and the HITL pause/resume shape this slice needs
+// (KAN-1104) is simplest and most testable as our own control flow around a
+// Mastra-backed model call, not Mastra's in-flux tool-approval/suspend
+// machinery (which is designed for their durable snapshot/resume system,
+// not a single local synchronous run). Mastra is still what actually runs
+// the model call (model.ts) and could back real tool-calling later.
+//
+// Implemented as an async generator that `yield`s at every meaningful point
+// and `return`s once the run reaches a terminal state; `yield` doubles as
+// the front-end-agnostic pause point KAN-1104 asks for -- whoever drives
+// the generator (run.ts's `AgentRun`) decides what "pending approval" means
+// for its front end (a browser modal here; CLI stdin, out of scope until
+// V3, would drive the exact same generator).
 
 export interface ApprovalDecision {
   approved: boolean;
@@ -36,7 +42,10 @@ export type RunEvent =
   | {
       type: "awaiting_approval";
       step: string;
-      kind: "tool" | "guardrail";
+      // "approval" is a first-class approval step (KAN-1429); "tool" and
+      // "guardrail" are the pre-existing implicit pauses (a requires_approval
+      // tool, and a confidence-guardrail / request_human_approval branch).
+      kind: "tool" | "guardrail" | "approval";
       reason: string;
       toolName?: string;
     }
@@ -51,6 +60,20 @@ export interface EngineDeps {
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
 const REQUEST_HUMAN_APPROVAL = "request_human_approval";
+
+// KAN-1429 (ADR-0021): `{{ step.field }}` / `{{ input }}` data references,
+// resolvable in an action step's query, a tool step's URL, and an approval
+// step's message. The lookup keys are exactly buildToolParams' flat map
+// (`input` plus namespaced `step.field` scalars), so a reference to a
+// non-scalar output (or an unknown key) is left as-is rather than guessed --
+// an honest miss, consistent with substitutePlaceholders' own behavior.
+const DATA_REF_PATTERN = /\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/g;
+
+function resolveRefs(text: string, params: Record<string, string>): string {
+  return text.replace(DATA_REF_PATTERN, (match, key: string) =>
+    key in params ? params[key]! : match,
+  );
+}
 
 const structuredStepSchema = z.object({
   result: z.record(z.string(), z.unknown()),
@@ -141,16 +164,91 @@ export async function* runWorkflow(
         continue;
       }
 
-      // Only the two branch shapes above (execute_tool(...) and
-      // request_human_approval) are implemented; an unrecognized value must
-      // fail loudly here rather than silently "succeed" as an opaque
-      // annotation.
+      // V2 only implements the two branch shapes above (execute_tool(...)
+      // and request_human_approval); an unrecognized value must fail
+      // loudly here rather than silently "succeed" as an opaque annotation
+      // -- fail-visibly is a load-bearing project convention (AGENTS.md,
+      // ADR-0004), not just a model-call rule.
       yield {
         type: "failed",
         step: step.step,
         error: `Condition step "${step.step}" resolved to an unsupported branch action "${branch}" (expected "execute_tool(<tool_name>)" or "request_human_approval").`,
       };
       return;
+    }
+
+    // KAN-1429 (ADR-0021): a tool step -- call a named tool as a normal,
+    // always-run step (not gated behind a condition branch). Same
+    // approval/param-resolution behavior as the execute_tool(...) branch above.
+    if (isToolStep(step)) {
+      const tool = spec.agent.tools?.find((t) => t.name === step.tool);
+      if (!tool) {
+        yield {
+          type: "failed",
+          step: step.step,
+          error: `Tool step "${step.step}" references unknown tool "${step.tool}".`,
+        };
+        return;
+      }
+      if (tool.requires_approval) {
+        const decision = yield {
+          type: "awaiting_approval",
+          step: step.step,
+          kind: "tool",
+          toolName: tool.name,
+          reason: `Tool "${tool.name}" requires approval before it runs.`,
+        };
+        if (!decision?.approved) {
+          yield {
+            type: "rejected",
+            step: step.step,
+            reason: decision?.reason ?? "Approval was rejected.",
+          };
+          return;
+        }
+      }
+      try {
+        const params = buildToolParams(stepOutputs, input);
+        // Resolve `{{ step.field }}` references in the URL first (KAN-1429);
+        // callHttpTool then substitutes the pre-existing `{step.field}` form,
+        // so both syntaxes work and old specs are unaffected.
+        const resolvedTool = { ...tool, url: resolveRefs(tool.url, params) };
+        const output = await callHttpTool(resolvedTool, params, { fetchImpl: deps.fetchImpl });
+        stepOutputs[step.step] = output;
+        yield { type: "step_completed", step: step.step, output };
+      } catch (err) {
+        yield { type: "failed", step: step.step, error: (err as Error).message };
+        return;
+      }
+      continue;
+    }
+
+    // KAN-1429 (ADR-0021): a first-class approval step -- pause for a human,
+    // reject stops the run (reusing the approval/resume machinery).
+    if (isApprovalStep(step)) {
+      const reason = step.message
+        ? resolveRefs(step.message, buildToolParams(stepOutputs, input))
+        : `Step "${step.step}" requires human approval.`;
+      const decision = yield {
+        type: "awaiting_approval",
+        step: step.step,
+        kind: "approval",
+        reason,
+      };
+      if (!decision?.approved) {
+        yield {
+          type: "rejected",
+          step: step.step,
+          reason: decision?.reason ?? "Approval was rejected.",
+        };
+        return;
+      }
+      stepOutputs[step.step] = {
+        approved: true,
+        ...(decision.reason ? { reason: decision.reason } : {}),
+      };
+      yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+      continue;
     }
 
     let stepResult: { output: unknown; confidence?: number };
@@ -204,6 +302,14 @@ function isConditionStep(step: WorkflowStep): step is Extract<WorkflowStep, { ty
   return "type" in step && step.type === "condition";
 }
 
+function isToolStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "tool" }> {
+  return "type" in step && step.type === "tool";
+}
+
+function isApprovalStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "approval" }> {
+  return "type" in step && step.type === "approval";
+}
+
 async function runActionStep(
   step: Extract<WorkflowStep, { action: string }>,
   spec: AgentSpec,
@@ -234,7 +340,8 @@ function buildStepPrompt(
 ): string {
   const lines = [`User input: ${input}`, `Step: ${step.step}`, `Action: ${step.action}`];
   if (step.inputs?.length) lines.push(`Relevant fields: ${step.inputs.join(", ")}`);
-  if (step.query) lines.push(`Query: ${step.query}`);
+  if (step.query)
+    lines.push(`Query: ${resolveRefs(step.query, buildToolParams(stepOutputs, input))}`);
   if (Object.keys(stepOutputs).length > 0) {
     lines.push(`Prior step outputs: ${JSON.stringify(stepOutputs)}`);
   }
@@ -250,12 +357,14 @@ function buildStepPrompt(
  * Tool params for `execute_tool(name)` resolve from every prior step's
  * scalar output fields, namespaced under that step's name (`{step_name.field}`
  * placeholders in the tool URL), plus the run's original input under its own
- * top-level `input` key. Namespacing (rather than a flat merge of every
- * step's fields into one bag) is what stops two steps that happen to share a
- * field name from silently clobbering each other before substitution. A
- * placeholder with no matching key is left as-is in the URL (see
- * substitutePlaceholders), which surfaces as an honest HTTP failure rather
- * than a silent wrong value.
+ * top-level `input` key -- V2's schema has no explicit param-mapping syntax
+ * (e.g. `{{steps.x.field}}`), so this is a deliberately simple stand-in.
+ * Namespacing (rather than a flat merge of every step's fields into one bag)
+ * is what stops two steps that happen to share a field name -- or a field
+ * literally named `input` -- from silently clobbering each other before
+ * substitution. A placeholder with no matching key is left as-is in the URL
+ * (see substitutePlaceholders), which surfaces as an honest HTTP failure
+ * rather than a silent wrong value.
  */
 function buildToolParams(
   stepOutputs: Record<string, unknown>,

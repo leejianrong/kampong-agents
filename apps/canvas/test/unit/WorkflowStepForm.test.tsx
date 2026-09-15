@@ -44,9 +44,9 @@ describe("WorkflowStepForm", () => {
     const onSubmit = vi.fn();
     render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Conditional branch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Condition" }));
 
-    // Action-only fields are gone once "Conditional branch" is selected.
+    // Action-only fields are gone once "Condition" is selected.
     expect(screen.queryByLabelText("Action")).toBeNull();
     expect(screen.queryByLabelText("Requires confidence gate")).toBeNull();
 
@@ -75,7 +75,7 @@ describe("WorkflowStepForm", () => {
     const onSubmit = vi.fn();
     render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Conditional branch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Condition" }));
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "handle_approval" } });
     fireEvent.change(screen.getByLabelText("If (condition)"), {
       target: { value: "evaluation.eligible == true" },
@@ -85,6 +85,38 @@ describe("WorkflowStepForm", () => {
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toBeTruthy();
+  });
+
+  it("switches to the tool kind and builds a type: 'tool' step (KAN-1429)", () => {
+    const onSubmit = vi.fn();
+    render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tool" }));
+    expect(screen.queryByLabelText("Action")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "lookup" } });
+    fireEvent.change(screen.getByLabelText("Tool name"), { target: { value: "get_order" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+
+    expect(onSubmit).toHaveBeenCalledWith({ step: "lookup", type: "tool", tool: "get_order" });
+  });
+
+  it("switches to the approval kind and builds a type: 'approval' step (KAN-1429)", () => {
+    const onSubmit = vi.fn();
+    render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approval" }));
+    fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "review" } });
+    fireEvent.change(screen.getByLabelText("Message (optional)"), {
+      target: { value: "Approve this reply?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      step: "review",
+      type: "approval",
+      message: "Approve this reply?",
+    });
   });
 
   it("calls onCancel when Cancel is clicked", () => {

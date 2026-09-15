@@ -50,6 +50,18 @@ export type WorkflowStep =
       else: string;
     }
   | {
+      // KAN-1429: a tool step calls a named tool as a normal, always-run step.
+      step: string;
+      type: "tool";
+      tool: string;
+    }
+  | {
+      // KAN-1429: a first-class human-approval step.
+      step: string;
+      type: "approval";
+      message?: string;
+    }
+  | {
       step: string;
       action: string;
       inputs?: string[];

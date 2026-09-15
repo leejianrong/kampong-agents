@@ -78,6 +78,15 @@ export function Canvas({ graph, layout }: CanvasProps) {
 }
 
 function nodeLabel(node: SpecNode): string {
+  // Workflow nodes read their step kind from the data so the new first-class
+  // tool/approval steps (KAN-1429) are distinguishable on the canvas; action
+  // and condition steps keep the existing "Workflow: <step>" label.
+  if (node.kind === "workflow") {
+    const step = String(node.data.step ?? node.id);
+    if (node.data.type === "tool") return `Tool step: ${step}`;
+    if (node.data.type === "approval") return `Approval: ${step}`;
+    return `Workflow: ${step}`;
+  }
   const kind = KIND_LABEL[node.kind];
   const name = String(node.data.name ?? node.data.step ?? node.id);
   return `${kind}: ${name}`;

@@ -38,7 +38,25 @@ export interface WorkflowConditionStepFormInput {
   else: string;
 }
 
-export type WorkflowStepFormInput = WorkflowActionStepFormInput | WorkflowConditionStepFormInput;
+// KAN-1429 (ADR-0021): the two new first-class step kinds -- a tool step (call
+// a named tool as a normal step) and an approval step (human-in-the-loop pause).
+export interface WorkflowToolStepFormInput {
+  kind: "tool";
+  step: string;
+  tool: string;
+}
+
+export interface WorkflowApprovalStepFormInput {
+  kind: "approval";
+  step: string;
+  message?: string;
+}
+
+export type WorkflowStepFormInput =
+  | WorkflowActionStepFormInput
+  | WorkflowConditionStepFormInput
+  | WorkflowToolStepFormInput
+  | WorkflowApprovalStepFormInput;
 
 export interface WorkflowStepFormResult {
   success: boolean;
@@ -47,26 +65,36 @@ export interface WorkflowStepFormResult {
 }
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
-  const candidate =
-    input.kind === "condition"
-      ? {
-          step: input.step,
-          type: "condition" as const,
-          if: input.if,
-          then: input.then,
-          else: input.else,
-        }
-      : {
-          step: input.step,
-          action: input.action,
-          ...(input.inputs && {
-            inputs: input.inputs
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          }),
-          ...(input.confidenceGate && { confidence_gate: true }),
-        };
+  let candidate: unknown;
+  if (input.kind === "condition") {
+    candidate = {
+      step: input.step,
+      type: "condition" as const,
+      if: input.if,
+      then: input.then,
+      else: input.else,
+    };
+  } else if (input.kind === "tool") {
+    candidate = { step: input.step, type: "tool" as const, tool: input.tool };
+  } else if (input.kind === "approval") {
+    candidate = {
+      step: input.step,
+      type: "approval" as const,
+      ...(input.message && { message: input.message }),
+    };
+  } else {
+    candidate = {
+      step: input.step,
+      action: input.action,
+      ...(input.inputs && {
+        inputs: input.inputs
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      }),
+      ...(input.confidenceGate && { confidence_gate: true }),
+    };
+  }
 
   const result = workflowStepSchema.safeParse(candidate);
   if (!result.success) {

@@ -161,6 +161,50 @@ describe("AgentSpec round-trip duality", () => {
     });
   });
 
+  it("adds a canvas-authored tool (type: 'tool') workflow step (KAN-1429)", () => {
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "workflow"],
+        value: { step: "lookup", type: "tool", tool: "check_stripe_charge" },
+      },
+    ]);
+    const output = toYamlString(doc);
+
+    expect(output).toContain("# Refund processing agent");
+    const reparsed = parseSpec(output);
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.workflow.at(-1)).toEqual({
+      step: "lookup",
+      type: "tool",
+      tool: "check_stripe_charge",
+    });
+  });
+
+  it("adds a canvas-authored approval (type: 'approval') workflow step (KAN-1429)", () => {
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "add",
+        path: ["agent", "workflow"],
+        value: { step: "review", type: "approval", message: "Approve this reply?" },
+      },
+    ]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.workflow.at(-1)).toEqual({
+      step: "review",
+      type: "approval",
+      message: "Approve this reply?",
+    });
+  });
+
   it("removes a field cleanly via a remove patch op", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);

@@ -179,7 +179,7 @@ describe("canvas against a real local server (no mocks)", () => {
 
     fireEvent.click(screen.getByText("Add Workflow Step"));
     form = screen.getByRole("form", { name: "Add Workflow Step" });
-    fireEvent.click(within(form).getByText("Conditional branch"));
+    fireEvent.click(within(form).getByText("Condition"));
     fireEvent.change(within(form).getByLabelText("Step ID"), {
       target: { value: "handle_approval" },
     });
