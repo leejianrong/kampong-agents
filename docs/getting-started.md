@@ -76,6 +76,12 @@ and the other updates. Press **Run**, type an input, and watch the trace fill in
     `workspace/agent.yaml` from the starter spec on first run, `make logs` follows the logs, and
     `make down` stops it.
 
+!!! note "Running it as a shared, signed-in service"
+    `kampong dev` is single-user and edits one file. There is also a
+    [hosted app](hosted-app.md) — the same canvas with sign-in, per-workspace specs, and
+    server-side provider keys — for running Kampong Agents as a multi-tenant service. The
+    agent-building steps in this tutorial are identical in both.
+
 ## What just happened
 
 You ran one `AgentSpec` file two ways, headless and on the canvas, with no import or conversion

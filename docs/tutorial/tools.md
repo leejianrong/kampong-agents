@@ -15,6 +15,11 @@ agent:
       extract: "order.status"
 ```
 
+On the canvas, **Add Tool** opens a structured form for exactly these fields — no code, no LLM
+call to set it up:
+
+![The Add Tool form open on the canvas](../assets/img/canvas-add-tool.png)
+
 !!! important "Defining a tool doesn't call it"
     Listing a tool under `agent.tools` makes it available. Your agent actually invokes it from a
     **condition step** in the workflow, using `execute_tool(lookup_order)`. That mechanism is on
