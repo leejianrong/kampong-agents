@@ -188,4 +188,20 @@ describe("createServer -- Better Auth mounting (KAN-1226)", () => {
     expect(response.statusCode).toBe(401);
     expect(response.json()).toMatchObject({ success: false });
   });
+
+  // KAN-1231: the hosted run routes follow the same shape.
+  it("does not mount /api/runs when no db is given", async () => {
+    app = createServer();
+    const response = await app.inject({ method: "GET", url: `/api/runs/${"x".repeat(8)}` });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("mounts /api/runs/:id when a db is given, and rejects an anonymous request with 401 (not 404)", async () => {
+    app = createServer({ db: dbForThisTest() });
+    await app.ready();
+
+    const response = await app.inject({ method: "GET", url: "/api/runs/some-run-id" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ success: false });
+  });
 });

@@ -306,3 +306,36 @@ export const byokKeys = pgTable(
   },
   (table) => [unique().on(table.workspaceId, table.provider)],
 );
+
+// KAN-1231 (ADR-0014): durable hosted run history -- the Postgres successor
+// to packages/cli's in-memory `RunManager` Map, finally giving PLAN.md Shape
+// S1's long-standing "Local run-history log" placeholder a real
+// implementation. A row is written when a run starts and updated as it
+// progresses, so a completed run's full trace survives a server restart and a
+// user can return to see past runs (ADR-0014's explicit reason for durability
+// over the in-memory-only local design). Another ordinary `workspace_id`-
+// scoped, RLS-protected table (policy hand-authored in
+// drizzle/0009_enable_runs_rls.sql). `trace_json`/`final_output` are `jsonb`
+// snapshots of the engine's own `RunState.trace`/`finalOutput`
+// (packages/engine) -- the database stores the run state the engine already
+// produces, it does not reimplement or reshape it.
+export const runs = pgTable("runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  specId: uuid("spec_id")
+    .notNull()
+    .references(() => specs.id, { onDelete: "cascade" }),
+  // The engine `RunStatus`: running | awaiting_approval | completed | rejected
+  // | failed. Plain text (like `workspace_members.role`) -- the engine owns
+  // the value set, this column just persists it.
+  status: text("status").notNull(),
+  // The run's input string (what `runWorkflow` was started with).
+  input: text("input").notNull(),
+  traceJson: jsonb("trace_json").notNull(),
+  finalOutput: jsonb("final_output"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});

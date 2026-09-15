@@ -278,12 +278,11 @@ describe("layouts table", () => {
   });
 });
 
-describe("scope discipline (KAN-1223 vs later cards)", () => {
-  it("exports byok_keys (added by KAN-1229) but not yet runs (KAN-1231's own migration)", async () => {
+describe("schema growth across V5 cards", () => {
+  it("exports byok_keys (KAN-1229) and runs (KAN-1231)", async () => {
     const schemaModule = await import("../../../src/db/schema.js");
     const exportedNames = Object.keys(schemaModule);
-    // KAN-1229 (ADR-0016) added byok_keys; runs is still KAN-1231's to add.
     expect(exportedNames).toContain("byokKeys");
-    expect(exportedNames).not.toContain("runs");
+    expect(exportedNames).toContain("runs");
   });
 });
