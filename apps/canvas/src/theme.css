@@ -668,3 +668,208 @@ select.md3-text-field {
   border-left: 1px solid var(--md-sys-color-outline-variant);
   min-width: 0;
 }
+
+/* ---- Hosted mode (KAN-1228): auth, workspace, spec list, BYOK, shell ---- */
+
+/* A neutral outlined button (M3 outlined button) -- the destructive
+   `.md3-button-outlined` above is themed with the error role for delete
+   actions; this variant restores the neutral on-surface color for
+   non-destructive uses like "Continue with GitHub". */
+.md3-button-outlined--neutral {
+  color: var(--md-sys-color-on-surface);
+}
+
+.md3-button-outlined--neutral:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+/* Full-viewport centered surface for the pre-workspace gates (auth, workspace
+   picker) and loading states. */
+.md3-centered-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  padding: 1.5rem;
+  background: var(--md-sys-color-surface);
+}
+
+/* A scrollable, max-width content column for the spec-list and BYOK pages. */
+.md3-page {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--md-sys-color-surface);
+}
+
+.md3-page__content {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.md3-page__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Simple vertical list (workspace picker, BYOK key list). */
+.md3-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.md3-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.md3-list-item:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 8%,
+    var(--md-sys-color-surface-container)
+  );
+}
+
+.md3-list-item:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-list-item__title {
+  font-size: var(--md-type-title-small-size);
+  line-height: var(--md-type-title-small-line);
+  font-weight: 500;
+}
+
+.md3-list-item__meta {
+  font-size: var(--md-type-body-small-size);
+  line-height: var(--md-type-body-small-line);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  padding: 0.625rem 1rem;
+}
+
+.md3-list-row .md3-list-item__title {
+  flex: 0 0 8rem;
+}
+
+.md3-key-mask {
+  flex: 1;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--md-type-body-medium-size);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Responsive card grid for the spec-list landing view. */
+.md3-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.md3-spec-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  font-family: inherit;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-large);
+  padding: 1rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.md3-spec-card:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 8%,
+    var(--md-sys-color-surface-container)
+  );
+  box-shadow: var(--md-elevation-level1);
+}
+
+.md3-spec-card:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* Top app bar for the hosted shell (M3 top app bar). */
+.md3-hosted-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+}
+
+.md3-hosted-shell__body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.md3-topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  box-shadow: var(--md-elevation-level1);
+  z-index: 5;
+}
+
+.md3-topbar__brand {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.md3-topbar__spacer {
+  flex: 1;
+}
+
+/* When the editor (App) renders inside the hosted shell, its own full-viewport
+   `.md3-app` must shrink to the shell body rather than 100vh under the top bar. */
+.md3-hosted-shell__body .md3-app {
+  width: 100%;
+  height: 100%;
+}
