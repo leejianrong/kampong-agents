@@ -171,4 +171,21 @@ describe("createServer -- Better Auth mounting (KAN-1226)", () => {
     expect(response.statusCode).toBe(401);
     expect(response.json()).toMatchObject({ success: false });
   });
+
+  // KAN-1229: the BYOK routes follow the same "only mounted with a db, auth
+  // gate runs before any DB query" shape as the spec routes.
+  it("does not mount /api/byok when no db is given", async () => {
+    app = createServer();
+    const response = await app.inject({ method: "GET", url: "/api/byok" });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("mounts /api/byok when a db is given, and rejects an anonymous request with 401 (not 404)", async () => {
+    app = createServer({ db: dbForThisTest() });
+    await app.ready();
+
+    const response = await app.inject({ method: "GET", url: "/api/byok" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ success: false });
+  });
 });

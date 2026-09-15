@@ -73,3 +73,37 @@ export function getGithubOAuthConfig(
 export function getAuthBaseUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return env["BETTER_AUTH_URL"];
 }
+
+/**
+ * Reads `BYOK_ROOT_KEY` (KAN-1229/ADR-0016: the base64-encoded 32-byte root
+ * key every stored BYOK provider key is AES-256-GCM-encrypted under) and
+ * returns it as a `Buffer`, throwing a clear, actionable error if it is unset
+ * or not exactly 32 bytes once base64-decoded.
+ *
+ * Same read-env-or-throw-clearly, no-silent-fallback discipline as
+ * `getAuthSecret`/`getDatabaseUrl`: a missing or wrong-sized root key is a
+ * deploy misconfiguration that must fail loudly, never degrade to a weak or
+ * absent key. In a deployed cluster this is the value of the root Kubernetes
+ * `Secret` (ADR-0016) mounted as an env var -- the single most sensitive
+ * artifact in the deployment; losing it permanently breaks every stored key.
+ * Generate one with `openssl rand -base64 32`.
+ */
+export function getByokRootKey(env: NodeJS.ProcessEnv = process.env): Buffer {
+  const encoded = env["BYOK_ROOT_KEY"];
+  if (!encoded) {
+    throw new Error(
+      "BYOK_ROOT_KEY is not set. packages/server needs a 32-byte root key (base64) to " +
+        "encrypt stored BYOK provider keys -- generate one with `openssl rand -base64 32` and " +
+        "set it as the BYOK_ROOT_KEY env var (in a deployed cluster this is the root Kubernetes " +
+        "Secret from ADR-0016, never checked into a spec or the repo).",
+    );
+  }
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) {
+    throw new Error(
+      `BYOK_ROOT_KEY must decode to exactly 32 bytes (a base64-encoded 256-bit key); got ` +
+        `${key.length} bytes. Generate a correct one with \`openssl rand -base64 32\`.`,
+    );
+  }
+  return key;
+}

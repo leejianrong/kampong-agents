@@ -4,6 +4,7 @@ import { fromNodeHeaders } from "better-auth/node";
 import { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js";
 import { createAuth } from "./auth/config.js";
 import { registerSpecRoutes } from "./routes/specs.js";
+import { registerByokRoutes } from "./routes/byok.js";
 import type { DbClient } from "./db/client.js";
 
 // The hosted variant of packages/cli/src/server.ts (ADR-0013, KAN-1221 --
@@ -96,6 +97,11 @@ export function createServer({ staticDir, db }: CreateServerOptions = {}): Fasti
     // scoping) and the same `auth` instance (to resolve the request's
     // session/workspace), so they live inside this block alongside it.
     registerSpecRoutes(app, { db, auth });
+
+    // KAN-1229 (ADR-0016): the workspace-scoped, masked BYOK key-management
+    // API. Same db+auth dependency and "only mounted when a db is present"
+    // shape as the spec routes above.
+    registerByokRoutes(app, { db, auth });
   }
 
   app.get("/healthz", async () => {

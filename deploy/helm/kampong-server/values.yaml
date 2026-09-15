@@ -59,9 +59,31 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# Extra environment variables merged onto the container (e.g. future
-# DATABASE_URL/session-secret entries from later cards) -- a list of
-# Kubernetes EnvVar objects, passed through as-is.
+# Extra environment variables merged onto the container -- a list of
+# Kubernetes EnvVar objects, passed through as-is. This is where the server's
+# secret-backed config is supplied, each `valueFrom.secretKeyRef` into a
+# Secret this chart does NOT create (so it must already exist in the
+# namespace):
+#   - DATABASE_URL        -- the CNPG `<cluster>-app` Secret's `uri` key
+#                            (KAN-1222; same value the migration Job uses).
+#   - BETTER_AUTH_SECRET  -- Better Auth's session-signing secret (KAN-1226,
+#                            ADR-0015); `openssl rand -base64 32`.
+#   - BYOK_ROOT_KEY       -- the AES-256-GCM root key every stored BYOK
+#                            provider key is encrypted under (KAN-1229,
+#                            ADR-0016). A base64-encoded 32 bytes
+#                            (`openssl rand -base64 32`). This is the single
+#                            most sensitive artifact in the deployment:
+#                            losing it permanently breaks every stored BYOK
+#                            key, so it MUST have its own backup in the
+#                            homelab DR runbook, separate from the database
+#                            backup (ADR-0016 Consequences).
+# Example:
+#   extraEnv:
+#     - name: BYOK_ROOT_KEY
+#       valueFrom:
+#         secretKeyRef:
+#           name: kampong-server-secrets
+#           key: byok-root-key
 extraEnv: []
 
 # The deploy-time Drizzle migration Job (ADR-0014, KAN-1223) --
