@@ -9,6 +9,7 @@ site_dir = "site"
 nav = [
   { "Home" = "index.md" },
   { "Getting started" = "getting-started.md" },
+  { "The hosted app" = "hosted-app.md" },
   { "Tutorial - user guide" = [
     { "Your first agent" = "tutorial/first-agent.md" },
     { "Choosing a model" = "tutorial/models.md" },

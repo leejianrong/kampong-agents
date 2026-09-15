@@ -32,6 +32,10 @@ agent:
       confidence_gate: true
 ```
 
+On the canvas, **Set Guardrails** opens a form for the same two fields:
+
+![The Set Guardrails form on the canvas](../assets/img/canvas-guardrails.png)
+
 Here's what happens after the `decide` step runs:
 
 ```mermaid
@@ -64,6 +68,8 @@ However the pause was triggered, the approval experience is the same.
 
 **On the canvas.** A modal appears naming the step and the reason. Approve to continue, or reject
 to stop the run.
+
+![The approval modal on the canvas, with the run trace behind it](../assets/img/run-approval.png)
 
 **From `kampong run`.** The run prompts on stdin:
 

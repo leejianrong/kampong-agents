@@ -23,6 +23,11 @@ agent:
       inputs: [input]
 ```
 
+The same spec on the canvas is a trigger node for the agent and one node per workflow step, with
+the live YAML beside it:
+
+![An agent open on the canvas: graph on the left, live YAML on the right](../assets/img/canvas-editor.png)
+
 ## Line by line
 
 **The schema comment.** The first line is a `yaml-language-server` pragma. It points your editor
