@@ -133,6 +133,55 @@ jobs:
       - run: npm run build
       - run: npm run test:e2e
 
+  browser:
+    name: Browser E2E
+    runs-on: ubuntu-latest
+    # KAN-1228 follow-up: drives the real hosted canvas in a headless browser
+    # against a throwaway Postgres -- the whole auth -> workspace -> BYOK ->
+    # spec -> run -> approve flow. Same non-superuser role as the integration
+    # job (a superuser bypasses FORCE RLS, KAN-1388); the Playwright harness
+    # (e2e/browser/harness/server.ts) boots packages/server with the
+    # deterministic model seam so the run pauses/completes with no network.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://app_test:app_test@localhost:5432/kampong_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Provision non-superuser Postgres role and database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE app_test LOGIN PASSWORD 'app_test' NOSUPERUSER NOBYPASSRLS;" \
+            -c "CREATE DATABASE kampong_e2e OWNER app_test;"
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:browser
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

@@ -9,3 +9,8 @@ export const PACKAGE_NAME = "@kampong/server";
 export { createServer, type CreateServerOptions } from "./server.js";
 export { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js";
 export { PgSpecRepository, SpecNotFoundError } from "./db/spec-repository.js";
+// Exported so the browser E2E harness (e2e/browser/harness) can boot a real
+// listening server against a throwaway Postgres the same way main.ts does --
+// migrate, connect, then createServer -- without duplicating that wiring.
+export { createDbClient, type DbClient } from "./db/client.js";
+export { runMigrations } from "./db/migrate.js";
