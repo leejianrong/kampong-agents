@@ -114,6 +114,27 @@ export const workflowStepSchema = z.union([
     then: z.string().min(1),
     else: z.string().min(1),
   }),
+  // KAN-1429 (ADR-0021): a tool step calls a tool as a normal, always-run
+  // step -- before this, a tool could only fire from inside a condition
+  // step's then/else via `execute_tool(name)`. `tool` names an entry in
+  // `agent.tools`; the engine resolves the tool's URL placeholders from prior
+  // step outputs and the run input exactly as the condition-branch path does.
+  z.object({
+    step: z.string().min(1),
+    type: z.literal("tool"),
+    tool: z.string().min(1),
+  }),
+  // KAN-1429 (ADR-0021): a first-class human-approval step -- before this,
+  // human approval was only reachable as a condition branch
+  // (`request_human_approval`) or a tool's `requires_approval`. Reject stops
+  // the run (`rejected`), matching the existing approval semantics.
+  z.object({
+    step: z.string().min(1),
+    type: z.literal("approval"),
+    // Shown to the approver; `{{ step.field }}` / `{{ input }}` references are
+    // resolved from prior step outputs at run time.
+    message: z.string().optional(),
+  }),
   z.object({
     step: z.string().min(1),
     action: z.string().min(1),

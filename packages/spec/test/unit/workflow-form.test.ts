@@ -73,6 +73,36 @@ describe("buildWorkflowStepFromForm", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // KAN-1429 (ADR-0021): the two new first-class step kinds.
+  it("builds a valid tool (type: 'tool') step", () => {
+    const result = buildWorkflowStepFromForm({ kind: "tool", step: "lookup", tool: "get_order" });
+    expect(result.success).toBe(true);
+    expect(result.step).toEqual({ step: "lookup", type: "tool", tool: "get_order" });
+  });
+
+  it("rejects a tool step with no tool name", () => {
+    const result = buildWorkflowStepFromForm({ kind: "tool", step: "lookup", tool: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("builds a valid approval (type: 'approval') step, with and without a message", () => {
+    const withMessage = buildWorkflowStepFromForm({
+      kind: "approval",
+      step: "review",
+      message: "Approve this reply?",
+    });
+    expect(withMessage.success).toBe(true);
+    expect(withMessage.step).toEqual({
+      step: "review",
+      type: "approval",
+      message: "Approve this reply?",
+    });
+
+    const withoutMessage = buildWorkflowStepFromForm({ kind: "approval", step: "review" });
+    expect(withoutMessage.success).toBe(true);
+    expect(withoutMessage.step).toEqual({ step: "review", type: "approval" });
+  });
 });
 
 describe("buildGuardrailsFromForm", () => {

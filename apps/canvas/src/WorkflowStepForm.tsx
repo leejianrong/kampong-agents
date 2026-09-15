@@ -13,7 +13,7 @@ import { buildWorkflowStepFromForm, type WorkflowStep } from "@kampong/spec";
 // steps today (no edit-in-place affordance anywhere on the canvas), so this
 // stays create-only to match that scope.
 
-type StepKind = "action" | "condition";
+type StepKind = "action" | "tool" | "approval" | "condition";
 
 export interface WorkflowStepFormProps {
   onSubmit: (step: WorkflowStep) => void;
@@ -29,20 +29,32 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   const [ifCondition, setIfCondition] = useState("");
   const [thenTarget, setThenTarget] = useState("");
   const [elseTarget, setElseTarget] = useState("");
+  const [tool, setTool] = useState("");
+  const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const result =
-      kind === "condition"
-        ? buildWorkflowStepFromForm({
-            kind: "condition",
-            step,
-            if: ifCondition,
-            then: thenTarget,
-            else: elseTarget,
-          })
-        : buildWorkflowStepFromForm({ step, action, inputs, confidenceGate });
+    let result;
+    if (kind === "condition") {
+      result = buildWorkflowStepFromForm({
+        kind: "condition",
+        step,
+        if: ifCondition,
+        then: thenTarget,
+        else: elseTarget,
+      });
+    } else if (kind === "tool") {
+      result = buildWorkflowStepFromForm({ kind: "tool", step, tool });
+    } else if (kind === "approval") {
+      result = buildWorkflowStepFromForm({
+        kind: "approval",
+        step,
+        ...(message && { message }),
+      });
+    } else {
+      result = buildWorkflowStepFromForm({ step, action, inputs, confidenceGate });
+    }
     if (!result.success || !result.step) {
       setErrors(result.errors ?? ["Invalid workflow step"]);
       return;
@@ -57,30 +69,28 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
       <div className="md3-field">
         <span className="md3-field__label md3-label-large">Step kind</span>
         <div className="md3-segmented-button" role="group" aria-label="Step kind">
-          <button
-            type="button"
-            aria-pressed={kind === "action"}
-            className={
-              kind === "action"
-                ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
-                : "md3-segmented-button__segment"
-            }
-            onClick={() => setKind("action")}
-          >
-            Action step
-          </button>
-          <button
-            type="button"
-            aria-pressed={kind === "condition"}
-            className={
-              kind === "condition"
-                ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
-                : "md3-segmented-button__segment"
-            }
-            onClick={() => setKind("condition")}
-          >
-            Conditional branch
-          </button>
+          {(
+            [
+              ["action", "Action"],
+              ["tool", "Tool"],
+              ["approval", "Approval"],
+              ["condition", "Condition"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={kind === value}
+              className={
+                kind === value
+                  ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
+                  : "md3-segmented-button__segment"
+              }
+              onClick={() => setKind(value)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -89,7 +99,7 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
         <input className="md3-text-field" value={step} onChange={(e) => setStep(e.target.value)} />
       </label>
 
-      {kind === "action" ? (
+      {kind === "action" && (
         <>
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">Action</span>
@@ -117,7 +127,31 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
             <span className="md3-label-large">Requires confidence gate</span>
           </label>
         </>
-      ) : (
+      )}
+
+      {kind === "tool" && (
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Tool name</span>
+          <input
+            className="md3-text-field"
+            value={tool}
+            onChange={(e) => setTool(e.target.value)}
+          />
+        </label>
+      )}
+
+      {kind === "approval" && (
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Message (optional)</span>
+          <input
+            className="md3-text-field"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+        </label>
+      )}
+
+      {kind === "condition" && (
         <>
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">If (condition)</span>

@@ -13,7 +13,10 @@ export type RunStatus = "running" | "awaiting_approval" | "completed" | "rejecte
 
 export interface PendingApproval {
   step: string;
-  kind: "tool" | "guardrail";
+  // "approval" is a first-class approval step (KAN-1429); "tool"/"guardrail"
+  // are the pre-existing implicit pauses. Mirrors RunEvent's awaiting_approval
+  // kind in workflow.ts.
+  kind: "tool" | "guardrail" | "approval";
   reason: string;
   toolName?: string;
 }

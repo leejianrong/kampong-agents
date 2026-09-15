@@ -5,21 +5,25 @@
 // project has no dependency on that package -- ADR-0002). From here on this
 // file is yours: it will not be touched again by a future export.
 //
-// The front-end-agnostic run controller: wraps the workflow generator
-// behind a `start`/`resume` API and a `pendingApproval` state, so a stdin
-// prompt (src/index.ts in this project) can drive the engine without the
-// engine itself knowing anything about how approval is collected.
-
 import { EventEmitter } from "node:events";
 import type { AgentSpec } from "./spec-types.js";
 import { createMastraModelClient, type ModelClient } from "./model.js";
 import { runWorkflow, type ApprovalDecision, type EngineDeps, type RunEvent } from "./workflow.js";
 
+// The front-end-agnostic run controller (PLAN.md Shape S3, SLICES.md V2
+// KAN-1104/1107): wraps the workflow generator behind a `start`/`resume`
+// API and a `pendingApproval` state, so a browser modal (in scope this
+// slice) and a future CLI stdin prompt (V3, out of scope) can drive the
+// exact same engine without either one being baked into this class.
+
 export type RunStatus = "running" | "awaiting_approval" | "completed" | "rejected" | "failed";
 
 export interface PendingApproval {
   step: string;
-  kind: "tool" | "guardrail";
+  // "approval" is a first-class approval step (KAN-1429); "tool"/"guardrail"
+  // are the pre-existing implicit pauses. Mirrors RunEvent's awaiting_approval
+  // kind in workflow.ts.
+  kind: "tool" | "guardrail" | "approval";
   reason: string;
   toolName?: string;
 }
@@ -173,14 +177,23 @@ export class AgentRun extends EventEmitter {
 export interface CreateAgentRunOptions {
   env?: NodeJS.ProcessEnv;
   model?: ModelClient;
-  /** Overrides the fetch used for HTTP *tool* calls. */
+  /** Overrides the fetch used for HTTP *tool* calls -- e.g. the mock/record layer's createFixtureFetch (V3 KAN-1111). */
   fetchImpl?: EngineDeps["fetchImpl"];
-  /** Overrides the fetch the *model* provider (e.g. the Ollama adapter) uses internally. Distinct from `fetchImpl` above -- tool calls and model calls are separate network seams. */
+  /**
+   * Overrides the fetch the *model* provider (e.g. the Ollama adapter, V3
+   * KAN-1112) uses internally. Distinct from `fetchImpl` above -- tool
+   * calls and model calls are separate network seams -- and mainly a test
+   * seam: it's what lets `e2e/`'s fully-offline test (KAN-1113) exercise
+   * the real `ollama` provider-resolution path with a canned response
+   * instead of a live Ollama server, while proving nothing falls back to
+   * the global `fetch`.
+   */
   modelFetchImpl?: typeof fetch;
   /**
-   * Forwarded straight through to `createMastraModelClient`, where it takes
+   * CLI override (`kampong run --timeout <ms>`, KAN-1185): forwarded
+   * straight through to `createMastraModelClient`, where it takes
    * precedence over `agent.model.timeout_ms` on the spec. Ignored when a
-   * fake `model` (above) is injected instead of building the real one.
+   * fake `model` (below) is injected instead of building the real one.
    */
   timeoutMs?: number;
 }
@@ -189,7 +202,8 @@ export interface CreateAgentRunOptions {
  * Convenience factory: resolves BYOK env vars and constructs the real
  * Mastra-backed model client synchronously (so a missing/invalid API key
  * surfaces immediately, before a run even starts), unless a fake
- * `ModelClient` is injected.
+ * `ModelClient` is injected (tests -- KAN-1108's guardrail integration test
+ * and packages/cli's server tests use this to avoid any live network call).
  */
 export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions = {}): AgentRun {
   const model =

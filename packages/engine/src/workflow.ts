@@ -34,7 +34,10 @@ export type RunEvent =
   | {
       type: "awaiting_approval";
       step: string;
-      kind: "tool" | "guardrail";
+      // "approval" is a first-class approval step (KAN-1429); "tool" and
+      // "guardrail" are the pre-existing implicit pauses (a requires_approval
+      // tool, and a confidence-guardrail / request_human_approval branch).
+      kind: "tool" | "guardrail" | "approval";
       reason: string;
       toolName?: string;
     }
@@ -49,6 +52,20 @@ export interface EngineDeps {
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
 const REQUEST_HUMAN_APPROVAL = "request_human_approval";
+
+// KAN-1429 (ADR-0021): `{{ step.field }}` / `{{ input }}` data references,
+// resolvable in an action step's query, a tool step's URL, and an approval
+// step's message. The lookup keys are exactly buildToolParams' flat map
+// (`input` plus namespaced `step.field` scalars), so a reference to a
+// non-scalar output (or an unknown key) is left as-is rather than guessed --
+// an honest miss, consistent with substitutePlaceholders' own behavior.
+const DATA_REF_PATTERN = /\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/g;
+
+function resolveRefs(text: string, params: Record<string, string>): string {
+  return text.replace(DATA_REF_PATTERN, (match, key: string) =>
+    key in params ? params[key]! : match,
+  );
+}
 
 const structuredStepSchema = z.object({
   result: z.record(z.string(), z.unknown()),
@@ -152,6 +169,80 @@ export async function* runWorkflow(
       return;
     }
 
+    // KAN-1429 (ADR-0021): a tool step -- call a named tool as a normal,
+    // always-run step (not gated behind a condition branch). Same
+    // approval/param-resolution behavior as the execute_tool(...) branch above.
+    if (isToolStep(step)) {
+      const tool = spec.agent.tools?.find((t) => t.name === step.tool);
+      if (!tool) {
+        yield {
+          type: "failed",
+          step: step.step,
+          error: `Tool step "${step.step}" references unknown tool "${step.tool}".`,
+        };
+        return;
+      }
+      if (tool.requires_approval) {
+        const decision = yield {
+          type: "awaiting_approval",
+          step: step.step,
+          kind: "tool",
+          toolName: tool.name,
+          reason: `Tool "${tool.name}" requires approval before it runs.`,
+        };
+        if (!decision?.approved) {
+          yield {
+            type: "rejected",
+            step: step.step,
+            reason: decision?.reason ?? "Approval was rejected.",
+          };
+          return;
+        }
+      }
+      try {
+        const params = buildToolParams(stepOutputs, input);
+        // Resolve `{{ step.field }}` references in the URL first (KAN-1429);
+        // callHttpTool then substitutes the pre-existing `{step.field}` form,
+        // so both syntaxes work and old specs are unaffected.
+        const resolvedTool = { ...tool, url: resolveRefs(tool.url, params) };
+        const output = await callHttpTool(resolvedTool, params, { fetchImpl: deps.fetchImpl });
+        stepOutputs[step.step] = output;
+        yield { type: "step_completed", step: step.step, output };
+      } catch (err) {
+        yield { type: "failed", step: step.step, error: (err as Error).message };
+        return;
+      }
+      continue;
+    }
+
+    // KAN-1429 (ADR-0021): a first-class approval step -- pause for a human,
+    // reject stops the run (reusing the approval/resume machinery).
+    if (isApprovalStep(step)) {
+      const reason = step.message
+        ? resolveRefs(step.message, buildToolParams(stepOutputs, input))
+        : `Step "${step.step}" requires human approval.`;
+      const decision = yield {
+        type: "awaiting_approval",
+        step: step.step,
+        kind: "approval",
+        reason,
+      };
+      if (!decision?.approved) {
+        yield {
+          type: "rejected",
+          step: step.step,
+          reason: decision?.reason ?? "Approval was rejected.",
+        };
+        return;
+      }
+      stepOutputs[step.step] = {
+        approved: true,
+        ...(decision.reason ? { reason: decision.reason } : {}),
+      };
+      yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+      continue;
+    }
+
     let stepResult: { output: unknown; confidence?: number };
     try {
       stepResult = await runActionStep(step, spec, deps, stepOutputs, input);
@@ -203,6 +294,14 @@ function isConditionStep(step: WorkflowStep): step is Extract<WorkflowStep, { ty
   return "type" in step && step.type === "condition";
 }
 
+function isToolStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "tool" }> {
+  return "type" in step && step.type === "tool";
+}
+
+function isApprovalStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "approval" }> {
+  return "type" in step && step.type === "approval";
+}
+
 async function runActionStep(
   step: Extract<WorkflowStep, { action: string }>,
   spec: AgentSpec,
@@ -233,7 +332,8 @@ function buildStepPrompt(
 ): string {
   const lines = [`User input: ${input}`, `Step: ${step.step}`, `Action: ${step.action}`];
   if (step.inputs?.length) lines.push(`Relevant fields: ${step.inputs.join(", ")}`);
-  if (step.query) lines.push(`Query: ${step.query}`);
+  if (step.query)
+    lines.push(`Query: ${resolveRefs(step.query, buildToolParams(stepOutputs, input))}`);
   if (Object.keys(stepOutputs).length > 0) {
     lines.push(`Prior step outputs: ${JSON.stringify(stepOutputs)}`);
   }
