@@ -13,13 +13,13 @@
     "@kampong/spec": "*",
     "@xyflow/react": "^12.6.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@kampong/cli": "*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.0.1",
     "vite": "^8.2.2"
