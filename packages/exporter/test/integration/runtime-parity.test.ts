@@ -63,6 +63,13 @@ const HAND_VENDORED_EXEMPTIONS: Record<string, RegExp> = {
   // only the plain-TypeScript *shape* of AgentSpec -- no Zod, no validator --
   // deliberately, not as an oversight.
   "spec-types.ts": /never re-validates a spec at runtime/,
+  // KAN-1435: vendored from packages/cli/src/run-manager.ts, not
+  // packages/engine/src -- its value imports (AgentRun, createAgentRun) are
+  // rewritten from the "@kampong/engine" package to the local ./run.js
+  // module, a real code change the comment/type-only-import tolerance below
+  // doesn't cover, so it's exempt from the byte/functional diff instead.
+  "run-manager.ts":
+    /rewritten from the "@kampong\/engine"\n\/\/ package to the local \.\/run\.js runtime module/,
 };
 
 function transpileStrippingCommentsAndTypeImports(source: string): string {

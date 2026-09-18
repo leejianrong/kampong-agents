@@ -15,8 +15,11 @@ export {
   buildPackageJson,
   slugifyPackageName,
   ENGINE_DEPENDENCY_VERSIONS,
+  SERVER_DEPENDENCY_VERSIONS,
 } from "./package-json.js";
 export { buildEntryPointSource } from "./entry-point.js";
+export { buildServerEntryPointSource } from "./server-entry-point.js";
+export { buildDockerfile, buildDockerignore } from "./dockerfile.js";
 export { buildReadme } from "./readme.js";
 export {
   buildTsconfig,

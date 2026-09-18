@@ -5,6 +5,8 @@ import { buildPackageJson } from "./package-json.js";
 import { buildEnvExample, buildGitignore, buildTsconfig } from "./project-files.js";
 import { buildReadme } from "./readme.js";
 import { buildEntryPointSource } from "./entry-point.js";
+import { buildServerEntryPointSource } from "./server-entry-point.js";
+import { buildDockerfile, buildDockerignore } from "./dockerfile.js";
 import { readRuntimeFiles } from "./runtime-files.js";
 
 // The exporter's public entry point (PLAN.md Shape S6, SLICES.md V4
@@ -77,7 +79,10 @@ export function exportProject(
   write("tsconfig.json", `${JSON.stringify(buildTsconfig(), null, 2)}\n`);
   write("README.md", buildReadme(spec));
   write(".gitignore", buildGitignore());
+  write(".dockerignore", buildDockerignore());
+  write("Dockerfile", buildDockerfile());
   write("src/index.ts", buildEntryPointSource(spec));
+  write("src/server.ts", buildServerEntryPointSource(spec));
 
   const envExample = buildEnvExample(spec);
   if (envExample) write(".env.example", envExample);
