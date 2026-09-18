@@ -89,7 +89,7 @@ describe("exportProject", () => {
     rmSync(outputDir, { recursive: true, force: true });
   });
 
-  it("writes package.json, tsconfig.json, README.md, .gitignore, the entry point, and every vendored runtime file", () => {
+  it("writes package.json, tsconfig.json, README.md, .gitignore, Dockerfile, the entry points, and every vendored runtime file", () => {
     const result = exportProject(FULL_SPEC, outputDir);
 
     expect(result.outputDir).toBe(outputDir);
@@ -99,13 +99,17 @@ describe("exportProject", () => {
         "tsconfig.json",
         "README.md",
         ".gitignore",
+        ".dockerignore",
+        "Dockerfile",
         ".env.example",
         join("src", "index.ts"),
+        join("src", "server.ts"),
         join("src", "runtime", "condition.ts"),
         join("src", "runtime", "guardrail.ts"),
         join("src", "runtime", "http-tool.ts"),
         join("src", "runtime", "model.ts"),
         join("src", "runtime", "run.ts"),
+        join("src", "runtime", "run-manager.ts"),
         join("src", "runtime", "spec-types.ts"),
         join("src", "runtime", "workflow.ts"),
       ]),
@@ -125,7 +129,9 @@ describe("exportProject", () => {
       zod: expect.any(String),
       "@ai-sdk/anthropic": expect.any(String),
       "@ai-sdk/openai": expect.any(String),
+      fastify: expect.any(String),
     });
+    expect(pkg.scripts.serve).toBe("tsx src/server.ts");
     const allDepNames = [
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.devDependencies ?? {}),
@@ -177,12 +183,40 @@ describe("exportProject", () => {
     expect(entry).not.toMatch(/@kampong\//);
   });
 
+  it("bakes the spec into the server entry, wires the webhook routes, and never imports @kampong/*", () => {
+    exportProject(FULL_SPEC, outputDir);
+    const server = readFileSync(join(outputDir, "src", "server.ts"), "utf8");
+
+    expect(server).toContain('"name": "issue_refund"');
+    expect(server).toContain('from "./runtime/run-manager.js"');
+    expect(server).toContain('app.post("/webhook"');
+    expect(server).toContain('"/runs/:id/approve"');
+    expect(server).toContain('"/runs/:id/events"');
+    expect(server).toContain('app.get("/healthz"');
+    expect(server).toContain("process.env.PORT");
+    expect(server).not.toMatch(/@kampong\//);
+  });
+
+  it("Dockerfile builds and runs the server entry, and .dockerignore excludes node_modules/.env", () => {
+    exportProject(FULL_SPEC, outputDir);
+    const dockerfile = readFileSync(join(outputDir, "Dockerfile"), "utf8");
+    const dockerignore = readFileSync(join(outputDir, ".dockerignore"), "utf8");
+
+    expect(dockerfile).toContain("RUN npm run build");
+    expect(dockerfile).toContain('CMD ["node", "dist/server.js"]');
+    expect(dockerfile).toContain("EXPOSE 8080");
+    expect(dockerignore).toContain("node_modules/");
+    expect(dockerignore).toContain(".env");
+  });
+
   it("README documents the one-way-export contract and the required env var", () => {
     exportProject(FULL_SPEC, outputDir);
     const readme = readFileSync(join(outputDir, "README.md"), "utf8");
 
     expect(readme).toMatch(/one-way/i);
     expect(readme).toContain("ANTHROPIC_API_KEY");
+    expect(readme).toContain("npm run serve");
+    expect(readme).toContain("docker build");
   });
 
   it(".env.example lists the exact env var the spec's model.api_key references", () => {
