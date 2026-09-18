@@ -53,6 +53,22 @@ const FULL_SPEC: AgentSpec = {
   },
 };
 
+// KAN-1432 (ADR-0021 Slice D): headless approval via Slack.
+const SLACK_APPROVAL_SPEC: AgentSpec = {
+  version: "1.0",
+  agent: {
+    id: "triage-agent",
+    name: "Triage Agent",
+    role: "Support",
+    goal: "Triage a message.",
+    approval_notifier: { type: "slack", token: "${SLACK_BOT_TOKEN}", channel: "#approvals" },
+    workflow: [
+      { step: "review", type: "approval", message: "Approve?" },
+      { step: "greet", action: "say_hello" },
+    ],
+  },
+};
+
 const MINIMAL_SPEC: AgentSpec = {
   version: "1.0",
   agent: {
@@ -110,6 +126,7 @@ describe("exportProject", () => {
         join("src", "runtime", "model.ts"),
         join("src", "runtime", "run.ts"),
         join("src", "runtime", "run-manager.ts"),
+        join("src", "runtime", "slack-approval.ts"),
         join("src", "runtime", "spec-types.ts"),
         join("src", "runtime", "workflow.ts"),
       ]),
@@ -195,6 +212,40 @@ describe("exportProject", () => {
     expect(server).toContain('app.get("/healthz"');
     expect(server).toContain("process.env.PORT");
     expect(server).not.toMatch(/@kampong\//);
+  });
+
+  it("bakes approval_notifier into the server entry and wires the /slack/interactions route", () => {
+    exportProject(SLACK_APPROVAL_SPEC, outputDir);
+    const server = readFileSync(join(outputDir, "src", "server.ts"), "utf8");
+
+    expect(server).toContain('"type": "slack"');
+    expect(server).toContain('"channel": "#approvals"');
+    expect(server).toContain('from "./runtime/slack-approval.js"');
+    expect(server).toContain('app.post("/slack/interactions"');
+    expect(server).toContain("SLACK_SIGNING_SECRET");
+    expect(server).not.toMatch(/@kampong\//);
+  });
+
+  it(".env.example and README list SLACK_BOT_TOKEN/SLACK_SIGNING_SECRET and the setup steps when approval_notifier is configured", () => {
+    exportProject(SLACK_APPROVAL_SPEC, outputDir);
+    const envExample = readFileSync(join(outputDir, ".env.example"), "utf8");
+    const readme = readFileSync(join(outputDir, "README.md"), "utf8");
+
+    expect(envExample).toContain("SLACK_BOT_TOKEN=");
+    expect(envExample).toContain("SLACK_SIGNING_SECRET=");
+    expect(readme).toContain("Headless approval via Slack");
+    expect(readme).toContain("Signing Secret");
+    expect(readme).toContain("/slack/interactions");
+  });
+
+  it("does not include the Slack approval setup section in the README when approval_notifier isn't configured", () => {
+    exportProject(FULL_SPEC, outputDir);
+    const readme = readFileSync(join(outputDir, "README.md"), "utf8");
+    // The endpoint table always documents the (always-present) /slack/interactions
+    // route, so check for the setup *section* heading specifically, not the
+    // plain-text phrase the table row's cross-reference also contains.
+    expect(readme).not.toContain("## Headless approval via Slack");
+    expect(readme).not.toContain("Signing Secret");
   });
 
   it("Dockerfile builds and runs the server entry, and .dockerignore excludes node_modules/.env", () => {

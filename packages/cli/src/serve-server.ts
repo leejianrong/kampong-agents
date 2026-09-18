@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { parseSpec, type AgentSpec, type SpecError } from "@kampong/spec";
-import type { RunEvent } from "@kampong/engine";
+import {
+  isApproveAction,
+  isRejectAction,
+  parseSlackInteractionPayload,
+  postInteractionUpdate,
+  verifySlackSignature,
+  type RunEvent,
+} from "@kampong/engine";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1431 (ADR-0021/ADR-0022): the server behind `kampong serve <spec>` -- the
@@ -47,7 +54,13 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
   // field documents intent, it isn't required to serve.
 
   const app = Fastify({ logger: false });
-  const runManager = new RunManager(run);
+  // KAN-1432 (ADR-0021 Slice D): headless -- no canvas is ever attached to
+  // `kampong serve` -- so every approval pause here should try to notify
+  // Slack when the spec configures a target, unlike `kampong dev`'s canvas
+  // server (server.ts), which never sets this.
+  const runManager = new RunManager({ ...run, notifyApprovalsViaSlack: true });
+  const slackFetchImpl = run?.slackFetchImpl;
+  const env = run?.env ?? process.env;
 
   // Accept any non-JSON content type as a raw string body, so `curl -d "..."`
   // (which defaults to urlencoded) and text/plain both work; JSON bodies keep
@@ -118,6 +131,68 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
     };
     run.on("event", onEvent);
     request.raw.on("close", () => run.off("event", onEvent));
+  });
+
+  // POST /slack/interactions -- KAN-1432 (ADR-0021 Slice D): Slack's
+  // interactivity callback for the Approve/Reject buttons posted above.
+  // The request body arrives as the raw `application/x-www-form-urlencoded`
+  // string via the catch-all content-type parser registered above, which is
+  // exactly what signature verification needs (the *exact* bytes Slack
+  // signed, before any parsing). SLACK_SIGNING_SECRET is a fixed, well-known
+  // env var name (not a spec-level `${ENV}` reference, unlike
+  // approval_notifier.token) -- the whole deployed process has one Slack app,
+  // one signing secret, regardless of which spec it's serving.
+  app.post("/slack/interactions", async (request, reply) => {
+    const signingSecret = env.SLACK_SIGNING_SECRET;
+    const timestamp = request.headers["x-slack-request-timestamp"];
+    const signature = request.headers["x-slack-signature"];
+    const rawBody = typeof request.body === "string" ? request.body : "";
+
+    if (
+      !signingSecret ||
+      typeof timestamp !== "string" ||
+      typeof signature !== "string" ||
+      !verifySlackSignature({ signingSecret, timestamp, rawBody, signature })
+    ) {
+      // Fails closed: a missing SLACK_SIGNING_SECRET is a configuration
+      // error, not "trust anything" -- an unverified interaction must never
+      // be allowed to resolve a run.
+      return reply.code(401).send({ success: false, error: "Invalid Slack request signature." });
+    }
+
+    const interaction = parseSlackInteractionPayload(rawBody);
+    if (!interaction) {
+      return reply.code(400).send({ success: false, error: "Unrecognized interaction payload." });
+    }
+
+    const approved = isApproveAction(interaction.actionId);
+    if (!approved && !isRejectAction(interaction.actionId)) {
+      return reply.code(400).send({ success: false, error: "Unrecognized action." });
+    }
+
+    let outcomeText: string;
+    try {
+      const state = await runManager.approve(interaction.runId, approved);
+      outcomeText =
+        state === undefined
+          ? `Run "${interaction.runId}" not found (it may have already finished).`
+          : approved
+            ? `Approved${interaction.userName ? ` by ${interaction.userName}` : ""}.`
+            : `Rejected${interaction.userName ? ` by ${interaction.userName}` : ""}.`;
+    } catch (err) {
+      // The run had already moved past this approval (e.g. a second click,
+      // or the same run resolved through /runs/:id/approve directly) --
+      // acknowledge Slack without crashing, and say so in the message.
+      outcomeText = `Could not apply this decision: ${(err as Error).message}`;
+    }
+
+    await postInteractionUpdate(interaction.responseUrl, outcomeText, slackFetchImpl).catch(
+      (err: unknown) => {
+        console.error(`Failed to update Slack message for run ${interaction.runId}:`, err);
+      },
+    );
+
+    return reply.code(200).send();
   });
 
   app.get("/healthz", async () => ({ status: "ok" }));

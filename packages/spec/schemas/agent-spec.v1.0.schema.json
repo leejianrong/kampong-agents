@@ -36,6 +36,25 @@
           "required": ["type"],
           "additionalProperties": false
         },
+        "approval_notifier": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "slack"
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+            },
+            "channel": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["type", "token", "channel"],
+          "additionalProperties": false
+        },
         "model": {
           "type": "object",
           "properties": {

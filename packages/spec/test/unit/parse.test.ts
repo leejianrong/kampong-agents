@@ -176,4 +176,41 @@ describe("parseSpec", () => {
     expect(result.success).toBe(false);
     expect(result.errors[0]?.line).toBeGreaterThan(0);
   });
+
+  // KAN-1432 (ADR-0021 Slice D): approval_notifier -- where a headless
+  // deployment sends the Approve/Reject Slack prompt.
+  it("parses a Slack approval_notifier with a ${ENV} token placeholder", () => {
+    const withNotifier = VALID_FIXTURE.replace(
+      "  guardrails:",
+      '  approval_notifier:\n    type: slack\n    token: ${SLACK_BOT_TOKEN}\n    channel: "#approvals"\n  guardrails:',
+    );
+    const result = parseSpec(withNotifier);
+    expect(result.success).toBe(true);
+    expect(result.spec?.agent.approval_notifier).toEqual({
+      type: "slack",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#approvals",
+    });
+  });
+
+  it("rejects an approval_notifier token that is a literal secret instead of a ${ENV_VAR} placeholder", () => {
+    const bad = VALID_FIXTURE.replace(
+      "  guardrails:",
+      '  approval_notifier:\n    type: slack\n    token: xoxb-literal-secret\n    channel: "#approvals"\n  guardrails:',
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.path.join(".") === "agent.approval_notifier.token")).toBe(
+      true,
+    );
+  });
+
+  it("rejects an approval_notifier with an unsupported type", () => {
+    const bad = VALID_FIXTURE.replace(
+      "  guardrails:",
+      '  approval_notifier:\n    type: email\n    token: ${SLACK_BOT_TOKEN}\n    channel: "#approvals"\n  guardrails:',
+    );
+    const result = parseSpec(bad);
+    expect(result.success).toBe(false);
+  });
 });

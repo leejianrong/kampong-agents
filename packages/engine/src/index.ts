@@ -25,11 +25,26 @@ export {
   callHttpTool,
   toMastraTool,
   substitutePlaceholders,
+  resolveEnvValue,
   extractField,
   type HttpToolCallOptions,
   type ToolContext,
   type ToolFetchImpl,
 } from "./http-tool.js";
+
+export {
+  buildApprovalBlocks,
+  postApprovalRequest,
+  postInteractionUpdate,
+  verifySlackSignature,
+  parseSlackInteractionPayload,
+  isApproveAction,
+  isRejectAction,
+  SlackApiError,
+  type PostApprovalRequestInput,
+  type VerifySlackSignatureInput,
+  type SlackInteraction,
+} from "./slack-approval.js";
 
 export {
   createFixtureFetch,

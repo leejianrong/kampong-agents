@@ -15,6 +15,8 @@
 
 import { randomUUID } from "node:crypto";
 import { AgentRun, createAgentRun, type RunState } from "./run.js";
+import { postApprovalRequest, SlackApiError } from "./slack-approval.js";
+import { resolveEnvValue } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
 import type { RunEvent } from "./workflow.js";
 import type { ToolFetchImpl } from "./http-tool.js";
@@ -53,6 +55,16 @@ export interface RunManagerOptions {
   createModel?: (spec: AgentSpec) => ModelClient;
   /** Test-only seam: how long a terminal run stays in `runs` before eviction (default 10 minutes). */
   evictAfterMs?: number;
+  /**
+   * KAN-1432 (ADR-0021 Slice D): when true, a run that pauses for approval
+   * with a `spec.agent.approval_notifier` configured posts an interactive
+   * Approve/Reject Slack message instead of relying on someone watching a
+   * UI. src/server.ts (the webhook listener) always enables this -- there
+   * is no canvas here to watch a pause happen.
+   */
+  notifyApprovalsViaSlack?: boolean;
+  /** Test-only seam: overrides the fetch used for the outbound Slack API calls above (distinct from `fetchImpl`, which is for tool calls). Defaults to the real `fetch`. */
+  slackFetchImpl?: typeof fetch;
 }
 
 export class RunManager {
@@ -80,6 +92,28 @@ export class RunManager {
     run.on("event", (event: RunEvent) => {
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
     });
+    if (this.options.notifyApprovalsViaSlack && spec.agent.approval_notifier) {
+      const notifier = spec.agent.approval_notifier;
+      run.on("event", (event: RunEvent) => {
+        if (event.type !== "awaiting_approval") return;
+        const env = this.options.env ?? process.env;
+        // Fire-and-forget, same reasoning as run.start().catch below: a
+        // Slack API/network failure here must not crash the run or the
+        // server process, but it must not be silently invisible either.
+        Promise.resolve()
+          .then(() => resolveEnvValue(notifier.token, env))
+          .then((token) =>
+            postApprovalRequest(
+              { token, channel: notifier.channel, runId: id, text: event.reason },
+              this.options.slackFetchImpl,
+            ),
+          )
+          .catch((err: unknown) => {
+            const detail = err instanceof SlackApiError ? err.message : (err as Error).message;
+            console.error(`Run ${id}: failed to post Slack approval notification: ${detail}`);
+          });
+      });
+    }
     this.runs.set(id, run);
     // Fire-and-forget: the workflow engine already catches every real
     // failure mode itself and yields a "failed" RunEvent instead of
