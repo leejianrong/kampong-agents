@@ -245,6 +245,27 @@ describe("AgentSpec round-trip duality", () => {
     expect(reparsed.spec?.agent.trigger).toEqual({ type: "webhook" });
   });
 
+  it("sets a Slack approval_notifier and round-trips it (KAN-1432)", () => {
+    const { doc, success } = parseSpec(VALID_FIXTURE);
+    expect(success).toBe(true);
+
+    applyPatch(doc, [
+      {
+        op: "set",
+        path: ["agent", "approval_notifier"],
+        value: { type: "slack", token: "${SLACK_BOT_TOKEN}", channel: "#approvals" },
+      },
+    ]);
+    const reparsed = parseSpec(toYamlString(doc));
+
+    expect(reparsed.success).toBe(true);
+    expect(reparsed.spec?.agent.approval_notifier).toEqual({
+      type: "slack",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#approvals",
+    });
+  });
+
   it("removes a field cleanly via a remove patch op", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE);
     expect(success).toBe(true);

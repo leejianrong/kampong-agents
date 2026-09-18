@@ -9,6 +9,27 @@ import { collectRequiredEnvVars } from "./project-files.js";
 
 export function buildReadme(spec: AgentSpec): string {
   const envVars = collectRequiredEnvVars(spec);
+  const slackApprovalSection =
+    spec.agent.approval_notifier?.type === "slack"
+      ? [
+          "## Headless approval via Slack",
+          "",
+          "This spec's `approval_notifier` posts an interactive Approve/Reject message to Slack " +
+            "whenever a run pauses -- there's no canvas attached to `src/server.ts` to watch it " +
+            "happen instead. To wire this up against a real Slack app:",
+          "",
+          "1. Create a Slack app with a bot token that can post to the configured channel " +
+            "(`chat:write` scope) -- that's `SLACK_BOT_TOKEN` below.",
+          "2. Turn on **Interactivity & Shortcuts** in the app's settings and set the Request URL " +
+            "to `https://<this-service>/slack/interactions` (needs a public URL -- `ngrok`/a " +
+            "tunnel for local testing, the real deployed URL otherwise).",
+          "3. Copy the app's **Signing Secret** into `SLACK_SIGNING_SECRET` -- every `/slack/" +
+            "interactions` request is HMAC-verified against it before a click is trusted to " +
+            "resolve a run; a missing or wrong secret fails closed (401), it never silently trusts " +
+            "an unverified request.",
+          "",
+        ]
+      : [];
   const envSection =
     envVars.length > 0
       ? [
@@ -89,11 +110,13 @@ export function buildReadme(spec: AgentSpec): string {
     "| `GET /runs/:id` | The run's current state. |",
     "| `GET /runs/:id/events` | Server-Sent Events stream of the run's progress. |",
     "| `POST /runs/:id/approve` | Resolves a paused run: `{ approved: boolean, reason? }`. |",
+    '| `POST /slack/interactions` | Slack\'s interactivity callback -- see "Headless approval via Slack" below. |',
     "| `GET /healthz` | Liveness check. |",
     "",
     "Execution is on-demand: each webhook event drives one run on this process, there is no",
     "always-on per-workflow worker.",
     "",
+    ...slackApprovalSection,
     "## Deploying as a container",
     "",
     "```",

@@ -96,6 +96,14 @@ export interface Trigger {
   type: "webhook";
 }
 
+// KAN-1432: where a headless deployment sends the Approve/Reject Slack
+// prompt (slack only today).
+export interface ApprovalNotifier {
+  type: "slack";
+  token: string;
+  channel: string;
+}
+
 export interface AgentSpec {
   version: string;
   agent: {
@@ -104,6 +112,7 @@ export interface AgentSpec {
     role: string;
     goal: string;
     trigger?: Trigger;
+    approval_notifier?: ApprovalNotifier;
     model?: Model;
     knowledge_base?: KnowledgeItem[];
     tools?: Tool[];

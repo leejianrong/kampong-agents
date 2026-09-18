@@ -185,6 +185,19 @@ export const triggerSchema = z.object({
   type: z.literal("webhook"),
 });
 
+// KAN-1432 (ADR-0021 Slice D): where a *headless* deployment (`kampong
+// serve` / the exported app) sends an Approve/Reject prompt when a run
+// pauses with no canvas attached. `type` mirrors triggerSchema's
+// discriminant shape, leaving room for other channels later without
+// breaking existing specs. Optional -- a spec with no approval_notifier
+// still runs headless, it just has no way to ping anyone about a pause; the
+// run simply waits for a direct POST /runs/:id/approve.
+export const approvalNotifierSchema = z.object({
+  type: z.literal("slack"),
+  token: envVarPlaceholderSchema,
+  channel: z.string().min(1),
+});
+
 export const agentSpecSchema = z.object({
   version: z.string().min(1),
   agent: z.object({
@@ -193,6 +206,7 @@ export const agentSpecSchema = z.object({
     role: z.string().min(1),
     goal: z.string().min(1),
     trigger: triggerSchema.optional(),
+    approval_notifier: approvalNotifierSchema.optional(),
     // Optional so every V1 spec (authored before BYOK existed) keeps
     // validating unchanged; the execution engine (not the schema) is what
     // requires it to be present before a real run can start.
@@ -206,6 +220,7 @@ export const agentSpecSchema = z.object({
 
 export type AgentSpec = z.infer<typeof agentSpecSchema>;
 export type Trigger = z.infer<typeof triggerSchema>;
+export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type Guardrails = z.infer<typeof guardrailsSchema>;
