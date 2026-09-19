@@ -71,6 +71,20 @@
       "when": 1789462000000,
       "tag": "0009_enable_runs_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789734461991,
+      "tag": "0010_melodic_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789734500000,
+      "tag": "0011_enable_deployments_rls",
+      "breakpoints": true
     }
   ]
 }
