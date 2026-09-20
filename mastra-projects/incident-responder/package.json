@@ -1,0 +1,31 @@
+{
+  "name": "incident-responder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real alert-driven incident diagnosis with a proposed, human-approved (never auto-executed) fix, built directly on Mastra (kampong-agents mastra-projects Slice 2).",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down",
+    "forward:slack": "smee -u \"$SMEE_SLACK_URL\" -t http://localhost:${PORT:-8788}/slack/interactions",
+    "chaos": "node scripts/chaos.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.57",
+    "@fastify/static": "^10.1.4",
+    "@mastra/core": "1.64.0",
+    "ai": "7.0.91",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "smee-client": "^5.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

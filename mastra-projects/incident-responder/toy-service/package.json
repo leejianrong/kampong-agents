@@ -1,0 +1,13 @@
+{
+  "name": "toy-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small real HTTP service, deliberately breakable, monitored by a real Prometheus + Alertmanager stack for the incident-responder Mastra demo.",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
