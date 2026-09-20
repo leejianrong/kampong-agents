@@ -10,23 +10,35 @@ execution is a named stretch goal, not built here.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    A["toy-service<br/>(real, breakable)"] -->|scraped by| B[Prometheus]
+    B -->|alert fires| C[Alertmanager]
+    C -->|"real webhook (bearer auth)"| D["POST /alertmanager-webhook"]
+    D --> E["Fetch toy-service's real /debug"]
+    E --> F[Diagnostician agent]
+    F --> G["Real Slack message<br/>Approve/Reject buttons"]
+    G -->|human clicks| H["POST /slack/interactions<br/>(real interaction callback)"]
+    H --> I["Recorded as a real decision<br/>-- nothing executes"]
 ```
-toy-service (real, breakable) --scraped by--> Prometheus --alert fires--> Alertmanager
-                                                                                |
-                                                                     real webhook (bearer auth)
-                                                                                |
-                                                                     POST /alertmanager-webhook
-                                                                                |
-                                                                   fetch toy-service's real /debug
-                                                                                |
-                                                                        diagnostician agent
-                                                                                |
-                                                              real Slack message, Approve/Reject buttons
-                                                                                |
-                                                        human clicks --(real interaction callback)--> /slack/interactions
-                                                                                |
-                                                                 recorded as a real decision -- nothing executes
-```
+
+## Configuration
+
+Everything below is real — no mocked service, no placeholder that "just works" without it.
+
+| Variable | Required | What it's for |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | The diagnostician agent's model calls |
+| `SLACK_BOT_TOKEN` | Yes | Posting the real proposed-fix message |
+| `SLACK_CHANNEL` | Yes | Which real channel it's posted to |
+| `SLACK_SIGNING_SECRET` | Yes | Verifying the real Approve/Reject button-click callback |
+| `ALERTMANAGER_WEBHOOK_TOKEN` | No (pre-filled, matches `alertmanager/alertmanager.yml`) | Auth on the inbound Alertmanager webhook |
+| `TOY_SERVICE_URL` | No (defaults to `localhost:9100`) | Where the diagnostician fetches real service state from |
+| `PORT` | No (defaults to 8788) | Where this server and its dashboard listen |
+| `SMEE_SLACK_URL` | No (pre-filled) | Local relay for Slack's interaction callback |
+
+Also requires Docker (for `npm run stack:up`'s real Prometheus/Alertmanager/toy-service) and a
+real Slack app with Interactivity turned on — see step 4 below.
 
 ## Setup
 

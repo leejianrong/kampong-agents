@@ -13,21 +13,19 @@ Target repo: the real, dedicated sandbox
 
 ## Architecture
 
-```
-GitHub PR event --(real webhook)--> smee.io relay --> npm run forward --> POST /webhook
-                                                                              |
-                                                                    verify HMAC signature
-                                                                              |
-                                                                     fetch real PR diff
-                                                                              |
-                                                                       planner agent
-                                                                     (routes to N of 3)
-                                                                        /    |    \
-                                                                 security  style  test-coverage
-                                                                     \      |      /
-                                                                    merge into one comment
-                                                                              |
-                                                                    POST real GitHub comment
+```mermaid
+flowchart TD
+    A[Real GitHub PR event] -->|real webhook| B[smee.io relay]
+    B -->|npm run forward| C["POST /webhook<br/>verify HMAC signature"]
+    C --> D[Fetch real PR diff]
+    D --> E[Planner agent<br/>routes to N of 3]
+    E --> F[security]
+    E --> G[style]
+    E --> H[test-coverage]
+    F --> I[Merge into one comment]
+    G --> I
+    H --> I
+    I --> J[POST real GitHub comment]
 ```
 
 ## Dashboard
@@ -39,6 +37,19 @@ SSE stream, no polling, no mocked data (ADR-0006). Material Design 3 tokens
 generated from a real seed color live in `public/tokens.css`, meant to be
 copied as-is into the other 4 `mastra-projects` demos for a consistent
 visual identity.
+
+## Configuration
+
+Everything below is real — no mocked service, no placeholder that "just works" without it.
+
+| Variable | Required | What it's for |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | Every agent's model calls (planner + 3 specialists) |
+| `GITHUB_TOKEN` | Yes | Reading the real PR diff and posting the real review comment |
+| `GITHUB_WEBHOOK_SECRET` | Yes | Verifying the real webhook's HMAC signature |
+| `SANDBOX_REPO` | No (defaults to the pre-created sandbox) | Which repo's PRs trigger a review |
+| `SMEE_URL` | No (defaults to the pre-wired channel) | Local relay for GitHub's webhook delivery |
+| `PORT` | No (defaults to 8787) | Where this server and its dashboard listen |
 
 ## Setup
 
