@@ -9,3 +9,8 @@ deploy/helm/**/templates/**/*.yaml
 # indentation and silently breaks the rendered note boxes. Author docs pages
 # are excluded so Prettier can't mangle them; the Zensical build is their gate.
 docs/**/*.md
+
+# mastra-projects/ is deliberately outside the npm workspace/build/lint/CI
+# entirely (ADR-0002 in mastra-projects/docs/adr/) -- each demo there is its
+# own independent project, not code this repo's formatting config governs.
+mastra-projects/**
