@@ -95,6 +95,22 @@ final verdict.
   setup-free, but a real runtime dependency and CPU cost) vs. require a
   second BYOK key from a provider that actually serves embeddings (OpenAI,
   Cohere, Voyage) alongside OpenRouter for chat.
+- **Confirmed real friction, observed from actually running real questions
+  through this:** `match_document_chunks`'s cosine-similarity retrieval
+  doesn't always surface the most obviously relevant chunk, even when it
+  was ingested. Asking "what does ADR-0007 decide about YAML parsing?" (an
+  ADR chunked into `docs/adr/0007-frontend-and-local-server-stack.md`, 6
+  chunks per the ingest log) never retrieved from that document at all —
+  the analyst answered correctly, but only indirectly, by finding the same
+  decision restated in `QUESTIONS.md`'s Q27 register entry, which it
+  flagged honestly as an indirect source rather than citing ADR-0007
+  itself. Plain embedding-similarity search on a short, specific question
+  can miss the actual source document in favor of a shorter, more
+  self-contained restatement elsewhere in the corpus. A real `AgentSpec`
+  `knowledge_base` retrieval step would need to reckon with this directly
+  — e.g. hybrid keyword+vector search, a larger `match_count`, or query
+  rewriting — not assume plain cosine similarity is sufficient once a
+  corpus has near-duplicate content across documents.
 - **Open, the real question this slice exists to answer:** even with an
   execution engine built for `knowledge_base`, static "here are N
   documents" injection (what the field's current `pdf`/`url`/`text` shape
@@ -114,7 +130,11 @@ final verdict.
   fixed-width split, which can cut a citation-worthy sentence in half. Fine
   for a discovery demo's corpus; a real product would want smarter
   (sentence-boundary-aware) splitting.
-- **TODO once a handful of real multi-document questions have run through
-  this:** does `match_document_chunks`'s fixed `match_count` (6) retrieve
-  enough real coverage for a genuinely cross-cutting question, or does it
-  need query-dependent `k` or a re-ranking pass.
+- **Resolved, from a real run:** asking a genuinely cross-cutting question
+  ("how do the local-first no-telemetry principle and the V5 hosted mode
+  roadmap fit together?") worked well — the fixed `match_count` (6)
+  retrieved enough real coverage to correctly cite 4 distinct source
+  documents (`docs/concepts.md`, ADR-0012, `QUESTIONS.md`, `SLICES.md`) in
+  one synthesized, accurate answer. The single-document retrieval-miss
+  finding above is the sharper edge case here, not multi-document
+  coverage.
