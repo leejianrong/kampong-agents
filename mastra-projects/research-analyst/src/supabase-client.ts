@@ -6,13 +6,13 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// Service-role key, never exposed to a browser -- this process is the only
+// Secret API key, never exposed to a browser -- this process is the only
 // consumer, calling Supabase's REST/RPC interface server-side only. RLS is
 // enabled with no policies on both tables (see the migration this demo
-// applied), so the anon/publishable key genuinely cannot read this data;
-// only this key can.
+// applied), so the publishable/anon key genuinely cannot read this data;
+// only a secret (or legacy service_role) key can.
 export function getSupabaseClient() {
-  return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+  return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SECRET_KEY"), {
     auth: { persistSession: false },
   });
 }

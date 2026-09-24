@@ -39,7 +39,7 @@ Everything below is real — no mocked service, no placeholder that "just works"
 |---|---|---|
 | `OPENROUTER_API_KEY` | Yes | The analyst agent's cited-answer generation |
 | `SUPABASE_URL` | No (defaults to the pre-provisioned project) | The real Supabase project storing document chunks + embeddings |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side read/write to that project (RLS is on with no policies — only this key can access the tables at all) |
+| `SUPABASE_SECRET_KEY` | Yes | Server-side read/write to that project (RLS is on with no policies — only this key can access the tables at all) |
 | `OPENROUTER_MODEL` | No (defaults to `openai/gpt-4o-mini`) | Which OpenRouter model answers questions |
 | `PORT` | No (defaults to 8790) | Where this server and its dashboard listen |
 
@@ -49,8 +49,10 @@ No embeddings API key is needed — see the gap-analysis below for why.
 
 1. `npm install`
 2. `cp .env.example .env` and fill in `OPENROUTER_API_KEY` and
-   `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard → this project's Project
-   Settings → API → Project API keys → `service_role`, **secret**).
+   `SUPABASE_SECRET_KEY` (Supabase dashboard → this project's Project
+   Settings → API Keys → **Secret keys**, Supabase's current key system —
+   the legacy `service_role` key under "Legacy API Keys" also works if
+   that's what the project still shows).
 3. `npm run ingest` — walks kampong-agents' own root planning docs and
    `docs/**/*.md`, chunks them, computes real local embeddings (downloads
    the `Xenova/all-MiniLM-L6-v2` model weights once, then runs fully
