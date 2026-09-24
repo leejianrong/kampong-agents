@@ -38,7 +38,7 @@ Everything below is real — no mocked service, no placeholder that "just works"
 | `OPENROUTER_API_KEY` | Yes | The anomaly-summarizer agent's model calls |
 | `ALPHA_VANTAGE_API_KEY` | Yes | Real market data (free, instant, no verification — see Setup) |
 | `SUPABASE_URL` | No (defaults to the pre-provisioned project) | Where real price observations and anomalies are stored |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side read/write to that project (RLS is on with no policies) |
+| `SUPABASE_SECRET_KEY` | Yes | Server-side read/write to that project (RLS is on with no policies) |
 | `SLACK_BOT_TOKEN` | Yes | Posting the real, autonomous anomaly alert |
 | `SLACK_CHANNEL` | Yes | Which real channel alerts go to |
 | `TICKERS` | No (defaults to `AAPL,MSFT,NVDA`) | Which real tickers to pull |
@@ -52,9 +52,11 @@ Everything below is real — no mocked service, no placeholder that "just works"
    verification) at <https://www.alphavantage.co/support/#api-key>.
 2. `npm install`
 3. `cp .env.example .env` and fill in `OPENROUTER_API_KEY`,
-   `ALPHA_VANTAGE_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard
-   → this project's Project Settings → API → Project API keys →
-   `service_role`, **secret**), `SLACK_BOT_TOKEN`, `SLACK_CHANNEL`.
+   `ALPHA_VANTAGE_API_KEY`, `SUPABASE_SECRET_KEY` (Supabase dashboard →
+   this project's Project Settings → API Keys → **Secret keys**, Supabase's
+   current key system — the legacy `service_role` key under "Legacy API
+   Keys" also works if that's what the project still shows),
+   `SLACK_BOT_TOKEN`, `SLACK_CHANNEL`.
 4. `npm run dev`, open `http://localhost:8791`, click "Run now."
 5. Check real rows landed in Supabase (`price_observations`), and if the
    default `ANOMALY_THRESHOLD_PERCENT` (1.5%) was crossed by any of the

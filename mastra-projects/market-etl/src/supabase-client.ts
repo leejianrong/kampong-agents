@@ -7,11 +7,12 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// Service-role key, never exposed to a browser -- this process is the only
+// Secret API key, never exposed to a browser -- this process is the only
 // consumer. RLS is enabled with no policies on both tables (see the
-// migration this demo applied), so only this key can read/write them.
+// migration this demo applied), so only a secret (or legacy service_role)
+// key can read/write them.
 export function getSupabaseClient() {
-  return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+  return createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SECRET_KEY"), {
     auth: { persistSession: false },
   });
 }
