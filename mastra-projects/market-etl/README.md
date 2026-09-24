@@ -97,6 +97,30 @@ Filled in as real runs get executed; a running log, not a final verdict.
   against Alpha Vantage-shaped APIs would need a configurable
   "how do I detect failure in a 200 response" rule, not just status-code
   checking.
+- **Confirmed real friction, observed from a real run:** pulling 3 tickers
+  sequentially with no inter-request delay genuinely tripped Alpha
+  Vantage's real per-second burst limit — a real run's MSFT call came back
+  a 200 OK with an `Information` field reading "...1 request per
+  second...", correctly hard-failed by the check above (not silently
+  dropped). A separate run's AAPL/MSFT calls instead failed with a generic
+  local `fetch failed` that didn't reproduce on retry — network-level
+  flakiness, not a finding. The real finding is that `runEtl`'s per-symbol
+  loop (`pipeline.ts`) has no pacing between calls at all; anyone running
+  this against more than a couple of tickers on Alpha Vantage's free tier
+  will hit this for real, not just the already-documented daily cap.
+  Detecting a rate-limit failure (the finding above) and avoiding one
+  aren't the same problem — a real `AgentSpec` `http_request` tool used
+  against a rate-limited real API would need per-tool-call pacing/backoff
+  as a first-class config option too.
+- **Confirmed working end-to-end, the real pull/validate/store leg:** a
+  real run against real market data landed real rows in Supabase
+  (`price_observations`: AAPL, NVDA — MSFT correctly excluded after the
+  rate-limit hard-fail above, no partial/bad row written) and correctly
+  found no anomaly (NVDA −1.47%, AAPL −0.80%, both under the 1.5% default
+  threshold), verified directly against the table, not just the SSE
+  stream. The anomaly → summarizer → Slack leg remains genuinely untested,
+  pending both a real anomaly and real `SLACK_BOT_TOKEN`/`SLACK_CHANNEL`
+  credentials.
 - **Open, the real question this slice exists to answer:** is a scheduled,
   no-HITL background job in scope for `AgentSpec` at all, or is v1's
   request/webhook/poll-triggered model a deliberate boundary (parallel to
