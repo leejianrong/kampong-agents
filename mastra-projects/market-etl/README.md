@@ -118,9 +118,13 @@ Filled in as real runs get executed; a running log, not a final verdict.
   rate-limit hard-fail above, no partial/bad row written) and correctly
   found no anomaly (NVDA −1.47%, AAPL −0.80%, both under the 1.5% default
   threshold), verified directly against the table, not just the SSE
-  stream. The anomaly → summarizer → Slack leg remains genuinely untested,
-  pending both a real anomaly and real `SLACK_BOT_TOKEN`/`SLACK_CHANNEL`
-  credentials.
+  stream.
+- **Confirmed working end-to-end, the anomaly → Slack leg:** a real run
+  with `TICKERS=AAPL ANOMALY_THRESHOLD_PERCENT=0.1` (a deliberately
+  sensitive threshold) posted a real Slack alert with no approval gate and
+  landed a real row in the Supabase `anomalies` table. Not yet seen: an
+  anomaly fired by real market volatility rather than a lowered threshold
+  (see the TODO below).
 - **Open, the real question this slice exists to answer:** is a scheduled,
   no-HITL background job in scope for `AgentSpec` at all, or is v1's
   request/webhook/poll-triggered model a deliberate boundary (parallel to
