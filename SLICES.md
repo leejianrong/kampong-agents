@@ -403,3 +403,22 @@ Stripe, and drafts a response" and the tool generates an initial `AgentSpec` (`i
 §3.2). Design questions to resolve when this is actually scoped: how generation quality gets
 evaluated, what the fallback is when generation produces an invalid or nonsensical spec, and
 whether this runs against BYOK models only or needs a dedicated fine-tuned/prompted approach.
+
+## F1–F11: Findings from the `mastra-projects/` discovery demos
+
+**Scoped by:** `mastra-projects/FINDINGS.md` (five real, non-mocked demos). Not yet sequenced
+against V5–V10; one board epic per finding, all `[ROADMAP]`. Order below is the FINDINGS ranking.
+
+| Epic           | Finding                                                                      | Demos                                               | Effort |
+| -------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ------ |
+| EPIC-294 (F1)  | `schedule` / `poll` trigger shapes and an unattended runner                  | market-etl, support-triage                          | M      |
+| EPIC-295 (F2)  | `knowledge_base` execution: chunk, embed, retrieve, cite                     | research-analyst, support-triage                    | L      |
+| EPIC-296 (F3)  | Slack HITL local-dev plumbing (tunnel, relay-safe signing, Socket Mode docs) | incident-responder, support-triage                  | S–M    |
+| EPIC-297 (F4)  | Durable run state across restarts                                            | incident-responder, support-triage                  | M      |
+| EPIC-298 (F5)  | Per-source inbound webhook auth                                              | pr-review-swarm, incident-responder, support-triage | S      |
+| EPIC-299 (F6)  | Gmail connector: list, get, draft                                            | support-triage                                      | M      |
+| EPIC-300 (F7)  | `http_request` failure detection in 200 bodies, pacing/backoff               | market-etl                                          | S–M    |
+| EPIC-301 (F8)  | `sub_agents` fan-out / fan-in (overlaps V7)                                  | pr-review-swarm                                     | L      |
+| EPIC-302 (F9)  | HITL "record a decision after the fact" mode                                 | incident-responder                                  | M      |
+| EPIC-303 (F10) | Agent-executed remediation after approval (ADR-0004); depends on F3, F4, F9  | incident-responder                                  | L      |
+| EPIC-304 (F11) | Exact version pinning in exported projects                                   | pr-review-swarm                                     | S      |
