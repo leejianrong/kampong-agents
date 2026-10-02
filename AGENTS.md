@@ -74,11 +74,22 @@ packages/cli/         kampong dev / kampong run / kampong export + the Fastify l
 apps/canvas/          local web canvas app — React + Vite + @xyflow/react (S2)
 e2e/                  cross-package acceptance tests (e.g. exporter behavioral equivalence)
 docs/adr/             architectural decisions, one per file
+mastra-projects/      separate discovery initiative — see below, not part of the product
 ```
 
 Each package has `test/unit` (no infra, runs everywhere) and, where relevant, `test/integration`
 (cross-module behavior). Root-level `e2e/` holds tests that install/execute a real generated
 project or otherwise exercise the full stack.
+
+**`mastra-projects/`** is a separate initiative, not the kampong-agents product: real, non-mocked
+demo apps built directly on Mastra (no kampong `AgentSpec`/canvas/exporter involved) to discover
+which agent-workflow use cases are worth building support for. It has its own
+`PLAN.md`/`SLICES.md`/`QUESTIONS.md`/`docs/adr/` — read those before working in that folder rather
+than assuming this file's conventions apply there. It is deliberately outside the npm
+workspace/build/lint/format/CI (ADR-0002 in `mastra-projects/docs/adr/`) — `npm run
+build`/`lint`/`typecheck`/`test:*` at the repo root never touch it, and every demo's model calls go
+through OpenRouter, never a direct Anthropic key (ADR-0005), and ships its own real-time SSE
+dashboard (ADR-0006).
 
 ## Commands
 

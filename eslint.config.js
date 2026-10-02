@@ -8,8 +8,18 @@ export default tseslint.config(
     // `site/` is the generated Zensical docs build output (gitignored). ESLint's
     // flat config doesn't read .gitignore, so it must be ignored explicitly or a
     // local `zensical build` leaves thousands of bundled JS files for `eslint .`
-    // (and the pre-push hook) to choke on.
-    ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "e2e/fixtures/**", "site/**"],
+    // (and the pre-push hook) to choke on. `mastra-projects/` is deliberately
+    // outside the npm workspace/build/lint/CI entirely (ADR-0002 in
+    // mastra-projects/docs/adr/) -- each demo there is its own independent
+    // project with its own tooling, not code this repo's lint config governs.
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/*.d.ts",
+      "e2e/fixtures/**",
+      "site/**",
+      "mastra-projects/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

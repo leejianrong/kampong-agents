@@ -1,0 +1,27 @@
+services:
+  toy-service:
+    build: ./toy-service
+    ports:
+      - "9100:9100"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - toy-service
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    # Lets the container reach the Node process on the host (Linux needs
+    # this explicit mapping; Docker Desktop on Mac/Windows already resolves
+    # host.docker.internal without it).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

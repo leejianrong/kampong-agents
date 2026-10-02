@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>pr-review-swarm</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="app-bar__title">
+      <span class="app-bar__dot" id="connection-dot" aria-hidden="true"></span>
+      <h1>pr&#8209;review&#8209;swarm</h1>
+    </div>
+    <p class="app-bar__subtitle">
+      kampong-agents &middot; mastra-projects &middot;
+      <a href="https://github.com/leejianrong/kampong-pr-review-sandbox" target="_blank" rel="noopener">sandbox repo</a>
+    </p>
+  </header>
+
+  <main id="main">
+    <section class="stat-strip" aria-label="Summary">
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-reviewed">0</span>
+        <span class="stat-card__label">PRs reviewed</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-avg">&mdash;</span>
+        <span class="stat-card__label">Avg. specialists&nbsp;/&nbsp;PR</span>
+      </div>
+      <div class="stat-card stat-card--status">
+        <span class="stat-card__value" id="stat-connection">Connecting&hellip;</span>
+        <span class="stat-card__label">Live feed</span>
+      </div>
+    </section>
+
+    <div class="board">
+      <section class="swarm-card" aria-labelledby="swarm-heading">
+        <h2 id="swarm-heading">The swarm</h2>
+        <p class="swarm-card__pr" id="swarm-pr">Waiting for a real pull request&hellip;</p>
+
+        <div class="swarm-map">
+          <svg class="swarm-map__lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <path id="line-planner-security" class="swarm-line" d="M50,14 L15,48" />
+            <path id="line-planner-style" class="swarm-line" d="M50,14 L50,48" />
+            <path id="line-planner-testcov" class="swarm-line" d="M50,14 L85,48" />
+            <path id="line-security-merge" class="swarm-line" d="M15,54 L50,86" />
+            <path id="line-style-merge" class="swarm-line" d="M50,54 L50,86" />
+            <path id="line-testcov-merge" class="swarm-line" d="M85,54 L50,86" />
+          </svg>
+
+          <div class="swarm-node swarm-node--planner" id="node-planner" style="left: 50%; top: 12%">
+            <span class="swarm-node__label">planner</span>
+          </div>
+          <div class="swarm-node swarm-node--specialist" id="node-security" style="left: 15%; top: 50%">
+            <span class="swarm-node__label">security</span>
+            <span class="swarm-node__badge" id="badge-security" hidden></span>
+          </div>
+          <div class="swarm-node swarm-node--specialist" id="node-style" style="left: 50%; top: 50%">
+            <span class="swarm-node__label">style</span>
+            <span class="swarm-node__badge" id="badge-style" hidden></span>
+          </div>
+          <div class="swarm-node swarm-node--specialist" id="node-test-coverage" style="left: 85%; top: 50%">
+            <span class="swarm-node__label">test-coverage</span>
+            <span class="swarm-node__badge" id="badge-test-coverage" hidden></span>
+          </div>
+          <div class="swarm-node swarm-node--merge" id="node-merge" style="left: 50%; top: 88%">
+            <span class="swarm-node__label">merged review</span>
+          </div>
+        </div>
+
+        <p class="swarm-card__legend">
+          <span class="legend-dot legend-dot--idle"></span>idle
+          <span class="legend-dot legend-dot--active"></span>working
+          <span class="legend-dot legend-dot--done"></span>done
+          <span class="legend-dot legend-dot--skipped"></span>skipped
+          <span class="legend-dot legend-dot--error"></span>error
+        </p>
+      </section>
+
+      <section class="feed-card" aria-labelledby="feed-heading">
+        <h2 id="feed-heading">Live feed</h2>
+        <ol class="feed" id="feed" aria-live="polite"></ol>
+      </section>
+    </div>
+  </main>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

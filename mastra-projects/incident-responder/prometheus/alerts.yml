@@ -1,0 +1,29 @@
+groups:
+  - name: toy-service
+    rules:
+      - alert: ToyServiceDown
+        expr: toy_up == 0
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "toy-service is down"
+          description: "toy_up has been 0 for at least 10s."
+
+      - alert: ToyServiceHighErrorRate
+        expr: toy_error_rate > 0.2
+        for: 10s
+        labels:
+          severity: warning
+        annotations:
+          summary: "toy-service error rate is elevated"
+          description: "toy_error_rate has been above 0.2 for at least 10s (current value {{ $value }})."
+
+      - alert: ToyServiceHighLatency
+        expr: toy_latency_ms > 500
+        for: 10s
+        labels:
+          severity: warning
+        annotations:
+          summary: "toy-service latency is elevated"
+          description: "toy_latency_ms has been above 500ms for at least 10s (current value {{ $value }}ms)."

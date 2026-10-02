@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>incident-responder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="app-bar__title">
+      <span class="app-bar__dot" id="connection-dot" aria-hidden="true"></span>
+      <h1>incident&#8209;responder</h1>
+    </div>
+    <p class="app-bar__subtitle">
+      kampong-agents &middot; mastra-projects &middot; real alerts, real diagnosis, propose-only (never auto-executed)
+    </p>
+  </header>
+
+  <main id="main">
+    <section class="stat-strip" aria-label="Summary">
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-open">0</span>
+        <span class="stat-card__label">Open incidents</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-resolved">0</span>
+        <span class="stat-card__label">Resolved</span>
+      </div>
+      <div class="stat-card stat-card--status">
+        <span class="stat-card__value" id="stat-connection">Connecting&hellip;</span>
+        <span class="stat-card__label">Live feed</span>
+      </div>
+    </section>
+
+    <section class="incidents" id="incidents" aria-label="Incidents">
+      <p class="empty-state" id="empty-state">
+        No real incidents yet &mdash; run <code>npm run chaos -- down</code> (or
+        <code>high_latency</code> / <code>high_errors</code>) against the real toy service to trigger one.
+      </p>
+    </section>
+  </main>
+
+  <template id="incident-template">
+    <article class="incident-card">
+      <header class="incident-card__header">
+        <span class="chip"></span>
+        <h3 class="incident-card__title"></h3>
+        <span class="incident-card__time"></span>
+      </header>
+      <div class="stepper">
+        <div class="stepper__step" data-step="alert">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Alert fired</span>
+        </div>
+        <div class="stepper__line" data-line="alert-diagnosis"></div>
+        <div class="stepper__step" data-step="diagnosis">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Diagnosis</span>
+        </div>
+        <div class="stepper__line" data-line="diagnosis-proposal"></div>
+        <div class="stepper__step" data-step="proposal">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Proposal</span>
+        </div>
+        <div class="stepper__line" data-line="proposal-decision"></div>
+        <div class="stepper__step" data-step="decision">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Human decision</span>
+        </div>
+      </div>
+      <dl class="incident-card__details"></dl>
+    </article>
+  </template>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>
