@@ -47,6 +47,10 @@ export async function handleAlertmanagerWebhook(payload: AlertmanagerWebhookPayl
       continue;
     }
 
+    // Alertmanager re-notifies a still-firing alert every repeat_interval. That's the same
+    // incident, not a new one: re-diagnosing would post a duplicate Slack proposal each time.
+    if (openIncidents.has(incidentId)) continue;
+
     openIncidents.set(incidentId, { alertname, severity });
     emitIncidentEvent({ type: "alert_firing", incident: incidentId, alertname, severity, at: Date.now() });
 

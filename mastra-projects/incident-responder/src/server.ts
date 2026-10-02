@@ -45,6 +45,17 @@ app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string
   done(null, body);
 });
 
+// smee.io re-sends Slack's form-encoded click as JSON ({ payload }), destroying the
+// exact bytes Slack signed. Rebuild them the way Slack encodes (RFC 3986 strict,
+// spaces as "+"); the HMAC is still fully verified against the rebuilt body.
+function recoverSlackRawBody(body: unknown): string {
+  if (typeof body === "string") return body;
+  const payload = (body as { payload?: unknown } | null)?.payload;
+  if (typeof payload !== "string") return "";
+  const strict = encodeURIComponent(payload).replace(/[!'()*~]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  return "payload=" + strict.replace(/%20/g, "+");
+}
+
 app.post("/alertmanager-webhook", async (req, reply) => {
   const auth = req.headers.authorization ?? "";
   if (!safeEqual(auth, `Bearer ${ALERTMANAGER_TOKEN}`)) {
@@ -64,7 +75,7 @@ app.post("/alertmanager-webhook", async (req, reply) => {
 });
 
 app.post("/slack/interactions", async (req, reply) => {
-  const rawBody = req.body as string;
+  const rawBody = recoverSlackRawBody(req.body);
   const timestamp = req.headers["x-slack-request-timestamp"] as string | undefined;
   const signature = req.headers["x-slack-signature"] as string | undefined;
 

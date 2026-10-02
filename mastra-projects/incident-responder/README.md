@@ -59,11 +59,11 @@ real Slack app with Interactivity turned on — see step 4 below.
      matching `alertmanager/alertmanager.yml`; only change both together.
 4. In your Slack app's settings, turn on Interactivity and set its Request
    URL to `SMEE_SLACK_URL`'s value (a real channel is already pre-filled).
-   Note: smee.io re-sends Slack's form-encoded click as JSON, which
-   breaks Slack's request signature (the HMAC is over the original bytes).
-   `support-triage/src/server.ts` has `recoverSlackRawBody()` that rebuilds
-   the original body; port it here if Approve/Reject clicks come back 401.
-   Also keep Socket Mode OFF on the Slack app, or clicks never reach HTTP.
+   Note: smee.io re-sends Slack's form-encoded click as JSON, which breaks
+   Slack's request signature (the HMAC is over the original bytes).
+   `recoverSlackRawBody()` in `src/server.ts` rebuilds the original body so
+   the signature check still passes. Also keep Socket Mode OFF on the Slack
+   app, or clicks never reach HTTP.
 5. In one terminal: `npm run forward:slack` (relays Slack's real
    interaction callbacks to your local `/slack/interactions`).
 6. In another terminal: `npm run dev`.
@@ -73,6 +73,8 @@ real Slack app with Interactivity turned on — see step 4 below.
    plus its scrape interval) a real alert fires.
 
 ## Dashboard
+
+![Two live incident cards after `npm run chaos -- down`: ToyServiceDown (critical) and ToyServiceHighErrorRate (warning), each with a 4-step tracker, the agent's diagnosis, likely cause and proposed fix](docs/dashboard.png)
 
 Each real incident gets its own live card at `http://localhost:8788`: a
 4-step tracker (alert fired → diagnosed → proposed → human decision) that
@@ -109,6 +111,12 @@ cause, proposed fix, and who approved/rejected it — all driven by a real
   gate the pipeline blocks on. Whether kampong's existing HITL primitive
   actually covers "notify and record a decision after the fact" or only
   "pause and wait" is a real schema question, not just a wording one.
+- **Confirmed real friction, found by leaving it running:** Alertmanager
+  re-notifies every still-firing alert each `repeat_interval` (5m here).
+  The first version treated each notification as a new incident, so it
+  re-diagnosed and posted a duplicate Slack proposal every 5 minutes. A
+  repeat of an already-open incident is now a no-op. Any kampong webhook
+  trigger fed by Alertmanager needs the same dedupe-by-fingerprint rule.
 - **Also open:** `src/pipeline.ts`'s `openIncidents` map is in-memory only —
   a real restart during an open incident loses the Slack correlation. Fine
   for a discovery demo; a real product would need this persisted, which is

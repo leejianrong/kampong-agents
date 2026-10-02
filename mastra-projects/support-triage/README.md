@@ -23,6 +23,8 @@ flowchart TD
 
 ## Dashboard
 
+![The support-triage board: a password-reset ticket auto-drafted at 0.96 confidence under Done, and a billing dispute escalated at 0.20 confidence awaiting a human](docs/dashboard.png)
+
 Open `http://localhost:8789` while `npm run dev` is running: a live triage
 board (Inbox → Classifying → Escalated → Done) whose cards move columns in
 real time as a real ticket is polled, classified, and drafted or escalated —
