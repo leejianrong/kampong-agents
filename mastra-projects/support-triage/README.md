@@ -58,8 +58,11 @@ Everything below is real — no mocked service, no placeholder that "just works"
 3. `cp .env.example .env` and fill in `OPENROUTER_API_KEY`, `IMAP_USER`,
    `IMAP_APP_PASSWORD`, `SLACK_BOT_TOKEN`, `SLACK_CHANNEL`,
    `SLACK_SIGNING_SECRET`, `SMEE_SLACK_URL` (see the Configuration table).
-4. In your Slack app's settings, turn on Interactivity and set its Request
-   URL to `SMEE_SLACK_URL`'s value.
+4. In your Slack app's settings, turn on Interactivity, set its Request
+   URL to `SMEE_SLACK_URL`'s value, and make sure **Socket Mode is OFF**.
+   With Socket Mode on, Slack delivers clicks over the websocket and never
+   makes an HTTP request, so nothing reaches `/slack/interactions` and no
+   error is shown anywhere.
 5. In one terminal: `npm run forward:slack` (relays Slack's real interaction
    callbacks to your local `/slack/interactions`).
 6. In another terminal: `npm run dev`.
@@ -106,6 +109,31 @@ verdict.
   IMAP flag (queried via `LIST`) is the only reliable way to find it. A
   hardcoded path is a real, silent failure mode for any account not in
   English.
+- **Confirmed real friction, Slack approval has no local-only path:**
+  Slack's interactivity callback needs a public HTTPS URL, so even a
+  laptop demo needs a relay (smee.io here). Worse, smee.io re-sends Slack's
+  form-encoded click as JSON, which destroys the exact bytes Slack signed,
+  so `verifySlackSignature` can never pass on the relayed body.
+  `recoverSlackRawBody()` in `src/server.ts` rebuilds `payload=` + the
+  RFC 3986-encoded JSON (spaces as `+`), which reproduces Slack's
+  signature exactly and keeps the HMAC check fully on. The same applies to
+  `incident-responder/`. A hosted kampong-agents gets a public URL for
+  free; local `kampong dev` approval via Slack needs a documented tunnel
+  story (or a polling alternative).
+- **Confirmed real friction, Socket Mode silently disables HTTP
+  interactivity:** the Slack app had Socket Mode on, so Approve clicks
+  never produced an HTTP request. No error, no log line. Any kampong
+  Slack-HITL setup docs need this called out.
+- **Confirmed real friction, classifier needs product knowledge:** with
+  only the ticket in the prompt, the model could not reach confidence on
+  an ordinary password-reset question and escalated everything. Adding a
+  short product FAQ to the system prompt and narrowing the "account
+  access = low confidence" rule to identity-verification changes moved
+  that ticket to 0.92-0.95 and auto-drafted it (real drafts confirmed in
+  the Gmail Drafts folder). This is the same gap as `research-analyst/`:
+  `AgentSpec`'s `knowledge_base` is inert (static context at best, no
+  retrieval), so a spec-built triage agent would have no way to ground its
+  confidence in product docs.
 - **The interesting question this slice was picked to answer (SLICES.md):
   how close this gets to what's already shipped.** kampong's existing
   guardrail/HITL model (KAN-1432) is a strong fit for the *escalation* half
@@ -117,8 +145,11 @@ verdict.
   webhook-shaped: GitHub PR events, Alertmanager alerts, a chat turn). A
   polling trigger is a materially different execution shape — no inbound
   request to key a run off of, just a loop discovering new work.
-- **TODO once a handful of real tickets have run through this:** does the
-  classifier's confidence self-assessment stay well-calibrated across
+- **Confirmed working end to end, the escalation leg:** a real billing-dispute
+  email escalated to Slack; clicking Approve draft returned 200 through
+  smee.io, fired `human_decision`, created a real Gmail draft (Drafts folder,
+  timestamped seconds after the click) and updated the Slack message.
+- **TODO:** does the classifier's confidence self-assessment stay well-calibrated across
   genuinely varied real tickets, or does it need few-shot examples/stricter
   rubric language to stop over- or under-escalating (the diagnostician in
   `incident-responder/` and the planner in `pr-review-swarm/` both needed

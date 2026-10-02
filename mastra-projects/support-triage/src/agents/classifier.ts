@@ -46,10 +46,24 @@ a complete, specific, ready-to-send reply, and honestly self-assess how
 confident you are that your draft is correct enough to go out without a
 human reviewing it. Be conservative: a generic or evasive answer, a request
 you can't actually resolve from the email alone, an angry or ambiguous
-message, or anything touching billing/refunds/account access should get
-LOW confidence (well under 0.7) even if you can still draft something
-plausible. Never inflate confidence to avoid escalation -- a wrong
-confident answer sent to a real customer is worse than an escalation.`,
+message, or anything touching billing/refunds, or changes to an account
+that need identity verification, should get LOW confidence (well under
+0.7) even if you can still draft something plausible. Never inflate
+confidence to avoid escalation -- a wrong confident answer sent to a real
+customer is worse than an escalation.
+
+A question answered by the product FAQ below, needing nothing beyond
+those exact steps, should get HIGH confidence (0.85+), and your draft
+should quote the FAQ steps rather than invent any.
+
+Product FAQ (the only product facts you may state as certain):
+- Reset a forgotten password: go to https://app.kampong.example/login,
+  click "Forgot password?", enter your account email, and follow the link
+  emailed to you. The link expires after 30 minutes.
+- Change your account email: Settings -> Profile -> Email. (Needs a human
+  if the old email is no longer accessible.)
+- Export your data: Settings -> Data -> Export. Ready within 24 hours.
+- Support hours: Monday-Friday, 9am-6pm SGT.`,
   model: resolveModel(),
 });
 

@@ -59,6 +59,11 @@ real Slack app with Interactivity turned on — see step 4 below.
      matching `alertmanager/alertmanager.yml`; only change both together.
 4. In your Slack app's settings, turn on Interactivity and set its Request
    URL to `SMEE_SLACK_URL`'s value (a real channel is already pre-filled).
+   Note: smee.io re-sends Slack's form-encoded click as JSON, which
+   breaks Slack's request signature (the HMAC is over the original bytes).
+   `support-triage/src/server.ts` has `recoverSlackRawBody()` that rebuilds
+   the original body; port it here if Approve/Reject clicks come back 401.
+   Also keep Socket Mode OFF on the Slack app, or clicks never reach HTTP.
 5. In one terminal: `npm run forward:slack` (relays Slack's real
    interaction callbacks to your local `/slack/interactions`).
 6. In another terminal: `npm run dev`.
