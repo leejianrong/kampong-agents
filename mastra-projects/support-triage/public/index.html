@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>support-triage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="app-bar__title">
+      <span class="app-bar__dot" id="connection-dot" aria-hidden="true"></span>
+      <h1>support&#8209;triage</h1>
+    </div>
+    <p class="app-bar__subtitle">
+      kampong-agents &middot; mastra-projects &middot; real Gmail inbox, real classification, draft or escalate
+    </p>
+  </header>
+
+  <main id="main">
+    <section class="stat-strip" aria-label="Summary">
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-received">0</span>
+        <span class="stat-card__label">Tickets received</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-drafted">0</span>
+        <span class="stat-card__label">Drafted</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__value" id="stat-escalated">0</span>
+        <span class="stat-card__label">Escalated</span>
+      </div>
+      <div class="stat-card stat-card--status">
+        <span class="stat-card__value" id="stat-connection">Connecting&hellip;</span>
+        <span class="stat-card__label">Live feed</span>
+      </div>
+    </section>
+
+    <section class="board" aria-label="Triage board">
+      <div class="board__column" data-column="inbox">
+        <h2 class="board__column-title">Inbox</h2>
+        <div class="board__column-body" id="column-inbox"></div>
+      </div>
+      <div class="board__column" data-column="classifying">
+        <h2 class="board__column-title">Classifying</h2>
+        <div class="board__column-body" id="column-classifying"></div>
+      </div>
+      <div class="board__column" data-column="escalated">
+        <h2 class="board__column-title">Escalated &mdash; awaiting a human</h2>
+        <div class="board__column-body" id="column-escalated"></div>
+      </div>
+      <div class="board__column" data-column="done">
+        <h2 class="board__column-title">Done</h2>
+        <div class="board__column-body" id="column-done"></div>
+      </div>
+    </section>
+
+    <p class="empty-state" id="empty-state">
+      No real tickets yet &mdash; send a real email to the dedicated inbox and watch it move across the board.
+    </p>
+  </main>
+
+  <template id="ticket-template">
+    <article class="ticket-card">
+      <header class="ticket-card__header">
+        <span class="chip" hidden></span>
+        <span class="ticket-card__time"></span>
+      </header>
+      <h3 class="ticket-card__subject"></h3>
+      <p class="ticket-card__from"></p>
+      <p class="ticket-card__note" hidden></p>
+    </article>
+  </template>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>
