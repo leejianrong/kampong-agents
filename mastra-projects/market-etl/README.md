@@ -22,6 +22,8 @@ flowchart TD
 
 ## Dashboard
 
+![The market-etl dashboard after a run: AAPL stepping through Pull, Validate and Anomaly, with the flagged -0.81% move summarised underneath](docs/dashboard.png)
+
 Open `http://localhost:8791` while `npm run dev` is running: click "Run
 now" for an on-demand real run, and watch the ingestion strip (Pull →
 Validate → Anomaly?) light up per ticker, plus a running list of every real

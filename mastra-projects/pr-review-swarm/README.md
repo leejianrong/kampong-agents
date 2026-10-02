@@ -30,6 +30,8 @@ flowchart TD
 
 ## Dashboard
 
+![The pr-review-swarm dashboard after a real PR: the planner routed to security, style and test-coverage, which returned 5, 1 and 1 findings, merged into one posted review](docs/dashboard.png)
+
 Open `http://localhost:8787` while `npm run dev` is running: a live "swarm
 map" (planner -> specialists -> merge) lights up as a real PR moves through
 the pipeline, next to a live event feed -- both driven by a real `/events`

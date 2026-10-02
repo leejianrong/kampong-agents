@@ -24,6 +24,8 @@ flowchart TD
 
 ## Dashboard
 
+![The research-analyst dashboard: a real question answered with citations to three source documents, above a retrieval trace showing each matched chunk and its similarity score](docs/dashboard.png)
+
 Open `http://localhost:8790` while `npm run dev` is running: ask a real
 question, get a real cited answer, and watch a live retrieval trace
 (question → embedded → real matched chunks with similarity scores → cited
