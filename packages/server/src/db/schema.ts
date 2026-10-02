@@ -339,3 +339,45 @@ export const runs = pgTable("runs", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
+
+// KAN-1436 (ADR-0022, ADR-0023): the managed "go live" deployment record --
+// which of a workspace's specs is currently live behind a webhook, and
+// whether it's accepting traffic. Deliberately holds NO usage/run-count
+// columns (ADR-0023 supersedes ADR-0022's original "shaped to allow
+// counting" framing once pricing was decided to be per-seat, not
+// usage-metered) -- lifecycle only. `id` doubles as the unguessable webhook
+// path segment (POST /hooks/w/:workspaceId/:deploymentId, routes/
+// deployments.ts): a `defaultRandom()` uuid already carries 122 bits of
+// entropy, the same capability-URL pattern this project already accepts for
+// spec/run ids elsewhere, so no separate secret-token column was introduced.
+// At most one deployment per spec (the unique constraint below) -- deploying
+// an already-deployed spec reactivates its existing row (and its existing,
+// stable webhook URL) rather than creating a second one; this also means the
+// deployment always resolves whatever the spec's CURRENT content is at
+// request time (no separate frozen "version" snapshot), so "redeploy"
+// (ADR-0022's lifecycle) is just "set status back to live" -- pinning to a
+// specific historical spec version is unscoped, no snapshot storage exists
+// for it. Another ordinary `workspace_id`-scoped, RLS-protected table (policy
+// hand-authored in drizzle/0011_enable_deployments_rls.sql), following the
+// exact specs/byok_keys/runs precedent.
+export const deployments = pgTable(
+  "deployments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    specId: uuid("spec_id")
+      .notNull()
+      .references(() => specs.id, { onDelete: "cascade" }),
+    // "live" accepts webhook traffic; "paused" (KAN-1438's Deploy/Pause
+    // toggle) returns the same 404 a nonexistent deployment would (see
+    // routes/deployments.ts) -- an outside caller can't distinguish "paused"
+    // from "never existed" any more than RLS already lets them distinguish
+    // another workspace's row from a nonexistent one.
+    status: text("status").notNull().default("live"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique().on(table.specId)],
+);

@@ -6,6 +6,7 @@ import { createAuth } from "./auth/config.js";
 import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
 import type { DbClient } from "./db/client.js";
 
@@ -51,6 +52,16 @@ export function createServer({ staticDir, db, run }: CreateServerOptions = {}): 
   // to an unhealthy route, since a failure here means the build/dependency
   // graph is broken, not a normal runtime condition.
   const wiringCheck: WiringCheckResult = runStartupWiringCheck();
+
+  // KAN-1436: the public webhook-ingress route (registered below,
+  // registerDeploymentRoutes) accepts any body shape a third-party caller
+  // sends (JSON, form-urlencoded, plain text) as its run input, matching
+  // `kampong serve`'s own /webhook route (packages/cli/src/serve-server.ts).
+  // Registered as a fallback -- Fastify's built-in `application/json` parser
+  // still runs for JSON bodies (a more specific match always wins over `*`),
+  // so every authenticated JSON route above and below this line is
+  // unaffected.
+  app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(null, body));
 
   if (staticDir) {
     // Registered before /healthz below only in source-file order, not
@@ -117,6 +128,12 @@ export function createServer({ staticDir, db, run }: CreateServerOptions = {}): 
     // table; the routes start/read them scoped to the request's workspace.
     const runManager = new HostedRunManager(db, run);
     registerRunRoutes(app, { db, auth, manager: runManager });
+
+    // KAN-1436 (ADR-0022): the managed "go live" lifecycle API + the public
+    // webhook-ingress route. Shares the same `HostedRunManager` instance as
+    // the routes above -- a webhook-triggered run is durable and traceable
+    // exactly like a canvas-triggered one, just started by a different route.
+    registerDeploymentRoutes(app, { db, auth, manager: runManager });
   }
 
   app.get("/healthz", async () => {
