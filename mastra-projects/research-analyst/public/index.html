@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>research-analyst</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/tokens.css" />
+  <link rel="stylesheet" href="/dashboard.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="app-bar__title">
+      <span class="app-bar__dot" id="connection-dot" aria-hidden="true"></span>
+      <h1>research&#8209;analyst</h1>
+    </div>
+    <p class="app-bar__subtitle">
+      kampong-agents &middot; mastra-projects &middot; real pgvector retrieval over kampong-agents' own docs
+    </p>
+  </header>
+
+  <main id="main">
+    <section class="ask-panel" aria-label="Ask a question">
+      <form id="ask-form">
+        <textarea
+          id="question-input"
+          placeholder="Ask a real question about kampong-agents' architecture&hellip;"
+          rows="2"
+        ></textarea>
+        <button type="submit" id="ask-button">Ask</button>
+      </form>
+      <div id="answer-panel" hidden>
+        <p id="answer-text"></p>
+        <div id="answer-citations" class="citation-row"></div>
+      </div>
+    </section>
+
+    <section class="trace" aria-label="Live retrieval trace">
+      <h2 class="trace__title">Live retrieval trace</h2>
+      <p class="empty-state" id="empty-state">
+        No real questions yet &mdash; every question asked here (by anyone with this dashboard open) appears below as it moves through embed &rarr; retrieve &rarr; answer.
+      </p>
+      <div id="trace-list"></div>
+    </section>
+  </main>
+
+  <template id="trace-template">
+    <article class="trace-card">
+      <header class="trace-card__header">
+        <h3 class="trace-card__question"></h3>
+        <span class="trace-card__time"></span>
+      </header>
+      <div class="stepper">
+        <div class="stepper__step" data-step="embed">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Embedded</span>
+        </div>
+        <div class="stepper__line" data-line="embed-retrieve"></div>
+        <div class="stepper__step" data-step="retrieve">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Retrieved</span>
+        </div>
+        <div class="stepper__line" data-line="retrieve-answer"></div>
+        <div class="stepper__step" data-step="answer">
+          <span class="stepper__dot"></span>
+          <span class="stepper__label">Answered</span>
+        </div>
+      </div>
+      <div class="chunk-list"></div>
+      <p class="trace-card__answer" hidden></p>
+      <div class="citation-row"></div>
+    </article>
+  </template>
+
+  <template id="chunk-template">
+    <div class="chunk-chip">
+      <span class="chunk-chip__path"></span>
+      <span class="chunk-chip__similarity"></span>
+    </div>
+  </template>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

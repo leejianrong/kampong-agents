@@ -1,0 +1,150 @@
+/*
+ * Shared visual identity for every mastra-projects demo dashboard.
+ * Real M3 tokens generated from seed #B8752A ("lantern amber" -- a kampong
+ * night-market lantern, not Material's baseline demo purple) via
+ * @material/material-color-utilities. See mastra-projects/docs/adr/0006.
+ *
+ * Intentionally a plain copied file, not a shared npm package -- each demo
+ * stays independently installable (ADR-0002), this is a visual identity,
+ * not code. If it drifts between demos, regenerate all of them together
+ * rather than hand-patching one.
+ */
+
+:root {
+  /* --- M3 color roles, light --- */
+  --md-sys-color-primary: #8b5000;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #ffdcbe;
+  --md-sys-color-on-primary-container: #2d1600;
+  --md-sys-color-secondary: #735a42;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #ffdcbe;
+  --md-sys-color-on-secondary-container: #291806;
+  --md-sys-color-tertiary: #586339;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #dce8b4;
+  --md-sys-color-on-tertiary-container: #161e00;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-background: #fffbff;
+  --md-sys-color-on-background: #201b16;
+  --md-sys-color-surface: #fffbff;
+  --md-sys-color-on-surface: #201b16;
+  --md-sys-color-surface-variant: #f2dfd1;
+  --md-sys-color-on-surface-variant: #51453a;
+  --md-sys-color-outline: #837468;
+  --md-sys-color-outline-variant: #d5c3b5;
+  --md-sys-color-inverse-surface: #352f2b;
+  --md-sys-color-inverse-on-surface: #faefe7;
+  --md-sys-color-inverse-primary: #ffb871;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #fdf1ea;
+  --md-sys-color-surface-container: #f7ece5;
+  --md-sys-color-surface-container-high: #f1e6df;
+  --md-sys-color-surface-container-highest: #ebe0d9;
+  --md-sys-color-surface-dim: #e3d8d1;
+  --md-sys-color-surface-bright: #fff8f5;
+  --md-sys-color-surface-tint: var(--md-sys-color-primary);
+
+  /* --- shape --- */
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* --- elevation (shadow + tint wash, approximated) --- */
+  --md-sys-elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.14), 0 1px 3px 1px rgb(0 0 0 / 0.08);
+  --md-sys-elevation-2: 0 1px 2px 0 rgb(0 0 0 / 0.16), 0 2px 6px 2px rgb(0 0 0 / 0.1);
+  --md-sys-elevation-tint-1: color-mix(in srgb, var(--md-sys-color-surface-tint) 5%, transparent);
+  --md-sys-elevation-tint-2: color-mix(in srgb, var(--md-sys-color-surface-tint) 8%, transparent);
+
+  /* --- state layers --- */
+  --md-sys-state-hover: 0.08;
+  --md-sys-state-focus: 0.12;
+  --md-sys-state-pressed: 0.12;
+
+  /* --- type --- */
+  --md-brand-font: "Fraunces", "Iowan Old Style", serif;
+  --md-plain-font: "Inter", system-ui, sans-serif;
+  --md-mono-font: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --md-sys-color-primary: #ffb871;
+    --md-sys-color-on-primary: #4a2800;
+    --md-sys-color-primary-container: #6a3c00;
+    --md-sys-color-on-primary-container: #ffdcbe;
+    --md-sys-color-secondary: #e1c1a4;
+    --md-sys-color-on-secondary: #402c18;
+    --md-sys-color-secondary-container: #59422c;
+    --md-sys-color-on-secondary-container: #ffdcbe;
+    --md-sys-color-tertiary: #c0cc9a;
+    --md-sys-color-on-tertiary: #2b3410;
+    --md-sys-color-tertiary-container: #414b24;
+    --md-sys-color-on-tertiary-container: #dce8b4;
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #93000a;
+    --md-sys-color-on-error-container: #ffb4ab;
+    --md-sys-color-background: #201b16;
+    --md-sys-color-on-background: #ebe0d9;
+    --md-sys-color-surface: #201b16;
+    --md-sys-color-on-surface: #ebe0d9;
+    --md-sys-color-surface-variant: #51453a;
+    --md-sys-color-on-surface-variant: #d5c3b5;
+    --md-sys-color-outline: #9e8e81;
+    --md-sys-color-outline-variant: #51453a;
+    --md-sys-color-inverse-surface: #ebe0d9;
+    --md-sys-color-inverse-on-surface: #352f2b;
+    --md-sys-color-inverse-primary: #8b5000;
+    --md-sys-color-surface-container-lowest: #120d0a;
+    --md-sys-color-surface-container-low: #201b16;
+    --md-sys-color-surface-container: #241f1a;
+    --md-sys-color-surface-container-high: #2e2924;
+    --md-sys-color-surface-container-highest: #3a342f;
+    --md-sys-color-surface-dim: #17120f;
+    --md-sys-color-surface-bright: #3e3833;
+  }
+}
+
+:root[data-theme="dark"] {
+  --md-sys-color-primary: #ffb871;
+  --md-sys-color-on-primary: #4a2800;
+  --md-sys-color-primary-container: #6a3c00;
+  --md-sys-color-on-primary-container: #ffdcbe;
+  --md-sys-color-secondary: #e1c1a4;
+  --md-sys-color-on-secondary: #402c18;
+  --md-sys-color-secondary-container: #59422c;
+  --md-sys-color-on-secondary-container: #ffdcbe;
+  --md-sys-color-tertiary: #c0cc9a;
+  --md-sys-color-on-tertiary: #2b3410;
+  --md-sys-color-tertiary-container: #414b24;
+  --md-sys-color-on-tertiary-container: #dce8b4;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffb4ab;
+  --md-sys-color-background: #201b16;
+  --md-sys-color-on-background: #ebe0d9;
+  --md-sys-color-surface: #201b16;
+  --md-sys-color-on-surface: #ebe0d9;
+  --md-sys-color-surface-variant: #51453a;
+  --md-sys-color-on-surface-variant: #d5c3b5;
+  --md-sys-color-outline: #9e8e81;
+  --md-sys-color-outline-variant: #51453a;
+  --md-sys-color-inverse-surface: #ebe0d9;
+  --md-sys-color-inverse-on-surface: #352f2b;
+  --md-sys-color-inverse-primary: #8b5000;
+  --md-sys-color-surface-container-lowest: #120d0a;
+  --md-sys-color-surface-container-low: #201b16;
+  --md-sys-color-surface-container: #241f1a;
+  --md-sys-color-surface-container-high: #2e2924;
+  --md-sys-color-surface-container-highest: #3a342f;
+  --md-sys-color-surface-dim: #17120f;
+  --md-sys-color-surface-bright: #3e3833;
+}
