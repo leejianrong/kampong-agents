@@ -68,8 +68,53 @@ tools:
 | `action`            | `http_request`                                  | yes      | The only tool kind in v1.                                                 |
 | `method`            | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` | yes      | HTTP method.                                                              |
 | `url`               | string                                          | yes      | Endpoint. `{placeholders}` resolve from `{input}` and `{<step>.<field>}`. |
-| `extract`           | string                                          | no       | Dotted path into the JSON response, e.g. `order.status`.                  |
+| `headers`           | map of string                                   | no       | Request headers. Credential-looking names must use `${ENV_VAR}`.          |
+| `query`             | map of string                                   | no       | Query parameters, URL-encoded and appended to `url`.                      |
+| `body`              | `json` \| `form` \| `raw`                        | no       | Exactly one encoding. Not allowed on `GET`.                               |
+| `response`          | `{ mode: json \| text \| bytes }`               | no       | How the response is read. Defaults to `json`.                             |
+| `extract`           | string                                          | no       | Dotted path into the JSON response. Only valid for `json`.                |
 | `requires_approval` | boolean                                         | no       | Pause for approval before the call.                                       |
+
+### Headers, query, body and response
+
+```yaml
+- name: fetch_prices
+  action: http_request
+  method: GET
+  url: "https://www.alphavantage.co/query"
+  query:
+    function: TIME_SERIES_DAILY
+    symbol: "{{ input }}"
+    apikey: "${ALPHAVANTAGE_KEY}"
+  response:
+    mode: json
+
+- name: create_comment
+  action: http_request
+  method: POST
+  url: "https://api.github.com/repos/{{ trigger.repo }}/issues/1/comments"
+  headers:
+    Authorization: "Bearer ${GITHUB_TOKEN}"
+    Accept: application/vnd.github+json
+  body:
+    json:
+      body: "{{ review.summary }}"
+```
+
+- **`body`** takes one of `json: {...}`, `form: {name: value}` or `raw: "text"` (with an optional
+  `content_type`). A `Content-Type` is set for you unless you give one in `headers`.
+- **`response.mode`**: `json` (default) parses the body, `text` returns it as a string (a GitHub
+  diff is not JSON), and `bytes` returns it base64-encoded. `extract` only applies to `json`.
+- **Secrets** go in as `${ENV_VAR}` and are resolved from the environment when the call is made.
+  A header or query parameter whose name looks like a credential (`Authorization`, `Cookie`,
+  anything containing `token`, `secret`, `password`, `api_key` and so on) is rejected if it is a
+  literal. This is a check on the name only, so use `${ENV_VAR}` for every credential. `${...}` is
+  expanded only in text you wrote in the spec, never in data from a model or a webhook.
+- To write a literal `${NAME}` (a template, a code sample in a body), escape it as `$${NAME}`.
+  Any other `${NAME}` in `url`, `headers`, `query` or `body` is an environment reference and fails
+  the call if the variable is not set.
+- A failed call never prints a resolved secret: it is redacted from error messages and recorded
+  fixtures, including its percent-encoded, form-encoded and JSON-escaped spellings.
 
 ## `agent.guardrails`
 

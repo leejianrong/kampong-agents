@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requestOptionalFields } from "./request.js";
 
 // Trimmed single-agent AgentSpec (ADR-0001: no multi-agent/sub_agents field
 // in v1, but the shape below leaves room to add one later without breaking
@@ -31,14 +32,34 @@ export const envVarPlaceholderSchema = z
 // time (never a literal). Every connector field supports `{{ step.field }}` /
 // `{placeholder}` data references (resolved by the engine at run time).
 export const toolSchema = z.discriminatedUnion("action", [
-  z.object({
-    name: z.string().min(1),
-    action: z.literal("http_request"),
-    method: httpMethodSchema,
-    url: z.string().min(1),
-    requires_approval: z.boolean().optional(),
-    extract: z.string().optional(),
-  }),
+  z
+    .object({
+      name: z.string().min(1),
+      action: z.literal("http_request"),
+      method: httpMethodSchema,
+      url: z.string().min(1),
+      // KAN-1845 (ADR-0029): headers, query, body and response mode, shared with connector manifests.
+      ...requestOptionalFields,
+      requires_approval: z.boolean().optional(),
+      extract: z.string().optional(),
+    })
+    .superRefine((tool, ctx) => {
+      // Caught here, at author time, instead of mid-run after earlier steps have had side effects.
+      if (tool.body !== undefined && tool.method === "GET") {
+        ctx.addIssue({
+          code: "custom",
+          message: "a GET request cannot send a body",
+          path: ["body"],
+        });
+      }
+      if (tool.extract !== undefined && (tool.response?.mode ?? "json") !== "json") {
+        ctx.addIssue({
+          code: "custom",
+          message: `extract only applies to a json response (response mode is "${tool.response?.mode}")`,
+          path: ["extract"],
+        });
+      }
+    }),
   z.object({
     name: z.string().min(1),
     action: z.literal("slack_post_message"),

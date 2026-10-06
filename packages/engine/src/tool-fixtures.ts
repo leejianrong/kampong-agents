@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ToolFetchImpl } from "./http-tool.js";
+import { mapStringsDeep, redactString } from "./redact.js";
 
 // Mock/record tool layer (PLAN.md Shape S4, SLICES.md V3 KAN-1111; Q17:
 // plain files, no DB, for this storage). Wraps the `fetchImpl` seam
@@ -80,32 +81,13 @@ interface FixtureFile {
   requestBody?: string;
   status: number;
   body: unknown;
-}
-
-const REDACTED = "[REDACTED]";
-
-function redactString(value: string, secrets: string[]): string {
-  let result = value;
-  for (const secret of secrets) {
-    if (!secret) continue;
-    result = result.split(secret).join(REDACTED);
-  }
-  return result;
-}
-
-function redactDeep(value: unknown, secrets: string[]): unknown {
-  if (secrets.length === 0) return value;
-  if (typeof value === "string") return redactString(value, secrets);
-  if (Array.isArray(value)) return value.map((entry) => redactDeep(entry, secrets));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        redactDeep(entry, secrets),
-      ]),
-    );
-  }
-  return value;
+  /**
+   * The exact response payload (KAN-1845), so text and binary responses replay byte for byte.
+   * Absent in fixtures recorded before response modes existed, which replay from `body` as JSON.
+   */
+  bodyRaw?: string;
+  bodyFormat?: "utf8" | "base64";
+  contentType?: string;
 }
 
 /** JSON with object keys sorted at every depth, so key order never changes a request's identity. */
@@ -126,7 +108,7 @@ function canonicalJson(value: unknown): string {
  * `undefined` for a request with no body. A body type we can't key faithfully is an error, never a
  * silent collision on "[object Object]".
  */
-function normalizedBody(body: RequestInit["body"], secrets: string[]): string | undefined {
+function normalizedBody(body: RequestInit["body"], secrets: readonly string[]): string | undefined {
   if (body === undefined || body === null) return undefined;
   let text: string;
   if (typeof body === "string") text = body;
@@ -185,7 +167,7 @@ function fixturePathFor(
  * default) when the user hasn't asked for mock/record.
  */
 export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetchImpl {
-  const { mode, fixturesDir, fetchImpl = fetch, secrets = [] } = options;
+  const { mode, fixturesDir, fetchImpl = fetch, secrets: configuredSecrets = [] } = options;
 
   const wrapped: ToolFetchImpl = async (input, init, context) => {
     if (mode === "live") {
@@ -195,36 +177,70 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
     const url = typeof input === "string" ? input : input.toString();
     const method = init?.method ?? "GET";
     const toolName = context.toolName;
+    // Secrets the caller configured plus the ones this very request carries (KAN-1845), so a
+    // query-string or header credential is redacted without the CLI having to enumerate it.
+    const secrets = [...configuredSecrets, ...(context.secrets ?? [])];
     const requestBody = normalizedBody(init?.body, secrets);
-    const path = fixturePathFor(fixturesDir, toolName, method, url, requestBody);
+    // Keyed on the redacted URL so a rotated query-string secret still finds its fixture.
+    const path = fixturePathFor(
+      fixturesDir,
+      toolName,
+      method,
+      redactString(url, secrets),
+      requestBody,
+    );
 
     if (mode === "replay") {
       if (!existsSync(path)) {
         throw new MissingFixtureError(toolName, path, requestBody !== undefined);
       }
       const fixture = JSON.parse(readFileSync(path, "utf8")) as FixtureFile;
-      return new Response(JSON.stringify(fixture.body), {
-        status: fixture.status,
-        headers: { "content-type": "application/json" },
-      });
+      const headers = { "content-type": fixture.contentType ?? "application/json" };
+      if (fixture.bodyRaw !== undefined) {
+        const payload =
+          fixture.bodyFormat === "base64"
+            ? Buffer.from(fixture.bodyRaw, "base64")
+            : fixture.bodyRaw;
+        // 101/204/205/304 cannot carry a body; the Response constructor throws if given one.
+        const noBody = [101, 204, 205, 304].includes(fixture.status);
+        return new Response(noBody ? null : payload, { status: fixture.status, headers });
+      }
+      return new Response(JSON.stringify(fixture.body), { status: fixture.status, headers });
     }
 
     // mode === "record"
     const response = await fetchImpl(input, init);
-    const cloned = response.clone();
+    const bytes = Buffer.from(await response.clone().arrayBuffer());
+    let bodyRaw: string;
+    let bodyFormat: "utf8" | "base64";
     let body: unknown;
     try {
-      body = await cloned.json();
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      bodyRaw = redactString(text, secrets);
+      bodyFormat = "utf8";
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
     } catch {
-      body = await cloned.text();
+      // Not valid UTF-8 (a binary payload): keep the exact bytes. A secret cannot be redacted out
+      // of base64, so a binary response must never be recorded from an endpoint that echoes one.
+      bodyRaw = bytes.toString("base64");
+      bodyFormat = "base64";
+      body = null;
     }
+    const contentType = response.headers.get("content-type") ?? undefined;
     const fixture: FixtureFile = {
       toolName,
       method,
       url: redactString(url, secrets),
       ...(requestBody === undefined ? {} : { requestBody }),
       status: response.status,
-      body: redactDeep(body, secrets),
+      body: mapStringsDeep(body, (text) => redactString(text, secrets)),
+      bodyRaw,
+      bodyFormat,
+      ...(contentType === undefined ? {} : { contentType }),
     };
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(fixture, null, 2)}\n`);

@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import type { Tool } from "@kampong/spec";
+import { mapStringsDeep, redactString } from "./redact.js";
 
 // The HTTP tool wrapper (PLAN.md Shape S3, SLICES.md V2 KAN-1103): maps an
 // AgentSpec `http_request` tool to both (a) a plain async function the
@@ -43,11 +44,52 @@ export function resolveEnvValue(placeholder: string, env: NodeJS.ProcessEnv): st
   return value;
 }
 
+// KAN-1845: `${ENV_VAR}` anywhere inside a larger string (a header like "Bearer ${TOKEN}", a query
+// value, a body field); `$${NAME}` is an escape that yields the literal text `${NAME}`. Each
+// resolved value is pushed onto `secrets` so it is redacted from fixtures and error messages.
+//
+// The template is tokenised: author-written literal parts get data references substituted, env
+// references are replaced verbatim. So data (model output, a webhook body) can never smuggle a
+// `${SOME_SECRET}` into a request, and a secret that happens to contain `{word}` is never rewritten
+// by data substitution.
+const ENV_TOKEN = /\$\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function resolveTemplate(
+  text: string,
+  env: NodeJS.ProcessEnv,
+  secrets: string[],
+  substitute: (literal: string) => string,
+): string {
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(ENV_TOKEN)) {
+    out += substitute(text.slice(last, match.index));
+    last = match.index + match[0].length;
+    const escaped = match[1];
+    if (escaped !== undefined) {
+      out += `\${${escaped}}`;
+      continue;
+    }
+    const name = match[2]!;
+    const value = env[name];
+    if (value === undefined || value === "") {
+      throw new Error(`Environment variable ${name} is not set (referenced in a request field).`);
+    }
+    secrets.push(value);
+    out += value;
+  }
+  return out + substitute(text.slice(last));
+}
+
+export type ResponseMode = "json" | "text" | "bytes";
+
 export interface ToolRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
   body?: string;
+  /** How the response is read; defaults to JSON (the original behaviour). */
+  responseMode: ResponseMode;
   extract?: string;
   /** Resolved secret values (e.g. a bearer token) to keep out of any fixture. */
   secrets: string[];
@@ -70,13 +112,7 @@ export function buildToolRequest(
   const sub = (text: string) => substitutePlaceholders(text, params);
   switch (tool.action) {
     case "http_request":
-      return {
-        url: sub(tool.url),
-        method: tool.method,
-        headers: {},
-        extract: tool.extract,
-        secrets: [],
-      };
+      return buildHttpRequest(tool, sub, env);
     case "slack_post_message": {
       const token = resolveEnvValue(tool.token, env);
       return {
@@ -87,6 +123,7 @@ export function buildToolRequest(
           "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify({ channel: sub(tool.channel), text: sub(tool.text) }),
+        responseMode: "json",
         extract: tool.extract,
         secrets: [token],
       };
@@ -106,11 +143,94 @@ export function buildToolRequest(
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ raw }),
+        responseMode: "json",
         extract: tool.extract,
         secrets: [token],
       };
     }
   }
+}
+
+type HttpRequestTool = Extract<Tool, { action: "http_request" }>;
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const lower = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lower);
+}
+
+function buildHttpRequest(
+  tool: HttpRequestTool,
+  sub: (text: string) => string,
+  env: NodeJS.ProcessEnv,
+): ToolRequest {
+  const secrets: string[] = [];
+  // See ENV_TOKEN: data is substituted only into the author's literal text, env values are
+  // inserted verbatim.
+  const resolve = (text: string): string => resolveTemplate(text, env, secrets, sub);
+
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tool.headers ?? {})) {
+    headers[name] = resolve(value);
+  }
+
+  let url = resolve(tool.url);
+  const query = Object.entries(tool.query ?? {});
+  if (query.length > 0) {
+    // The URL API places the query before any #fragment and handles an existing or trailing `?`.
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(
+        redactString(
+          `Tool "${tool.name}" has query parameters but its url is not a valid URL: ${url}`,
+          secrets,
+        ),
+      );
+    }
+    for (const [name, value] of query) parsed.searchParams.append(name, resolve(value));
+    url = parsed.toString();
+  }
+
+  const responseMode: ResponseMode = tool.response?.mode ?? "json";
+  if (tool.extract !== undefined && responseMode !== "json") {
+    throw new Error(
+      `Tool "${tool.name}" sets extract, which only applies to a json response (response mode is "${responseMode}").`,
+    );
+  }
+
+  let body: string | undefined;
+  if (tool.body !== undefined) {
+    if (tool.method === "GET") {
+      throw new Error(`Tool "${tool.name}" has a body, which a GET request cannot send.`);
+    }
+    if ("json" in tool.body) {
+      body = JSON.stringify(mapStringsDeep(tool.body.json, resolve));
+      if (!hasHeader(headers, "content-type")) headers["Content-Type"] = "application/json";
+    } else if ("form" in tool.body) {
+      const form = new URLSearchParams();
+      for (const [name, value] of Object.entries(tool.body.form)) form.append(name, resolve(value));
+      body = form.toString();
+      if (!hasHeader(headers, "content-type")) {
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+      }
+    } else {
+      body = resolve(tool.body.raw);
+      if (!hasHeader(headers, "content-type")) {
+        headers["Content-Type"] = tool.body.content_type ?? "text/plain; charset=utf-8";
+      }
+    }
+  }
+
+  return {
+    url,
+    method: tool.method,
+    headers,
+    ...(body !== undefined ? { body } : {}),
+    responseMode,
+    extract: tool.extract,
+    secrets,
+  };
 }
 
 export function extractField(payload: unknown, path?: string): unknown {
@@ -135,6 +255,11 @@ export function extractField(payload: unknown, path?: string): unknown {
 // as this explicit third argument instead.
 export interface ToolContext {
   readonly toolName: string;
+  /**
+   * Resolved secret values this request carries (KAN-1845), so the mock/record layer can redact
+   * them from what it persists without being told about every credential up front.
+   */
+  readonly secrets?: readonly string[];
 }
 
 // The `fetchImpl` seam used specifically for *tool* HTTP calls. Distinct
@@ -182,18 +307,37 @@ export async function callHttpTool(
         ...(Object.keys(request.headers).length > 0 ? { headers: request.headers } : {}),
         ...(request.body !== undefined ? { body: request.body } : {}),
       },
-      { toolName: tool.name },
+      { toolName: tool.name, secrets: request.secrets },
     );
   } catch (err) {
+    // The URL can carry a resolved query-string secret (KAN-1845), so it is redacted everywhere it
+    // is reported.
+    // The original error can carry the unredacted URL too, and it travels on as `cause`, so it is
+    // scrubbed in place (message and stack) before being attached.
+    if (err instanceof Error) {
+      err.message = redactString(err.message, request.secrets);
+      if (err.stack) err.stack = redactString(err.stack, request.secrets);
+    }
     throw new Error(
-      `Tool "${tool.name}" HTTP call to ${request.url} failed: ${(err as Error).message}`,
+      redactString(
+        `Tool "${tool.name}" HTTP call to ${request.url} failed: ${(err as Error).message}`,
+        request.secrets,
+      ),
       { cause: err },
     );
   }
   if (!response.ok) {
     throw new Error(
-      `Tool "${tool.name}" HTTP call to ${request.url} failed: ${response.status} ${response.statusText}`,
+      redactString(
+        `Tool "${tool.name}" HTTP call to ${request.url} failed: ${response.status} ${response.statusText}`,
+        request.secrets,
+      ),
     );
+  }
+  if (request.responseMode === "text") return response.text();
+  // Bytes are returned base64-encoded so the value stays a plain string in step outputs.
+  if (request.responseMode === "bytes") {
+    return Buffer.from(await response.arrayBuffer()).toString("base64");
   }
   const body: unknown = await response.json();
   return extractField(body, request.extract);
