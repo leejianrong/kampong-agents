@@ -1,7 +1,9 @@
 # First-party components
 
 Components kampong ships (ADR-0025). The `kampong/*` namespace is reserved for this folder: a user's
-own `components/` folder cannot claim it.
+own `components/` folder cannot claim it. Nothing is published here yet, and the CLI does not read
+this folder yet: the first component (`kampong/slack`, KAN-1886) brings the packaging that makes
+it resolvable from a project.
 
 Layout, one directory per version:
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   createComponentDispatcher,
@@ -53,7 +53,7 @@ export function componentDispatcherFor(specPath: string): ComponentDispatcher {
   const pins = pinsFor(specPath);
   return createComponentDispatcher({
     registry,
-    runner: new InProcessModuleRunner(registry, pins),
+    runner: new InProcessModuleRunner(registry, pins, { requirePins: true }),
     pins,
     requirePins: true,
   });
@@ -99,6 +99,9 @@ export async function lockComponents(
   const refused: string[] = [];
   for (const use of uses) {
     const at = use.lastIndexOf("@");
+    if (at <= 0) {
+      return { ok: false, message: `${use}: expected "id@version" (for example acme/echo@1.0.0)` };
+    }
     let digest: string;
     try {
       digest = (await registry.resolve(use.slice(0, at), use.slice(at + 1))).digest;
@@ -125,7 +128,22 @@ export async function lockComponents(
     };
   }
   if (added.length > 0 || updated.length > 0) {
-    writeFileSync(lockPathFor(specPath), serializeLockfile({ version: 1, components }));
+    // Resolving above took time; another `kampong lock` may have written meanwhile. Re-read the file
+    // now (no awaits between here and the rename) and apply only this run's changes to it, so
+    // concurrent runs cannot drop each other's pins.
+    let latest: Lockfile;
+    try {
+      latest = readLockfile(specPath);
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+    const merged = { ...latest.components };
+    for (const use of [...added, ...updated]) merged[use] = components[use]!;
+    // Written to a temporary file and renamed, so a crash cannot leave a truncated lockfile.
+    const target = lockPathFor(specPath);
+    const temp = `${target}.${process.pid}.tmp`;
+    writeFileSync(temp, serializeLockfile({ version: 1, components: merged }));
+    renameSync(temp, target);
   }
   return { ok: true, added, unchanged, updated, none: false };
 }

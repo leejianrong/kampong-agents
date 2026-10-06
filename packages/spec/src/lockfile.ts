@@ -56,7 +56,22 @@ export function parseLockfile(source: string): LockfileParseResult {
       })),
     };
   }
-  const result = lockfileSchema.safeParse(doc.toJS({ maxAliasCount: 0 }));
+  // Aliases and anchors have no place in a lockfile, and `toJS` throws on them with maxAliasCount 0.
+  let data: unknown;
+  try {
+    data = doc.toJS({ maxAliasCount: 0 });
+  } catch (err) {
+    return {
+      success: false,
+      errors: [
+        {
+          path: [],
+          message: `YAML aliases and anchors are not allowed (${(err as Error).message})`,
+        },
+      ],
+    };
+  }
+  const result = lockfileSchema.safeParse(data);
   if (!result.success) {
     return {
       success: false,

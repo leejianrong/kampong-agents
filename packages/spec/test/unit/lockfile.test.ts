@@ -76,4 +76,10 @@ describe("kampong.lock", () => {
     expect(({} as Record<string, unknown>)["digest"]).toBeUndefined();
     expect(parsed.success).toBe(false);
   });
+
+  it("returns errors, never throws, for a YAML alias or anchor", () => {
+    const text = `version: 1\ncomponents:\n  acme/echo@1.0.0: &a\n    digest: ${D1}\n  acme/other@1.0.0: *a\n`;
+    expect(() => parseLockfile(text)).not.toThrow();
+    expect(parseLockfile(text).success).toBe(false);
+  });
 });

@@ -116,9 +116,12 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
         same.length > 0
           ? `available: ${same.join(", ")}`
           : `no component with id ${id} under ${this.root}`;
+      // Say why, not just how many: a manifest in the wrong place or one that does not parse is the
+      // usual reason a component "is not found", and nothing else prints problems().
+      const shown = problems.slice(0, 3).map((p) => p.message);
       const broken =
         problems.length > 0
-          ? `; ${problems.length} manifest(s) failed to load, see problems()`
+          ? `; ${problems.length} manifest(s) were not loaded: ${shown.join(" | ")}${problems.length > 3 ? " | ..." : ""}`
           : "";
       throw new ComponentResolutionError(`component ${ref} was not found (${hint}${broken})`);
     }
@@ -279,6 +282,7 @@ export class InProcessModuleRunner implements ModuleRunner {
     private readonly registry: ComponentRegistry,
     /** `id@version` to the digest it must match (from kampong.lock). */
     private readonly pins: PinSource = {},
+    private readonly options: { requirePins?: boolean } = {},
   ) {}
 
   async invoke(
@@ -290,6 +294,13 @@ export class InProcessModuleRunner implements ModuleRunner {
     const ref = `${manifest.id}@${manifest.version}`;
     const pins = await readPins(this.pins);
     const expectedDigest = Object.hasOwn(pins, ref) ? pins[ref] : undefined;
+    // The dispatcher checked the pin when it resolved the call; a pin removed since then must not turn
+    // that into "no check".
+    if (this.options.requirePins && expectedDigest === undefined) {
+      throw new ComponentResolutionError(
+        `component ${ref} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
+      );
+    }
     const resolved = await this.registry.resolve(manifest.id, manifest.version, { expectedDigest });
     if (resolved.manifest.kind !== "module") {
       throw new ComponentResolutionError(`${ref} is not a module component`);

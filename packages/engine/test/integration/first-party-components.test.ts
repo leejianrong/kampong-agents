@@ -7,6 +7,9 @@ import { DirectoryComponentRegistry } from "../../src/component-registry.js";
 
 const ROOT = fileURLToPath(new URL("../../../../components", import.meta.url));
 
+// Vacuous until the first first-party component lands (KAN-1886); it exists so that component is
+// checked from its first commit. The layout and licence rules themselves are covered by
+// test/unit/component-registry.test.ts.
 describe("repository components/ folder", () => {
   const registry = new DirectoryComponentRegistry(ROOT, { firstParty: true });
 

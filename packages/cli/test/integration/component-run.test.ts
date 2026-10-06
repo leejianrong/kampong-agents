@@ -1,8 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ModelClient } from "@kampong/engine";
+import { parseSpec } from "@kampong/spec";
+import { lockComponents } from "../../src/components.js";
 import { createServeServer } from "../../src/serve-server.js";
 import { EXIT_EXECUTION_FAILURE, EXIT_SUCCESS, EXIT_USAGE_ERROR, runCli } from "../../src/cli.js";
 import { capture } from "../unit/test-helpers.js";
@@ -226,5 +236,35 @@ describe("kampong lock and pin enforcement", () => {
 
   it("is a usage error without a spec path", async () => {
     expect(await runCli(["lock"], capture().io)).toBe(EXIT_USAGE_ERROR);
+  });
+
+  it("leaves no temporary file behind, and two concurrent locks do not lose each other's pins", async () => {
+    mkdirSync(join(dir, "components/acme/second/1.0.0"), { recursive: true });
+    writeFileSync(
+      join(dir, "components/acme/second/1.0.0/component.yaml"),
+      MANIFEST.replace("acme/hello", "acme/second"),
+    );
+    writeFileSync(
+      join(dir, "components/acme/second/1.0.0/index.mjs"),
+      "export async function invoke() { return 1; }",
+    );
+    writeFileSync(join(dir, "other.yaml"), SPEC("acme/second@1.0.0"));
+    const codes = await Promise.all([
+      runCli(["lock", specPath()], capture().io),
+      runCli(["lock", join(dir, "other.yaml")], capture().io),
+    ]);
+    expect(codes).toEqual([EXIT_SUCCESS, EXIT_SUCCESS]);
+    const text = readFileSync(lockPath(), "utf8");
+    expect(text).toContain("acme/hello@1.0.0");
+    expect(text).toContain("acme/second@1.0.0");
+    expect(readdirSync(dir).filter((f) => f.includes(".tmp"))).toEqual([]);
+  });
+
+  it("gives a clear error for a use without a version instead of a garbled not-found", async () => {
+    const spec = parseSpec(SPEC()).spec!;
+    (spec.agent.tools![0] as { use: string }).use = "acme/hello";
+    const outcome = await lockComponents(spec, specPath(), { update: false });
+    expect(outcome).toMatchObject({ ok: false });
+    expect((outcome as { message: string }).message).toMatch(/id@version/);
   });
 });

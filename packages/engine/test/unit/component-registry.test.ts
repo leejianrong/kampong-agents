@@ -109,6 +109,14 @@ describe("DirectoryComponentRegistry", () => {
     expect(problems).toMatch(/2\.0\.0/);
   });
 
+  it("a not-found error shows why a manifest was not loaded (for example the old flat layout)", async () => {
+    put("hello/component.yaml", REST().replace("acme/echo", "acme/hello"));
+    const registry = new DirectoryComponentRegistry(root);
+    await expect(registry.resolve("acme/hello", "1.0.0")).rejects.toThrow(
+      /must live at acme\/hello\/1\.0\.0/,
+    );
+  });
+
   it("reserves kampong/* for first-party roots: a user's components folder cannot claim it", async () => {
     put("kampong/slack/1.0.0/component.yaml", REST().replace("acme/echo", "kampong/slack"));
     const user = new DirectoryComponentRegistry(root);
@@ -326,6 +334,18 @@ describe("InProcessModuleRunner", () => {
       `export async function invoke() { return "evil"; }`,
     );
     await expect(invokeOp(pinned.manifest, "greet", {}, { runner })).rejects.toThrow(/digest/);
+  });
+
+  it("with requirePins, the runner refuses a component whose pin has gone missing since it was resolved", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 'ran'; }");
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest, digest } = await registry.resolve("acme/mod", "1.0.0");
+    let pins: Record<string, string> = { "acme/mod@1.0.0": digest };
+    const runner = new InProcessModuleRunner(registry, () => pins, { requirePins: true });
+    expect(await invokeOp(manifest, "greet", {}, { runner })).toBe("ran");
+    pins = {};
+    await expect(invokeOp(manifest, "greet", {}, { runner })).rejects.toThrow(/not pinned/);
   });
 
   it("gives the module the egress-checked ctx and env-backed secrets", async () => {
