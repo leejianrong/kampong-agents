@@ -72,6 +72,9 @@ tools:
 | `query`             | map of string                                   | no       | Query parameters, URL-encoded and appended to `url`.                      |
 | `body`              | `json` \| `form` \| `raw`                        | no       | Exactly one encoding. Not allowed on `GET`.                               |
 | `response`          | `{ mode: json \| text \| bytes }`               | no       | How the response is read. Defaults to `json`.                             |
+| `failure_when`      | list of rules                                   | no       | Treat a matching `json` body as a failure, even on HTTP 200.              |
+| `pace`              | `{ rps: number }`                               | no       | At most this many requests per second to the same host.                   |
+| `retry`             | `{ max, backoff, base_ms, max_delay_ms }`       | no       | Re-attempt retryable failures with backoff.                               |
 | `extract`           | string                                          | no       | Dotted path into the JSON response. Only valid for `json`.                |
 | `requires_approval` | boolean                                         | no       | Pause for approval before the call.                                       |
 
@@ -110,6 +113,42 @@ tools:
   anything containing `token`, `secret`, `password`, `api_key` and so on) is rejected if it is a
   literal. This is a check on the name only, so use `${ENV_VAR}` for every credential. `${...}` is
   expanded only in text you wrote in the spec, never in data from a model or a webhook.
+### Failures, pacing and retry
+
+Some APIs report errors with HTTP 200. Alpha Vantage returns `{ "Note": "...5 calls per minute" }`
+when rate limited, and Slack returns `{ "ok": false, "error": "channel_not_found" }`. `failure_when`
+turns those into a visible failure:
+
+```yaml
+- name: fetch_prices
+  action: http_request
+  method: GET
+  url: "https://www.alphavantage.co/query"
+  query: { function: TIME_SERIES_DAILY, symbol: "{{ input }}", apikey: "${ALPHAVANTAGE_KEY}" }
+  failure_when:
+    - path: Note
+      exists: true
+      message_path: Note
+      retryable: true # a rate limit is worth retrying
+    - path: '["Error Message"]' # quote a key that contains a space
+      exists: true
+      message_path: '["Error Message"]'
+  pace: { rps: 1 } # the free tier allows one request per second
+  retry: { max: 3, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+```
+
+- **A rule** has a `path` and exactly one condition: `exists` (true or false), `equals`, or
+  `matches` (a regular expression). Paths use dotted keys, `["quoted keys"]` and `[0]` indexes.
+  `message_path` reads the reason shown in the error. Rules need a `json` response.
+- **`retry`** re-attempts a failure only when it is retryable: HTTP 408, 429 and 5xx, a dropped
+  connection, or a rule marked `retryable: true`. A 4xx such as 401 or 404 is never retried.
+  `exponential` doubles `base_ms` each time. A `Retry-After` header is honoured when it is longer
+  than the backoff, and if it asks for longer than `max_delay_ms` the call fails instead of waiting.
+- **`POST` and `PATCH` are only retried on a 429.** After a 5xx or a dropped connection the request
+  may already have been processed, and retrying could repeat the action.
+- **`pace`** spaces requests to the same host, across concurrent steps and across retries.
+- When retries run out the error says how many attempts were made.
+
 - To write a literal `${NAME}` (a template, a code sample in a body), escape it as `$${NAME}`.
   Any other `${NAME}` in `url`, `headers`, `query` or `body` is an environment reference and fails
   the call if the variable is not set.

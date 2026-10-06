@@ -211,6 +211,74 @@
                     "required": ["mode"],
                     "additionalProperties": false
                   },
+                  "failure_when": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "pattern": "^(?:[A-Za-z0-9_$-]+|\\[\"(?:[^\"\\\\]|\\\\.)*\"\\]|\\[\\d+\\])(?:\\.[A-Za-z0-9_$-]+|\\[\"(?:[^\"\\\\]|\\\\.)*\"\\]|\\[\\d+\\])*$"
+                        },
+                        "exists": {
+                          "type": "boolean"
+                        },
+                        "equals": {
+                          "type": ["string", "number", "boolean", "null"]
+                        },
+                        "matches": {
+                          "type": "string"
+                        },
+                        "message_path": {
+                          "type": "string",
+                          "pattern": "^(?:[A-Za-z0-9_$-]+|\\[\"(?:[^\"\\\\]|\\\\.)*\"\\]|\\[\\d+\\])(?:\\.[A-Za-z0-9_$-]+|\\[\"(?:[^\"\\\\]|\\\\.)*\"\\]|\\[\\d+\\])*$"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["path"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "pace": {
+                    "type": "object",
+                    "properties": {
+                      "rps": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000
+                      }
+                    },
+                    "required": ["rps"],
+                    "additionalProperties": false
+                  },
+                  "retry": {
+                    "type": "object",
+                    "properties": {
+                      "max": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      },
+                      "backoff": {
+                        "type": "string",
+                        "enum": ["fixed", "exponential"]
+                      },
+                      "base_ms": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_delay_ms": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["max"],
+                    "additionalProperties": false
+                  },
                   "requires_approval": {
                     "type": "boolean"
                   },

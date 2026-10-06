@@ -8,6 +8,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import type { Tool } from "./spec-types.js";
+import { defaultPacer, realClock, type Clock, type Pacer } from "./pacing.js";
 import { mapStringsDeep, redactString } from "./redact.js";
 
 // The HTTP tool wrapper (PLAN.md Shape S3, SLICES.md V2 KAN-1103): maps an
@@ -90,6 +91,28 @@ export function resolveTemplate(
 
 export type ResponseMode = "json" | "text" | "bytes";
 
+export type FailureRule = NonNullable<HttpRequestTool["failure_when"]>[number];
+export type RetryPolicy = NonNullable<HttpRequestTool["retry"]>;
+
+// ADR-0029: one error shape for a tool call. `retryable` is what the retry policy keys on.
+export type ToolErrorCode =
+  "input" | "permission" | "auth" | "rate_limit" | "failure_when" | "http" | "timeout";
+
+export class ToolCallError extends Error {
+  constructor(
+    message: string,
+    public readonly code: ToolErrorCode,
+    public readonly retryable: boolean,
+    public readonly status?: number,
+    /** From a Retry-After header, when the server sent one. */
+    public readonly retryAfterMs?: number,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ToolCallError";
+  }
+}
+
 export interface ToolRequest {
   url: string;
   method: string;
@@ -97,6 +120,9 @@ export interface ToolRequest {
   body?: string;
   /** How the response is read; defaults to JSON (the original behaviour). */
   responseMode: ResponseMode;
+  failureWhen?: FailureRule[];
+  pace?: { rps: number };
+  retry?: RetryPolicy;
   extract?: string;
   /** Resolved secret values (e.g. a bearer token) to keep out of any fixture. */
   secrets: string[];
@@ -235,6 +261,9 @@ function buildHttpRequest(
     headers,
     ...(body !== undefined ? { body } : {}),
     responseMode,
+    ...(tool.failure_when ? { failureWhen: tool.failure_when } : {}),
+    ...(tool.pace ? { pace: tool.pace } : {}),
+    ...(tool.retry ? { retry: tool.retry } : {}),
     extract: tool.extract,
     secrets,
   };
@@ -289,22 +318,90 @@ export interface HttpToolCallOptions {
   fetchImpl?: ToolFetchImpl;
   /** Resolves connector `${ENV}` tokens (KAN-1430). Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
+  /** Paces `pace: { rps }` tools; one process-wide pacer by default (KAN-1846). */
+  pacer?: Pacer;
+  /** Time source for retry delays; real timers by default. */
+  clock?: Clock;
 }
 
-/**
- * Builds the tool's concrete request (generic HTTP or a connector, KAN-1430),
- * performs the call with any auth headers and body, and extracts the configured
- * response field. A non-2xx response or network error surfaces as a rejected
- * promise with the tool's name in the message, so a failed tool call halts the
- * run and reports which step failed (PLAN.md "Failure behavior") rather than
- * continuing silently.
- */
-export async function callHttpTool(
+// KAN-1846: a response path is dotted keys, ["quoted keys"] and [n] indexes (ADR-0029). Returns
+// `undefined` for any step that does not resolve. The syntax is validated at spec load, so a
+// malformed path here means a hand-built tool; treat it as "does not resolve".
+export function readResponsePath(payload: unknown, path: string): unknown {
+  const steps = [...path.matchAll(/\["((?:[^"\\]|\\.)*)"\]|\[(\d+)\]|([A-Za-z0-9_$-]+)/g)];
+  let current: unknown = payload;
+  for (const step of steps) {
+    if (current === null || typeof current !== "object") return undefined;
+    const key = step[1] !== undefined ? step[1].replace(/\\(.)/g, "$1") : (step[2] ?? step[3]!);
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function ruleFires(rule: FailureRule, body: unknown): boolean {
+  const value = readResponsePath(body, rule.path);
+  if (rule.exists !== undefined) {
+    const present = value !== undefined && value !== null;
+    return rule.exists === present;
+  }
+  if (rule.equals !== undefined) return value === rule.equals;
+  if (rule.matches !== undefined) {
+    return typeof value === "string" && new RegExp(rule.matches).test(value);
+  }
+  return false;
+}
+
+function describeRule(rule: FailureRule): string {
+  if (rule.exists !== undefined) {
+    return `"${rule.path}" ${rule.exists ? "is present" : "is missing"}`;
+  }
+  if (rule.equals !== undefined) return `"${rule.path}" equals ${JSON.stringify(rule.equals)}`;
+  return `"${rule.path}" matches /${rule.matches}/`;
+}
+
+// Retry-After is either delta-seconds or an HTTP date.
+function parseRetryAfter(header: string | null, now: number): number | undefined {
+  if (header === null) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - now);
+}
+
+function statusError(
   tool: Tool,
-  params: Record<string, string>,
-  { fetchImpl = defaultFetch, env = process.env }: HttpToolCallOptions = {},
+  request: ToolRequest,
+  response: Response,
+  clock: Clock,
+): ToolCallError {
+  const { status } = response;
+  const code: ToolErrorCode =
+    status === 429
+      ? "rate_limit"
+      : status === 401 || status === 403
+        ? "auth"
+        : status === 408
+          ? "timeout"
+          : "http";
+  const retryable = status === 429 || status === 408 || status >= 500;
+  return new ToolCallError(
+    redactString(
+      `Tool "${tool.name}" HTTP call to ${request.url} failed: ${status} ${response.statusText}`,
+      request.secrets,
+    ),
+    code,
+    retryable,
+    status,
+    parseRetryAfter(response.headers.get("retry-after"), clock.now()),
+  );
+}
+
+async function attemptHttpCall(
+  tool: Tool,
+  request: ToolRequest,
+  fetchImpl: ToolFetchImpl,
+  clock: Clock,
 ): Promise<unknown> {
-  const request = buildToolRequest(tool, params, env);
   let response: Response;
   try {
     response = await fetchImpl(
@@ -317,37 +414,128 @@ export async function callHttpTool(
       { toolName: tool.name, secrets: request.secrets },
     );
   } catch (err) {
-    // The URL can carry a resolved query-string secret (KAN-1845), so it is redacted everywhere it
-    // is reported.
-    // The original error can carry the unredacted URL too, and it travels on as `cause`, so it is
-    // scrubbed in place (message and stack) before being attached.
+    // The URL can carry a resolved query-string secret (KAN-1845), and the original error travels
+    // on as `cause`, so both are scrubbed before being reported or attached.
     if (err instanceof Error) {
       err.message = redactString(err.message, request.secrets);
       if (err.stack) err.stack = redactString(err.stack, request.secrets);
     }
-    throw new Error(
+    throw new ToolCallError(
       redactString(
         `Tool "${tool.name}" HTTP call to ${request.url} failed: ${(err as Error).message}`,
         request.secrets,
       ),
+      "http",
+      true,
+      undefined,
+      undefined,
       { cause: err },
     );
   }
-  if (!response.ok) {
-    throw new Error(
-      redactString(
-        `Tool "${tool.name}" HTTP call to ${request.url} failed: ${response.status} ${response.statusText}`,
-        request.secrets,
-      ),
-    );
-  }
+  if (!response.ok) throw statusError(tool, request, response, clock);
   if (request.responseMode === "text") return response.text();
   // Bytes are returned base64-encoded so the value stays a plain string in step outputs.
   if (request.responseMode === "bytes") {
     return Buffer.from(await response.arrayBuffer()).toString("base64");
   }
   const body: unknown = await response.json();
+  for (const rule of request.failureWhen ?? []) {
+    if (!ruleFires(rule, body)) continue;
+    const reason =
+      rule.message_path !== undefined ? readResponsePath(body, rule.message_path) : undefined;
+    const detail =
+      reason !== undefined && reason !== null
+        ? typeof reason === "string"
+          ? reason
+          : JSON.stringify(reason)
+        : describeRule(rule);
+    throw new ToolCallError(
+      redactString(
+        `Tool "${tool.name}" HTTP call to ${request.url} reported a failure: ${detail}`,
+        request.secrets,
+      ),
+      "failure_when",
+      rule.retryable ?? false,
+    );
+  }
   return extractField(body, request.extract);
+}
+
+const DEFAULT_RETRY_BASE_MS = 500;
+const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
+
+// A POST or PATCH may already have been processed when a 5xx or a dropped connection comes back, so
+// retrying it could repeat a side effect. A 429 means the server refused it before acting, which is
+// safe for every method.
+function mayRetry(error: ToolCallError, method: string): boolean {
+  if (!error.retryable) return false;
+  if (error.code === "rate_limit") return true;
+  return ["GET", "HEAD", "PUT", "DELETE"].includes(method.toUpperCase());
+}
+
+/**
+ * Builds the tool's concrete request (generic HTTP or a connector, KAN-1430),
+ * performs the call with any auth headers and body, and extracts the configured
+ * response field. A non-2xx response, a `failure_when` rule firing, or a network
+ * error surfaces as a rejected `ToolCallError` with the tool's name in the
+ * message, so a failed tool call halts the run and reports which step failed
+ * (PLAN.md "Failure behavior") rather than continuing silently. With a `retry`
+ * policy, retryable failures are re-attempted with backoff (KAN-1846).
+ */
+export async function callHttpTool(
+  tool: Tool,
+  params: Record<string, string>,
+  {
+    fetchImpl = defaultFetch,
+    env = process.env,
+    pacer = defaultPacer,
+    clock = realClock,
+  }: HttpToolCallOptions = {},
+): Promise<unknown> {
+  const request = buildToolRequest(tool, params, env);
+  const paceKey = (() => {
+    try {
+      return new URL(request.url).host;
+    } catch {
+      return tool.name;
+    }
+  })();
+  const policy = request.retry;
+  const maxAttempts = 1 + (policy?.max ?? 0);
+
+  for (let attempt = 1; ; attempt += 1) {
+    if (request.pace) await pacer.wait(paceKey, request.pace.rps);
+    try {
+      return await attemptHttpCall(tool, request, fetchImpl, clock);
+    } catch (err) {
+      if (!(err instanceof ToolCallError) || !policy || !mayRetry(err, request.method)) throw err;
+      if (attempt >= maxAttempts) {
+        throw new ToolCallError(
+          `${err.message} (after ${attempt} attempts)`,
+          err.code,
+          err.retryable,
+          err.status,
+          err.retryAfterMs,
+          { cause: err },
+        );
+      }
+      const base = policy.base_ms ?? DEFAULT_RETRY_BASE_MS;
+      const backoff = policy.backoff === "fixed" ? base : base * 2 ** (attempt - 1);
+      const cap = policy.max_delay_ms ?? DEFAULT_RETRY_MAX_DELAY_MS;
+      if (err.retryAfterMs !== undefined && err.retryAfterMs > cap) {
+        throw new ToolCallError(
+          `${err.message} (server asked to wait ${Math.round(err.retryAfterMs / 1000)}s via Retry-After, ` +
+            `longer than max_delay_ms ${cap}ms; not retrying)`,
+          err.code,
+          false,
+          err.status,
+          err.retryAfterMs,
+          { cause: err },
+        );
+      }
+      await clock.sleep(Math.min(Math.max(backoff, err.retryAfterMs ?? 0), cap));
+    }
+  }
 }
 
 export function toMastraTool(tool: Tool, options: HttpToolCallOptions = {}) {

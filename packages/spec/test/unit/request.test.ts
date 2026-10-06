@@ -177,3 +177,93 @@ describe("http_request request fields", () => {
     expect(result.errors.map((e) => e.message).join(" ")).toMatch(/extract only applies/);
   });
 });
+
+// KAN-1846: failure detection on a 200 body, pacing and retry.
+describe("http_request failure_when, pace and retry (KAN-1846)", () => {
+  it("accepts failure rules, pacing and retry together", () => {
+    const result = parse(`${BASE}
+  failure_when:
+    - path: Note
+      exists: true
+      message_path: Note
+      retryable: true
+    - path: '["Error Message"]'
+      exists: true
+    - path: ok
+      equals: false
+      message_path: error
+    - path: status
+      matches: "^(error|fail)"
+  pace:
+    rps: 1
+  retry:
+    max: 3
+    backoff: exponential
+    base_ms: 500
+    max_delay_ms: 20000`);
+
+    expect(result.errors).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a rule with no condition, or with more than one", () => {
+    expect(
+      parse(`${BASE}
+  failure_when:
+    - path: ok`).success,
+    ).toBe(false);
+    expect(
+      parse(`${BASE}
+  failure_when:
+    - path: ok
+      exists: true
+      equals: false`).success,
+    ).toBe(false);
+  });
+
+  it("rejects a malformed path and an invalid regex", () => {
+    expect(
+      parse(`${BASE}
+  failure_when:
+    - path: "a..b"
+      exists: true`).success,
+    ).toBe(false);
+    expect(
+      parse(`${BASE}
+  failure_when:
+    - path: a
+      matches: "("`).success,
+    ).toBe(false);
+  });
+
+  it("rejects failure_when on a non-json response", () => {
+    const result = parse(`${BASE}
+  response:
+    mode: text
+  failure_when:
+    - path: ok
+      exists: true`);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.map((e) => e.message).join(" ")).toMatch(/failure_when only applies/);
+  });
+
+  it("rejects out-of-range pacing and retry values", () => {
+    expect(
+      parse(`${BASE}
+  pace:
+    rps: 0`).success,
+    ).toBe(false);
+    expect(
+      parse(`${BASE}
+  retry:
+    max: 11`).success,
+    ).toBe(false);
+    expect(
+      parse(`${BASE}
+  retry:
+    max: 2
+    backoff: wibble`).success,
+    ).toBe(false);
+  });
+});

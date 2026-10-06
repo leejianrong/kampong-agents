@@ -33,6 +33,23 @@ export type RequestBody =
 
 export type ResponseMode = "json" | "text" | "bytes";
 
+// KAN-1846 (mirrors packages/spec/src/request.ts).
+export interface FailureRule {
+  path: string;
+  exists?: boolean;
+  equals?: string | number | boolean | null;
+  matches?: string;
+  message_path?: string;
+  retryable?: boolean;
+}
+
+export interface Retry {
+  max: number;
+  backoff?: "fixed" | "exponential";
+  base_ms?: number;
+  max_delay_ms?: number;
+}
+
 // KAN-1430: tools are a discriminated union on `action` -- the generic HTTP
 // tool plus the Slack/Gmail connectors (credential is an ${ENV} token).
 export type Tool =
@@ -45,6 +62,9 @@ export type Tool =
       query?: Record<string, string>;
       body?: RequestBody;
       response?: { mode: ResponseMode };
+      failure_when?: FailureRule[];
+      pace?: { rps: number };
+      retry?: Retry;
       requires_approval?: boolean;
       extract?: string;
     }
