@@ -153,6 +153,15 @@ export async function lockComponents(
 
 /** What the canvas needs to build forms for the components installed beside a spec. */
 export async function componentCatalogFor(specPath: string): Promise<ComponentCatalog> {
+  try {
+    return await buildCatalog(specPath);
+  } catch (err) {
+    // The canvas expects a catalog; an unreadable folder is reported as a problem, not a 500.
+    return { components: [], problems: [`could not read components: ${(err as Error).message}`] };
+  }
+}
+
+async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
   const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
   const components: ComponentCatalogEntry[] = [];
   const problems = (await registry.problems()).map((p) => p.message);

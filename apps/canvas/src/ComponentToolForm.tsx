@@ -101,12 +101,16 @@ export function ComponentToolForm({
     setYaml("");
     setConfig({});
     setSecrets({});
+    setFocused(null);
+    setErrors([]);
   }
 
   function chooseOp(next: string) {
     setOp(next);
     setValues({});
     setYaml("");
+    setFocused(null);
+    setErrors([]);
   }
 
   function setScalar(key: string, value: string | boolean) {
@@ -158,6 +162,13 @@ export function ComponentToolForm({
         return;
       }
       withInput = parsed.value;
+    }
+    const missingConfig = entry.config
+      .filter((param) => param.required && (config[param.name] ?? "").trim() === "")
+      .map((param) => `${param.name} is required`);
+    if (missingConfig.length > 0) {
+      setErrors(missingConfig);
+      return;
     }
     const result = buildComponentToolFromForm({
       name,
@@ -233,8 +244,8 @@ export function ComponentToolForm({
               value={text || (field.default !== undefined ? String(field.default) : "")}
               onChange={(e) => set(e.target.value)}
             >
-              {!field.required && field.default === undefined && (
-                <option value="">(not set)</option>
+              {field.default === undefined && (
+                <option value="">{field.required ? "Choose one" : "(not set)"}</option>
               )}
               {field.options?.map((option) => (
                 <option key={String(option)} value={String(option)}>
@@ -247,7 +258,6 @@ export function ComponentToolForm({
       );
     }
     const multi = field.kind === "multiline" || field.kind === "text_list";
-    const shown = text !== "" || current !== undefined ? text : "";
     const placeholder =
       field.kind === "text_list"
         ? "One per line"
@@ -263,7 +273,7 @@ export function ComponentToolForm({
               className="md3-text-field"
               rows={field.kind === "text_list" ? 3 : 4}
               placeholder={placeholder}
-              value={shown}
+              value={text}
               onChange={(e) => set(e.target.value)}
               {...track(key)}
             />
@@ -272,7 +282,7 @@ export function ComponentToolForm({
               {...control}
               className="md3-text-field"
               placeholder={placeholder}
-              value={shown}
+              value={text}
               onChange={(e) => set(e.target.value)}
               {...track(key)}
             />
@@ -312,6 +322,13 @@ export function ComponentToolForm({
               onChange={(e) => setName(e.target.value)}
             />
           </label>
+
+          <div role="status" className="md3-banner md3-banner--info">
+            <p>
+              After saving, run <code>kampong lock</code> to pin this component; a run refuses a
+              component that is not pinned.
+            </p>
+          </div>
 
           <Field label="Component" hint={entry?.description}>
             {(control) => (
@@ -460,8 +477,8 @@ export function ComponentToolForm({
 
       {errors.length > 0 && (
         <ul role="alert" className="md3-error-list">
-          {errors.map((error) => (
-            <li key={error}>{error}</li>
+          {errors.map((error, i) => (
+            <li key={i}>{error}</li>
           ))}
         </ul>
       )}

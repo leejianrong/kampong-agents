@@ -79,6 +79,19 @@ describe("planOpForm", () => {
   });
 });
 
+describe("planOpForm: shapes a form cannot express", () => {
+  it("falls back to YAML for a free-form object (no declared properties), at any depth", () => {
+    const plan = planOpForm(obj({ headers: { type: "object" } }));
+    expect(plan.supported).toBe(false);
+    expect(plan.reason).toContain("headers");
+    expect(planOpForm(obj({ a: obj({ b: { type: "object" } }) })).supported).toBe(false);
+  });
+
+  it("falls back to YAML when the input is not an object schema", () => {
+    expect(planOpForm({ type: "string" }).supported).toBe(false);
+  });
+});
+
 describe("buildOpInput", () => {
   const plan = planOpForm(
     obj(
@@ -170,6 +183,11 @@ describe("buildOpInput", () => {
     );
     expect(buildOpInput(p, { meta: { b: "x" } }).errors).toEqual(["meta.a is required"]);
     expect(buildOpInput(p, {}).errors).toEqual([]);
+  });
+
+  it("sends an empty object for a required object whose parts are all optional and left alone", () => {
+    const p = planOpForm(obj({ options: obj({ verbose: { type: "boolean" } }) }, ["options"]));
+    expect(buildOpInput(p, {})).toEqual({ input: { options: {} }, errors: [] });
   });
 
   it("keeps a property named __proto__ as plain data, never as a prototype", () => {
@@ -292,9 +310,19 @@ describe("catalogEntryFromManifest", () => {
       slots: [{ name: "token", env: "TICKETS_TOKEN" }],
       config: [{ name: "region", default: "eu" }],
     });
+    expect(entry.config[0]).toMatchObject({ name: "region", required: false });
     expect(entry.ops.get).toMatchObject({ title: "Get a ticket", effect: "read" });
     expect(entry.ops.purge?.effect).toBe("destructive");
     expect(JSON.stringify(entry)).not.toContain("tickets.example.test/all");
+  });
+});
+
+describe("catalogEntryFromManifest: required config", () => {
+  it("marks a config parameter with no default as required", () => {
+    const manifest = parseComponentManifest(
+      MANIFEST.replace("region: { type: string, default: eu }", "region: { type: string }"),
+    ).manifest!;
+    expect(catalogEntryFromManifest(manifest, "sha256:abc").config[0]?.required).toBe(true);
   });
 });
 

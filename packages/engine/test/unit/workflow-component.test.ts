@@ -379,6 +379,24 @@ describe("templated values for typed fields", () => {
     expect(JSON.parse(String(seen[0]!.init?.body)).title).toBe("42");
   });
 
+  it("does not convert a hand-written literal: only a {{ reference }} result is converted", async () => {
+    const { events, seen } = await drive(
+      spec({ op: "create", with: { title: "x", priority: "3" } }),
+      { registry: registryOf() },
+    );
+    expect(seen).toHaveLength(0);
+    expect(failed(events)?.error).toMatch(/priority must be an integer/);
+  });
+
+  it("leaves a digit string too large to be exact as text, so validation rejects it", async () => {
+    const { events, seen } = await drive(
+      spec({ op: "create", with: { title: "x", priority: "{{ input }}" } }),
+      { registry: registryOf(), runInput: "9007199254740993" },
+    );
+    expect(seen).toHaveLength(0);
+    expect(failed(events)?.error).toMatch(/priority/);
+  });
+
   it("does not accept hex, exponent or padded text as a number", async () => {
     for (const text of ["0x10", "1e3", " 3 ", ""]) {
       const { events, seen } = await drive(

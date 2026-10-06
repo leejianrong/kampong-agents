@@ -89,4 +89,12 @@ describe("GET /api/components", () => {
     expect(body.components).toEqual([]);
     expect(body.problems[0]).toMatch(/must live at acme\/tickets\/1\.0\.0/);
   });
+
+  it("answers with a problem, not a 500, when the components folder cannot be read", async () => {
+    // A file where the folder should be.
+    writeFileSync(join(dir, "components"), "not a directory");
+    const res = await (await start()).inject({ method: "GET", url: "/api/components" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().components).toEqual([]);
+  });
 });

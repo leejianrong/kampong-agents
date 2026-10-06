@@ -31,6 +31,8 @@ export interface ComponentCatalogEntry {
     description?: string;
     default?: string;
     pattern?: string;
+    /** No default, so a value must be supplied. */
+    required: boolean;
   }[];
   ops: Record<string, ComponentCatalogOp>;
 }
@@ -71,6 +73,7 @@ export function catalogEntryFromManifest(
     })),
     config: Object.entries(manifest.config ?? {}).map(([name, param]) => ({
       name,
+      required: param.default === undefined,
       ...(param.title !== undefined && { title: param.title }),
       ...(param.description !== undefined && { description: param.description }),
       ...(param.default !== undefined && { default: param.default }),
@@ -145,6 +148,10 @@ function fieldFor(
     return `${path}: only a list of strings is supported`;
   }
   if (node.type === "object") {
+    // A map with no declared properties has nothing to build fields from.
+    if (node.properties === undefined || Object.keys(node.properties).length === 0) {
+      return `${path}: an object with no declared properties is not supported`;
+    }
     if (!allowObject) return `${path}: an object nested more than one level deep is not supported`;
     const children: FormField[] = [];
     const need = new Set(node.required ?? []);
@@ -161,6 +168,9 @@ function fieldFor(
 /** Plans the fields for an op's input schema, or says why a form cannot be generated for it. */
 export function planOpForm(input: SchemaNode | undefined): OpFormPlan {
   if (input === undefined) return { supported: true, fields: [] };
+  if (input.type !== "object") {
+    return { supported: false, fields: [], reason: "the input is not an object schema" };
+  }
   const need = new Set(input.required ?? []);
   const fields: FormField[] = [];
   for (const [name, node] of Object.entries(input.properties ?? {})) {
@@ -263,7 +273,10 @@ export function buildOpInput(plan: OpFormPlan, values: Record<string, FormValue>
           }
         }
       }
-      if (childEntries.length > 0) entries.push([field.name, Object.fromEntries(childEntries)]);
+      // A required object is sent even when every part of it was left at its default.
+      if (childEntries.length > 0 || field.required) {
+        entries.push([field.name, Object.fromEntries(childEntries)]);
+      }
       continue;
     }
     const read = readScalar(field, raw, field.label, errors);

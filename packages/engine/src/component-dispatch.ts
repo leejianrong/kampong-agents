@@ -43,12 +43,17 @@ export function createComponentDispatcher({
       return {
         requiresApproval: opRequiresApproval(manifest, tool.op, tool.requires_approval),
         run: (input, runtime) =>
-          invokeOp(manifest, tool.op, coerceTemplated(inputSchemaOf(manifest, tool.op), input), {
-            config: tool.config,
-            secretEnv: tool.secrets,
-            runner,
-            ...runtime,
-          }),
+          invokeOp(
+            manifest,
+            tool.op,
+            coerceTemplated(inputSchemaOf(manifest, tool.op), input, tool.with),
+            {
+              config: tool.config,
+              secretEnv: tool.secrets,
+              runner,
+              ...runtime,
+            },
+          ),
       };
     },
   };
@@ -64,10 +69,16 @@ function inputSchemaOf(manifest: ComponentManifest, op: string): SchemaNode | un
 // as text, so validation names the field instead of the engine guessing.
 const DECIMAL = /^-?\d+(\.\d+)?$/;
 
-function coerceValue(schema: SchemaNode, value: unknown): unknown {
-  if (typeof value === "string") {
+const REFERENCE = /\{\{[^}]*\}\}/;
+
+function coerceValue(schema: SchemaNode, value: unknown, raw: unknown): unknown {
+  // Only a value the author wrote as a reference is converted; a literal "5" for an integer stays text
+  // and fails validation, as it always did.
+  if (typeof value === "string" && typeof raw === "string" && REFERENCE.test(raw)) {
     if ((schema.type === "number" || schema.type === "integer") && DECIMAL.test(value)) {
-      return Number(value);
+      const n = Number(value);
+      // A digit string beyond 2^53 would silently lose precision; leave it for validation to reject.
+      return Number.isInteger(n) && !Number.isSafeInteger(n) ? value : n;
     }
     if (schema.type === "boolean" && (value === "true" || value === "false")) {
       return value === "true";
@@ -80,7 +91,7 @@ function coerceValue(schema: SchemaNode, value: unknown): unknown {
     typeof value === "object" &&
     !Array.isArray(value)
   ) {
-    return coerceTemplated(schema, value as Record<string, unknown>);
+    return coerceTemplated(schema, value as Record<string, unknown>, raw);
   }
   return value;
 }
@@ -88,12 +99,21 @@ function coerceValue(schema: SchemaNode, value: unknown): unknown {
 export function coerceTemplated(
   schema: SchemaNode | undefined,
   input: Record<string, unknown>,
+  raw: unknown,
 ): Record<string, unknown> {
   if (!schema?.properties) return input;
   return Object.fromEntries(
     Object.entries(input).map(([key, value]) => [
       key,
-      Object.hasOwn(schema.properties!, key) ? coerceValue(schema.properties![key]!, value) : value,
+      Object.hasOwn(schema.properties!, key)
+        ? coerceValue(
+            schema.properties![key]!,
+            value,
+            raw !== null && typeof raw === "object" && Object.hasOwn(raw, key)
+              ? (raw as Record<string, unknown>)[key]
+              : undefined,
+          )
+        : value,
     ]),
   );
 }

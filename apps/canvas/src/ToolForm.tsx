@@ -117,6 +117,9 @@ export function ToolForm({
   if (kind === "component" && components !== undefined) {
     return (
       <ComponentToolForm
+        // Re-mounted when the installed list changes, so the first selection follows what is there now
+        // rather than what was there when the form opened.
+        key={components.map((c) => `${c.id}@${c.version}`).join(",")}
         components={components}
         problems={componentProblems}
         references={references}
