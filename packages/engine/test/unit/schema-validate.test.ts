@@ -72,12 +72,26 @@ describe("applySchemaDefaults", () => {
     expect(applySchemaDefaults(schema, { q: "mine" })).toEqual({ limit: 20, q: "mine" });
   });
 
-  it("fills defaults inside nested objects without inventing absent objects", () => {
+  it("fills defaults inside nested objects, whether or not the caller passed the parent", () => {
     const schema = obj({
       opts: obj({ deep: { type: "boolean", default: true } }),
       other: obj({ x: { type: "string", default: "y" } }),
+      bare: obj({ z: { type: "string" } }),
     });
 
-    expect(applySchemaDefaults(schema, { opts: {} })).toEqual({ opts: { deep: true } });
+    expect(applySchemaDefaults(schema, { opts: {} })).toEqual({
+      opts: { deep: true },
+      other: { x: "y" },
+    });
+  });
+
+  it("fills defaults inside each object of an array, and leaves non-objects alone", () => {
+    const schema = obj({
+      items: { type: "array", items: obj({ qty: { type: "integer", default: 1 } }) },
+    });
+
+    expect(applySchemaDefaults(schema, { items: [{}, { qty: 5 }, "odd"] })).toEqual({
+      items: [{ qty: 1 }, { qty: 5 }, "odd"],
+    });
   });
 });

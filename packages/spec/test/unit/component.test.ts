@@ -254,3 +254,146 @@ describe("parseComponentManifest -- syntax errors", () => {
     expect(result.errors[0]?.line).toBeGreaterThan(0);
   });
 });
+
+// ---- Review findings on PR #90 ---------------------------------------------------------------------
+
+describe("parseComponentManifest -- review findings", () => {
+  const bad = (edit: (s: string) => string) => parseComponentManifest(edit(SLACK_MANIFEST));
+  const ok = (edit: (s: string) => string) => parseComponentManifest(edit(SLACK_MANIFEST));
+
+  it("rejects a wildcard over a bare public suffix, but accepts a real domain wildcard", () => {
+    const wide = (host: string) => (s: string) =>
+      s
+        .replace("egress: [slack.com]", `egress: ["${host}"]`)
+        .replace("hosts: [slack.com]", `hosts: ["${host}"]`);
+
+    expect(bad(wide("*.com")).success).toBe(false);
+    expect(
+      ok((s) => wide("*.slack.com")(s).replace("https://slack.com/", "https://api.slack.com/"))
+        .errors,
+    ).toEqual([]);
+  });
+
+  it("rejects an inject slot whose host is not covered by permissions.egress", () => {
+    const result = bad((s) => s.replace("hosts: [slack.com]", "hosts: [files.slack.com]"));
+
+    expect(result.success).toBe(false);
+    expect(messages(result)).toMatch(/not covered by permissions\.egress/);
+  });
+
+  it("rejects two slots that inject the same header, and a request header an injected slot would overwrite", () => {
+    const twoSlots = (s: string) =>
+      s.replace(
+        "ops:",
+        '    other:\n      env: OTHER\n      hosts: [slack.com]\n      inject: { header: authorization, template: "{{ secret }}" }\nops:',
+      );
+    expect(bad(twoSlots).success).toBe(false);
+    expect(messages(bad(twoSlots))).toMatch(/both inject header authorization/);
+
+    const clash = bad((s) =>
+      s.replace("      body:", '      headers: { AUTHORIZATION: "{{ input.text }}" }\n      body:'),
+    );
+    expect(clash.success).toBe(false);
+  });
+
+  it("lets an op name the slots it uses, and rejects an unknown or non-injecting one", () => {
+    const two = (s: string) =>
+      s.replace(
+        "ops:",
+        '    other:\n      env: OTHER\n      hosts: [slack.com]\n      inject: { header: X-Other, template: "{{ secret }}" }\nops:',
+      );
+    expect(
+      parseComponentManifest(
+        two(SLACK_MANIFEST).replace("    effect: write", "    slots: [token]\n    effect: write"),
+      ).errors,
+    ).toEqual([]);
+    expect(
+      bad((s) => s.replace("    effect: write", "    slots: [nope]\n    effect: write")).success,
+    ).toBe(false);
+  });
+
+  it("enforces one reference grammar: malformed, nested, filtered, unbalanced and misplaced references", () => {
+    const withText = (text: string) => (s: string) => s.replace("{{ input.text }}", text);
+
+    for (const text of [
+      "{{ input.a.b }}",
+      "{{input.text | upper}}",
+      "{{ input.text",
+      "{{ foo }}",
+      "{{ }}",
+    ]) {
+      expect(bad(withText(text)).success, text).toBe(false);
+    }
+    expect(ok(withText("{{input.text}}")).errors).toEqual([]);
+  });
+
+  it("allows only {{ secret }} in an inject template (not config or input), with or without spaces", () => {
+    expect(ok((s) => s.replace('"Bearer {{ secret }}"', '"Bearer {{secret}}"')).errors).toEqual([]);
+    expect(
+      bad((s) => s.replace('"Bearer {{ secret }}"', '"Bearer {{ secret }} {{ input.text }}"'))
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects references in header names and JSON keys, which are never rendered", () => {
+    expect(
+      bad((s) =>
+        s.replace("        json: { channel:", '        json: { "{{ input.text }}": 1, channel:'),
+      ).success,
+    ).toBe(false);
+    expect(
+      bad((s) =>
+        s.replace("      body:", '      headers: { "X-{{ input.text }}": a }\n      body:'),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("validates a config pattern as a regex, and that a default satisfies it", () => {
+    const cfg = (param: string) =>
+      `kind: rest
+id: a/b
+version: 0.1.0
+permissions: { egress: ["{{ config.p }}.test"] }
+config:
+  p: ${param}
+ops:
+  o: { effect: read, request: { method: GET, url: "https://{{ config.p }}.test/x" } }
+`;
+
+    expect(parseComponentManifest(cfg('{ type: string, pattern: "(" }')).success).toBe(false);
+    expect(
+      parseComponentManifest(cfg('{ type: string, pattern: "[a-z]+", default: "A1" }')).success,
+    ).toBe(false);
+    expect(
+      parseComponentManifest(cfg('{ type: string, pattern: "[a-z]+", default: "abc" }')).errors,
+    ).toEqual([]);
+  });
+
+  it("rejects a schema default or enum value that does not fit its declared type", () => {
+    const input = (prop: string) =>
+      SLACK_MANIFEST.replace(
+        "text: { type: string, title: Message, format: multiline }",
+        `text: ${prop}`,
+      );
+
+    expect(parseComponentManifest(input("{ type: number, default: ten }")).success).toBe(false);
+    expect(parseComponentManifest(input("{ type: integer, default: 1.5 }")).success).toBe(false);
+    expect(parseComponentManifest(input("{ type: string, enum: [a, 2] }")).success).toBe(false);
+    expect(parseComponentManifest(input("{ type: number, default: 10 }")).errors).toEqual([]);
+  });
+
+  it("validates dependency names as plain npm names, and accepts exact prerelease pins", () => {
+    const mod = (deps: string) =>
+      `kind: module
+id: a/m
+version: 0.1.0
+entry: ./index.ts
+deps: ${deps}
+ops: { o: { effect: read } }
+`;
+
+    expect(parseComponentManifest(mod('{ "../../evil": "1.0.0" }')).success).toBe(false);
+    expect(parseComponentManifest(mod('{ "npm:other@1": "1.0.0" }')).success).toBe(false);
+    expect(parseComponentManifest(mod('{ "@scope/pkg": "2.0.0-rc.1" }')).errors).toEqual([]);
+  });
+});

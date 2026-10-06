@@ -70,21 +70,34 @@ export function validateAgainstSchema(node: SchemaNode, value: unknown, path = "
   return errors;
 }
 
-/** Returns a copy of `value` with declared defaults filled in for missing properties. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * Returns a copy of `value` with declared defaults filled in, recursing into nested objects (also
+ * absent ones, so a default inside `options` applies whether or not the caller passed `options`) and
+ * into arrays of objects.
+ */
 export function applySchemaDefaults(
   node: SchemaNode,
   value: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...value };
   for (const [name, child] of Object.entries(node.properties ?? {})) {
-    if (result[name] === undefined) {
-      if (child.default !== undefined) result[name] = child.default;
-    } else if (
-      child.type === "object" &&
-      result[name] !== null &&
-      typeof result[name] === "object"
-    ) {
-      result[name] = applySchemaDefaults(child, result[name] as Record<string, unknown>);
+    const current = result[name];
+    if (current === undefined) {
+      if (child.default !== undefined) {
+        result[name] = child.default;
+      } else if (child.type === "object") {
+        const nested = applySchemaDefaults(child, {});
+        if (Object.keys(nested).length > 0) result[name] = nested;
+      }
+    } else if (child.type === "object" && isRecord(current)) {
+      result[name] = applySchemaDefaults(child, current);
+    } else if (child.type === "array" && Array.isArray(current) && child.items?.type === "object") {
+      result[name] = current.map((item) =>
+        isRecord(item) ? applySchemaDefaults(child.items!, item) : item,
+      );
     }
   }
   return result;

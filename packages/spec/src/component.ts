@@ -89,6 +89,28 @@ export const schemaNodeSchema: z.ZodType<SchemaNode> = z.lazy(() =>
     })
     .strict()
     .superRefine((node, ctx) => {
+      const fits = (value: string | number | boolean): boolean =>
+        node.type === "integer"
+          ? typeof value === "number" && Number.isInteger(value)
+          : node.type === "object" || node.type === "array"
+            ? false
+            : typeof value === node.type;
+      if (node.default !== undefined && !fits(node.default)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `default is not a valid ${node.type}`,
+          path: ["default"],
+        });
+      }
+      for (const [i, member] of (node.enum ?? []).entries()) {
+        if (!fits(member)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `enum value is not a valid ${node.type}`,
+            path: ["enum", i],
+          });
+        }
+      }
       for (const name of node.required ?? []) {
         if (!node.properties || !(name in node.properties)) {
           ctx.addIssue({
@@ -108,8 +130,9 @@ export const schemaNodeSchema: z.ZodType<SchemaNode> = z.lazy(() =>
 const egressEntrySchema = z
   .string()
   .regex(/^[A-Za-z0-9.*{}_ :-]+$/, "must be a host or host:port, not a URL")
-  .refine((entry) => !entry.includes("*") || /^\*\.[^*]+$/.test(entry), {
-    message: 'a wildcard is only allowed as a leading "*." (for example *.example.com)',
+  .refine((entry) => !entry.includes("*") || /^\*\.[^*]*\.[^*]*$/.test(entry), {
+    message:
+      'a wildcard is only allowed as a leading "*." with at least two labels after it (*.example.com, never *.com)',
   });
 
 const permissionsSchema = z.object({ egress: z.array(egressEntrySchema).min(1) }).strict();
@@ -132,7 +155,7 @@ const slotSchema = z
         if ((inject.header === undefined) === (inject.query === undefined)) {
           ctx.addIssue({ code: "custom", message: "inject needs exactly one of header or query" });
         }
-        if (!inject.template.includes("{{ secret }}")) {
+        if (!/\{\{\s*secret\s*\}\}/.test(inject.template)) {
           ctx.addIssue({
             code: "custom",
             message: 'inject template must contain "{{ secret }}"',
@@ -146,16 +169,39 @@ const slotSchema = z
 
 const authSchema = z.object({ slots: z.record(z.string().regex(NAME), slotSchema) }).strict();
 
+const validRegex = (pattern: string): boolean => {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const configParamSchema = z
   .object({
     type: z.literal("string"),
     title: z.string().optional(),
     description: z.string().optional(),
     default: z.string().optional(),
-    /** Config values can end up in a host name, so the default pattern is restrictive. */
-    pattern: z.string().optional(),
+    /**
+     * Config values can end up in a host name, so the engine anchors this pattern (it must match the
+     * whole value) and, when none is given, applies a restrictive default.
+     */
+    pattern: z.string().refine(validRegex, "not a valid regular expression").optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((param, ctx) => {
+    if (param.default !== undefined && param.pattern !== undefined && validRegex(param.pattern)) {
+      if (!new RegExp(`^(?:${param.pattern})$`).test(param.default)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "default does not match its own pattern",
+          path: ["default"],
+        });
+      }
+    }
+  });
 
 // ---- Operations ------------------------------------------------------------------------------------
 
@@ -180,6 +226,8 @@ const restOpSchema = z
     effect: effectSchema,
     input: inputSchema.optional(),
     request: restRequestSchema,
+    /** Which auth slots this op injects. Omitted means every slot that has an inject rule. */
+    slots: z.array(z.string()).optional(),
     response: requestResponseSchema.optional(),
     failure_when: z.array(failureRuleSchema).optional(),
     output: schemaNodeSchema.optional(),
@@ -219,7 +267,18 @@ const header = {
 // Exact pins only: a range, tag, URL or path in `deps` would let the code change under a digest.
 const exactDependencySchema = z
   .string()
-  .regex(/^\d+\.\d+\.\d+$/, "must be an exact version such as 1.2.3 (no range, tag, URL or path)");
+  .regex(
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+    "must be an exact version such as 1.2.3 (no range, tag, URL or path)",
+  );
+
+// An npm package name: no path segments, URL or alias syntax.
+const dependencyNameSchema = z
+  .string()
+  .regex(
+    /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/,
+    "must be a plain npm package name",
+  );
 
 const restManifestSchema = z
   .object({
@@ -240,20 +299,22 @@ const moduleManifestSchema = z
         (entry) => !entry.split("/").includes(".."),
         "must stay inside the component directory",
       ),
-    deps: z.record(z.string().min(1), exactDependencySchema).optional(),
+    deps: z.record(dependencyNameSchema, exactDependencySchema).optional(),
     ops: z.record(opName, moduleOpSchema).refine(hasAnOp, "a component needs at least one op"),
   })
   .strict();
 
 // ---- Cross-field lint --------------------------------------------------------------------------------
 
-const REF = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z0-9_]+))?\s*\}\}/g;
+// One reference grammar, shared in spirit with the engine's renderer: `{{ input.x }}`, `{{ config.x }}`
+// and (only in an inject template) `{{ secret }}`, each with optional inner spaces. Anything else
+// between braces is a lint error, so a malformed reference can never be sent to an API as literal text.
+const BRACES = /\{\{([^{}]*)\}\}/g;
 const ENV_REF = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/;
 
-function stringsIn(
-  value: unknown,
-  path: (string | number)[] = [],
-): { text: string; path: (string | number)[] }[] {
+type Path = (string | number)[];
+
+function stringsIn(value: unknown, path: Path = []): { text: string; path: Path }[] {
   if (typeof value === "string") return [{ text: value, path }];
   if (Array.isArray(value)) return value.flatMap((entry, i) => stringsIn(entry, [...path, i]));
   if (value && typeof value === "object") {
@@ -262,112 +323,176 @@ function stringsIn(
   return [];
 }
 
+function keysIn(value: unknown, path: Path = []): { key: string; path: Path }[] {
+  if (Array.isArray(value)) return value.flatMap((entry, i) => keysIn(entry, [...path, i]));
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, entry]) => [
+      { key, path: [...path, key] },
+      ...keysIn(entry, [...path, key]),
+    ]);
+  }
+  return [];
+}
+
+// Is `host` (a slot's host) inside what `egress` allows? Exact, or under a leading wildcard entry.
+function coveredByEgress(host: string, egress: string[]): boolean {
+  return egress.some((entry) => {
+    if (entry === host) return true;
+    if (!entry.startsWith("*.")) return false;
+    const suffix = entry.slice(1); // ".example.com"
+    return host.endsWith(suffix) || host === entry;
+  });
+}
+
 function lintManifest(
   manifest: z.infer<typeof restManifestSchema> | z.infer<typeof moduleManifestSchema>,
   ctx: z.RefinementCtx,
 ): void {
   const configKeys = new Set(Object.keys(manifest.config ?? {}));
+  const issue = (message: string, path: Path) => ctx.addIssue({ code: "custom", message, path });
 
-  const checkRefs = (
-    text: string,
-    path: (string | number)[],
-    inputKeys: Set<string>,
-    inInject: boolean,
-  ) => {
-    for (const match of text.matchAll(REF)) {
-      const [, scope, key] = match;
-      if (scope === "secret" && key === undefined) {
-        if (!inInject) {
-          ctx.addIssue({
-            code: "custom",
-            message: '"{{ secret }}" is only allowed in an auth inject template',
-            path,
-          });
-        }
-      } else if (scope === "input" && key !== undefined) {
-        if (!inputKeys.has(key)) {
-          ctx.addIssue({
-            code: "custom",
-            message: `refers to input.${key}, which this op does not declare`,
-            path,
-          });
-        }
-      } else if (scope === "config" && key !== undefined) {
-        if (!configKeys.has(key)) {
-          ctx.addIssue({
-            code: "custom",
-            message: `refers to config.${key}, which this component does not declare`,
-            path,
-          });
-        }
-      } else {
-        ctx.addIssue({
-          code: "custom",
-          message: `unknown reference "${match[0]}" (use {{ input.x }} or {{ config.x }})`,
-          path,
-        });
+  interface Scope {
+    input: Set<string> | null; // null: input references are not available here
+    config: boolean;
+    secret: boolean;
+  }
+
+  const checkRefs = (text: string, path: Path, scope: Scope) => {
+    for (const match of text.matchAll(BRACES)) {
+      const inner = match[1]!.trim();
+      if (inner === "secret") {
+        if (!scope.secret) issue('"{{ secret }}" is only allowed in an auth inject template', path);
+        continue;
       }
+      const ref = /^(input|config)\.([A-Za-z0-9_]+)$/.exec(inner);
+      if (!ref) {
+        issue(`malformed reference "${match[0]}" (use {{ input.x }} or {{ config.x }})`, path);
+      } else if (ref[1] === "input") {
+        if (scope.input === null)
+          issue(`"${match[0]}": input references are not available here`, path);
+        else if (!scope.input.has(ref[2]!)) {
+          issue(`refers to input.${ref[2]}, which this op does not declare`, path);
+        }
+      } else if (!scope.config) {
+        issue(`"${match[0]}": config references are not available here`, path);
+      } else if (!configKeys.has(ref[2]!)) {
+        issue(`refers to config.${ref[2]}, which this component does not declare`, path);
+      }
+    }
+    const leftover = text.replace(BRACES, "");
+    if (leftover.includes("{{") || leftover.includes("}}")) {
+      issue("unbalanced {{ }} in a reference", path);
     }
   };
 
-  for (const [i, entry] of (manifest.permissions?.egress ?? []).entries()) {
-    checkRefs(entry, ["permissions", "egress", i], new Set(), false);
-  }
+  const hostScope: Scope = { input: null, config: true, secret: false };
+  const egress = manifest.permissions?.egress ?? [];
+  for (const [i, entry] of egress.entries())
+    checkRefs(entry, ["permissions", "egress", i], hostScope);
   for (const [slotName, slot] of Object.entries(manifest.auth?.slots ?? {})) {
     for (const [i, host] of slot.hosts.entries()) {
-      checkRefs(host, ["auth", "slots", slotName, "hosts", i], new Set(), false);
+      checkRefs(host, ["auth", "slots", slotName, "hosts", i], hostScope);
+      if (manifest.permissions && !coveredByEgress(host, egress)) {
+        issue(
+          `slot host "${host}" is not covered by permissions.egress, so every call using this slot would be refused`,
+          ["auth", "slots", slotName, "hosts", i],
+        );
+      }
     }
-    if (slot.inject)
-      checkRefs(
-        slot.inject.template,
-        ["auth", "slots", slotName, "inject", "template"],
-        new Set(),
-        true,
-      );
+    if (slot.inject) {
+      checkRefs(slot.inject.template, ["auth", "slots", slotName, "inject", "template"], {
+        input: null,
+        config: false,
+        secret: true,
+      });
+    }
   }
 
   for (const [opKey, op] of Object.entries(manifest.ops)) {
     const inputKeys = new Set(Object.keys(op.input?.properties ?? {}));
     for (const key of op.fixture_key ?? []) {
       if (!inputKeys.has(key)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `fixture_key names "${key}", which is not an input property`,
-          path: ["ops", opKey, "fixture_key"],
-        });
+        issue(`fixture_key names "${key}", which is not an input property`, [
+          "ops",
+          opKey,
+          "fixture_key",
+        ]);
       }
     }
   }
 
   if (manifest.kind !== "rest") return;
   if (!manifest.permissions) {
-    ctx.addIssue({
-      code: "custom",
-      message:
-        "a rest component must declare permissions.egress, or none of its requests can be sent",
-      path: ["permissions"],
-    });
+    issue("a rest component must declare permissions.egress, or none of its requests can be sent", [
+      "permissions",
+    ]);
   }
+
+  const injectable = Object.entries(manifest.auth?.slots ?? {}).filter(([, slot]) => slot.inject);
   for (const [opKey, op] of Object.entries(manifest.ops)) {
     const inputKeys = new Set(Object.keys(op.input?.properties ?? {}));
     const mode = op.response?.mode ?? "json";
     if (op.failure_when !== undefined && mode !== "json") {
-      ctx.addIssue({
-        code: "custom",
-        message: `failure_when only applies to a json response (response mode is "${mode}")`,
-        path: ["ops", opKey, "failure_when"],
-      });
+      issue(`failure_when only applies to a json response (response mode is "${mode}")`, [
+        "ops",
+        opKey,
+        "failure_when",
+      ]);
     }
+
+    // References are rendered in values only, so a reference in a name would be sent as literal text.
     for (const { text, path } of stringsIn(op.request, ["ops", opKey, "request"])) {
       if (ENV_REF.test(text)) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "a manifest never holds an ${ENV} reference: declare an auth slot and let the engine inject it",
+        issue(
+          "a manifest never holds an ${ENV} reference: declare an auth slot and let the engine inject it",
           path,
-        });
+        );
       }
-      checkRefs(text, path, inputKeys, false);
+      checkRefs(text, path, { input: inputKeys, config: true, secret: false });
+    }
+    const named = [
+      ...keysIn(op.request.headers, ["ops", opKey, "request", "headers"]),
+      ...keysIn(op.request.query, ["ops", opKey, "request", "query"]),
+      ...keysIn(op.request.body, ["ops", opKey, "request", "body"]),
+    ];
+    for (const { key, path } of named) {
+      if (key.includes("{{") || key.includes("}}")) {
+        issue("references are only supported in values, not in names or keys", path);
+      }
+    }
+
+    // Which slots this op injects, and that they do not collide with each other or its own headers.
+    const used = op.slots ?? injectable.map(([name]) => name);
+    const seen = new Map<string, string>();
+    for (const name of used) {
+      const slot = manifest.auth?.slots[name];
+      if (!slot?.inject) {
+        issue(`slot "${name}" does not exist or has no inject rule`, ["ops", opKey, "slots"]);
+        continue;
+      }
+      const target = `${slot.inject.header !== undefined ? "header" : "query"}:${(slot.inject.header ?? slot.inject.query)!.toLowerCase()}`;
+      if (seen.has(target)) {
+        issue(`slots "${seen.get(target)}" and "${name}" both inject ${target.replace(":", " ")}`, [
+          "ops",
+          opKey,
+          "slots",
+        ]);
+      }
+      seen.set(target, name);
+      const clash = Object.keys(
+        (slot.inject.header !== undefined ? op.request.headers : op.request.query) ?? {},
+      ).find(
+        (key) =>
+          `${slot.inject!.header !== undefined ? "header" : "query"}:${key.toLowerCase()}` ===
+          target,
+      );
+      if (clash !== undefined) {
+        issue(`request sets ${clash}, which slot "${name}" also injects`, [
+          "ops",
+          opKey,
+          "request",
+        ]);
+      }
     }
   }
 }
