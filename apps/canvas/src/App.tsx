@@ -1,5 +1,6 @@
 import {
   specToGraph,
+  specWarnings,
   type AgentSpec,
   type Guardrails,
   type Tool,
@@ -54,6 +55,8 @@ export function App({
   const [source, setSource] = useState("");
   const [layout, setLayout] = useState<Record<string, { x: number; y: number }>>({});
   const [errors, setErrors] = useState<{ path: (string | number)[]; message: string }[]>([]);
+  // KAN-1831: a valid spec can still declare fields nothing executes (knowledge_base today).
+  const [warnings, setWarnings] = useState<ReturnType<typeof specWarnings>>([]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
@@ -74,6 +77,7 @@ export function App({
       setLayout(result.layout);
       if (result.success && result.spec) {
         setSpec(result.spec as AgentSpec);
+        setWarnings(specWarnings(result.spec as AgentSpec));
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -209,6 +213,15 @@ export function App({
             >
               Reload
             </button>
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div role="status" data-testid="spec-warnings" className="md3-banner md3-banner--warning">
+            <ul className="md3-banner__errors">
+              {warnings.map((warning) => (
+                <li key={warning.code}>{warning.message}</li>
+              ))}
+            </ul>
           </div>
         )}
         {errors.length > 0 && (

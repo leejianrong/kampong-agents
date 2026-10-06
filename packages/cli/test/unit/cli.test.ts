@@ -110,6 +110,68 @@ describe("kampong serve -- usage/validation (KAN-1431)", () => {
   });
 });
 
+const KNOWLEDGE_BASE_SPEC = SIMPLE_SPEC.replace(
+  "  workflow:",
+  '  knowledge_base:\n    - type: url\n      source: "https://docs.example.com/policy"\n  workflow:',
+);
+
+// KAN-1831 (V11-X): knowledge_base is declared but never executed; the CLI must say so.
+describe("kampong run/export -- knowledge_base 'not executed' warning (KAN-1831)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "kampong-cli-kbwarn-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("run prints a warning on stderr and still completes", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, KNOWLEDGE_BASE_SPEC);
+    const { io, err } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi"], io, { model: textModel() });
+
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(err.join("\n")).toMatch(/warning.*knowledge_base.*not.*executed/i);
+  });
+
+  it("run --json keeps stdout to exactly one parseable object, with the warning on stderr only", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, KNOWLEDGE_BASE_SPEC);
+    const { io, out, err } = capture();
+
+    await runCli(["run", specPath, "--input", "hi", "--json"], io, { model: textModel() });
+
+    expect(out).toHaveLength(1);
+    expect(() => JSON.parse(out[0] as string)).not.toThrow();
+    expect(err.join("\n")).toMatch(/knowledge_base/);
+  });
+
+  it("run prints no warning for a spec without knowledge_base", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io, err } = capture();
+
+    await runCli(["run", specPath, "--input", "hi"], io, { model: textModel() });
+
+    expect(err.join("\n")).not.toMatch(/warning/i);
+  });
+
+  it("export prints the warning too, since the exported project will not execute it either", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, KNOWLEDGE_BASE_SPEC);
+    const { io, err } = capture();
+
+    const code = await runCli(["export", specPath, join(dir, "out")], io);
+
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(err.join("\n")).toMatch(/warning.*knowledge_base.*not.*executed/i);
+  });
+});
+
 describe("kampong run -- exit codes (SLICES.md V3 unit test plan)", () => {
   let dir: string;
 

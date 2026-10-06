@@ -140,7 +140,9 @@ knowledge_base:
 !!! note "Declared, not yet executed"
     `knowledge_base` is part of the spec schema so specs can express it forward-compatibly, but
     the v1 execution engine does not retrieve or inject these sources into a run yet. Include it
-    to document intent; don't expect it to change behavior today.
+    to document intent; don't expect it to change behavior today. `kampong run`, `serve` and
+    `export` print a warning on stderr when it is declared, and the canvas shows a banner, so it
+    is never ignored silently.
 
 ## Secrets rule
 
