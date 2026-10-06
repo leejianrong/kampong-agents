@@ -15,10 +15,12 @@ const ENV_PLACEHOLDER = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/;
 // RFC 9110 token characters: what a header name may legally contain.
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 
+// Names that carry a credential. Deliberately specific: "Idempotency-Key", "author" and "sort_key"
+// are ordinary parameters, while "X-API-Key", "access_token" and "client_secret" are not.
 const SENSITIVE_HEADER =
-  /^(authorization|proxy-authorization|cookie)$|token|secret|password|passwd|credential|api[-_]?key|(^|[-_])key$/i;
+  /^(authorization|proxy-authorization|cookie)$|token|secret|password|passwd|credential|api[-_]?key/i;
 const SENSITIVE_QUERY =
-  /token|secret|password|passwd|credential|auth|signature|api[-_]?key|(^|[-_])key$/i;
+  /token|secret|password|passwd|credential|signature|api[-_]?key|access[-_]?key|^(key|auth|authorization)$/i;
 
 function requireEnvPlaceholderForSecrets(
   kind: "header" | "query parameter",

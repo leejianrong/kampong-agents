@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ToolFetchImpl } from "./http-tool.js";
+import { mapStringsDeep, redactString } from "./redact.js";
 
 // Mock/record tool layer (PLAN.md Shape S4, SLICES.md V3 KAN-1111; Q17:
 // plain files, no DB, for this storage). Wraps the `fetchImpl` seam
@@ -89,32 +90,6 @@ interface FixtureFile {
   contentType?: string;
 }
 
-const REDACTED = "[REDACTED]";
-
-function redactString(value: string, secrets: string[]): string {
-  let result = value;
-  for (const secret of secrets) {
-    if (!secret) continue;
-    result = result.split(secret).join(REDACTED);
-  }
-  return result;
-}
-
-function redactDeep(value: unknown, secrets: string[]): unknown {
-  if (secrets.length === 0) return value;
-  if (typeof value === "string") return redactString(value, secrets);
-  if (Array.isArray(value)) return value.map((entry) => redactDeep(entry, secrets));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-        key,
-        redactDeep(entry, secrets),
-      ]),
-    );
-  }
-  return value;
-}
-
 /** JSON with object keys sorted at every depth, so key order never changes a request's identity. */
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -133,7 +108,7 @@ function canonicalJson(value: unknown): string {
  * `undefined` for a request with no body. A body type we can't key faithfully is an error, never a
  * silent collision on "[object Object]".
  */
-function normalizedBody(body: RequestInit["body"], secrets: string[]): string | undefined {
+function normalizedBody(body: RequestInit["body"], secrets: readonly string[]): string | undefined {
   if (body === undefined || body === null) return undefined;
   let text: string;
   if (typeof body === "string") text = body;
@@ -192,7 +167,7 @@ function fixturePathFor(
  * default) when the user hasn't asked for mock/record.
  */
 export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetchImpl {
-  const { mode, fixturesDir, fetchImpl = fetch, secrets = [] } = options;
+  const { mode, fixturesDir, fetchImpl = fetch, secrets: configuredSecrets = [] } = options;
 
   const wrapped: ToolFetchImpl = async (input, init, context) => {
     if (mode === "live") {
@@ -202,6 +177,9 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
     const url = typeof input === "string" ? input : input.toString();
     const method = init?.method ?? "GET";
     const toolName = context.toolName;
+    // Secrets the caller configured plus the ones this very request carries (KAN-1845), so a
+    // query-string or header credential is redacted without the CLI having to enumerate it.
+    const secrets = [...configuredSecrets, ...(context.secrets ?? [])];
     const requestBody = normalizedBody(init?.body, secrets);
     // Keyed on the redacted URL so a rotated query-string secret still finds its fixture.
     const path = fixturePathFor(
@@ -223,7 +201,9 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
           fixture.bodyFormat === "base64"
             ? Buffer.from(fixture.bodyRaw, "base64")
             : fixture.bodyRaw;
-        return new Response(payload, { status: fixture.status, headers });
+        // 101/204/205/304 cannot carry a body; the Response constructor throws if given one.
+        const noBody = [101, 204, 205, 304].includes(fixture.status);
+        return new Response(noBody ? null : payload, { status: fixture.status, headers });
       }
       return new Response(JSON.stringify(fixture.body), { status: fixture.status, headers });
     }
@@ -257,7 +237,7 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
       url: redactString(url, secrets),
       ...(requestBody === undefined ? {} : { requestBody }),
       status: response.status,
-      body: redactDeep(body, secrets),
+      body: mapStringsDeep(body, (text) => redactString(text, secrets)),
       bodyRaw,
       bodyFormat,
       ...(contentType === undefined ? {} : { contentType }),

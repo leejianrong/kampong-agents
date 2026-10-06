@@ -131,4 +131,49 @@ describe("http_request request fields", () => {
     "bad header": x`).success,
     ).toBe(false);
   });
+
+  it("flags real credentials but not look-alike parameters (review finding)", () => {
+    expect(
+      parse(`${BASE}
+  headers:
+    Idempotency-Key: "{{ input }}"
+    X-Request-Id: "{{ input }}"
+  query:
+    author: Tolkien
+    sort_key: price
+    oauth_version: "1.0"`).success,
+    ).toBe(true);
+    expect(
+      parse(`${BASE}
+  headers:
+    X-API-Key: literal`).success,
+    ).toBe(false);
+    expect(
+      parse(`${BASE}
+  query:
+    key: literal`).success,
+    ).toBe(false);
+  });
+
+  it("rejects a GET with a body at validation time", () => {
+    const result = parse(`${BASE}
+  body:
+    raw: "x"`);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.map((e) => e.message).join(" ")).toMatch(/GET request cannot send a body/);
+  });
+
+  it("rejects extract on a non-json response at validation time", () => {
+    const result = parse(`- name: call
+  action: http_request
+  method: GET
+  url: "https://api.example.test/x"
+  extract: a.b
+  response:
+    mode: text`);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.map((e) => e.message).join(" ")).toMatch(/extract only applies/);
+  });
 });

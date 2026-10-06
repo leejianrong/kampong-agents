@@ -102,7 +102,7 @@ describe("callHttpTool", () => {
     const unsafeTool: Tool = { ...CHECK_TOOL, name: unsafeName };
     const fetchImpl = vi.fn(async (_url, init, context) => {
       expect(init?.headers).toBeUndefined();
-      expect(context).toEqual({ toolName: unsafeName });
+      expect(context).toEqual({ toolName: unsafeName, secrets: [] });
       // A real live call: proves this doesn't throw building/sending headers.
       new Headers(init?.headers);
       return new Response(JSON.stringify({ data: { status: "succeeded" } }), { status: 200 });

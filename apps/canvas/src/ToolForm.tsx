@@ -196,9 +196,12 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Body</span>
+          <div className="md3-field">
+            <label htmlFor="tool-body-type" className="md3-field__label md3-label-large">
+              Body
+            </label>
             <select
+              id="tool-body-type"
               className="md3-text-field"
               value={bodyType}
               onChange={(e) => setBodyType(e.target.value as typeof bodyType)}
@@ -208,7 +211,7 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
               <option value="form">Form (name=value lines)</option>
               <option value="raw">Raw text</option>
             </select>
-          </label>
+          </div>
           {bodyType !== "none" && (
             <label className="md3-field">
               <span className="md3-field__label md3-label-large">Body content</span>
@@ -231,9 +234,12 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
               />
             </label>
           )}
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Response</span>
+          <div className="md3-field">
+            <label htmlFor="tool-response-mode" className="md3-field__label md3-label-large">
+              Response
+            </label>
             <select
+              id="tool-response-mode"
               className="md3-text-field"
               value={responseMode}
               onChange={(e) => setResponseMode(e.target.value as typeof responseMode)}
@@ -242,7 +248,7 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
               <option value="text">Text</option>
               <option value="bytes">Bytes (base64)</option>
             </select>
-          </label>
+          </div>
         </>
       )}
 

@@ -165,3 +165,16 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/credential/);
   });
 });
+
+// Regression (PR #88 Browser E2E): a select's option text must not become part of its label, or
+// getByLabel("Name") also matches the Body select ("Form (name=value lines)").
+describe("ToolForm -- accessible names (PR #88 regression)", () => {
+  afterEach(() => cleanup());
+
+  it("resolves the Name field to exactly one control", () => {
+    render(<ToolForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(screen.getAllByLabelText("Name")).toHaveLength(1);
+    expect(screen.getAllByLabelText(/name/i)).toHaveLength(1);
+  });
+});

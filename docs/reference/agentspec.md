@@ -110,8 +110,11 @@ tools:
   anything containing `token`, `secret`, `password`, `api_key` and so on) is rejected if it is a
   literal. This is a check on the name only, so use `${ENV_VAR}` for every credential. `${...}` is
   expanded only in text you wrote in the spec, never in data from a model or a webhook.
+- To write a literal `${NAME}` (a template, a code sample in a body), escape it as `$${NAME}`.
+  Any other `${NAME}` in `url`, `headers`, `query` or `body` is an environment reference and fails
+  the call if the variable is not set.
 - A failed call never prints a resolved secret: it is redacted from error messages and recorded
-  fixtures.
+  fixtures, including its percent-encoded, form-encoded and JSON-escaped spellings.
 
 ## `agent.guardrails`
 

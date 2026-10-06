@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,7 +45,7 @@ describe("buildToolRequest -- http_request v2", () => {
       ENV,
     );
 
-    expect(plain.url).toBe("https://api.example.test/v1/data?symbol=IBM&q=a%20b%26c");
+    expect(plain.url).toBe("https://api.example.test/v1/data?symbol=IBM&q=a+b%26c");
     expect(existing.url).toBe("https://api.example.test/v1/data?fixed=1&symbol=IBM");
   });
 
@@ -263,5 +263,156 @@ describe("fixtures -- response modes and rotated secrets", () => {
     const result = await callHttpTool(t, {}, { fetchImpl: replay, env: rotated });
 
     expect(result).toEqual({ v: 1 });
+  });
+});
+
+// ---- Review findings on PR #88 -------------------------------------------------------------
+
+describe("request builder -- review findings", () => {
+  it("inserts a secret verbatim even when it looks like a data reference", () => {
+    const env = { TRICKY: "abc{input}def" } as NodeJS.ProcessEnv;
+
+    const request = buildToolRequest(
+      tool({ headers: { Authorization: "Bearer ${TRICKY}" } }),
+      { input: "USER-DATA" },
+      env,
+    );
+
+    expect(request.headers.Authorization).toBe("Bearer abc{input}def");
+    expect(request.secrets).toEqual(["abc{input}def"]);
+  });
+
+  it("treats $${NAME} as an escape for a literal ${NAME}, resolving nothing", () => {
+    const request = buildToolRequest(
+      tool({ method: "POST", body: { raw: "template: $${NOT_AN_ENV} and ${API_TOKEN}" } }),
+      {},
+      ENV,
+    );
+
+    expect(request.body).toBe("template: ${NOT_AN_ENV} and tok-123");
+  });
+
+  it("places the query before a #fragment and copes with an existing or trailing ?", () => {
+    const fragment = buildToolRequest(
+      tool({ url: "https://x.test/a#top", query: { q: "1" } }),
+      {},
+      ENV,
+    );
+    const trailing = buildToolRequest(
+      tool({ url: "https://x.test/a?", query: { q: "1" } }),
+      {},
+      ENV,
+    );
+
+    expect(fragment.url).toBe("https://x.test/a?q=1#top");
+    expect(trailing.url).toBe("https://x.test/a?q=1");
+  });
+
+  it("fails visibly, without leaking a secret, when a url with query params is not a valid URL", () => {
+    expect(() =>
+      buildToolRequest(tool({ url: "not a url ${API_TOKEN}", query: { q: "1" } }), {}, ENV),
+    ).toThrow(/not a valid URL/);
+    try {
+      buildToolRequest(tool({ url: "not a url ${API_TOKEN}", query: { q: "1" } }), {}, ENV);
+    } catch (error) {
+      expect((error as Error).message).not.toContain("tok-123");
+    }
+  });
+});
+
+describe("secret redaction -- review findings", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "kampong-redact-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function recordedText(): string {
+    return readdirSync(dir)
+      .map((file) => readFileSync(join(dir, file), "utf8"))
+      .join("\n");
+  }
+
+  async function record(t: HttpTool, env: NodeJS.ProcessEnv, response = "{}") {
+    // Deliberately NO `secrets` option: the request itself must tell the fixture layer what to hide.
+    const inner = (async () => new Response(response)) as unknown as typeof fetch;
+    const recordFetch = createFixtureFetch({ mode: "record", fixturesDir: dir, fetchImpl: inner });
+    await callHttpTool(t, {}, { fetchImpl: recordFetch, env });
+  }
+
+  const TRICKY = 'abc+/=d"e\\f&g h';
+  const TRICKY_ENV = { SECRET_VALUE: TRICKY } as NodeJS.ProcessEnv;
+
+  it("never writes a query-string secret to a fixture, though no secrets list was configured", async () => {
+    await record(tool({ query: { apikey: "${SECRET_VALUE}" } }), TRICKY_ENV);
+
+    const text = recordedText();
+    expect(text).not.toContain(TRICKY);
+    expect(text).not.toContain(encodeURIComponent(TRICKY));
+    expect(text).not.toContain(new URLSearchParams({ v: TRICKY }).toString().slice(2));
+    expect(text).toContain("[REDACTED]");
+  });
+
+  it("redacts a secret in its form-encoded and JSON-escaped spellings too", async () => {
+    await record(
+      tool({ method: "POST", body: { form: { token: "${SECRET_VALUE}" } } }),
+      TRICKY_ENV,
+    );
+    await record(
+      tool({
+        method: "POST",
+        url: "https://api.example.test/j",
+        body: { json: { token: "${SECRET_VALUE}" } },
+      }),
+      TRICKY_ENV,
+    );
+
+    const text = recordedText();
+    expect(text).not.toContain(new URLSearchParams({ v: TRICKY }).toString().slice(2));
+    expect(text).not.toContain(JSON.stringify(TRICKY).slice(1, -1));
+  });
+
+  it("redacts a header secret echoed back in the response body", async () => {
+    await record(
+      tool({ headers: { Authorization: "Bearer ${API_TOKEN}" } }),
+      ENV,
+      JSON.stringify({ echoed: "Bearer tok-123" }),
+    );
+
+    expect(recordedText()).not.toContain("tok-123");
+  });
+
+  it("keeps the error cause free of the secret as well as the message", async () => {
+    const down = vi.fn(async () => {
+      throw new Error("connect failed https://api.example.test/v1/data?apikey=key-456");
+    });
+
+    const error = (await callHttpTool(
+      tool({ query: { apikey: "${ALPHA_KEY}" } }),
+      {},
+      { fetchImpl: down, env: ENV },
+    ).catch((e: Error) => e)) as Error;
+
+    expect(error.message).not.toContain("key-456");
+    expect(String((error.cause as Error).message)).not.toContain("key-456");
+  });
+
+  it("replays a recorded 204 No Content response instead of throwing", async () => {
+    const inner = (async () => new Response(null, { status: 204 })) as unknown as typeof fetch;
+    const recordFetch = createFixtureFetch({ mode: "record", fixturesDir: dir, fetchImpl: inner });
+    await recordFetch("https://api.example.test/x", { method: "DELETE" }, { toolName: "del" });
+
+    const replay = createFixtureFetch({ mode: "replay", fixturesDir: dir });
+    const response = await replay(
+      "https://api.example.test/x",
+      { method: "DELETE" },
+      { toolName: "del" },
+    );
+
+    expect(response.status).toBe(204);
   });
 });
