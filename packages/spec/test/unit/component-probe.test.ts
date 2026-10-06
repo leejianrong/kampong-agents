@@ -65,4 +65,17 @@ describe("slot probe", () => {
   it("rejects unknown keys inside probe", () => {
     expect(errors(REST("{ op: whoami, run: x }")).length).toBeGreaterThan(0);
   });
+
+  it("rejects a rest probe op that calls a host the slot is not bound to", () => {
+    const manifest = REST("{ op: whoami }").replace(
+      'url: "https://api.example.test/whoami"',
+      'url: "https://other.example.test/whoami"',
+    );
+    expect(errors(manifest).join("\n")).toContain("is not bound to");
+  });
+
+  it("accepts refused_when reasons", () => {
+    expect(errors(REST("{ op: whoami, refused_when: [invalid_auth] }"))).toEqual([]);
+    expect(errors(REST("{ op: whoami, refused_when: [''] }")).length).toBeGreaterThan(0);
+  });
 });

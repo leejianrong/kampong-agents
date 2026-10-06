@@ -92,6 +92,13 @@
                           "type": "string"
                         },
                         "additionalProperties": {}
+                      },
+                      "refused_when": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
                       }
                     },
                     "required": ["op"],
@@ -469,6 +476,13 @@
                           "type": "string"
                         },
                         "additionalProperties": {}
+                      },
+                      "refused_when": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
                       }
                     },
                     "required": ["op"],

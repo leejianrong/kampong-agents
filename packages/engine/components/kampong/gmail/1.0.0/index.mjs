@@ -53,7 +53,8 @@ async function getProfile(ctx) {
   });
   const text = await response.text();
   if (!response.ok) {
-    // `status` lets `kampong doctor` tell a refused token (401, 403) from a service that is down.
+    // `status` lets `kampong doctor` tell a refused token (401) from a service that is down. A 403 is
+    // not taken as a bad token: a token with only the gmail.send scope is refused here and works for send.
     throw Object.assign(new Error(describeFailure(response.status, text)), {
       status: response.status,
     });

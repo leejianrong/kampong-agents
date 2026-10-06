@@ -99,7 +99,7 @@ Commands:
                                       in kampong.lock (next to the spec).
 
   doctor <spec>.yaml                 Preflight a spec: components, pins, permissions, credentials
-                                      (names only) and, with --online, host reachability.
+                                      (names only), with --online host reachability, and with --probe whether each credential is accepted.
 
 Run "kampong <command> --help" for command-specific options.`;
 

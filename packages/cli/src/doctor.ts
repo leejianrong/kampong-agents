@@ -283,7 +283,7 @@ export async function runDoctor(
       const envName =
         remapped === undefined ? slot.env : (/^\$\{(.+)\}$/.exec(remapped)?.[1] ?? remapped);
       if (slot.probe)
-        probes.set(`${tool.use}|${name}|${envName}`, {
+        probes.set(`${tool.use}|${name}|${envName}|${JSON.stringify(tool.config ?? {})}`, {
           use: tool.use,
           manifest,
           slot: name,
@@ -291,7 +291,7 @@ export async function runDoctor(
           tool,
         });
       checkEnv(
-        remapped === undefined ? slot.env : (/^\$\{(.+)\}$/.exec(remapped)?.[1] ?? remapped),
+        envName,
         `secret slot ${name} of ${tool.use}`,
         manifest.kind === "module" ? "warn" : "fail",
       );
@@ -337,26 +337,33 @@ export async function runDoctor(
   // Credentials, only when asked: one read-only request per secret, to the host its slot is bound to.
   if (options.probe) {
     const runner = new InProcessModuleRunner(registry);
-    for (const { use, manifest, slot, envName, tool } of probes.values()) {
+    const probeOne = async ({
+      use,
+      manifest,
+      slot,
+      envName,
+      tool,
+    }: {
+      use: string;
+      manifest: ComponentManifest;
+      slot: string;
+      envName: string;
+      tool: ComponentTool;
+    }): Promise<DoctorCheck | undefined> => {
       const what = `the credential in ${envName} (slot ${slot} of ${use})`;
+      const check = (status: CheckStatus, message: string): DoctorCheck => ({
+        status,
+        area: "network",
+        message: `${what} ${message}`,
+      });
       const probe = manifest.auth!.slots[slot]!.probe!;
-      if (!isSet(env, envName)) continue; // already reported as not set
+      if (!isSet(env, envName)) return undefined; // already reported as not set
       const reason = trusted.get(use);
       if (reason !== true) {
-        add(
-          "warn",
-          "network",
-          `${what} was not probed: ${reason ?? "the component was not checked"}`,
-        );
-        continue;
+        return check("warn", `was not probed: ${reason ?? "the component was not checked"}`);
       }
       if (manifest.kind === "module" && !isFirstPartyId(manifest.id)) {
-        add(
-          "warn",
-          "network",
-          `${what} was not probed: doctor does not run a project module's code`,
-        );
-        continue;
+        return check("warn", "was not probed: doctor does not run a project module's code");
       }
       try {
         await invokeOp(manifest, probe.op, probe.with ?? {}, {
@@ -367,22 +374,27 @@ export async function runDoctor(
           fetchImpl: options.probeFetch,
           toolName: `doctor.${manifest.id}.${probe.op}`,
         });
-        add("pass", "network", `${what} was accepted (${probe.op})`);
+        return check("pass", `was accepted (${probe.op})`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // The service answered and said no, versus it could not be asked or did not answer.
+        // 401 is the service saying the credential is not valid. Anything else (a 403 that may be a
+        // missing scope, a gateway, a quota, a 5xx, a timeout) says nothing about the credential unless
+        // the component declares, in `probe.refused_when`, a reason that does (ADR-0032).
+        const status =
+          err instanceof ToolCallError
+            ? (err.status ?? (err.cause as { status?: number } | undefined)?.status)
+            : undefined;
         const refused =
-          err instanceof ToolCallError &&
-          (err.code === "auth" ||
-            err.code === "failure_when" ||
-            // A module signals the same by throwing an error that carries the HTTP status.
-            [401, 403].includes((err.cause as { status?: number } | undefined)?.status ?? 0));
-        add(
+          status === 401 || (probe.refused_when ?? []).some((reason) => message.includes(reason));
+        return check(
           refused ? "fail" : "warn",
-          "network",
-          `${what} ${refused ? "was refused" : "could not be confirmed"}: ${message}`,
+          `${refused ? "was refused" : "could not be confirmed"}: ${message}`,
         );
       }
+    };
+    // Independent requests: run together, report in the order the tools were declared.
+    for (const result of await Promise.all([...probes.values()].map(probeOne))) {
+      if (result) checks.push(result);
     }
   }
 

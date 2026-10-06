@@ -14,7 +14,10 @@ auth:
       inject:
         header: Authorization
         template: "Bearer {{ secret }}"
-      probe: { op: auth_test }
+      probe:
+        op: auth_test
+        # Slack answers 200 with ok:false for every failure; only these say the token is not valid.
+        refused_when: [invalid_auth, not_authed, account_inactive, token_revoked, token_expired]
 ops:
   auth_test:
     title: Check the token

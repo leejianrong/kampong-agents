@@ -479,6 +479,24 @@ ops:
       expect(r.text).toMatch(/was refused/);
     });
 
+    it("only warns on a Slack outage answered as 200 ok:false, since only auth reasons mean a bad token", async () => {
+      for (const error of ["service_unavailable", "ratelimited", "internal_error"]) {
+        const r = await probe(SLACK, () => json({ ok: false, error }));
+        expect(r.code).toBe(EXIT_SUCCESS);
+        expect(r.text).toMatch(/could not be confirmed/);
+      }
+      for (const error of ["not_authed", "token_revoked", "account_inactive"]) {
+        const r = await probe(SLACK, () => json({ ok: false, error }));
+        expect(r.code).toBe(EXIT_EXECUTION_FAILURE);
+      }
+    });
+
+    it("does not call a 403 a bad credential: a gmail.send-only token cannot read the profile", async () => {
+      const r = await probe(GMAIL, () => json({ error: { status: "PERMISSION_DENIED" } }, 403));
+      expect(r.code).toBe(EXIT_SUCCESS);
+      expect(r.text).toMatch(/could not be confirmed/);
+    });
+
     it("only warns when the service cannot be asked (a 503), since that says nothing about the credential", async () => {
       const r = await probe(SLACK, () => json({ error: "down" }, 503));
       expect(r.code).toBe(EXIT_SUCCESS);
@@ -554,6 +572,37 @@ ops:
       const changed = await probe(PROJECT_TOOL, () => json({}), ["--probe"], env);
       expect(changed.calls).toEqual([]);
       expect(changed.text).toContain("was not probed: it changed since it was pinned");
+    });
+
+    it("probes the same component once per distinct config", async () => {
+      const manifest = PROJECT_REST.replace(
+        "egress: [api.example.com]",
+        'egress: ["{{ config.sub }}.example.com"]',
+      )
+        .replace("hosts: [api.example.com]", 'hosts: ["{{ config.sub }}.example.com"]')
+        .replace(
+          'url: "https://api.example.com/ping"',
+          'url: "https://{{ config.sub }}.example.com/ping"',
+        )
+        .replace("auth:", "config:\n  sub: { type: string }\nauth:");
+      mkdirSync(path("components/acme/api/1.0.0"), { recursive: true });
+      writeFileSync(path("components/acme/api/1.0.0/component.yaml"), manifest);
+      const tools = ["one", "two"]
+        .map(
+          (sub) => `    - name: t_${sub}
+      action: component
+      use: acme/api@1.0.0
+      op: ping
+      config: { sub: ${sub} }`,
+        )
+        .join("\n");
+      writeFileSync(path("agent.yaml"), spec(tools));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const r = await probe(tools, () => json({}), ["--probe"], env);
+      expect(r.calls.map((c) => c.url).sort()).toEqual([
+        "https://one.example.com/ping",
+        "https://two.example.com/ping",
+      ]);
     });
 
     it("never runs a project module's code to probe it", async () => {

@@ -174,6 +174,11 @@ const slotSchema = z
       .object({
         op: z.string().regex(NAME, "op names are letters, digits and underscores"),
         with: z.record(z.string(), z.unknown()).optional(),
+        /**
+         * Reasons (text found in the failure message, such as Slack's `invalid_auth`) that mean the
+         * credential is not valid. A 401 always does; any other failure only warns unless it matches.
+         */
+        refused_when: z.array(z.string().min(1)).optional(),
       })
       .strict()
       .optional(),
@@ -464,6 +469,23 @@ function lintManifest(
           `probe op "${slot.probe.op}" does not send slot "${slotName}", so it proves nothing`,
           [...at, "op"],
         );
+      }
+    }
+    if (manifest.kind === "rest") {
+      // The pipeline refuses a request to a host the slot is not bound to, so such a probe could never succeed.
+      const url = (op as { request?: { url?: string } }).request?.url ?? "";
+      if (!url.includes("{{")) {
+        try {
+          const host = new URL(url).host;
+          if (!coveredByEgress(host, manifest.auth?.slots[slotName]?.hosts ?? [])) {
+            issue(
+              `probe op "${slot.probe.op}" calls ${host}, which slot "${slotName}" is not bound to`,
+              [...at, "op"],
+            );
+          }
+        } catch {
+          // Not a literal URL; the op's own checks report it.
+        }
       }
     }
     for (const key of op.input?.required ?? []) {

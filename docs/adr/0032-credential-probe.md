@@ -1,7 +1,7 @@
 # ADR-0032: Credential probes in `kampong doctor`
 
 - Status: Accepted
-- Date: 2026-10-07
+- Date: 2026-10-06
 - Deciders: Jian (product owner)
 
 ## Context
@@ -25,10 +25,14 @@ checks, pins, env names) is local.
    with kampong or its files match its `kampong.lock` pin. A project's own `module` component is never run
    by doctor, pinned or not (doctor stays a read-only tool that does not execute project code); its probe
    is reported as skipped. First-party modules (Gmail) are run.
-6. **Outcomes.** The service accepts: pass. The service answers and refuses (HTTP 401 or 403, or a
-   `failure_when` rule such as Slack's `ok: false`, or a module error carrying `status` 401 or 403): fail,
-   with the service's reason (redacted by the pipeline, never the credential). Anything else, such as a
-   timeout, a 5xx or a rate limit: warning, because it says nothing about the credential.
+6. **Outcomes.** The service accepts: pass. A 401 is a refusal: fail, with the service's reason (redacted
+   by the pipeline, never the credential). Anything else only warns, because it says nothing about the
+   credential: a 403 (which may be a missing scope, a gateway or a quota), a 5xx, a timeout, a rate limit,
+   and a module error. A component can name reasons that do mean a bad credential in `probe.refused_when`
+   (text found in the failure message): Slack answers 200 with `ok: false` for everything, so its probe lists
+   `invalid_auth`, `not_authed`, `account_inactive`, `token_revoked` and `token_expired`, and
+   `service_unavailable` stays a warning. Gmail's probe reads the profile, which a token with only the
+   `gmail.send` scope may not read, so its 403 is a warning, not a failure.
 7. **First-party probes are additive.** `kampong/slack@1.0.0` gains `auth_test` and `kampong/gmail@1.0.0`
    gains `get_profile`, both read-only. First-party components are not pinned (ADR-0030), so nothing
    recorded changes; once a release is published, a new op ships as a new version.
