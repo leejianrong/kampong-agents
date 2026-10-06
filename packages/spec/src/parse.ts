@@ -57,7 +57,8 @@ function toSafePath(path: readonly PropertyKey[]): (string | number)[] {
   return path.map((segment) => (typeof segment === "symbol" ? String(segment) : segment));
 }
 
-function toSpecError(issue: ZodIssue, doc: Document, lineCounter: LineCounter): SpecError {
+/** Maps a Zod issue to a `SpecError` with a line and column when the path resolves to a node. */
+export function toSpecError(issue: ZodIssue, doc: Document, lineCounter: LineCounter): SpecError {
   const path = toSafePath(issue.path);
   let line: number | undefined;
   let column: number | undefined;

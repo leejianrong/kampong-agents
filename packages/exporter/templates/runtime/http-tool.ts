@@ -409,17 +409,60 @@ async function attemptHttpCall(
   clock: Clock,
 ): Promise<unknown> {
   let response: Response;
+  // A request that carries a resolved secret must not be handed to another host by a redirect: fetch
+  // would resend custom credential headers (only Authorization and Cookie are stripped across
+  // origins). So redirects are followed here, by hand, and only within the original origin.
+  const credentialed = request.secrets.length > 0;
+  let url = request.url;
+  let method = request.method;
+  let outgoingBody = request.body;
   try {
-    response = await fetchImpl(
-      request.url,
-      {
-        method: request.method,
-        ...(Object.keys(request.headers).length > 0 ? { headers: request.headers } : {}),
-        ...(request.body !== undefined ? { body: request.body } : {}),
-      },
-      { toolName: tool.name, secrets: request.secrets },
-    );
+    for (let hops = 0; ; hops += 1) {
+      response = await fetchImpl(
+        url,
+        {
+          method,
+          ...(Object.keys(request.headers).length > 0 ? { headers: request.headers } : {}),
+          ...(outgoingBody !== undefined ? { body: outgoingBody } : {}),
+          ...(credentialed ? { redirect: "manual" as const } : {}),
+        },
+        { toolName: tool.name, secrets: request.secrets },
+      );
+      const location = response.headers.get("location");
+      if (!credentialed || !REDIRECT_STATUSES.has(response.status) || location === null) break;
+      const next = new URL(location, url);
+      if (next.origin !== new URL(url).origin) {
+        throw new ToolCallError(
+          redactString(
+            `Tool "${tool.name}" HTTP call to ${request.url} was redirected to another host (${next.origin}); ` +
+              `a request carrying credentials does not follow cross-origin redirects`,
+            request.secrets,
+          ),
+          "http",
+          false,
+          response.status,
+        );
+      }
+      if (hops >= MAX_REDIRECTS) {
+        throw new ToolCallError(
+          `Tool "${tool.name}" HTTP call to ${next.origin} followed too many redirects`,
+          "http",
+          false,
+          response.status,
+        );
+      }
+      // The browser rules: 303, and 301/302 after a POST, become a GET with no body.
+      if (
+        response.status === 303 ||
+        ((response.status === 301 || response.status === 302) && method === "POST")
+      ) {
+        method = "GET";
+        outgoingBody = undefined;
+      }
+      url = next.toString();
+    }
   } catch (err) {
+    if (err instanceof ToolCallError) throw err;
     // The URL can carry a resolved query-string secret (KAN-1845), and the original error travels
     // on as `cause`, so both are scrubbed before being reported or attached.
     if (err instanceof Error) {
@@ -485,6 +528,9 @@ async function attemptHttpCall(
   }
   return extractField(body, request.extract);
 }
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 5;
 
 const DEFAULT_RETRY_BASE_MS = 500;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
