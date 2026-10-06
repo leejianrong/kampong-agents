@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   createComponentDispatcher,
@@ -5,15 +6,144 @@ import {
   InProcessModuleRunner,
   type ComponentDispatcher,
 } from "@kampong/engine";
+import {
+  LOCKFILE_NAME,
+  parseLockfile,
+  serializeLockfile,
+  type AgentSpec,
+  type Lockfile,
+} from "@kampong/spec";
 
-// Where a spec's components live (KAN-1884): a `components/` folder next to the spec file. The wider
-// layout and the lockfile that pins digests are KAN-1834; until then there are no pins, so the digest
-// is computed but not enforced.
+// Where a spec's components live and how they are pinned (KAN-1884, KAN-1834): a `components/` folder
+// and a `kampong.lock` next to the spec file. Components are laid out as
+// `components/<namespace>/<name>/<version>/component.yaml`.
+
 export function componentsDirFor(specPath: string): string {
   return join(dirname(specPath), "components");
 }
 
+export function lockPathFor(specPath: string): string {
+  return join(dirname(specPath), LOCKFILE_NAME);
+}
+
+/** The lockfile beside the spec, or an empty one when there is none. A malformed file throws. */
+export function readLockfile(specPath: string): Lockfile {
+  const path = lockPathFor(specPath);
+  if (!existsSync(path)) return { version: 1, components: {} };
+  const parsed = parseLockfile(readFileSync(path, "utf8"));
+  if (!parsed.lockfile) {
+    const first = parsed.errors[0];
+    throw new Error(
+      `${LOCKFILE_NAME} is not valid: ${first?.path.join(".") || "(root)"}: ${first?.message ?? "unreadable"}${first?.line ? ` (line ${first.line})` : ""}. Fix it or delete it and run \`kampong lock\`.`,
+    );
+  }
+  return parsed.lockfile;
+}
+
+function pinsFor(specPath: string): () => Record<string, string> {
+  // Read on each call so a lockfile edited while `kampong dev` is running applies without a restart.
+  return () =>
+    Object.fromEntries(
+      Object.entries(readLockfile(specPath).components).map(([key, entry]) => [key, entry.digest]),
+    );
+}
+
 export function componentDispatcherFor(specPath: string): ComponentDispatcher {
   const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
-  return createComponentDispatcher({ registry, runner: new InProcessModuleRunner(registry) });
+  const pins = pinsFor(specPath);
+  return createComponentDispatcher({
+    registry,
+    runner: new InProcessModuleRunner(registry, pins, { requirePins: true }),
+    pins,
+    requirePins: true,
+  });
+}
+
+export type LockOutcome =
+  | { ok: true; added: string[]; unchanged: string[]; updated: string[]; none: boolean }
+  | { ok: false; message: string };
+
+export function componentUsesOf(spec: AgentSpec): string[] {
+  const uses = new Set<string>();
+  for (const tool of spec.agent.tools ?? []) {
+    if (tool.action === "component") uses.add(tool.use);
+  }
+  return [...uses].sort();
+}
+
+/**
+ * Pins every component the spec uses. New components are added; one whose digest differs from its pin
+ * is refused unless `update` is set, because that is exactly the event a reviewer must see. Nothing is
+ * written unless every component resolves and no refusal occurred.
+ */
+export async function lockComponents(
+  spec: AgentSpec,
+  specPath: string,
+  { update }: { update: boolean },
+): Promise<LockOutcome> {
+  const uses = componentUsesOf(spec);
+  if (uses.length === 0) {
+    return { ok: true, added: [], unchanged: [], updated: [], none: true };
+  }
+  let lock: Lockfile;
+  try {
+    lock = readLockfile(specPath);
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
+  const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
+  const components = { ...lock.components };
+  const added: string[] = [];
+  const unchanged: string[] = [];
+  const updated: string[] = [];
+  const refused: string[] = [];
+  for (const use of uses) {
+    const at = use.lastIndexOf("@");
+    if (at <= 0) {
+      return { ok: false, message: `${use}: expected "id@version" (for example acme/echo@1.0.0)` };
+    }
+    let digest: string;
+    try {
+      digest = (await registry.resolve(use.slice(0, at), use.slice(at + 1))).digest;
+    } catch (err) {
+      return { ok: false, message: `${use}: ${(err as Error).message}` };
+    }
+    const current = Object.hasOwn(components, use) ? components[use]!.digest : undefined;
+    if (current === undefined) {
+      components[use] = { digest };
+      added.push(use);
+    } else if (current === digest) {
+      unchanged.push(use);
+    } else if (update) {
+      components[use] = { digest };
+      updated.push(use);
+    } else {
+      refused.push(use);
+    }
+  }
+  if (refused.length > 0) {
+    return {
+      ok: false,
+      message: `${refused.join(", ")} changed since it was pinned in ${LOCKFILE_NAME}. Review the change, then run \`kampong lock --update\` to accept it.`,
+    };
+  }
+  if (added.length > 0 || updated.length > 0) {
+    // Resolving above took time; another `kampong lock` may have written meanwhile. Re-read the file
+    // now (no awaits between here and the rename) and apply only this run's changes to it, so
+    // concurrent runs cannot drop each other's pins.
+    let latest: Lockfile;
+    try {
+      latest = readLockfile(specPath);
+    } catch (err) {
+      return { ok: false, message: (err as Error).message };
+    }
+    const merged = { ...latest.components };
+    for (const use of [...added, ...updated]) merged[use] = components[use]!;
+    // Written to a temporary file and renamed, so a crash cannot leave a truncated lockfile.
+    const target = lockPathFor(specPath);
+    const temp = `${target}.${process.pid}.tmp`;
+    writeFileSync(temp, serializeLockfile({ version: 1, components: merged }));
+    renameSync(temp, target);
+  }
+  return { ok: true, added, unchanged, updated, none: false };
 }

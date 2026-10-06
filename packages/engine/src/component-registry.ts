@@ -39,6 +39,14 @@ export interface ComponentRegistry {
   list(): Promise<ComponentSummary[]>;
 }
 
+/** Pins as a fixed map, or a function read on each use. */
+export type PinSource =
+  Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
+
+export async function readPins(source: PinSource): Promise<Record<string, string>> {
+  return typeof source === "function" ? await source() : source;
+}
+
 export class ComponentResolutionError extends Error {
   constructor(message: string) {
     super(message);
@@ -60,8 +68,24 @@ interface Found extends ComponentSummary {
   manifest: ComponentManifest;
 }
 
+export interface DirectoryComponentRegistryOptions {
+  /**
+   * True for the first-party root that ships with kampong. Only that root may hold `kampong/*`
+   * components (ADR-0025); a user's own `components/` folder claiming the namespace is impersonation.
+   */
+  firstParty?: boolean;
+}
+
+/**
+ * Components live at `<root>/<namespace>/<name>/<version>/component.yaml`. A manifest anywhere else is
+ * reported, not registered: the path is how a reviewer finds a component, so it must say what the
+ * manifest says.
+ */
 export class DirectoryComponentRegistry implements ComponentRegistry {
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    private readonly options: DirectoryComponentRegistryOptions = {},
+  ) {}
 
   /** Manifests that exist but did not load, so a broken component is reported rather than hidden. */
   async problems(): Promise<ComponentProblem[]> {
@@ -92,9 +116,12 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
         same.length > 0
           ? `available: ${same.join(", ")}`
           : `no component with id ${id} under ${this.root}`;
+      // Say why, not just how many: a manifest in the wrong place or one that does not parse is the
+      // usual reason a component "is not found", and nothing else prints problems().
+      const shown = problems.slice(0, 3).map((p) => p.message);
       const broken =
         problems.length > 0
-          ? `; ${problems.length} manifest(s) failed to load, see problems()`
+          ? `; ${problems.length} manifest(s) were not loaded: ${shown.join(" | ")}${problems.length > 3 ? " | ..." : ""}`
           : "";
       throw new ComponentResolutionError(`component ${ref} was not found (${hint}${broken})`);
     }
@@ -153,7 +180,25 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
         try {
           const source = await readFile(join(dir, MANIFEST_FILE), "utf8");
           const parsed = parseComponentManifest(source);
-          if (parsed.manifest) {
+          const rel = relative(this.root, dir).split(sep).join("/");
+          const expected = parsed.manifest
+            ? `${parsed.manifest.id}/${parsed.manifest.version}`
+            : undefined;
+          if (parsed.manifest && rel !== expected) {
+            problems.push({
+              dir,
+              message: `${rel || "."}: ${parsed.manifest.id}@${parsed.manifest.version} must live at ${expected}`,
+            });
+          } else if (
+            parsed.manifest &&
+            !this.options.firstParty &&
+            parsed.manifest.id.startsWith("kampong/")
+          ) {
+            problems.push({
+              dir,
+              message: `${rel}: the kampong/* namespace is reserved for first-party components`,
+            });
+          } else if (parsed.manifest) {
             found.push({
               id: parsed.manifest.id,
               version: parsed.manifest.version,
@@ -236,7 +281,8 @@ export class InProcessModuleRunner implements ModuleRunner {
   constructor(
     private readonly registry: ComponentRegistry,
     /** `id@version` to the digest it must match (from kampong.lock). */
-    private readonly pins: Record<string, string> = {},
+    private readonly pins: PinSource = {},
+    private readonly options: { requirePins?: boolean } = {},
   ) {}
 
   async invoke(
@@ -246,7 +292,15 @@ export class InProcessModuleRunner implements ModuleRunner {
     ctx: ModuleContext,
   ): Promise<unknown> {
     const ref = `${manifest.id}@${manifest.version}`;
-    const expectedDigest = Object.hasOwn(this.pins, ref) ? this.pins[ref] : undefined;
+    const pins = await readPins(this.pins);
+    const expectedDigest = Object.hasOwn(pins, ref) ? pins[ref] : undefined;
+    // The dispatcher checked the pin when it resolved the call; a pin removed since then must not turn
+    // that into "no check".
+    if (this.options.requirePins && expectedDigest === undefined) {
+      throw new ComponentResolutionError(
+        `component ${ref} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
+      );
+    }
     const resolved = await this.registry.resolve(manifest.id, manifest.version, { expectedDigest });
     if (resolved.manifest.kind !== "module") {
       throw new ComponentResolutionError(`${ref} is not a module component`);

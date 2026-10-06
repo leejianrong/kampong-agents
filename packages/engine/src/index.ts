@@ -50,6 +50,7 @@ export {
 
 export {
   DirectoryComponentRegistry,
+  type DirectoryComponentRegistryOptions,
   InProcessModuleRunner,
   ComponentResolutionError,
   type ComponentRegistry,
@@ -57,6 +58,7 @@ export {
   type ComponentProblem,
   type ResolvedComponent,
   type ResolveOptions,
+  type PinSource,
 } from "./component-registry.js";
 
 export { Pacer, instantClock, realClock, type Clock } from "./pacing.js";
