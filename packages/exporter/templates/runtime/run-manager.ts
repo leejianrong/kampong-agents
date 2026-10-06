@@ -18,8 +18,8 @@ import { AgentRun, createAgentRun, type RunState } from "./run.js";
 import { postApprovalRequest, SlackApiError } from "./slack-approval.js";
 import { resolveEnvValue } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
-import type { RunEvent } from "./workflow.js";
 import type { ToolFetchImpl } from "./http-tool.js";
+import type { ComponentDispatcher, RunEvent } from "./workflow.js";
 import type { AgentSpec } from "./spec-types.js";
 
 // Holds the in-flight runs the exported project's webhook server
@@ -51,6 +51,8 @@ export interface StartRunResult {
 export interface RunManagerOptions {
   env?: NodeJS.ProcessEnv;
   fetchImpl?: ToolFetchImpl;
+  /** Runs `action: component` tools and the Slack/Gmail tools (KAN-1886); src/components.generated.ts builds it. */
+  components?: ComponentDispatcher;
   /** Test-only seam: overrides real BYOK/Mastra model resolution with a fake ModelClient. */
   createModel?: (spec: AgentSpec) => ModelClient;
   /** Test-only seam: how long a terminal run stays in `runs` before eviction (default 10 minutes). */
@@ -87,6 +89,7 @@ export class RunManager {
     const run = createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
+      components: this.options.components,
       model: this.options.createModel?.(spec),
     });
     run.on("event", (event: RunEvent) => {

@@ -6,9 +6,11 @@ import {
   DirectoryComponentRegistry,
   InProcessModuleRunner,
   LayeredComponentRegistry,
+  isFirstPartyId,
   type ComponentDispatcher,
   type ComponentRegistry,
 } from "@kampong/engine";
+import type { ExportComponent } from "@kampong/exporter";
 import {
   LOCKFILE_NAME,
   parseLockfile,
@@ -184,4 +186,42 @@ async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
     ),
     problems: [...firstParty.problems, ...user.problems],
   };
+}
+
+/**
+ * Resolves the components an export must carry: each is read from the project's folder or the
+ * first-party set, checked against its lockfile pin the way a run would, and handed over with its files.
+ * Exporting unpinned or changed code would ship what no run has been allowed to execute.
+ */
+export async function resolveExportComponents(
+  specPath: string,
+  refs: string[],
+  explicit: string[] = refs,
+): Promise<ExportComponent[]> {
+  const registry = registryFor(specPath);
+  // A component that is only there because a legacy Slack or Gmail tool desugars onto it never
+  // consults the lockfile, as in a run: a malformed or stale lockfile must not stop that export.
+  const named = new Set(explicit);
+  const lock = refs.some((ref) => named.has(ref)) ? readLockfile(specPath) : undefined;
+  const out: ExportComponent[] = [];
+  for (const ref of refs) {
+    const at = ref.lastIndexOf("@");
+    const id = ref.slice(0, at);
+    const pinned =
+      lock && named.has(ref) && Object.hasOwn(lock.components, ref)
+        ? lock.components[ref]!.digest
+        : undefined;
+    if (pinned === undefined && named.has(ref) && !isFirstPartyId(id)) {
+      throw new Error(
+        `component ${ref} is not pinned in ${LOCKFILE_NAME}; review it and run \`kampong lock\` before exporting`,
+      );
+    }
+    const resolved = await registry.resolve(id, ref.slice(at + 1), { expectedDigest: pinned });
+    out.push({
+      manifest: resolved.manifest,
+      digest: resolved.digest,
+      files: Object.fromEntries(resolved.files ?? []),
+    });
+  }
+  return out;
 }

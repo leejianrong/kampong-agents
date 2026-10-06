@@ -1,4 +1,5 @@
 import type { AgentSpec } from "@kampong/spec";
+import type { ExportComponent } from "./components.js";
 
 // The small set of plain project files every export needs besides
 // package.json and the entry point/runtime (PLAN.md Shape S6, SLICES.md V4
@@ -42,7 +43,10 @@ const ENV_VAR_PATTERN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
  * of which spec it's serving, but it's just as required for `approval_notifier`
  * to actually work, so it belongs in the same "set these before you run it" list.
  */
-export function collectRequiredEnvVars(spec: AgentSpec): string[] {
+export function collectRequiredEnvVars(
+  spec: AgentSpec,
+  components: ExportComponent[] = [],
+): string[] {
   const vars = new Set<string>();
   const add = (placeholder: string | undefined): void => {
     const match = placeholder ? ENV_VAR_PATTERN.exec(placeholder) : null;
@@ -55,6 +59,13 @@ export function collectRequiredEnvVars(spec: AgentSpec): string[] {
     }
     if (tool.action === "component") {
       for (const placeholder of Object.values(tool.secrets ?? {})) add(placeholder);
+      // A slot the tool does not remap is read from the component's own default variable.
+      const manifest = components.find(
+        (c) => `${c.manifest.id}@${c.manifest.version}` === tool.use,
+      )?.manifest;
+      for (const [slot, def] of Object.entries(manifest?.auth?.slots ?? {})) {
+        if (!Object.hasOwn(tool.secrets ?? {}, slot)) vars.add(def.env);
+      }
     }
   }
   add(spec.agent.approval_notifier?.token);
@@ -62,8 +73,11 @@ export function collectRequiredEnvVars(spec: AgentSpec): string[] {
   return [...vars];
 }
 
-export function buildEnvExample(spec: AgentSpec): string | undefined {
-  const vars = collectRequiredEnvVars(spec);
+export function buildEnvExample(
+  spec: AgentSpec,
+  components: ExportComponent[] = [],
+): string | undefined {
+  const vars = collectRequiredEnvVars(spec, components);
   if (vars.length === 0) return undefined;
   return [
     "# Copy to .env (gitignored) and fill in real values.",

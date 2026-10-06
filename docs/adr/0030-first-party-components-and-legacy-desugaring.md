@@ -44,5 +44,22 @@ Building it (KAN-1886) needed four choices the earlier ADRs left open.
 - The two legacy builders in `http-tool.ts` stay until every runtime that executes specs has
   components available; removing them is a later cleanup.
 - The canvas Component kind lists the first-party components next to the project's own.
-- The exporter vendors the interpreter and the components a spec uses (next change), so exports run the
-  same code paths.
+- The exporter vendors the interpreter and carries the components a spec uses (see below), so exports run
+  the same code paths.
+
+## Exports
+
+- The vendored runtime gains `component.ts`, `component-core.ts` (interfaces, the module runner, layering
+  and `StaticComponentRegistry`), `component-dispatch.ts` and `schema-validate.ts`. The directory scan
+  and the manifest parser stay in the engine; an export has no dependency on `@kampong/spec`, so it
+  receives manifests already parsed and linted.
+- `exportProject` takes the components the caller resolved (`options.components`) and writes each
+  component's files byte for byte under `components/<id>/<version>/`, plus `src/components.generated.ts`
+  with the manifests and digests baked in. It ships only what the spec uses (component tools, plus the
+  first-party components behind legacy Slack and Gmail tools) and refuses a file path that could leave a
+  component's directory.
+- `kampong export` resolves components the way a run does: a project component must be pinned in
+  `kampong.lock` and match its pin, so an export never ships code no run was allowed to execute.
+  First-party components need no pin.
+- An export does not re-verify `components/` against the baked digests when it starts. That, a signed
+  release and an SBOM are KAN-1837.

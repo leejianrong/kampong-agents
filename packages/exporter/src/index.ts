@@ -8,7 +8,6 @@ export const PACKAGE_NAME = "@kampong/exporter";
 export {
   exportProject,
   ExportDirectoryNotEmptyError,
-  ExportUnsupportedError,
   type ExportResult,
   type ExportProjectOptions,
 } from "./project.js";
@@ -18,6 +17,13 @@ export {
   ENGINE_DEPENDENCY_VERSIONS,
   SERVER_DEPENDENCY_VERSIONS,
 } from "./package-json.js";
+export {
+  requiredComponentRefs,
+  explicitComponentRefs,
+  digestOfFiles,
+  ExportMissingComponentsError,
+  type ExportComponent,
+} from "./components.js";
 export { buildEntryPointSource } from "./entry-point.js";
 export { buildServerEntryPointSource } from "./server-entry-point.js";
 export { buildDockerfile, buildDockerignore } from "./dockerfile.js";

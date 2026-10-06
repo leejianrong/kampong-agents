@@ -51,6 +51,13 @@ const VENDORED_FROM_ENGINE = [
   "slack-approval.ts",
   "redact.ts",
   "pacing.ts",
+  // KAN-1886: the component interpreter (the op-call pipeline, the baked registry and module runner,
+  // the dispatcher onto the workflow) is what lets an export run components and the desugared
+  // Slack and Gmail tools.
+  "component.ts",
+  "component-core.ts",
+  "component-dispatch.ts",
+  "schema-validate.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

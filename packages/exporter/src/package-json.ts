@@ -1,4 +1,5 @@
 import type { AgentSpec } from "@kampong/spec";
+import type { ExportComponent } from "./components.js";
 
 // Generated package.json for an exported project (PLAN.md Shape S6,
 // SLICES.md V4 KAN-1114/1116, ADR-0002, docs/adr/0010). Declares only real,
@@ -64,7 +65,26 @@ export function slugifyPackageName(id: string): string {
   return slug || "kampong-exported-agent";
 }
 
-export function buildPackageJson(spec: AgentSpec): Record<string, unknown> {
+export function buildPackageJson(
+  spec: AgentSpec,
+  components: ExportComponent[] = [],
+): Record<string, unknown> {
+  const dependencies: Record<string, string> = {
+    ...ENGINE_DEPENDENCY_VERSIONS,
+    ...SERVER_DEPENDENCY_VERSIONS,
+  };
+  // A module component imports its own pinned dependencies; the project installs them for it.
+  for (const { manifest } of components) {
+    if (manifest.kind !== "module") continue;
+    for (const [name, version] of Object.entries(manifest.deps ?? {})) {
+      if (Object.hasOwn(dependencies, name) && dependencies[name] !== version) {
+        throw new Error(
+          `Component ${manifest.id}@${manifest.version} needs ${name}@${version}, but this project already uses ${name}@${dependencies[name]}.`,
+        );
+      }
+      dependencies[name] = version;
+    }
+  }
   return {
     name: slugifyPackageName(spec.agent.id),
     version: "0.1.0",
@@ -77,7 +97,7 @@ export function buildPackageJson(spec: AgentSpec): Record<string, unknown> {
       build: "tsc -p tsconfig.json",
       typecheck: "tsc --noEmit -p tsconfig.json",
     },
-    dependencies: { ...ENGINE_DEPENDENCY_VERSIONS, ...SERVER_DEPENDENCY_VERSIONS },
+    dependencies,
     devDependencies: { ...DEV_DEPENDENCY_VERSIONS },
   };
 }

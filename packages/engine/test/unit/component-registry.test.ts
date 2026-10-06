@@ -6,7 +6,9 @@ import {
   ComponentResolutionError,
   DirectoryComponentRegistry,
   InProcessModuleRunner,
+  StaticComponentRegistry,
 } from "../../src/component-registry.js";
+import { parseComponentManifest } from "@kampong/spec";
 import { invokeOp } from "../../src/component.js";
 import { ToolCallError } from "../../src/http-tool.js";
 
@@ -366,5 +368,37 @@ describe("InProcessModuleRunner", () => {
     expect(err).toBeInstanceOf(ToolCallError);
     expect(String(err.message)).toMatch(/boom/);
     expect(String(err.message)).not.toContain("tok-123");
+  });
+});
+
+describe("StaticComponentRegistry (a registry baked in at export time)", () => {
+  const manifest = parseComponentManifest(REST()).manifest!;
+  const baked = new StaticComponentRegistry([
+    { manifest, digest: `sha256:${"a".repeat(64)}`, dir: "/project/components/acme/echo/1.0.0" },
+  ]);
+
+  it("resolves what was baked in and lists it", async () => {
+    expect((await baked.resolve("acme/echo", "1.0.0")).dir).toBe(
+      "/project/components/acme/echo/1.0.0",
+    );
+    expect((await baked.list()).map((c) => `${c.id}@${c.version}`)).toEqual(["acme/echo@1.0.0"]);
+  });
+
+  it("names what the project does include when something else is asked for", async () => {
+    await expect(baked.resolve("acme/other", "1.0.0")).rejects.toThrow(
+      /not included.*acme\/echo@1\.0\.0/,
+    );
+    await expect(baked.resolve("acme/echo", "2.0.0")).rejects.toBeInstanceOf(
+      ComponentResolutionError,
+    );
+  });
+
+  it("still checks an expected digest", async () => {
+    await expect(
+      baked.resolve("acme/echo", "1.0.0", { expectedDigest: `sha256:${"b".repeat(64)}` }),
+    ).rejects.toThrow(/digest/);
+    await expect(
+      baked.resolve("acme/echo", "1.0.0", { expectedDigest: `sha256:${"a".repeat(64)}` }),
+    ).resolves.toBeDefined();
   });
 });

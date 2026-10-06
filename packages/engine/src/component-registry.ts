@@ -1,63 +1,22 @@
 import { createHash } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
-import { dirname, extname, join, relative, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseComponentManifest, type ComponentManifest } from "@kampong/spec";
 import {
-  parseComponentManifest,
-  type ComponentManifest,
-  type ModuleComponentManifest,
-} from "@kampong/spec";
-import type { ModuleContext, ModuleRunner } from "./component.js";
+  ComponentResolutionError,
+  type ComponentRegistry,
+  type ComponentSummary,
+  type ResolvedComponent,
+  type ResolveOptions,
+} from "./component-core.js";
 
-// The component registry (KAN-1884, ADR-0025 and ADR-0029): turns the `id@version` a spec names into a
-// parsed manifest plus the digest of the exact bytes it was read from. The directory implementation
-// scans a components folder; the lockfile that records digests and the folder layout are KAN-1834, so
-// this only offers the check (`expectedDigest`).
+export * from "./component-core.js";
 
-export interface ResolvedComponent {
-  manifest: ComponentManifest;
-  /** `sha256:<hex>` over every file in the component directory (paths and contents). */
-  digest: string;
-  /** Absolute path of the component directory. */
-  dir: string;
-}
-
-export interface ComponentSummary {
-  id: string;
-  version: string;
-  dir: string;
-  title?: string;
-}
-
-export interface ResolveOptions {
-  /** A digest recorded earlier (kampong.lock); resolution fails if the bytes on disk no longer match. */
-  expectedDigest?: string;
-}
-
-export interface ComponentRegistry {
-  resolve(id: string, version: string, options?: ResolveOptions): Promise<ResolvedComponent>;
-  list(): Promise<ComponentSummary[]>;
-}
-
-/** `kampong/*` is reserved for the components that ship with kampong (ADR-0025). */
-export function isFirstPartyId(id: string): boolean {
-  return id.startsWith("kampong/");
-}
-
-/** Pins as a fixed map, or a function read on each use. */
-export type PinSource =
-  Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
-
-export async function readPins(source: PinSource): Promise<Record<string, string>> {
-  return typeof source === "function" ? await source() : source;
-}
-
-export class ComponentResolutionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ComponentResolutionError";
-  }
-}
+// The directory component registry (KAN-1884, ADR-0025 and ADR-0029): turns the `id@version` a spec
+// names into a parsed manifest plus the digest of the exact bytes it was read from, by scanning a
+// components folder laid out `<namespace>/<name>/<version>/` (KAN-1834). The interfaces, the module
+// runner and layering are in component-core.ts, which exports vendor.
 
 export interface ComponentProblem {
   dir: string;
@@ -196,7 +155,7 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
         );
       }
     }
-    return { manifest, digest, dir };
+    return { manifest, digest, dir, files };
   }
 
   private async scan(): Promise<{ found: Found[]; problems: ComponentProblem[] }> {
@@ -302,72 +261,6 @@ async function hashDirectory(dir: string): Promise<{ digest: string; files: Map<
   return { digest: `sha256:${hash.digest("hex")}`, files };
 }
 
-/**
- * Runs `kind: module` components by importing their entry in this process. It is not a sandbox: the
- * module gets the permission-checked `ctx` but could still reach Node directly, so only reviewed
- * modules should be installed (ADR-0026). Each call re-resolves the component, which re-hashes the
- * directory, so an entry edited after a pin fails the pin instead of running. Only the entry file
- * is re-imported when it changes (the URL carries its digest); a helper it imports stays cached
- * until the process restarts.
- */
-export class InProcessModuleRunner implements ModuleRunner {
-  constructor(
-    private readonly registry: ComponentRegistry,
-    /** `id@version` to the digest it must match (from kampong.lock). */
-    private readonly pins: PinSource = {},
-    private readonly options: { requirePins?: boolean } = {},
-  ) {}
-
-  async invoke(
-    manifest: ModuleComponentManifest,
-    op: string,
-    input: Record<string, unknown>,
-    ctx: ModuleContext,
-  ): Promise<unknown> {
-    const ref = `${manifest.id}@${manifest.version}`;
-    // First-party components need no pin, so a lockfile that cannot be read must not stop one (a legacy
-    // Slack tool never had a lockfile). Any other component still fails visibly.
-    const pins = isFirstPartyId(manifest.id)
-      ? await readPins(this.pins).catch(() => ({}) as Record<string, string>)
-      : await readPins(this.pins);
-    const expectedDigest = Object.hasOwn(pins, ref) ? pins[ref] : undefined;
-    // The dispatcher checked the pin when it resolved the call; a pin removed since then must not turn
-    // that into "no check".
-    if (this.options.requirePins && expectedDigest === undefined && !isFirstPartyId(manifest.id)) {
-      throw new ComponentResolutionError(
-        `component ${ref} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
-      );
-    }
-    const resolved = await this.registry.resolve(manifest.id, manifest.version, { expectedDigest });
-    if (resolved.manifest.kind !== "module") {
-      throw new ComponentResolutionError(`${ref} is not a module component`);
-    }
-    // Approval, egress and slot checks were made against the manifest the caller resolved. If the file
-    // has changed since, those checks describe a different component, so refuse rather than run it.
-    if (JSON.stringify(resolved.manifest) !== JSON.stringify(manifest)) {
-      throw new ComponentResolutionError(
-        `${ref}: the manifest changed on disk after it was resolved; re-run so its permissions are checked again`,
-      );
-    }
-    const entry = resolved.manifest.entry;
-    if (![".js", ".mjs", ".cjs"].includes(extname(entry))) {
-      throw new ComponentResolutionError(
-        `${ref}: entry ${entry} must be compiled JavaScript (.js or .mjs); TypeScript entries are not loaded directly`,
-      );
-    }
-    const url = `${pathToFileURL(join(resolved.dir, entry)).href}?digest=${resolved.digest.slice(7)}`;
-    const mod = (await import(url)) as { invoke?: unknown };
-    if (typeof mod.invoke !== "function") {
-      throw new ComponentResolutionError(
-        `${ref}: entry ${entry} does not export an invoke function`,
-      );
-    }
-    return await (
-      mod.invoke as (op: string, input: unknown, ctx: ModuleContext) => Promise<unknown>
-    )(op, input, ctx);
-  }
-}
-
 /** The components that ship with this package, under `packages/engine/components`. */
 export function createFirstPartyRegistry(): DirectoryComponentRegistry {
   // `src/` and `dist/` are both one level below the package root, so this holds for either.
@@ -375,25 +268,4 @@ export function createFirstPartyRegistry(): DirectoryComponentRegistry {
   // jsdom test environment, which Node's fileURLToPath rejects.
   const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "components");
   return new DirectoryComponentRegistry(dir, { firstParty: true });
-}
-
-/**
- * The user's components plus the ones that ship with kampong. A `kampong/*` id is answered by the
- * first-party registry alone and everything else by the user's, so a project's folder can never
- * stand in for, or shadow, a first-party component.
- */
-export class LayeredComponentRegistry implements ComponentRegistry {
-  constructor(
-    private readonly user: ComponentRegistry,
-    private readonly firstParty: ComponentRegistry,
-  ) {}
-
-  resolve(id: string, version: string, options?: ResolveOptions): Promise<ResolvedComponent> {
-    return (isFirstPartyId(id) ? this.firstParty : this.user).resolve(id, version, options);
-  }
-
-  async list(): Promise<ComponentSummary[]> {
-    const [user, firstParty] = await Promise.all([this.user.list(), this.firstParty.list()]);
-    return [...firstParty, ...user.filter((c) => !isFirstPartyId(c.id))];
-  }
 }

@@ -1,5 +1,6 @@
 import type { AgentSpec } from "@kampong/spec";
 import { collectRequiredEnvVars } from "./project-files.js";
+import type { ExportComponent } from "./components.js";
 
 // The exported project's README (SLICES.md V4 KAN-1114): documents the
 // one-way-export contract (ADR-0002) up front -- "hand-editing this and
@@ -7,8 +8,26 @@ import { collectRequiredEnvVars } from "./project-files.js";
 // PLAN.md-called-out requirement, not just a nice-to-have -- plus what env
 // vars a real run needs and how to run it.
 
-export function buildReadme(spec: AgentSpec): string {
-  const envVars = collectRequiredEnvVars(spec);
+export function buildReadme(spec: AgentSpec, components: ExportComponent[] = []): string {
+  const envVars = collectRequiredEnvVars(spec, components);
+  const componentsSection =
+    components.length === 0
+      ? []
+      : [
+          "## Components",
+          "",
+          "This project runs these components. Their files are copied, unchanged, under `components/`; " +
+            "the manifests and the digests recorded at export time are baked into `src/components.generated.ts`. " +
+            "The digests identify what was exported; this project does not re-check the files against them " +
+            "when it starts. Review the components like any dependency: a `kind: module` component is code " +
+            "that runs in this process, with access to the secrets it declares.",
+          "",
+          ...components.map(
+            (c) =>
+              `- \`${c.manifest.id}@${c.manifest.version}\` (${c.manifest.kind}) \`${c.digest}\``,
+          ),
+          "",
+        ];
   const slackApprovalSection =
     spec.agent.approval_notifier?.type === "slack"
       ? [
@@ -116,6 +135,7 @@ export function buildReadme(spec: AgentSpec): string {
     "Execution is on-demand: each webhook event drives one run on this process, there is no",
     "always-on per-workflow worker.",
     "",
+    ...componentsSection,
     ...slackApprovalSection,
     "## Deploying as a container",
     "",

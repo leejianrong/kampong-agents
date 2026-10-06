@@ -50,6 +50,96 @@ export interface Retry {
   max_delay_ms?: number;
 }
 
+// KAN-1832/1884 (mirrors packages/spec/src/component.ts): the component manifest, as the vendored
+// interpreter reads it. An exported project receives its manifests already parsed and linted, baked
+// into src/runtime/components.generated.ts, so only the shape travels, as with the spec itself.
+export type OpEffect = "read" | "write" | "destructive";
+
+export interface SchemaNode {
+  type: "string" | "number" | "integer" | "boolean" | "object" | "array";
+  title?: string;
+  description?: string;
+  default?: string | number | boolean;
+  enum?: (string | number | boolean)[];
+  format?: "multiline";
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  properties?: Record<string, SchemaNode>;
+  required?: string[];
+  items?: SchemaNode;
+}
+
+export interface ComponentAuthSlot {
+  env: string;
+  hosts: string[];
+  inject?: { header?: string; query?: string; template: string };
+}
+
+export interface ComponentConfigParam {
+  type: "string";
+  title?: string;
+  description?: string;
+  default?: string;
+  pattern?: string;
+}
+
+interface ComponentHeader {
+  id: string;
+  version: string;
+  title?: string;
+  description?: string;
+  license?: string;
+  permissions?: { egress: string[] };
+  auth?: { slots: Record<string, ComponentAuthSlot> };
+  config?: Record<string, ComponentConfigParam>;
+}
+
+export interface RestOp {
+  title?: string;
+  description?: string;
+  effect: OpEffect;
+  input?: SchemaNode;
+  request: {
+    method: HttpMethod;
+    url: string;
+    headers?: Record<string, string>;
+    query?: Record<string, string>;
+    body?: RequestBody;
+  };
+  slots?: string[];
+  response?: { mode: ResponseMode };
+  failure_when?: FailureRule[];
+  output?: SchemaNode;
+  pace?: { rps: number };
+  retry?: Retry;
+  fixture_key?: string[];
+}
+
+export interface ModuleOp {
+  title?: string;
+  description?: string;
+  effect: OpEffect;
+  input?: SchemaNode;
+  output?: SchemaNode;
+}
+
+export interface RestComponentManifest extends ComponentHeader {
+  kind: "rest";
+  ops: Record<string, RestOp>;
+}
+
+export interface ModuleComponentManifest extends ComponentHeader {
+  kind: "module";
+  entry: string;
+  deps?: Record<string, string>;
+  ops: Record<string, ModuleOp>;
+}
+
+export type ComponentManifest = RestComponentManifest | ModuleComponentManifest;
+
 // KAN-1430: tools are a discriminated union on `action` -- the generic HTTP
 // tool plus the Slack/Gmail connectors (credential is an ${ENV} token).
 export type Tool =
