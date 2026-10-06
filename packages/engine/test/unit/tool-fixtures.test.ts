@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -161,5 +162,94 @@ describe("createFixtureFetch -- secret redaction (BYOK convention, AGENTS.md)", 
       expect(contents).not.toContain(secretApiKey);
       expect(contents).toContain("[REDACTED]");
     }
+  });
+});
+
+// Regression (KAN-1829, ADR-0025): the fixture key used to be tool + method + URL only, so two
+// POSTs to one URL with different bodies (e.g. Slack chat.postMessage) shared one fixture.
+describe("createFixtureFetch -- request body is part of the fixture key", () => {
+  const URL_ONE = "https://slack.test/api/chat.postMessage";
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "kampong-fixtures-body-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Record one response per body, echoing the body so replay mix-ups are visible. */
+  async function recordEchoes(bodies: string[], secrets: string[] = []): Promise<void> {
+    const inner = (async (_input: unknown, init?: RequestInit) =>
+      new Response(JSON.stringify({ echoed: String(init?.body) }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+    const recordFetch = createFixtureFetch({
+      mode: "record",
+      fixturesDir: dir,
+      fetchImpl: inner,
+      secrets,
+    });
+    for (const body of bodies) {
+      await recordFetch(URL_ONE, { method: "POST", body }, { toolName: "post" });
+    }
+  }
+
+  async function replay(body: string | undefined, secrets: string[] = []): Promise<unknown> {
+    const replayFetch = createFixtureFetch({ mode: "replay", fixturesDir: dir, secrets });
+    const response = await replayFetch(URL_ONE, { method: "POST", body }, { toolName: "post" });
+    return response.json();
+  }
+
+  it("records and replays two POSTs to one URL with different bodies independently", async () => {
+    const first = JSON.stringify({ channel: "#a", text: "one" });
+    const second = JSON.stringify({ channel: "#b", text: "two" });
+    await recordEchoes([first, second]);
+
+    expect(readdirSync(dir)).toHaveLength(2);
+    expect(await replay(first)).toEqual({ echoed: first });
+    expect(await replay(second)).toEqual({ echoed: second });
+  });
+
+  it("treats JSON bodies that differ only in key order or whitespace as the same request", async () => {
+    await recordEchoes([JSON.stringify({ channel: "#a", text: "hi" })]);
+
+    const reordered = '{ "text": "hi",   "channel": "#a" }';
+    const replayed = (await replay(reordered)) as { echoed: string };
+
+    expect(JSON.parse(replayed.echoed)).toEqual({ channel: "#a", text: "hi" });
+  });
+
+  it("keeps the pre-existing key for a request with no body, so older fixtures still replay", async () => {
+    const legacyKey = createHash("sha256")
+      .update(`get_thing::GET::https://api.test/thing`)
+      .digest("hex")
+      .slice(0, 16);
+    const inner = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+    const recordFetch = createFixtureFetch({ mode: "record", fixturesDir: dir, fetchImpl: inner });
+
+    await recordFetch("https://api.test/thing", { method: "GET" }, { toolName: "get_thing" });
+
+    expect(readdirSync(dir)).toEqual([`get_thing.${legacyKey}.json`]);
+  });
+
+  it("redacts secrets in the body before keying, so a rotated secret still finds its fixture", async () => {
+    await recordEchoes([JSON.stringify({ token: "old-secret", text: "hi" })], ["old-secret"]);
+
+    const replayed = (await replay(JSON.stringify({ token: "new-secret", text: "hi" }), [
+      "new-secret",
+    ])) as { echoed: string };
+
+    expect(replayed.echoed).not.toContain("old-secret");
+    expect(readdirSync(dir)).toHaveLength(1);
+  });
+
+  it("fails visibly when only a different body was recorded", async () => {
+    await recordEchoes([JSON.stringify({ text: "one" })]);
+
+    await expect(replay(JSON.stringify({ text: "other" }))).rejects.toBeInstanceOf(
+      MissingFixtureError,
+    );
   });
 });
