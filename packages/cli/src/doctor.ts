@@ -1,7 +1,12 @@
 import { existsSync, readdirSync } from "node:fs";
 import { connect as netConnect } from "node:net";
 import { dirname, join } from "node:path";
-import { desugarLegacyTool, DirectoryComponentRegistry, isFirstPartyId } from "@kampong/engine";
+import {
+  desugarLegacyTool,
+  DirectoryComponentRegistry,
+  fixtureFilePrefix,
+  isFirstPartyId,
+} from "@kampong/engine";
 import {
   describePermissions,
   diffPermissions,
@@ -76,9 +81,13 @@ function dialTarget(entry: string, defaultPort = 443): { host: string; port: num
   return { host: match[1]!, port: match[2] ? Number(match[2]) : defaultPort };
 }
 
-function fixturePrefix(toolName: string): string {
-  // Mirrors the file name the record/replay layer uses (engine tool-fixtures.ts); a test pins it.
-  return `${toolName.replace(/[^A-Za-z0-9_-]/g, "_") || "tool"}.`;
+function urlTarget(raw: string): { host: string; port: number } | undefined {
+  try {
+    const url = new URL(raw);
+    return { host: url.hostname, port: Number(url.port) || (url.protocol === "https:" ? 443 : 80) };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function runDoctor(
@@ -105,16 +114,22 @@ export async function runDoctor(
 
   // Model.
   const model = spec.agent.model;
-  if (model) {
+  if (!model) {
+    add("fail", "spec", "agent.model is not configured; a run needs a provider, name and key");
+  } else if (model.provider === "ollama") {
+    // A local model needs no key (a stray api_key is ignored by a run, so it is not checked).
+    const target = urlTarget(model.base_url ?? "http://localhost:11434");
+    if (target) addHost(target);
+    else add("fail", "spec", `agent.model.base_url is not a valid URL`);
+  } else {
     const key = model.api_key ? PLACEHOLDER.exec(model.api_key) : null;
     if (key) checkEnv(key[1]!, `${model.provider} model key`);
-    if (model.provider === "ollama") {
-      const url = new URL(model.base_url ?? "http://localhost:11434");
-      addHost({
-        host: url.hostname,
-        port: Number(url.port) || (url.protocol === "https:" ? 443 : 80),
-      });
-    }
+    else
+      add(
+        "fail",
+        "spec",
+        `agent.model.api_key must be a \${ENV_VAR} placeholder for ${model.provider}`,
+      );
   }
 
   // Tools.
@@ -133,27 +148,31 @@ export async function runDoctor(
     return lock;
   };
   const used = new Set<string>();
+  const moduleKinds = new Map<string, string>();
+  const unprobed = new Set<string>();
   for (const declared of tools) {
     const legacy = desugarLegacyTool(declared);
     const tool = legacy ?? declared;
     if (tool.action === "http_request") {
+      // Only the request fields are resolved by the engine; a name or note is never read for ${VAR}.
       const names = new Set<string>();
-      envNamesIn(tool, names);
+      envNamesIn([tool.url, tool.headers, tool.query, tool.body], names);
       for (const name of [...names].sort()) checkEnv(name, `used by tool ${tool.name}`);
-      if (/^https?:\/\//.test(tool.url) && !tool.url.includes("{")) {
-        const url = new URL(tool.url.replace(/\$\{[^}]*\}/g, "x"));
-        addHost({
-          host: url.hostname,
-          port: Number(url.port) || (url.protocol === "https:" ? 443 : 80),
-        });
+      // A host supplied by an environment variable is not known here, so it is not dialed.
+      if (/^https?:\/\//.test(tool.url) && !tool.url.includes("${")) {
+        const target = urlTarget(tool.url);
+        if (target) addHost(target);
+        else add("fail", "spec", `tool ${tool.name}: url is not a valid URL`);
       }
       continue;
     }
     if (tool.action !== "component") continue;
-    const [id, version] = [
-      tool.use.slice(0, tool.use.lastIndexOf("@")),
-      tool.use.slice(tool.use.lastIndexOf("@") + 1),
-    ];
+    const at = tool.use.lastIndexOf("@");
+    if (at <= 0) {
+      add("fail", "component", `${tool.use}: expected "id@version" (for example acme/echo@1.0.0)`);
+      continue;
+    }
+    const [id, version] = [tool.use.slice(0, at), tool.use.slice(at + 1)];
     let manifest: ComponentManifest;
     let digest: string;
     try {
@@ -167,6 +186,7 @@ export async function runDoctor(
     if (!manifest.ops[tool.op]) {
       add("fail", "component", `${tool.use} has no op "${tool.op}" (used by tool ${tool.name})`);
     }
+    moduleKinds.set(tool.use, manifest.kind);
     if (!used.has(tool.use)) {
       used.add(tool.use);
       const permissions = permissionsOf(manifest);
@@ -213,25 +233,32 @@ export async function runDoctor(
           );
         }
       }
-      for (const host of permissions.egress) addHost(dialTarget(host));
+    }
+    for (const host of manifest.permissions?.egress ?? []) {
+      const resolved = host.replace(/\{\{\s*config\.([A-Za-z0-9_]+)\s*\}\}/g, (m, key: string) =>
+        tool.config && Object.hasOwn(tool.config, key) ? tool.config[key]! : m,
+      );
+      const target = dialTarget(resolved);
+      if (target) addHost(target);
+      else if (!host.includes("*")) unprobed.add(`${tool.use} egress ${resolved}`);
     }
     // The secret slots this call reads, after the spec's remaps.
     const op = manifest.ops[tool.op];
     const slots = manifest.auth?.slots ?? {};
     const names =
       manifest.kind === "rest"
-        ? ((op as { slots?: string[] } | undefined)?.slots ??
-          Object.keys(slots).filter((n) => slots[n]!.inject))
+        ? ((op as { slots?: string[] } | undefined)?.slots ?? Object.keys(slots)).filter(
+            (n) => slots[n]?.inject,
+          )
         : Object.keys(slots);
     for (const name of names) {
       const slot = slots[name];
       if (!slot) continue;
-      const remap =
-        tool.secrets && Object.hasOwn(tool.secrets, name)
-          ? PLACEHOLDER.exec(tool.secrets[name]!)
-          : null;
+      // As the engine reads a remap: `${NAME}`, or a bare name.
+      const remapped =
+        tool.secrets && Object.hasOwn(tool.secrets, name) ? tool.secrets[name]! : undefined;
       checkEnv(
-        remap ? remap[1]! : slot.env,
+        remapped === undefined ? slot.env : (/^\$\{(.+)\}$/.exec(remapped)?.[1] ?? remapped),
         `secret slot ${name} of ${tool.use}`,
         manifest.kind === "module" ? "warn" : "fail",
       );
@@ -259,12 +286,14 @@ export async function runDoctor(
         : tool.action === "component"
           ? `${tool.use.slice(0, tool.use.lastIndexOf("@"))}.${tool.op}`
           : tool.name;
-      const prefix = fixturePrefix(name);
+      const prefix = fixtureFilePrefix(name);
       if (files.some((f) => f.startsWith(prefix) && f.endsWith(".json"))) {
         add("pass", "fixtures", `tool ${declared.name} has a recorded fixture`);
       } else {
+        // A module that makes no request records nothing, so its missing fixture is not an error.
+        const quiet = tool.action === "component" && moduleKinds.get(tool.use) === "module";
         add(
-          "fail",
+          quiet ? "warn" : "fail",
           "fixtures",
           `tool ${declared.name} has no recorded fixture in ${dir}; record one with --tools record`,
         );
@@ -275,6 +304,8 @@ export async function runDoctor(
   // Reachability, only when asked: a plain TCP connection, no request is sent.
   if (options.online) {
     const connect = options.connect ?? tcpConnect;
+    for (const what of [...unprobed].sort())
+      add("warn", "network", `${what} depends on config that is not set here; not probed`);
     for (const target of [...hosts.values()].sort((a, b) => a.host.localeCompare(b.host))) {
       const problem = await connect(target.host, target.port);
       if (problem === undefined)

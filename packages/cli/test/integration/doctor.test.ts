@@ -303,4 +303,104 @@ ops:
     expect(parsed.ok).toBe(false);
     expect(parsed.checks.some((c) => c.status === "fail")).toBe(true);
   });
+
+  describe("review findings", () => {
+    const agent = (tools: string) => spec(tools, "- step: go\n      type: action\n      action: x");
+    it("fails when a cloud model has no usable key, and ignores a stray key on ollama", async () => {
+      writeFileSync(
+        path("agent.yaml"),
+        agent("    []").replace("    api_key: ${ANTHROPIC_API_KEY}\n", ""),
+      );
+      const noKey = await doctor([path("agent.yaml")]);
+      // The schema rejects it first, as a run would.
+      expect(noKey.code).toBe(EXIT_VALIDATION_FAILURE);
+      writeFileSync(
+        path("agent.yaml"),
+        agent("    []").replace("provider: anthropic", "provider: ollama"),
+      );
+      const ollama = await doctor([path("agent.yaml")], {});
+      expect(ollama.code).toBe(EXIT_SUCCESS);
+      expect(ollama.text).not.toContain("ANTHROPIC_API_KEY");
+    });
+
+    it("fails when the spec has no model at all", async () => {
+      const noModel = agent("    []").replace(/ {2}model:\n( {4}.*\n){3}/, "");
+      writeFileSync(path("agent.yaml"), noModel);
+      const { code, text } = await doctor([path("agent.yaml")], {});
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(text).toContain("agent.model is not configured");
+    });
+
+    it("does not read ${VAR} from a tool's name or non-request fields", async () => {
+      const tool = `    - name: greet
+      action: http_request
+      method: GET
+      url: https://api.example.com/x
+      extract: "$.\${NOT_AN_ENV_REF}"`;
+      writeFileSync(path("agent.yaml"), agent(tool));
+      const { code, text } = await doctor([path("agent.yaml")]);
+      expect(text).not.toContain("NOT_AN_ENV_REF");
+      expect(code).toBe(EXIT_SUCCESS);
+    });
+
+    it("reports a malformed tool URL as a failed check instead of crashing", async () => {
+      const tool = `    - name: greet
+      action: http_request
+      method: GET
+      url: "http://[bad"`;
+      writeFileSync(path("agent.yaml"), agent(tool));
+      const { code, text } = await doctor([path("agent.yaml")]);
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(text).toContain("not a valid URL");
+    });
+
+    it("rejects a --fixtures value that is really the next flag", async () => {
+      writeFileSync(path("agent.yaml"), agent("    []"));
+      expect((await doctor([path("agent.yaml"), "--fixtures", "--json"])).code).toBe(
+        EXIT_USAGE_ERROR,
+      );
+    });
+
+    it("only warns, in replay, about a module op that makes no request", async () => {
+      install(MANIFEST(), OK_CODE);
+      writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const { code, text } = await doctor([path("agent.yaml"), "--tools", "replay"]);
+      expect(code).toBe(EXIT_SUCCESS);
+      expect(text).toContain("no recorded fixture");
+    });
+
+    it("dials a templated egress host once the tool's config fills it in", async () => {
+      const manifest = `kind: rest
+id: acme/api
+version: 1.0.0
+permissions: { egress: ["{{ config.sub }}.example.com"] }
+config:
+  sub: { type: string }
+ops:
+  ping:
+    effect: read
+    request: { method: GET, url: "https://{{ config.sub }}.example.com/ping" }
+`;
+      mkdirSync(path("components/acme/api/1.0.0"), { recursive: true });
+      writeFileSync(path("components/acme/api/1.0.0/component.yaml"), manifest);
+      const tool = `    - name: greet
+      action: component
+      use: acme/api@1.0.0
+      op: ping
+      config: { sub: team1 }`;
+      writeFileSync(path("agent.yaml"), agent(tool));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const seen: string[] = [];
+      const { io } = capture();
+      await runCli(["doctor", path("agent.yaml"), "--online"], io, {
+        env: { ANTHROPIC_API_KEY: SECRET },
+        connect: async (host, port) => {
+          seen.push(`${host}:${port}`);
+          return undefined;
+        },
+      });
+      expect(seen).toContain("team1.example.com:443");
+    });
+  });
 });

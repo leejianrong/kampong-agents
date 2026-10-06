@@ -1090,7 +1090,7 @@ const DOCTOR_HELP_TEXT = `kampong doctor <spec>.yaml [--tools replay] [--fixture
 A read-only preflight of everything that would stop \`kampong run\`: each component the spec uses
 resolves, is pinned and unchanged, and passes its static check; each environment variable a
 model key, connector credential or request field needs is set (names are shown, values never);
-with --tools replay, each tool has a recorded fixture.
+with --tools replay, each tool has a recorded fixture (matched by tool name; the request itself\nis not compared).
 
 Options:
   --online       Also open a TCP connection to each host the spec's components and tools may
@@ -1130,7 +1130,7 @@ async function runDoctorCommand(
       toolsMode = value;
     } else if (arg === "--fixtures") {
       fixturesDir = args[++i];
-      if (!fixturesDir) {
+      if (!fixturesDir || fixturesDir.startsWith("-")) {
         io.stderr(`kampong doctor: --fixtures expects a directory\n${DOCTOR_HELP_TEXT}`);
         return EXIT_USAGE_ERROR;
       }
