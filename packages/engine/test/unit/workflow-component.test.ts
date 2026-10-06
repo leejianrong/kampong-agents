@@ -113,7 +113,8 @@ async function drive(
     return new Response(JSON.stringify({ id: "9", nested: { ok: true } }), { status: 200 });
   }) as unknown as typeof fetch;
   const events: RunEvent[] = [];
-  const { registry, componentPins, requirePins, runner, ...rest } = deps as {
+  const { registry, componentPins, requirePins, runner, runInput, ...rest } = deps as {
+    runInput?: string;
     registry?: ComponentRegistry;
     componentPins?: Record<string, string> | (() => Record<string, string>);
     requirePins?: boolean;
@@ -125,7 +126,7 @@ async function drive(
   const gen = runWorkflow(
     agent,
     { model, fetchImpl, env: { TICKETS_TOKEN: "tok" }, components, ...rest },
-    "hello",
+    runInput ?? "hello",
   );
   let next = await gen.next(undefined);
   while (!next.done) {
@@ -348,5 +349,44 @@ describe("pin enforcement (kampong.lock)", () => {
     });
     expect(seen).toHaveLength(0);
     expect(failed(events)?.error).toMatch(/kampong\.lock is not valid/);
+  });
+});
+
+describe("templated values for typed fields", () => {
+  it("converts a number or boolean that arrives as text from a {{ reference }}", async () => {
+    const { events, seen } = await drive(
+      spec({ op: "create", with: { title: "x", priority: "{{ input }}" } }),
+      { registry: registryOf(), runInput: "3" },
+    );
+    expect(failed(events)).toBeUndefined();
+    expect(JSON.parse(String(seen[0]!.init?.body))).toEqual({ title: "x", priority: 3 });
+  });
+
+  it("still rejects text that is not a number, naming the field", async () => {
+    const { events, seen } = await drive(
+      spec({ op: "create", with: { title: "x", priority: "{{ input }}" } }),
+      { registry: registryOf(), runInput: "high" },
+    );
+    expect(seen).toHaveLength(0);
+    expect(failed(events)?.error).toMatch(/priority must be an integer/);
+  });
+
+  it("does not turn text into a number for a string field", async () => {
+    const { seen } = await drive(spec({ op: "create", with: { title: "{{ input }}" } }), {
+      registry: registryOf(),
+      runInput: "42",
+    });
+    expect(JSON.parse(String(seen[0]!.init?.body)).title).toBe("42");
+  });
+
+  it("does not accept hex, exponent or padded text as a number", async () => {
+    for (const text of ["0x10", "1e3", " 3 ", ""]) {
+      const { events, seen } = await drive(
+        spec({ op: "create", with: { title: "x", priority: "{{ input }}" } }),
+        { registry: registryOf(), runInput: text },
+      );
+      expect(seen, text).toHaveLength(0);
+      expect(failed(events), text).toBeDefined();
+    }
   });
 });

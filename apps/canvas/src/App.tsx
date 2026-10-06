@@ -1,7 +1,9 @@
 import {
   specToGraph,
+  outputReferenceOptions,
   specWarnings,
   type AgentSpec,
+  type ComponentCatalog,
   type Guardrails,
   type Tool,
   type WorkflowStep,
@@ -58,6 +60,9 @@ export function App({
   // KAN-1831: a valid spec can still declare fields nothing executes (knowledge_base today).
   const [warnings, setWarnings] = useState<ReturnType<typeof specWarnings>>([]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
+  // KAN-1885: the installed components, fetched each time the tool form opens so a component added
+  // while the canvas is running shows up without a reload. Undefined where the server offers none.
+  const [catalog, setCatalog] = useState<ComponentCatalog | undefined>(undefined);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
   // e.g. the spec file was deleted/renamed out from under a running
@@ -115,6 +120,33 @@ export function App({
     });
     return unsubscribe;
   }, [api, refresh]);
+
+  useEffect(() => {
+    if (openForm !== "tool" || !api.listComponents) return;
+    let cancelled = false;
+    api
+      .listComponents()
+      .then((result) => {
+        if (!cancelled) setCatalog(result);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setCatalog({
+          components: [],
+          problems: [
+            `Could not list components: ${err instanceof Error ? err.message : String(err)}`,
+          ],
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, openForm]);
+
+  const references = useMemo(
+    () => (spec && catalog ? outputReferenceOptions(spec, catalog.components) : []),
+    [spec, catalog],
+  );
 
   const graph = useMemo(() => (spec ? specToGraph(spec) : { nodes: [], edges: [] }), [spec]);
 
@@ -240,6 +272,9 @@ export function App({
           {openForm === "tool" && (
             <div className="md3-app__overlay">
               <ToolForm
+                components={catalog?.components}
+                componentProblems={catalog?.problems}
+                references={references}
                 onSubmit={(tool) => void handleAddTool(tool)}
                 onCancel={() => setOpenForm(null)}
               />

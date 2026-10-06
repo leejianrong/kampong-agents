@@ -1,3 +1,4 @@
+import type { ComponentManifest, SchemaNode } from "@kampong/spec";
 import type { ComponentDispatcher, ComponentTool } from "./workflow.js";
 import { readPins } from "./component-registry.js";
 import { invokeOp, opRequiresApproval, type ModuleRunner } from "./component.js";
@@ -42,7 +43,7 @@ export function createComponentDispatcher({
       return {
         requiresApproval: opRequiresApproval(manifest, tool.op, tool.requires_approval),
         run: (input, runtime) =>
-          invokeOp(manifest, tool.op, input, {
+          invokeOp(manifest, tool.op, coerceTemplated(inputSchemaOf(manifest, tool.op), input), {
             config: tool.config,
             secretEnv: tool.secrets,
             runner,
@@ -51,4 +52,48 @@ export function createComponentDispatcher({
       };
     },
   };
+}
+
+function inputSchemaOf(manifest: ComponentManifest, op: string): SchemaNode | undefined {
+  return Object.hasOwn(manifest.ops, op) ? manifest.ops[op]!.input : undefined;
+}
+
+// A `{{ reference }}` in `with` always arrives as text, even where the op declares a number or a
+// boolean (the canvas form lets a numeric field take a reference). Convert a string to the declared
+// type only when it is unambiguous: plain decimal digits, or exactly true/false. Anything else is left
+// as text, so validation names the field instead of the engine guessing.
+const DECIMAL = /^-?\d+(\.\d+)?$/;
+
+function coerceValue(schema: SchemaNode, value: unknown): unknown {
+  if (typeof value === "string") {
+    if ((schema.type === "number" || schema.type === "integer") && DECIMAL.test(value)) {
+      return Number(value);
+    }
+    if (schema.type === "boolean" && (value === "true" || value === "false")) {
+      return value === "true";
+    }
+    return value;
+  }
+  if (
+    schema.type === "object" &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    return coerceTemplated(schema, value as Record<string, unknown>);
+  }
+  return value;
+}
+
+export function coerceTemplated(
+  schema: SchemaNode | undefined,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!schema?.properties) return input;
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [
+      key,
+      Object.hasOwn(schema.properties!, key) ? coerceValue(schema.properties![key]!, value) : value,
+    ]),
+  );
 }

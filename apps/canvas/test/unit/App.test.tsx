@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.js";
 
@@ -103,5 +103,58 @@ describe("App", () => {
 
     await waitFor(() => screen.getByText(/Trigger: Greeter/));
     expect(screen.queryByTestId("conflict-banner")).toBeNull();
+  });
+
+  describe("component forms (KAN-1885)", () => {
+    const CATALOG = {
+      components: [
+        {
+          id: "acme/tickets",
+          version: "1.0.0",
+          digest: `sha256:${"a".repeat(64)}`,
+          slots: [],
+          config: [],
+          ops: {
+            get: {
+              effect: "read",
+              input: { type: "object", properties: { id: { type: "string" } } },
+            },
+          },
+        },
+      ],
+      problems: [],
+    };
+
+    function stubFetch(components: () => Promise<Response>) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).endsWith("/api/components")
+            ? components()
+            : ({ ok: true, status: 200, json: async () => SPEC_RESPONSE } as Response),
+        ),
+      );
+    }
+
+    it("loads the installed components when the Add Tool form opens and offers the Component kind", async () => {
+      stubFetch(async () => ({ ok: true, status: 200, json: async () => CATALOG }) as Response);
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Component" }));
+      expect(screen.getByLabelText("Component")).toBeTruthy();
+      expect(screen.getByLabelText("id")).toBeTruthy();
+    });
+
+    it("explains a failure to list components instead of hiding the Component kind silently", async () => {
+      stubFetch(
+        async () => ({ ok: false, status: 500, json: async () => ({ error: "nope" }) }) as Response,
+      );
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Component" }));
+      expect(screen.getByText(/Could not list components: nope/)).toBeTruthy();
+    });
   });
 });
