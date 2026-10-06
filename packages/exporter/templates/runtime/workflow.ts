@@ -105,7 +105,10 @@ export function desugarLegacyTool(tool: Tool): ComponentTool | undefined {
 }
 
 /** What a component call needs from the engine at run time. */
-export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock">;
+export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock"> & {
+  /** The name the record/replay layer files this call under (the legacy tool's own name). */
+  toolName?: string;
+};
 
 export interface PreparedComponentCall {
   /** The op's effect decides this unless the spec set `requires_approval`. */
@@ -119,7 +122,11 @@ export interface PreparedComponentCall {
  * component (and fails if it cannot) before any approval is asked for.
  */
 export interface ComponentDispatcher {
-  prepare(tool: ComponentTool): Promise<PreparedComponentCall>;
+  /**
+   * `legacy` marks a Slack or Gmail tool desugared onto its first-party component: it runs without a
+   * lockfile pin and never reads the lockfile, as it did before components existed.
+   */
+  prepare(tool: ComponentTool, options?: { legacy?: boolean }): Promise<PreparedComponentCall>;
 }
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
@@ -374,7 +381,8 @@ async function* executeTool(
   // With a component dispatcher configured, the legacy Slack and Gmail kinds run as their first-party
   // components. Without one (a bare engine, an export that has not vendored components) they take the
   // original request builders.
-  const tool = (deps.components ? desugarLegacyTool(declared) : undefined) ?? declared;
+  const desugared = deps.components ? desugarLegacyTool(declared) : undefined;
+  const tool = desugared ?? declared;
   let needsApproval = tool.requires_approval ?? false;
   let prepared: PreparedComponentCall | undefined;
 
@@ -387,7 +395,7 @@ async function* executeTool(
           `Tool "${tool.name}" uses component ${tool.use}, but no component registry is configured.`,
         );
       }
-      prepared = await deps.components.prepare(tool);
+      prepared = await deps.components.prepare(tool, { legacy: desugared !== undefined });
     } catch (err) {
       yield { type: "failed", step: stepName, error: (err as Error).message };
       return undefined;
@@ -422,6 +430,7 @@ async function* executeTool(
         fetchImpl: deps.fetchImpl,
         pacer: deps.pacer,
         clock: deps.clock,
+        ...(desugared !== undefined && { toolName: declared.name }),
       });
       return { output: extractField(result, tool.extract) };
     }

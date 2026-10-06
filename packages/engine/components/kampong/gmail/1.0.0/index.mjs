@@ -34,11 +34,25 @@ export async function invoke(op, input, ctx) {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Gmail returned HTTP ${response.status}`);
+    throw new Error(describeFailure(response.status, text));
   }
   try {
     return JSON.parse(text);
   } catch {
     throw new Error("Gmail returned a response that is not JSON");
   }
+}
+
+// Google answers errors as { "error": { "status": "PERMISSION_DENIED", "message": "..." } }; say which,
+// so a missing scope is not just "HTTP 403". The runner scrubs any secret from the message.
+function describeFailure(status, text) {
+  let detail = "";
+  try {
+    const error = JSON.parse(text).error;
+    const parts = [error?.status, error?.message].filter((part) => typeof part === "string");
+    detail = parts.join(": ").slice(0, 300);
+  } catch {
+    // Not JSON: report the status alone.
+  }
+  return detail ? `Gmail returned HTTP ${status} (${detail})` : `Gmail returned HTTP ${status}`;
 }

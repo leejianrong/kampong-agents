@@ -266,3 +266,114 @@ describe("first-party behaviour that improves on the legacy path", () => {
     expect((err as Error).message).not.toContain("ya29");
   });
 });
+
+describe("legacy compatibility of the desugared path", () => {
+  const env = { SLACK_BOT_TOKEN: "xoxb-1", GMAIL_TOKEN: "ya29" };
+
+  async function toolNameSeenByFetch(tool: Tool): Promise<string | undefined> {
+    const registry = createFirstPartyRegistry();
+    const dispatcher = createComponentDispatcher({
+      registry,
+      runner: new InProcessModuleRunner(registry),
+    });
+    const prepared = await dispatcher.prepare(desugarLegacyTool(tool)!, { legacy: true });
+    let seen: string | undefined;
+    await prepared.run(
+      tool.action === "slack_post_message"
+        ? { channel: "#c", text: "t" }
+        : { to: "a@b.c", subject: "s", body: "b" },
+      {
+        env,
+        toolName: tool.name,
+        fetchImpl: async (_url, _init, ctx) => {
+          seen = ctx?.toolName;
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        },
+      },
+    );
+    return seen;
+  }
+
+  it("shows the record/replay layer the tool's own name, so fixtures recorded before still match", async () => {
+    expect(await toolNameSeenByFetch({ ...SLACK, name: "notify_support" })).toBe("notify_support");
+    expect(await toolNameSeenByFetch({ ...GMAIL, name: "send_reply" })).toBe("send_reply");
+  });
+
+  it("does not read the lockfile pins for a legacy tool, so a broken lockfile cannot break it", async () => {
+    const registry = createFirstPartyRegistry();
+    const dispatcher = createComponentDispatcher({
+      registry,
+      runner: new InProcessModuleRunner(registry, () => {
+        throw new Error("kampong.lock is not valid");
+      }),
+      pins: () => {
+        throw new Error("kampong.lock is not valid");
+      },
+      requirePins: true,
+    });
+    const prepared = await dispatcher.prepare(desugarLegacyTool(SLACK)!, { legacy: true });
+    await expect(
+      prepared.run(
+        { channel: "#c", text: "t" },
+        { env, fetchImpl: async () => new Response(JSON.stringify({ ok: true })) },
+      ),
+    ).resolves.toBeDefined();
+    const gmail = await dispatcher.prepare(desugarLegacyTool(GMAIL)!, { legacy: true });
+    await expect(
+      gmail.run(
+        { to: "a@b.c", subject: "s", body: "b" },
+        { env, fetchImpl: async () => new Response(JSON.stringify({ id: "1" })) },
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("still reports an unreadable lockfile for a component the project pins itself", async () => {
+    const registry = createFirstPartyRegistry();
+    const dispatcher = createComponentDispatcher({
+      registry,
+      pins: () => {
+        throw new Error("kampong.lock is not valid");
+      },
+      requirePins: true,
+    });
+    await expect(
+      dispatcher.prepare({
+        name: "x",
+        action: "component",
+        use: "acme/other@1.0.0",
+        op: "o",
+      }),
+    ).rejects.toThrow(/kampong\.lock is not valid/);
+  });
+
+  it("Gmail: reports Google's error status and message, without the token", async () => {
+    const registry = createFirstPartyRegistry();
+    const dispatcher = createComponentDispatcher({
+      registry,
+      runner: new InProcessModuleRunner(registry),
+    });
+    const prepared = await dispatcher.prepare(desugarLegacyTool(GMAIL)!, { legacy: true });
+    const err = await prepared
+      .run(
+        { to: "a@b.c", subject: "s", body: "b" },
+        {
+          env,
+          fetchImpl: async () =>
+            new Response(
+              JSON.stringify({
+                error: {
+                  status: "PERMISSION_DENIED",
+                  message: "Request had insufficient authentication scopes. token ya29",
+                },
+              }),
+              { status: 403 },
+            ),
+        },
+      )
+      .catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/403/);
+    expect((err as Error).message).toMatch(/PERMISSION_DENIED/);
+    expect((err as Error).message).toMatch(/insufficient authentication scopes/);
+    expect((err as Error).message).not.toContain("ya29");
+  });
+});

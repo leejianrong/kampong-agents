@@ -422,9 +422,13 @@ describe("legacy Slack and Gmail tools with a component dispatcher (KAN-1886)", 
       // No pins at all: first-party components do not need a lockfile entry.
       requirePins: true,
     });
-    const seen: { url: string; body?: unknown }[] = [];
-    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
-      seen.push({ url: String(url), body: init?.body });
+    const seen: { url: string; body?: unknown; toolName?: string }[] = [];
+    const fetchImpl = (async (
+      url: string | URL,
+      init?: RequestInit,
+      ctx?: { toolName?: string },
+    ) => {
+      seen.push({ url: String(url), body: init?.body, toolName: ctx?.toolName });
       return new Response(JSON.stringify(fetchBody), { status: 200 });
     }) as unknown as typeof fetch;
     const agent = {
@@ -462,6 +466,21 @@ describe("legacy Slack and Gmail tools with a component dispatcher (KAN-1886)", 
     expect(failed(events)).toBeUndefined();
     expect(seen[0]?.url).toBe("https://slack.com/api/chat.postMessage");
     expect(JSON.parse(String(seen[0]?.body))).toEqual({ channel: "#ops", text: "got hello" });
+  });
+
+  it("files the call under the tool's own name, for the record/replay layer, as before", async () => {
+    const slack = await runLegacy({
+      action: "slack_post_message",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#ops",
+      text: "x",
+    });
+    expect(slack.seen[0]?.toolName).toBe("t");
+    const gmail = await runLegacy(
+      { action: "gmail_send", token: "${GMAIL_TOKEN}", to: "a@b.c", subject: "s", body: "b" },
+      { id: "m" },
+    );
+    expect(gmail.seen[0]?.toolName).toBe("t");
   });
 
   it("runs gmail_send as kampong/gmail", async () => {

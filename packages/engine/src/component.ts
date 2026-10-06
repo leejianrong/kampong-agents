@@ -65,6 +65,11 @@ export interface InvokeOpOptions {
   pacer?: HttpToolCallOptions["pacer"];
   clock?: HttpToolCallOptions["clock"];
   runner?: ModuleRunner;
+  /**
+   * The name the mock/record fixture layer files this call under. Defaults to `id.op`; the legacy
+   * Slack and Gmail kinds pass the tool's own name so fixtures recorded before still match.
+   */
+  toolName?: string;
   /** Aborts a module op; by default one that runs longer than MODULE_TIMEOUT_MS is cancelled. */
   signal?: AbortSignal;
 }
@@ -380,7 +385,7 @@ function buildHttpTool(
   }
 
   return {
-    name: `${manifest.id}.${opName}`,
+    name: options.toolName ?? `${manifest.id}.${opName}`,
     action: "http_request",
     method: op.request.method,
     url,
@@ -518,7 +523,7 @@ async function runModule(
         url.toString(),
         { ...init, redirect: "manual" },
         {
-          toolName: `${manifest.id}.${opName}`,
+          toolName: options.toolName ?? `${manifest.id}.${opName}`,
           secrets: used,
         },
       );

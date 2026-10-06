@@ -325,7 +325,11 @@ export class InProcessModuleRunner implements ModuleRunner {
     ctx: ModuleContext,
   ): Promise<unknown> {
     const ref = `${manifest.id}@${manifest.version}`;
-    const pins = await readPins(this.pins);
+    // First-party components need no pin, so a lockfile that cannot be read must not stop one (a legacy
+    // Slack tool never had a lockfile). Any other component still fails visibly.
+    const pins = isFirstPartyId(manifest.id)
+      ? await readPins(this.pins).catch(() => ({}) as Record<string, string>)
+      : await readPins(this.pins);
     const expectedDigest = Object.hasOwn(pins, ref) ? pins[ref] : undefined;
     // The dispatcher checked the pin when it resolved the call; a pin removed since then must not turn
     // that into "no check".
