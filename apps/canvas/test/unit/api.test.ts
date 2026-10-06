@@ -120,7 +120,7 @@ describe("createApiClient", () => {
 
   it("listComponents reads /api/components", async () => {
     const body = { components: [], problems: ["x"] };
-    const fetchMock = vi.fn(async () => fakeResponse(200, body));
+    const fetchMock = vi.fn(async (_url: string) => fakeResponse(200, body));
     vi.stubGlobal("fetch", fetchMock);
     expect(await createApiClient("http://h").listComponents!()).toEqual(body);
     expect(fetchMock.mock.calls[0]![0]).toBe("http://h/api/components");
