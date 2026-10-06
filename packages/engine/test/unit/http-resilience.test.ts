@@ -322,3 +322,154 @@ describe("pace", () => {
     expect(sleeps).toEqual([100, 900]);
   });
 });
+
+// ---- Review findings on PR #89 -------------------------------------------------------------
+
+describe("review findings", () => {
+  const retry = { max: 3, backoff: "fixed" as const, base_ms: 10 };
+
+  it("retries a POST when the author marked the matching rule retryable", async () => {
+    const { clock } = fakeClock();
+    const responses = [() => json({ ok: false, error: "ratelimited" }), () => json({ ok: true })];
+    const fetchImpl = vi.fn(async () => responses.shift()!());
+    const t = tool({
+      method: "POST",
+      body: { json: { text: "hi" } },
+      retry,
+      failure_when: [{ path: "ok", equals: false, message_path: "error", retryable: true }],
+    });
+
+    await expect(
+      callHttpTool(t, {}, { fetchImpl, clock, pacer: new Pacer(clock) }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a POST on a rule that was not marked retryable", async () => {
+    const { clock } = fakeClock();
+    const fetchImpl = vi.fn(async () => json({ ok: false, error: "channel_not_found" }));
+    const t = tool({
+      method: "POST",
+      body: { json: {} },
+      retry,
+      failure_when: [{ path: "ok", equals: false, message_path: "error" }],
+    });
+
+    await failure(callHttpTool(t, {}, { fetchImpl, clock, pacer: new Pacer(clock) }));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a bad pattern on a hand-built tool as a ToolCallError naming the problem", async () => {
+    const t = tool({ failure_when: [{ path: "a", matches: "(" }] });
+
+    const error = await failure(callHttpTool(t, {}, { fetchImpl: async () => json({ a: "x" }) }));
+
+    expect(error.code).toBe("input");
+    expect(error.message).toMatch(/invalid pattern/);
+  });
+
+  it("truncates a huge failure reason", async () => {
+    const t = tool({ failure_when: [{ path: "error", exists: true, message_path: "error" }] });
+
+    const error = await failure(
+      callHttpTool(t, {}, { fetchImpl: async () => json({ error: "x".repeat(5000) }) }),
+    );
+
+    expect(error.message.length).toBeLessThan(600);
+    expect(error.message).toMatch(/\.\.\.$/);
+  });
+
+  it("ignores a blank Retry-After instead of reading it as zero seconds", async () => {
+    const { clock, sleeps } = fakeClock();
+    const responses = [
+      () => new Response("x", { status: 429, headers: { "retry-after": " " } }),
+      () => json({ ok: 1 }),
+    ];
+    const fetchImpl = vi.fn(async () => responses.shift()!());
+
+    await callHttpTool(
+      tool({ retry: { max: 2, backoff: "fixed", base_ms: 250 } }),
+      {},
+      { fetchImpl, clock, pacer: new Pacer(clock) },
+    );
+
+    expect(sleeps).toEqual([250]);
+  });
+
+  it("uses one path syntax for both extract and failure_when", async () => {
+    const body = { data: { items: [{ id: 7 }] }, "a b": { c: 1 } };
+    const fetchImpl = async () => json(body);
+
+    expect(await callHttpTool(tool({ extract: "data.items[0].id" }), {}, { fetchImpl })).toBe(7);
+    expect(await callHttpTool(tool({ extract: "data.items.0.id" }), {}, { fetchImpl })).toBe(7);
+    expect(await callHttpTool(tool({ extract: '["a b"].c' }), {}, { fetchImpl })).toBe(1);
+  });
+
+  it("treats a 200 with a non-JSON body as a retryable failure with context", async () => {
+    const { clock } = fakeClock();
+    const responses = [
+      () => new Response("<html>slow down</html>", { status: 200 }),
+      () => json({ ok: 1 }),
+    ];
+    const fetchImpl = vi.fn(async () => responses.shift()!());
+
+    const result = await callHttpTool(
+      tool({ retry }),
+      {},
+      { fetchImpl, clock, pacer: new Pacer(clock) },
+    );
+    expect(result).toEqual({ ok: 1 });
+
+    const bad = await failure(
+      callHttpTool(tool(), {}, { fetchImpl: async () => new Response("<html>", { status: 200 }) }),
+    );
+    expect(bad.message).toMatch(/fetch_prices/);
+    expect(bad.message).toMatch(/not valid JSON/);
+    expect(bad.retryable).toBe(true);
+  });
+
+  it("holds tools that share a host to the slowest declared rate", async () => {
+    const { clock, sleeps } = fakeClock({ advanceOnSleep: false });
+    const pacer = new Pacer(clock);
+
+    await pacer.wait("api.test", 1);
+    await pacer.wait("api.test", 10);
+
+    expect(sleeps).toEqual([1000]);
+  });
+});
+
+describe("workflow-level wiring (review finding)", () => {
+  it("an injected clock reaches callHttpTool through EngineDeps, so a retry never really sleeps", async () => {
+    const { runWorkflow } = await import("../../src/workflow.js");
+    const { clock, sleeps } = fakeClock();
+    const responses = [() => new Response("x", { status: 503 }), () => json({ ok: 1 })];
+    const fetchImpl = vi.fn(async () => responses.shift()!());
+    const spec = {
+      version: "1.0",
+      agent: {
+        id: "a",
+        name: "A",
+        role: "r",
+        goal: "g",
+        tools: [tool({ name: "call", retry: { max: 2, backoff: "fixed", base_ms: 40 } })],
+        workflow: [{ step: "go", type: "tool", tool: "call" }],
+      },
+    } as never;
+
+    const events = [];
+    const generator = runWorkflow(
+      spec,
+      { model: {} as never, fetchImpl, clock, pacer: new Pacer(clock) },
+      "input",
+    );
+    let next = await generator.next(undefined);
+    while (!next.done) {
+      events.push(next.value);
+      next = await generator.next(undefined);
+    }
+
+    expect(events.map((e) => (e as { type: string }).type)).toContain("completed");
+    expect(sleeps).toEqual([40]);
+  });
+});

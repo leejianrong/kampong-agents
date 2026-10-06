@@ -264,12 +264,8 @@ function buildHttpRequest(
 
 export function extractField(payload: unknown, path?: string): unknown {
   if (!path) return payload;
-  return path.split(".").reduce<unknown>((acc, key) => {
-    if (acc && typeof acc === "object" && key in (acc as Record<string, unknown>)) {
-      return (acc as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, payload);
+  // Same path syntax as failure_when (dotted keys, ["quoted keys"], [n] indexes).
+  return readResponsePath(payload, path);
 }
 
 // Context about which AgentSpec tool a call belongs to, passed alongside
@@ -339,7 +335,17 @@ function ruleFires(rule: FailureRule, body: unknown): boolean {
   }
   if (rule.equals !== undefined) return value === rule.equals;
   if (rule.matches !== undefined) {
-    return typeof value === "string" && new RegExp(rule.matches).test(value);
+    if (typeof value !== "string") return false;
+    try {
+      return new RegExp(rule.matches).test(value);
+    } catch {
+      // Spec validation rejects a bad pattern; this guards a hand-built tool.
+      throw new ToolCallError(
+        `failure_when rule has an invalid pattern: ${rule.matches}`,
+        "input",
+        false,
+      );
+    }
   }
   return false;
 }
@@ -354,7 +360,7 @@ function describeRule(rule: FailureRule): string {
 
 // Retry-After is either delta-seconds or an HTTP date.
 function parseRetryAfter(header: string | null, now: number): number | undefined {
-  if (header === null) return undefined;
+  if (header === null || header.trim() === "") return undefined;
   const seconds = Number(header);
   if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
   const date = Date.parse(header);
@@ -431,17 +437,36 @@ async function attemptHttpCall(
   if (request.responseMode === "bytes") {
     return Buffer.from(await response.arrayBuffer()).toString("base64");
   }
-  const body: unknown = await response.json();
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch (err) {
+    // A rate limiter or proxy often answers 200 with an HTML page; classify it like any other
+    // transient failure instead of surfacing a bare SyntaxError.
+    throw new ToolCallError(
+      redactString(
+        `Tool "${tool.name}" HTTP call to ${request.url} returned a body that is not valid JSON`,
+        request.secrets,
+      ),
+      "http",
+      true,
+      response.status,
+      undefined,
+      { cause: err },
+    );
+  }
   for (const rule of request.failureWhen ?? []) {
     if (!ruleFires(rule, body)) continue;
     const reason =
       rule.message_path !== undefined ? readResponsePath(body, rule.message_path) : undefined;
-    const detail =
+    const rawDetail =
       reason !== undefined && reason !== null
         ? typeof reason === "string"
           ? reason
           : JSON.stringify(reason)
         : describeRule(rule);
+    // A whole error payload or an HTML page must not become an enormous error message.
+    const detail = rawDetail.length > 300 ? `${rawDetail.slice(0, 300)}...` : rawDetail;
     throw new ToolCallError(
       redactString(
         `Tool "${tool.name}" HTTP call to ${request.url} reported a failure: ${detail}`,
@@ -463,6 +488,9 @@ const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
 function mayRetry(error: ToolCallError, method: string): boolean {
   if (!error.retryable) return false;
   if (error.code === "rate_limit") return true;
+  // An author who marks a rule `retryable: true` is stating that this response means the request was
+  // refused (an `ok:false, error:"ratelimited"` body), so that opt-in holds for any method.
+  if (error.code === "failure_when") return true;
   return ["GET", "HEAD", "PUT", "DELETE"].includes(method.toUpperCase());
 }
 

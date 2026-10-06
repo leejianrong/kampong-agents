@@ -179,6 +179,9 @@ export interface CreateAgentRunOptions {
   model?: ModelClient;
   /** Overrides the fetch used for HTTP *tool* calls -- e.g. the mock/record layer's createFixtureFetch (V3 KAN-1111). */
   fetchImpl?: EngineDeps["fetchImpl"];
+  /** Tool pacing and retry delays (KAN-1846); the CLI passes an instant clock when replaying fixtures. */
+  toolPacer?: EngineDeps["pacer"];
+  toolClock?: EngineDeps["clock"];
   /**
    * Overrides the fetch the *model* provider (e.g. the Ollama adapter, V3
    * KAN-1112) uses internally. Distinct from `fetchImpl` above -- tool
@@ -215,6 +218,8 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
   return new AgentRun(spec, {
     model,
     fetchImpl: options.fetchImpl,
+    pacer: options.toolPacer,
+    clock: options.toolClock,
     // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
     // key does (process.env by default), so an exported/deployed app just sets
     // e.g. SLACK_BOT_TOKEN in its environment.

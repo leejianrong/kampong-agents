@@ -9,6 +9,8 @@ import { parseSpec, specWarnings, type AgentSpec } from "@kampong/spec";
 import {
   createAgentRun,
   createFixtureFetch,
+  instantClock,
+  Pacer,
   type ModelClient,
   type RunEvent,
   type RunState,
@@ -761,7 +763,14 @@ async function runRunCommand(
 
   let run: ReturnType<typeof createAgentRun>;
   try {
-    run = createAgentRun(spec, { fetchImpl, model: testOptions.model, timeoutMs });
+    // Replaying recorded fixtures must not sit through real retry backoff or pacing delays.
+    const replayClock = toolsMode === "replay" ? instantClock : undefined;
+    run = createAgentRun(spec, {
+      fetchImpl,
+      model: testOptions.model,
+      timeoutMs,
+      ...(replayClock ? { toolClock: replayClock, toolPacer: new Pacer(replayClock) } : {}),
+    });
   } catch (err) {
     return reportExecutionFailure(err, json, io);
   }

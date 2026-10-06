@@ -17,14 +17,27 @@ export const realClock: Clock = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
+/** A clock that never waits: for replaying recorded fixtures, where real backoff delays only slow tests. */
+export const instantClock: Clock = {
+  now: () => Date.now(),
+  sleep: async () => {},
+};
+
 export class Pacer {
   private readonly nextSlot = new Map<string, number>();
+  private readonly slowestRps = new Map<string, number>();
 
   constructor(private readonly clock: Clock = realClock) {}
 
-  /** Resolves when the caller may send. Each caller claims the next free slot, so a burst queues. */
+  /**
+   * Resolves when the caller may send. Each caller claims the next free slot, so a burst queues.
+   * Tools that share a key (a host) are held to the slowest rate any of them declared, because the
+   * host's limit is one number that no single tool knows.
+   */
   async wait(key: string, rps: number): Promise<void> {
-    const interval = 1000 / rps;
+    const effective = Math.min(rps, this.slowestRps.get(key) ?? rps);
+    this.slowestRps.set(key, effective);
+    const interval = 1000 / effective;
     const now = this.clock.now();
     const slot = Math.max(now, this.nextSlot.get(key) ?? 0);
     this.nextSlot.set(key, slot + interval);
