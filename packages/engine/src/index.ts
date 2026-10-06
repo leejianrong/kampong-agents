@@ -83,6 +83,7 @@ export {
 
 export {
   createFixtureFetch,
+  fixtureFilePrefix,
   MissingFixtureError,
   type ToolFixtureMode,
   type CreateFixtureFetchOptions,

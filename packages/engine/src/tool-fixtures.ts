@@ -147,6 +147,11 @@ function fixtureKey(toolName: string, method: string, url: string, body?: string
     .slice(0, 16);
 }
 
+/** The start of every fixture file name for a tool (`<safe name>.`); `kampong doctor` looks for it. */
+export function fixtureFilePrefix(toolName: string): string {
+  return `${toolName.replace(/[^A-Za-z0-9_-]/g, "_") || "tool"}.`;
+}
+
 function fixturePathFor(
   fixturesDir: string,
   toolName: string,
@@ -154,8 +159,10 @@ function fixturePathFor(
   url: string,
   body?: string,
 ): string {
-  const safeName = toolName.replace(/[^A-Za-z0-9_-]/g, "_") || "tool";
-  return join(fixturesDir, `${safeName}.${fixtureKey(toolName, method, url, body)}.json`);
+  return join(
+    fixturesDir,
+    `${fixtureFilePrefix(toolName)}${fixtureKey(toolName, method, url, body)}.json`,
+  );
 }
 
 /**

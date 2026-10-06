@@ -51,7 +51,7 @@ export function readLockfile(specPath: string): Lockfile {
 }
 
 /** The project's components plus the first-party ones that ship with kampong. */
-function registryFor(specPath: string): ComponentRegistry {
+export function registryFor(specPath: string): ComponentRegistry {
   return new LayeredComponentRegistry(
     new DirectoryComponentRegistry(componentsDirFor(specPath)),
     createFirstPartyRegistry(),
