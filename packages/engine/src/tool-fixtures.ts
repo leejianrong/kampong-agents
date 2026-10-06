@@ -80,6 +80,13 @@ interface FixtureFile {
   requestBody?: string;
   status: number;
   body: unknown;
+  /**
+   * The exact response payload (KAN-1845), so text and binary responses replay byte for byte.
+   * Absent in fixtures recorded before response modes existed, which replay from `body` as JSON.
+   */
+  bodyRaw?: string;
+  bodyFormat?: "utf8" | "base64";
+  contentType?: string;
 }
 
 const REDACTED = "[REDACTED]";
@@ -196,28 +203,54 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
     const method = init?.method ?? "GET";
     const toolName = context.toolName;
     const requestBody = normalizedBody(init?.body, secrets);
-    const path = fixturePathFor(fixturesDir, toolName, method, url, requestBody);
+    // Keyed on the redacted URL so a rotated query-string secret still finds its fixture.
+    const path = fixturePathFor(
+      fixturesDir,
+      toolName,
+      method,
+      redactString(url, secrets),
+      requestBody,
+    );
 
     if (mode === "replay") {
       if (!existsSync(path)) {
         throw new MissingFixtureError(toolName, path, requestBody !== undefined);
       }
       const fixture = JSON.parse(readFileSync(path, "utf8")) as FixtureFile;
-      return new Response(JSON.stringify(fixture.body), {
-        status: fixture.status,
-        headers: { "content-type": "application/json" },
-      });
+      const headers = { "content-type": fixture.contentType ?? "application/json" };
+      if (fixture.bodyRaw !== undefined) {
+        const payload =
+          fixture.bodyFormat === "base64"
+            ? Buffer.from(fixture.bodyRaw, "base64")
+            : fixture.bodyRaw;
+        return new Response(payload, { status: fixture.status, headers });
+      }
+      return new Response(JSON.stringify(fixture.body), { status: fixture.status, headers });
     }
 
     // mode === "record"
     const response = await fetchImpl(input, init);
-    const cloned = response.clone();
+    const bytes = Buffer.from(await response.clone().arrayBuffer());
+    let bodyRaw: string;
+    let bodyFormat: "utf8" | "base64";
     let body: unknown;
     try {
-      body = await cloned.json();
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      bodyRaw = redactString(text, secrets);
+      bodyFormat = "utf8";
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
     } catch {
-      body = await cloned.text();
+      // Not valid UTF-8 (a binary payload): keep the exact bytes. A secret cannot be redacted out
+      // of base64, so a binary response must never be recorded from an endpoint that echoes one.
+      bodyRaw = bytes.toString("base64");
+      bodyFormat = "base64";
+      body = null;
     }
+    const contentType = response.headers.get("content-type") ?? undefined;
     const fixture: FixtureFile = {
       toolName,
       method,
@@ -225,6 +258,9 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
       ...(requestBody === undefined ? {} : { requestBody }),
       status: response.status,
       body: redactDeep(body, secrets),
+      bodyRaw,
+      bodyFormat,
+      ...(contentType === undefined ? {} : { contentType }),
     };
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(fixture, null, 2)}\n`);

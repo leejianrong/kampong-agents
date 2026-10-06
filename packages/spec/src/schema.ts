@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { requestOptionalFields } from "./request.js";
 
 // Trimmed single-agent AgentSpec (ADR-0001: no multi-agent/sub_agents field
 // in v1, but the shape below leaves room to add one later without breaking
@@ -36,6 +37,8 @@ export const toolSchema = z.discriminatedUnion("action", [
     action: z.literal("http_request"),
     method: httpMethodSchema,
     url: z.string().min(1),
+    // KAN-1845 (ADR-0029): headers, query, body and response mode, shared with connector manifests.
+    ...requestOptionalFields,
     requires_approval: z.boolean().optional(),
     extract: z.string().optional(),
   }),

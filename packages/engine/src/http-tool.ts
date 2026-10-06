@@ -43,11 +43,41 @@ export function resolveEnvValue(placeholder: string, env: NodeJS.ProcessEnv): st
   return value;
 }
 
+// KAN-1845: `${ENV_VAR}` anywhere inside a larger string (a header like "Bearer ${TOKEN}", a query
+// value, a body field). Each resolved value is pushed onto `secrets` so it is redacted from fixtures
+// and error messages. Run this on the author-written template BEFORE data references are
+// substituted: data (model output, a webhook body) is untrusted and must never be able to smuggle a
+// `${SOME_SECRET}` into a request.
+const ENV_IN_TEXT = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function resolveEnvInText(text: string, env: NodeJS.ProcessEnv, secrets: string[]): string {
+  return text.replace(ENV_IN_TEXT, (_match, name: string) => {
+    const value = env[name];
+    if (value === undefined || value === "") {
+      throw new Error(`Environment variable ${name} is not set (referenced in a request field).`);
+    }
+    secrets.push(value);
+    return value;
+  });
+}
+
+export function redactSecrets(text: string, secrets: string[]): string {
+  let result = text;
+  for (const secret of secrets) {
+    if (secret) result = result.split(secret).join("[REDACTED]");
+  }
+  return result;
+}
+
+export type ResponseMode = "json" | "text" | "bytes";
+
 export interface ToolRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
   body?: string;
+  /** How the response is read; defaults to JSON (the original behaviour). */
+  responseMode: ResponseMode;
   extract?: string;
   /** Resolved secret values (e.g. a bearer token) to keep out of any fixture. */
   secrets: string[];
@@ -70,13 +100,7 @@ export function buildToolRequest(
   const sub = (text: string) => substitutePlaceholders(text, params);
   switch (tool.action) {
     case "http_request":
-      return {
-        url: sub(tool.url),
-        method: tool.method,
-        headers: {},
-        extract: tool.extract,
-        secrets: [],
-      };
+      return buildHttpRequest(tool, sub, env);
     case "slack_post_message": {
       const token = resolveEnvValue(tool.token, env);
       return {
@@ -87,6 +111,7 @@ export function buildToolRequest(
           "Content-Type": "application/json; charset=utf-8",
         },
         body: JSON.stringify({ channel: sub(tool.channel), text: sub(tool.text) }),
+        responseMode: "json",
         extract: tool.extract,
         secrets: [token],
       };
@@ -106,11 +131,98 @@ export function buildToolRequest(
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ raw }),
+        responseMode: "json",
         extract: tool.extract,
         secrets: [token],
       };
     }
   }
+}
+
+type HttpRequestTool = Extract<Tool, { action: "http_request" }>;
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const lower = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lower);
+}
+
+function buildHttpRequest(
+  tool: HttpRequestTool,
+  sub: (text: string) => string,
+  env: NodeJS.ProcessEnv,
+): ToolRequest {
+  const secrets: string[] = [];
+  // Order matters (see ENV_IN_TEXT): resolve `${ENV}` in the author's template first, then
+  // substitute data references into the result.
+  const resolve = (text: string): string => sub(resolveEnvInText(text, env, secrets));
+
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tool.headers ?? {})) {
+    headers[name] = resolve(value);
+  }
+
+  let url = resolve(tool.url);
+  const query = Object.entries(tool.query ?? {});
+  if (query.length > 0) {
+    const encoded = query
+      .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(resolve(value))}`)
+      .join("&");
+    url += `${url.includes("?") ? "&" : "?"}${encoded}`;
+  }
+
+  const responseMode: ResponseMode = tool.response?.mode ?? "json";
+  if (tool.extract !== undefined && responseMode !== "json") {
+    throw new Error(
+      `Tool "${tool.name}" sets extract, which only applies to a json response (response mode is "${responseMode}").`,
+    );
+  }
+
+  let body: string | undefined;
+  if (tool.body !== undefined) {
+    if (tool.method === "GET") {
+      throw new Error(`Tool "${tool.name}" has a body, which a GET request cannot send.`);
+    }
+    if ("json" in tool.body) {
+      body = JSON.stringify(mapStrings(tool.body.json, resolve));
+      if (!hasHeader(headers, "content-type")) headers["Content-Type"] = "application/json";
+    } else if ("form" in tool.body) {
+      const form = new URLSearchParams();
+      for (const [name, value] of Object.entries(tool.body.form)) form.append(name, resolve(value));
+      body = form.toString();
+      if (!hasHeader(headers, "content-type")) {
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+      }
+    } else {
+      body = resolve(tool.body.raw);
+      if (!hasHeader(headers, "content-type")) {
+        headers["Content-Type"] = tool.body.content_type ?? "text/plain; charset=utf-8";
+      }
+    }
+  }
+
+  return {
+    url,
+    method: tool.method,
+    headers,
+    ...(body !== undefined ? { body } : {}),
+    responseMode,
+    extract: tool.extract,
+    secrets,
+  };
+}
+
+function mapStrings(value: unknown, fn: (text: string) => string): unknown {
+  if (typeof value === "string") return fn(value);
+  if (Array.isArray(value)) return value.map((entry) => mapStrings(entry, fn));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        mapStrings(entry, fn),
+      ]),
+    );
+  }
+  return value;
 }
 
 export function extractField(payload: unknown, path?: string): unknown {
@@ -185,15 +297,28 @@ export async function callHttpTool(
       { toolName: tool.name },
     );
   } catch (err) {
+    // The URL can carry a resolved query-string secret (KAN-1845), so it is redacted everywhere it
+    // is reported.
     throw new Error(
-      `Tool "${tool.name}" HTTP call to ${request.url} failed: ${(err as Error).message}`,
+      redactSecrets(
+        `Tool "${tool.name}" HTTP call to ${request.url} failed: ${(err as Error).message}`,
+        request.secrets,
+      ),
       { cause: err },
     );
   }
   if (!response.ok) {
     throw new Error(
-      `Tool "${tool.name}" HTTP call to ${request.url} failed: ${response.status} ${response.statusText}`,
+      redactSecrets(
+        `Tool "${tool.name}" HTTP call to ${request.url} failed: ${response.status} ${response.statusText}`,
+        request.secrets,
+      ),
     );
+  }
+  if (request.responseMode === "text") return response.text();
+  // Bytes are returned base64-encoded so the value stays a plain string in step outputs.
+  if (request.responseMode === "bytes") {
+    return Buffer.from(await response.arrayBuffer()).toString("base64");
   }
   const body: unknown = await response.json();
   return extractField(body, request.extract);

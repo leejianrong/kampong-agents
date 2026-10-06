@@ -25,6 +25,14 @@ export interface KnowledgeItem {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+// KAN-1845: the shared request description on `http_request` (mirrors packages/spec/src/request.ts).
+export type RequestBody =
+  | { json: Record<string, unknown> | unknown[] }
+  | { form: Record<string, string> }
+  | { raw: string; content_type?: string };
+
+export type ResponseMode = "json" | "text" | "bytes";
+
 // KAN-1430: tools are a discriminated union on `action` -- the generic HTTP
 // tool plus the Slack/Gmail connectors (credential is an ${ENV} token).
 export type Tool =
@@ -33,6 +41,10 @@ export type Tool =
       action: "http_request";
       method: HttpMethod;
       url: string;
+      headers?: Record<string, string>;
+      query?: Record<string, string>;
+      body?: RequestBody;
+      response?: { mode: ResponseMode };
       requires_approval?: boolean;
       extract?: string;
     }

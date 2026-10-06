@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { buildToolFromForm, type Tool } from "@kampong/spec";
+import { buildToolFromForm, parseKeyValueLines, type RequestBody, type Tool } from "@kampong/spec";
 
 // The "Add Tool" affordance (PLAN.md Affordances, Q12/R5): a structured
 // form, zero LLM calls. Validation/tool-building logic lives in
@@ -23,6 +23,13 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
   const [method, setMethod] = useState("GET");
   const [url, setUrl] = useState("");
   const [extract, setExtract] = useState("");
+  // KAN-1845: headers and query are one `name: value` / `name=value` per line.
+  const [headers, setHeaders] = useState("");
+  const [query, setQuery] = useState("");
+  const [bodyType, setBodyType] = useState<"none" | "json" | "form" | "raw">("none");
+  const [bodyContent, setBodyContent] = useState("");
+  const [bodyContentType, setBodyContentType] = useState("");
+  const [responseMode, setResponseMode] = useState<"json" | "text" | "bytes">("json");
   const [token, setToken] = useState("");
   const [channel, setChannel] = useState("");
   const [text, setText] = useState("");
@@ -30,6 +37,31 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
+
+  function buildBody(): { value?: RequestBody; error?: string } {
+    if (bodyType === "none") return {};
+    if (bodyType === "json") {
+      try {
+        const parsed: unknown = JSON.parse(bodyContent);
+        if (parsed === null || typeof parsed !== "object") {
+          return { error: "Body must be a JSON object or array." };
+        }
+        return { value: { json: parsed as Record<string, unknown> | unknown[] } };
+      } catch {
+        return { error: "Body is not valid JSON." };
+      }
+    }
+    if (bodyType === "form") {
+      const parsed = parseKeyValueLines(bodyContent, "=");
+      if (parsed.errors.length > 0) {
+        return { error: `Body ${parsed.errors[0]}` };
+      }
+      return { value: { form: parsed.values } };
+    }
+    return {
+      value: { raw: bodyContent, ...(bodyContentType && { content_type: bodyContentType }) },
+    };
+  }
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -54,7 +86,28 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
         ...(extract && { extract }),
       });
     } else {
-      result = buildToolFromForm({ name, method, url, ...(extract && { extract }) });
+      const parsedHeaders = parseKeyValueLines(headers, ":");
+      const parsedQuery = parseKeyValueLines(query, "=");
+      const body = buildBody();
+      const problems = [
+        ...parsedHeaders.errors.map((e) => `Headers ${e}`),
+        ...parsedQuery.errors.map((e) => `Query parameters ${e}`),
+        ...(body.error ? [body.error] : []),
+      ];
+      if (problems.length > 0) {
+        setErrors(problems);
+        return;
+      }
+      result = buildToolFromForm({
+        name,
+        method,
+        url,
+        headers: parsedHeaders.values,
+        query: parsedQuery.values,
+        ...(body.value && { body: body.value }),
+        ...(responseMode !== "json" && { response: { mode: responseMode } }),
+        ...(extract && { extract }),
+      });
     }
     if (!result.success || !result.tool) {
       setErrors(result.errors ?? ["Invalid tool definition"]);
@@ -122,6 +175,73 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Headers</span>
+            <textarea
+              className="md3-text-field"
+              rows={3}
+              placeholder={"Authorization: Bearer ${API_TOKEN}\nAccept: application/json"}
+              value={headers}
+              onChange={(e) => setHeaders(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Query parameters</span>
+            <textarea
+              className="md3-text-field"
+              rows={3}
+              placeholder={"symbol={{ input }}\napikey=${ALPHA_KEY}"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Body</span>
+            <select
+              className="md3-text-field"
+              value={bodyType}
+              onChange={(e) => setBodyType(e.target.value as typeof bodyType)}
+            >
+              <option value="none">None</option>
+              <option value="json">JSON</option>
+              <option value="form">Form (name=value lines)</option>
+              <option value="raw">Raw text</option>
+            </select>
+          </label>
+          {bodyType !== "none" && (
+            <label className="md3-field">
+              <span className="md3-field__label md3-label-large">Body content</span>
+              <textarea
+                className="md3-text-field"
+                rows={4}
+                value={bodyContent}
+                onChange={(e) => setBodyContent(e.target.value)}
+              />
+            </label>
+          )}
+          {bodyType === "raw" && (
+            <label className="md3-field">
+              <span className="md3-field__label md3-label-large">Content type</span>
+              <input
+                className="md3-text-field"
+                placeholder="text/plain"
+                value={bodyContentType}
+                onChange={(e) => setBodyContentType(e.target.value)}
+              />
+            </label>
+          )}
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Response</span>
+            <select
+              className="md3-text-field"
+              value={responseMode}
+              onChange={(e) => setResponseMode(e.target.value as typeof responseMode)}
+            >
+              <option value="json">JSON</option>
+              <option value="text">Text</option>
+              <option value="bytes">Bytes (base64)</option>
+            </select>
           </label>
         </>
       )}

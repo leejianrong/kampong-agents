@@ -124,6 +124,93 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "headers": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9!#$%&'*+.^_`|~-]+$"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "query": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "body": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "json": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              {
+                                "type": "array",
+                                "items": {}
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["json"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "form": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": ["form"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "raw": {
+                            "type": "string"
+                          },
+                          "content_type": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": ["raw"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "response": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": ["json", "text", "bytes"]
+                      }
+                    },
+                    "required": ["mode"],
+                    "additionalProperties": false
+                  },
                   "requires_approval": {
                     "type": "boolean"
                   },

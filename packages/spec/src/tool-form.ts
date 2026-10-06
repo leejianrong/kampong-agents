@@ -1,3 +1,4 @@
+import type { RequestBody, ResponseMode } from "./request.js";
 import { toolSchema, type Tool } from "./schema.js";
 
 // The "Add Tool" affordance (PLAN.md Affordances, Q12/R5): a structured
@@ -15,6 +16,12 @@ export interface HttpToolFormInput {
   name: string;
   method: string;
   url: string;
+  // KAN-1845: the shared request description. Empty values are dropped so a spec that does not use
+  // them serialises exactly as before.
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  body?: RequestBody;
+  response?: { mode: ResponseMode };
   requiresApproval?: boolean;
   extract?: string;
 }
@@ -79,6 +86,10 @@ export function buildToolFromForm(input: ToolFormInput): ToolFormResult {
       action: "http_request" as const,
       method: input.method,
       url: input.url,
+      ...(input.headers && Object.keys(input.headers).length > 0 && { headers: input.headers }),
+      ...(input.query && Object.keys(input.query).length > 0 && { query: input.query }),
+      ...(input.body !== undefined && { body: input.body }),
+      ...(input.response !== undefined && { response: input.response }),
     };
   }
 
@@ -87,4 +98,30 @@ export function buildToolFromForm(input: ToolFormInput): ToolFormResult {
     return { success: false, errors: result.error.issues.map((issue) => issue.message) };
   }
   return { success: true, tool: result.data };
+}
+
+export interface KeyValueLines {
+  values: Record<string, string>;
+  errors: string[];
+}
+
+/**
+ * Parses a textarea of `name<separator>value` lines (HTTP headers use ":", query parameters "=")
+ * into a record. Splits on the first separator only, so a value may itself contain it; blank lines
+ * are skipped; every malformed line is reported with its 1-based line number.
+ */
+export function parseKeyValueLines(text: string, separator: ":" | "="): KeyValueLines {
+  const values: Record<string, string> = {};
+  const errors: string[] = [];
+  text.split("\n").forEach((rawLine, index) => {
+    if (rawLine.trim() === "") return;
+    const at = rawLine.indexOf(separator);
+    const name = at === -1 ? "" : rawLine.slice(0, at).trim();
+    if (name === "") {
+      errors.push(`line ${index + 1}: expected "name${separator}value"`);
+      return;
+    }
+    values[name] = rawLine.slice(at + 1).trim();
+  });
+  return { values, errors };
 }
