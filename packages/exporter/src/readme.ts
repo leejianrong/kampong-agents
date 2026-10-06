@@ -17,8 +17,10 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
           "## Components",
           "",
           "This project runs these components. Their files are copied, unchanged, under `components/`; " +
-            "the manifests and digests are baked into `src/components.generated.ts`. Review them like any " +
-            "dependency: a `kind: module` component is code that runs in this process.",
+            "the manifests and the digests recorded at export time are baked into `src/components.generated.ts`. " +
+            "The digests identify what was exported; this project does not re-check the files against them " +
+            "when it starts. Review the components like any dependency: a `kind: module` component is code " +
+            "that runs in this process, with access to the secrets it declares.",
           "",
           ...components.map(
             (c) =>

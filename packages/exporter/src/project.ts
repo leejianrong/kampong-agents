@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentSpec } from "@kampong/spec";
 import { buildPackageJson } from "./package-json.js";
@@ -71,7 +71,7 @@ export function exportProject(
 ): ExportResult {
   // Checked first so nothing is written: a project that fails on its first tool call is worse than a
   // refused export.
-  const components = selectComponents(spec, options.components ?? []);
+  const components = selectComponents(spec, options.components);
   if (!options.force && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
     throw new ExportDirectoryNotEmptyError(outputDir);
   }
@@ -87,7 +87,7 @@ export function exportProject(
   const write = (relativePath: string, contents: string): void =>
     writeBytes(relativePath, contents);
 
-  write("package.json", `${JSON.stringify(buildPackageJson(spec), null, 2)}\n`);
+  write("package.json", `${JSON.stringify(buildPackageJson(spec, components), null, 2)}\n`);
   write("tsconfig.json", `${JSON.stringify(buildTsconfig(), null, 2)}\n`);
   write("README.md", buildReadme(spec, components));
   write(".gitignore", buildGitignore());
@@ -100,6 +100,12 @@ export function exportProject(
     write("src/components.generated.ts", buildComponentsModule(components));
     for (const component of components) {
       const { id, version } = component.manifest;
+      // A forced re-export replaces the component outright, so a file the new version no longer has
+      // cannot outlive the digest that no longer covers it. (id and version were validated.)
+      rmSync(join(outputDir, "components", ...id.split("/"), version), {
+        recursive: true,
+        force: true,
+      });
       for (const [path, contents] of Object.entries(component.files)) {
         writeBytes(join("components", ...id.split("/"), version, ...path.split("/")), contents);
       }

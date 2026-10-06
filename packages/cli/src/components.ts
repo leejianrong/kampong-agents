@@ -196,15 +196,22 @@ async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
 export async function resolveExportComponents(
   specPath: string,
   refs: string[],
+  explicit: string[] = refs,
 ): Promise<ExportComponent[]> {
   const registry = registryFor(specPath);
-  const lock = readLockfile(specPath);
+  // A component that is only there because a legacy Slack or Gmail tool desugars onto it never
+  // consults the lockfile, as in a run: a malformed or stale lockfile must not stop that export.
+  const named = new Set(explicit);
+  const lock = refs.some((ref) => named.has(ref)) ? readLockfile(specPath) : undefined;
   const out: ExportComponent[] = [];
   for (const ref of refs) {
     const at = ref.lastIndexOf("@");
     const id = ref.slice(0, at);
-    const pinned = Object.hasOwn(lock.components, ref) ? lock.components[ref]!.digest : undefined;
-    if (pinned === undefined && !isFirstPartyId(id)) {
+    const pinned =
+      lock && named.has(ref) && Object.hasOwn(lock.components, ref)
+        ? lock.components[ref]!.digest
+        : undefined;
+    if (pinned === undefined && named.has(ref) && !isFirstPartyId(id)) {
       throw new Error(
         `component ${ref} is not pinned in ${LOCKFILE_NAME}; review it and run \`kampong lock\` before exporting`,
       );

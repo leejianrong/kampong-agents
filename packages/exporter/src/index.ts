@@ -19,6 +19,8 @@ export {
 } from "./package-json.js";
 export {
   requiredComponentRefs,
+  explicitComponentRefs,
+  digestOfFiles,
   ExportMissingComponentsError,
   type ExportComponent,
 } from "./components.js";

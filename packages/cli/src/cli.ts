@@ -27,6 +27,7 @@ import {
   ExportDirectoryNotEmptyError,
   ExportMissingComponentsError,
   requiredComponentRefs,
+  explicitComponentRefs,
 } from "@kampong/exporter";
 import { createDevServer } from "./server.js";
 import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
@@ -965,7 +966,11 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
 
   let components: Awaited<ReturnType<typeof resolveExportComponents>>;
   try {
-    components = await resolveExportComponents(specPath, requiredComponentRefs(spec));
+    components = await resolveExportComponents(
+      specPath,
+      requiredComponentRefs(spec),
+      explicitComponentRefs(spec),
+    );
   } catch (err) {
     io.stderr(`kampong export: ${(err as Error).message}`);
     return EXIT_EXECUTION_FAILURE;

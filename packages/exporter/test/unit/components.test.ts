@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseComponentManifest, type AgentSpec } from "@kampong/spec";
 import {
+  digestOfFiles,
   buildDockerfile,
   buildEntryPointSource,
   buildServerEntryPointSource,
@@ -66,15 +67,18 @@ ops:
     input: { type: object, properties: { id: { type: string } } }
 `;
 
+const TICKETS_FILES = {
+  "component.yaml": Buffer.from(TICKETS),
+  "index.mjs": Buffer.from("export async function invoke() { return { ok: true }; }\n"),
+};
+const digestOf = (files: Record<string, Buffer>): string => digestOfFiles(files);
+
 function ticketsComponent(overrides: Partial<ExportComponent> = {}): ExportComponent {
   const manifest = parseComponentManifest(TICKETS).manifest!;
   return {
     manifest,
-    digest: `sha256:${"a".repeat(64)}`,
-    files: {
-      "component.yaml": Buffer.from(TICKETS),
-      "index.mjs": Buffer.from("export async function invoke() { return { ok: true }; }\n"),
-    },
+    digest: digestOf(TICKETS_FILES),
+    files: TICKETS_FILES,
     ...overrides,
   };
 }
@@ -109,13 +113,21 @@ describe("exportProject with components", () => {
   const out = () => join(dir, "out");
 
   it("refuses, naming what is missing, and writes nothing", () => {
-    expect(() => exportProject(specWith([COMPONENT_TOOL, SLACK_TOOL]), out())).toThrow(
+    const spec = specWith([COMPONENT_TOOL, SLACK_TOOL]);
+    expect(() => exportProject(spec, out(), { components: [] })).toThrow(
       ExportMissingComponentsError,
     );
-    expect(() => exportProject(specWith([COMPONENT_TOOL, SLACK_TOOL]), out())).toThrow(
+    expect(() => exportProject(spec, out(), { components: [] })).toThrow(
       /acme\/tickets@1\.0\.0.*kampong\/slack@1\.0\.0/s,
     );
+    expect(() => exportProject(spec, out())).toThrow(/acme\/tickets@1\.0\.0/);
     expect(existsSync(out())).toBe(false);
+  });
+
+  it("still exports a legacy-only spec when no components are supplied, as before components existed", () => {
+    exportProject(specWith([SLACK_TOOL, GMAIL_TOOL]), out());
+    expect(existsSync(join(out(), "src", "components.generated.ts"))).toBe(false);
+    expect(existsSync(join(out(), "components"))).toBe(false);
   });
 
   it("copies each component's files byte for byte under components/<id>/<version>/", () => {
@@ -129,7 +141,7 @@ describe("exportProject with components", () => {
     exportProject(specWith([COMPONENT_TOOL]), out(), { components: [ticketsComponent()] });
     const generated = readFileSync(join(out(), "src", "components.generated.ts"), "utf8");
     expect(generated).toContain("acme/tickets");
-    expect(generated).toContain(`sha256:${"a".repeat(64)}`);
+    expect(generated).toContain(digestOf(TICKETS_FILES));
     expect(generated).toContain("StaticComponentRegistry");
     expect(generated).toContain("InProcessModuleRunner");
     for (const file of ["index.ts", "server.ts"]) {
@@ -146,7 +158,72 @@ describe("exportProject with components", () => {
     const readme = readFileSync(join(out(), "README.md"), "utf8");
     expect(readme).toContain("## Components");
     expect(readme).toContain(`acme/tickets@1.0.0`);
-    expect(readme).toContain(`sha256:${"a".repeat(64)}`);
+    expect(readme).toContain(digestOf(TICKETS_FILES));
+  });
+
+  it("refuses a digest that does not describe the files, so the README and baked digest cannot lie", () => {
+    const wrong = ticketsComponent({ digest: `sha256:${"b".repeat(64)}` });
+    expect(() => exportProject(specWith([COMPONENT_TOOL]), out(), { components: [wrong] })).toThrow(
+      /digest/,
+    );
+    expect(existsSync(out())).toBe(false);
+  });
+
+  it("refuses a manifest that is not the one in the component's own files", () => {
+    const other = parseComponentManifest(
+      TICKETS.replaceAll("tickets.example.test", "evil.example.test"),
+    ).manifest!;
+    const forged = ticketsComponent({ manifest: other });
+    expect(() =>
+      exportProject(specWith([COMPONENT_TOOL]), out(), { components: [forged] }),
+    ).toThrow(/manifest/);
+  });
+
+  it("removes a component's old files on a forced re-export, so none outlives the digest", () => {
+    exportProject(specWith([COMPONENT_TOOL]), out(), { components: [ticketsComponent()] });
+    const stale = join(out(), "components", "acme", "tickets", "1.0.0", "old-helper.mjs");
+    writeFileSync(stale, "export const old = true;\n");
+    exportProject(specWith([COMPONENT_TOOL]), out(), {
+      components: [ticketsComponent()],
+      force: true,
+    });
+    expect(existsSync(stale)).toBe(false);
+    expect(existsSync(join(out(), "components", "acme", "tickets", "1.0.0", "index.mjs"))).toBe(
+      true,
+    );
+  });
+
+  it("adds a module component's pinned deps to the project's package.json", () => {
+    const manifest = parseComponentManifest(
+      TICKETS.replace("entry: ./index.mjs", "entry: ./index.mjs\ndeps:\n  left-pad: 1.3.0"),
+    ).manifest!;
+    const files = {
+      "component.yaml": Buffer.from(
+        TICKETS.replace("entry: ./index.mjs", "entry: ./index.mjs\ndeps:\n  left-pad: 1.3.0"),
+      ),
+      "index.mjs": Buffer.from("export async function invoke() { return 1; }\n"),
+    };
+    const component = { manifest, digest: digestOf(files), files };
+    exportProject(specWith([COMPONENT_TOOL]), out(), { components: [component] });
+    const pkg = JSON.parse(readFileSync(join(out(), "package.json"), "utf8"));
+    expect(pkg.dependencies["left-pad"]).toBe("1.3.0");
+    expect(pkg.dependencies["zod"]).toBeDefined();
+  });
+
+  it("refuses a component dependency that would change one the runtime pins", () => {
+    const text = TICKETS.replace("entry: ./index.mjs", "entry: ./index.mjs\ndeps:\n  zod: 3.0.0");
+    const files = {
+      "component.yaml": Buffer.from(text),
+      "index.mjs": Buffer.from("export async function invoke() { return 1; }\n"),
+    };
+    const component = {
+      manifest: parseComponentManifest(text).manifest!,
+      digest: digestOf(files),
+      files,
+    };
+    expect(() =>
+      exportProject(specWith([COMPONENT_TOOL]), out(), { components: [component] }),
+    ).toThrow(/zod/);
   });
 
   it("ships only the components the spec uses", () => {

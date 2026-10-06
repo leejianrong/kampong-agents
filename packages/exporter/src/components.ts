@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import {
   componentIdSchema,
+  parseComponentManifest,
   exactVersionSchema,
   type AgentSpec,
   type ComponentManifest,
@@ -24,15 +26,40 @@ const LEGACY_COMPONENTS = {
 } as const;
 
 /** Every `id@version` the spec needs: its component tools, and the first-party ones its legacy Slack and Gmail tools run on. */
-export function requiredComponentRefs(spec: AgentSpec): string[] {
+export function requiredComponentRefs(
+  spec: AgentSpec,
+  options: { legacy?: boolean } = {},
+): string[] {
   const refs = new Set<string>();
   for (const tool of spec.agent.tools ?? []) {
     if (tool.action === "component") refs.add(tool.use);
-    else if (tool.action === "slack_post_message" || tool.action === "gmail_send") {
+    else if (
+      options.legacy !== false &&
+      (tool.action === "slack_post_message" || tool.action === "gmail_send")
+    ) {
       refs.add(LEGACY_COMPONENTS[tool.action]);
     }
   }
   return [...refs].sort();
+}
+
+/** The `id@version` of every component the spec names itself with `action: component`. */
+export function explicitComponentRefs(spec: AgentSpec): string[] {
+  return requiredComponentRefs(spec, { legacy: false });
+}
+
+/**
+ * The digest of a component's files, computed the way the engine's registry does it (paths and contents,
+ * sorted), so an export can check that what it was handed is what the digest says.
+ */
+export function digestOfFiles(files: Record<string, string | Uint8Array>): string {
+  const hash = createHash("sha256");
+  for (const path of Object.keys(files).sort()) {
+    const content = files[path]!;
+    const bytes = typeof content === "string" ? Buffer.from(content) : Buffer.from(content);
+    hash.update(`${path}\0${createHash("sha256").update(bytes).digest("hex")}\n`);
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 export const refOf = (c: ExportComponent): string => `${c.manifest.id}@${c.manifest.version}`;
@@ -55,10 +82,15 @@ export function isSafeRelativePath(path: string): boolean {
 }
 
 /** Picks the components the spec needs out of what was supplied, and checks each is safe to write. */
-export function selectComponents(spec: AgentSpec, supplied: ExportComponent[]): ExportComponent[] {
-  const needed = requiredComponentRefs(spec);
+export function selectComponents(
+  spec: AgentSpec,
+  supplied: ExportComponent[] | undefined,
+): ExportComponent[] {
+  // Without any components supplied, a legacy Slack or Gmail tool exports as it did before components
+  // existed (it runs on its own request builder); a component tool always needs its component.
+  const needed = requiredComponentRefs(spec, { legacy: supplied !== undefined });
   if (needed.length === 0) return [];
-  const byRef = new Map(supplied.map((c) => [refOf(c), c]));
+  const byRef = new Map((supplied ?? []).map((c) => [refOf(c), c]));
   const missing = needed.filter((ref) => !byRef.has(ref));
   if (missing.length > 0) throw new ExportMissingComponentsError(missing);
   const chosen = needed.map((ref) => byRef.get(ref)!);
@@ -78,6 +110,24 @@ export function selectComponents(spec: AgentSpec, supplied: ExportComponent[]): 
           `Refusing to export ${id}@${version}: unsafe file path ${JSON.stringify(path)} in the component.`,
         );
       }
+    }
+    // What is baked in and printed must describe what is copied: the digest must be the files' digest,
+    // and the manifest the one in the component's own component.yaml.
+    const actual = digestOfFiles(component.files);
+    if (actual !== component.digest) {
+      throw new Error(
+        `Refusing to export ${id}@${version}: its digest ${component.digest} does not match its files (${actual}).`,
+      );
+    }
+    const manifestFile = component.files["component.yaml"];
+    const parsed =
+      manifestFile === undefined
+        ? undefined
+        : parseComponentManifest(Buffer.from(manifestFile).toString("utf8")).manifest;
+    if (!parsed || JSON.stringify(parsed) !== JSON.stringify(component.manifest)) {
+      throw new Error(
+        `Refusing to export ${id}@${version}: its manifest is not the one in the component's own component.yaml.`,
+      );
     }
   }
   return chosen;
