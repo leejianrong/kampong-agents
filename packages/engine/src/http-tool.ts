@@ -139,6 +139,14 @@ export function buildToolRequest(
   switch (tool.action) {
     case "http_request":
       return buildHttpRequest(tool, sub, env);
+    case "component":
+      // A component call needs its manifest and runner, so it goes through invokeOp (component.ts),
+      // never through this builder.
+      throw new ToolCallError(
+        `Tool "${tool.name}" is a component call and must run through the component registry`,
+        "input",
+        false,
+      );
     case "slack_post_message": {
       const token = resolveEnvValue(tool.token, env);
       return {

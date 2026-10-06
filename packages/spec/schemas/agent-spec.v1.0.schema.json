@@ -298,6 +298,61 @@
                   },
                   "action": {
                     "type": "string",
+                    "const": "component"
+                  },
+                  "use": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*\\/[a-z0-9]+(?:-[a-z0-9]+)*@\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$"
+                  },
+                  "op": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "with": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "secrets": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+                    }
+                  },
+                  "requires_approval": {
+                    "type": "boolean"
+                  },
+                  "extract": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "action", "use", "op"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
                     "const": "slack_post_message"
                   },
                   "token": {

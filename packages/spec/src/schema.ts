@@ -26,6 +26,14 @@ export const envVarPlaceholderSchema = z
     "must reference an environment variable as ${ENV_VAR}, never a literal secret",
   );
 
+// `id@version` as a spec writes it in `use:`.
+export const componentRefSchema = z
+  .string()
+  .regex(
+    /^[a-z0-9]+(?:[-.][a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+    'must be an exact "namespace/name@1.2.3" (no range or tag)',
+  );
+
 // KAN-1430 (ADR-0021): tools are a discriminated union on `action`. `http_request`
 // is the original generic HTTP tool; `slack_post_message` and `gmail_send` are
 // turnkey connectors whose credential is an `${ENV}` token resolved at call
@@ -67,6 +75,22 @@ export const toolSchema = z.discriminatedUnion("action", [
         });
       }
     }),
+  // KAN-1884 (ADR-0029): a call to a component operation. `use` is an exact id@version (the digest is
+  // pinned in kampong.lock); `with` is the op input, `config` its non-secret per-use values, and
+  // `secrets` remaps a declared auth slot to an environment variable.
+  z
+    .object({
+      name: z.string().min(1),
+      action: z.literal("component"),
+      use: componentRefSchema,
+      op: z.string().min(1),
+      with: z.record(z.string(), z.unknown()).optional(),
+      config: z.record(z.string(), z.string()).optional(),
+      secrets: z.record(z.string(), envVarPlaceholderSchema).optional(),
+      requires_approval: z.boolean().optional(),
+      extract: z.string().optional(),
+    })
+    .strict(),
   z.object({
     name: z.string().min(1),
     action: z.literal("slack_post_message"),

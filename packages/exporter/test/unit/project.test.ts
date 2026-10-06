@@ -7,6 +7,8 @@ import {
   exportProject,
   slugifyPackageName,
   ExportDirectoryNotEmptyError,
+  ExportUnsupportedError,
+  collectRequiredEnvVars,
 } from "../../src/index.js";
 
 // SLICES.md V4 (KAN-1114) unit test plan: "Codegen correctly translates
@@ -314,5 +316,52 @@ describe("exportProject", () => {
       expect(result.files).toContain("package.json");
       expect(readFileSync(join(outputDir, "package.json"), "utf8")).toContain("refund-agent");
     });
+  });
+});
+
+// KAN-1884: the component interpreter is not vendored into exports yet (KAN-1886), so an export that
+// uses `action: component` must stop before writing anything rather than emit a project that fails
+// at runtime.
+describe("exportProject with a component tool", () => {
+  it("refuses, names the tool, and writes nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-component-"));
+    try {
+      const spec = {
+        version: "1.0",
+        agent: {
+          ...FULL_SPEC.agent,
+          tools: [
+            { name: "post", action: "component", use: "acme/slack@1.0.0", op: "post_message" },
+          ],
+        },
+      } as unknown as AgentSpec;
+      const out = join(dir, "out");
+      expect(() => exportProject(spec, out)).toThrow(ExportUnsupportedError);
+      expect(() => exportProject(spec, out)).toThrow(/post/);
+      expect(() => readFileSync(join(out, "package.json"))).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("collectRequiredEnvVars with a component tool", () => {
+  it("includes the env vars its secrets name, so the export docs list them once components export", () => {
+    const spec = {
+      version: "1.0",
+      agent: {
+        ...FULL_SPEC.agent,
+        tools: [
+          {
+            name: "post",
+            action: "component",
+            use: "acme/slack@1.0.0",
+            op: "post_message",
+            secrets: { token: "${ACME_TOKEN}" },
+          },
+        ],
+      },
+    } as unknown as AgentSpec;
+    expect(collectRequiredEnvVars(spec)).toContain("ACME_TOKEN");
   });
 });

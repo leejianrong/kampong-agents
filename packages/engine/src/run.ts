@@ -192,6 +192,8 @@ export interface CreateAgentRunOptions {
    * fake `model` (below) is injected instead of building the real one.
    */
   timeoutMs?: number;
+  /** Runs `action: component` tools (KAN-1884); see createComponentDispatcher. */
+  components?: EngineDeps["components"];
 }
 
 /**
@@ -213,6 +215,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     fetchImpl: options.fetchImpl,
     pacer: options.toolPacer,
     clock: options.toolClock,
+    components: options.components,
     // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
     // key does (process.env by default), so an exported/deployed app just sets
     // e.g. SLACK_BOT_TOKEN in its environment.
