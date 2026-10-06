@@ -5,8 +5,10 @@
 // only host it can reach is gmail.googleapis.com.
 
 const SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const PROFILE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/profile";
 
 export async function invoke(op, input, ctx) {
+  if (op === "get_profile") return getProfile(ctx);
   if (op !== "send") throw new Error(`kampong/gmail has no op "${op}"`);
 
   // The values land in MIME header lines; a line break would let a value add headers such as Bcc.
@@ -38,6 +40,27 @@ export async function invoke(op, input, ctx) {
   }
   try {
     return JSON.parse(text);
+  } catch {
+    throw new Error("Gmail returned a response that is not JSON");
+  }
+}
+
+async function getProfile(ctx) {
+  const response = await ctx.fetch(PROFILE_URL, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${ctx.secrets.get("token")}` },
+    signal: ctx.signal,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    // `status` lets `kampong doctor` tell a refused token (401, 403) from a service that is down.
+    throw Object.assign(new Error(describeFailure(response.status, text)), {
+      status: response.status,
+    });
+  }
+  try {
+    const { emailAddress } = JSON.parse(text);
+    return { emailAddress };
   } catch {
     throw new Error("Gmail returned a response that is not JSON");
   }

@@ -166,6 +166,17 @@ const slotSchema = z
     env: z.string().regex(NAME, "must be an environment variable name such as SLACK_BOT_TOKEN"),
     /** The only hosts this secret may be sent to. */
     hosts: z.array(egressEntrySchema).min(1),
+    /**
+     * A read-only op that proves the credential is accepted (Slack `auth.test`, Gmail `getProfile`).
+     * `kampong doctor --probe` calls it with `with` as input; nothing else ever does (ADR-0032).
+     */
+    probe: z
+      .object({
+        op: z.string().regex(NAME, "op names are letters, digits and underscores"),
+        with: z.record(z.string(), z.unknown()).optional(),
+      })
+      .strict()
+      .optional(),
     /** How the engine attaches it to a request. Slots used only by modules omit this. */
     inject: z
       .object({
@@ -428,6 +439,40 @@ function lintManifest(
         config: false,
         secret: true,
       });
+    }
+  }
+
+  for (const [slotName, slot] of Object.entries(manifest.auth?.slots ?? {})) {
+    if (!slot.probe) continue;
+    const at = ["auth", "slots", slotName, "probe"];
+    const op = Object.hasOwn(manifest.ops, slot.probe.op) ? manifest.ops[slot.probe.op] : undefined;
+    if (!op) {
+      issue(`probe names op "${slot.probe.op}", which this component does not have`, [...at, "op"]);
+      continue;
+    }
+    // A probe is run to check a credential, so it must not change anything.
+    if (op.effect !== "read") {
+      issue(`probe op "${slot.probe.op}" must have effect: read`, [...at, "op"]);
+    }
+    if (manifest.kind === "rest") {
+      const injected = (op as { slots?: string[] }).slots;
+      const usesSlot = injected
+        ? injected.includes(slotName)
+        : manifest.auth?.slots[slotName]?.inject !== undefined;
+      if (!usesSlot) {
+        issue(
+          `probe op "${slot.probe.op}" does not send slot "${slotName}", so it proves nothing`,
+          [...at, "op"],
+        );
+      }
+    }
+    for (const key of op.input?.required ?? []) {
+      if (!Object.hasOwn(slot.probe.with ?? {}, key)) {
+        issue(`probe op "${slot.probe.op}" needs input "${key}"; give it under probe.with`, [
+          ...at,
+          "with",
+        ]);
+      }
     }
   }
 

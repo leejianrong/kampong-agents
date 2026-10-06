@@ -14,7 +14,25 @@ auth:
       inject:
         header: Authorization
         template: "Bearer {{ secret }}"
+      probe: { op: auth_test }
 ops:
+  auth_test:
+    title: Check the token
+    description: Asks Slack whether the bot token is valid (auth.test). Changes nothing.
+    effect: read
+    request:
+      method: POST
+      url: https://slack.com/api/auth.test
+    failure_when:
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        team: { type: string }
+        user: { type: string }
   post_message:
     title: Post a message
     description: Posts text to a channel with chat.postMessage.

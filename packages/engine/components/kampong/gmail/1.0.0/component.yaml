@@ -12,7 +12,12 @@ auth:
     token:
       env: GMAIL_TOKEN
       hosts: [gmail.googleapis.com]
+      probe: { op: get_profile }
 ops:
+  get_profile:
+    title: Check the token
+    description: Reads the mailbox profile (users.getProfile) to confirm the token is accepted. Changes nothing.
+    effect: read
   send:
     title: Send an email
     description: Sends a plain-text message with users.messages.send.
