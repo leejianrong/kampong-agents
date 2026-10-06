@@ -403,4 +403,220 @@ ops:
       expect(seen).toContain("team1.example.com:443");
     });
   });
+
+  describe("--probe", () => {
+    const SLACK = `    - name: greet
+      action: slack_post_message
+      token: "\${SLACK_TOKEN}"
+      channel: "#x"
+      text: hi`;
+    const GMAIL = `    - name: greet
+      action: gmail_send
+      token: "\${GMAIL_TOKEN}"
+      to: a@b.c
+      subject: s
+      body: b`;
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    const probe = async (
+      tool: string,
+      respond: (url: string, auth: string | undefined) => Response,
+      args: string[] = ["--probe"],
+      env: NodeJS.ProcessEnv = {
+        ANTHROPIC_API_KEY: SECRET,
+        SLACK_TOKEN: "xoxb-s3cret",
+        GMAIL_TOKEN: "ya29.s3cret",
+      },
+    ) => {
+      writeFileSync(path("agent.yaml"), spec(tool));
+      const calls: { url: string; method: string | undefined; auth: string | undefined }[] = [];
+      const { io, out, err } = capture();
+      const code = await runCli(["doctor", path("agent.yaml"), ...args], io, {
+        env,
+        probeFetch: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          const url = String(input);
+          calls.push({
+            url,
+            method: init?.method,
+            auth: headers.get("authorization") ?? undefined,
+          });
+          return respond(url, headers.get("authorization") ?? undefined);
+        },
+      });
+      return { code, text: out.join("\n") + "\n" + err.join("\n"), calls };
+    };
+
+    it("makes no request without --probe", async () => {
+      const r = await probe(SLACK, () => json({ ok: true }), []);
+      expect(r.calls).toEqual([]);
+      expect(r.code).toBe(EXIT_SUCCESS);
+    });
+
+    it("accepts a Slack token the service accepts, calling auth.test with the bound credential", async () => {
+      const r = await probe(SLACK, () => json({ ok: true, team: "t", user: "u" }));
+      expect(r.code).toBe(EXIT_SUCCESS);
+      expect(r.calls).toEqual([
+        { url: "https://slack.com/api/auth.test", method: "POST", auth: "Bearer xoxb-s3cret" },
+      ]);
+      expect(r.text).toMatch(/was accepted/);
+      expect(r.text).not.toContain("xoxb-s3cret");
+    });
+
+    it("fails on a Slack token Slack refuses (200 with ok:false), naming the reason, never the token", async () => {
+      const r = await probe(SLACK, () => json({ ok: false, error: "invalid_auth" }));
+      expect(r.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(r.text).toContain("invalid_auth");
+      expect(r.text).not.toContain("xoxb-s3cret");
+    });
+
+    it("fails on an HTTP 401", async () => {
+      const r = await probe(SLACK, () => json({ error: "no" }, 401));
+      expect(r.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(r.text).toMatch(/was refused/);
+    });
+
+    it("only warns on a Slack outage answered as 200 ok:false, since only auth reasons mean a bad token", async () => {
+      for (const error of ["service_unavailable", "ratelimited", "internal_error"]) {
+        const r = await probe(SLACK, () => json({ ok: false, error }));
+        expect(r.code).toBe(EXIT_SUCCESS);
+        expect(r.text).toMatch(/could not be confirmed/);
+      }
+      for (const error of ["not_authed", "token_revoked", "account_inactive"]) {
+        const r = await probe(SLACK, () => json({ ok: false, error }));
+        expect(r.code).toBe(EXIT_EXECUTION_FAILURE);
+      }
+    });
+
+    it("does not call a 403 a bad credential: a gmail.send-only token cannot read the profile", async () => {
+      const r = await probe(GMAIL, () => json({ error: { status: "PERMISSION_DENIED" } }, 403));
+      expect(r.code).toBe(EXIT_SUCCESS);
+      expect(r.text).toMatch(/could not be confirmed/);
+    });
+
+    it("only warns when the service cannot be asked (a 503), since that says nothing about the credential", async () => {
+      const r = await probe(SLACK, () => json({ error: "down" }, 503));
+      expect(r.code).toBe(EXIT_SUCCESS);
+      expect(r.text).toMatch(/could not be confirmed/);
+    });
+
+    it("probes a first-party module (Gmail) through its get_profile op", async () => {
+      const r = await probe(GMAIL, () => json({ emailAddress: "me@example.com" }));
+      expect(r.code).toBe(EXIT_SUCCESS);
+      expect(r.calls).toEqual([
+        {
+          url: "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+          method: "GET",
+          auth: "Bearer ya29.s3cret",
+        },
+      ]);
+      const refused = await probe(GMAIL, () => json({ error: { status: "UNAUTHENTICATED" } }, 401));
+      expect(refused.code).toBe(EXIT_EXECUTION_FAILURE);
+    });
+
+    it("does not probe a credential that is not set; the missing variable is the failure", async () => {
+      const r = await probe(SLACK, () => json({ ok: true }), ["--probe"], {
+        ANTHROPIC_API_KEY: SECRET,
+      });
+      expect(r.calls).toEqual([]);
+      expect(r.text).toContain("SLACK_TOKEN is not set");
+    });
+
+    const PROJECT_REST = `kind: rest
+id: acme/api
+version: 1.0.0
+permissions: { egress: [api.example.com] }
+auth:
+  slots:
+    token:
+      env: ACME_TOKEN
+      hosts: [api.example.com]
+      inject: { header: Authorization, template: "Bearer {{ secret }}" }
+      probe: { op: ping }
+ops:
+  ping:
+    effect: read
+    request: { method: GET, url: "https://api.example.com/ping" }
+`;
+    const PROJECT_TOOL = `    - name: greet
+      action: component
+      use: acme/api@1.0.0
+      op: ping`;
+    const installRest = () => {
+      mkdirSync(path("components/acme/api/1.0.0"), { recursive: true });
+      writeFileSync(path("components/acme/api/1.0.0/component.yaml"), PROJECT_REST);
+    };
+    const env = { ANTHROPIC_API_KEY: SECRET, ACME_TOKEN: "acme-s3cret" };
+
+    it("probes a pinned project component, and refuses to send a credential through one that is not pinned or has changed", async () => {
+      installRest();
+      writeFileSync(path("agent.yaml"), spec(PROJECT_TOOL));
+      const unpinned = await probe(PROJECT_TOOL, () => json({}), ["--probe"], env);
+      expect(unpinned.calls).toEqual([]);
+      expect(unpinned.text).toContain("was not probed: it is not pinned");
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const pinned = await probe(PROJECT_TOOL, () => json({}), ["--probe"], env);
+      expect(pinned.calls).toHaveLength(1);
+      expect(pinned.code).toBe(EXIT_SUCCESS);
+      // A manifest edited after it was pinned (here, a second host for the secret) is not trusted.
+      writeFileSync(
+        path("components/acme/api/1.0.0/component.yaml"),
+        PROJECT_REST.replace(
+          "hosts: [api.example.com]",
+          "hosts: [api.example.com, evil.example.net]",
+        ).replace("egress: [api.example.com]", "egress: [api.example.com, evil.example.net]"),
+      );
+      const changed = await probe(PROJECT_TOOL, () => json({}), ["--probe"], env);
+      expect(changed.calls).toEqual([]);
+      expect(changed.text).toContain("was not probed: it changed since it was pinned");
+    });
+
+    it("probes the same component once per distinct config", async () => {
+      const manifest = PROJECT_REST.replace(
+        "egress: [api.example.com]",
+        'egress: ["{{ config.sub }}.example.com"]',
+      )
+        .replace("hosts: [api.example.com]", 'hosts: ["{{ config.sub }}.example.com"]')
+        .replace(
+          'url: "https://api.example.com/ping"',
+          'url: "https://{{ config.sub }}.example.com/ping"',
+        )
+        .replace("auth:", "config:\n  sub: { type: string }\nauth:");
+      mkdirSync(path("components/acme/api/1.0.0"), { recursive: true });
+      writeFileSync(path("components/acme/api/1.0.0/component.yaml"), manifest);
+      const tools = ["one", "two"]
+        .map(
+          (sub) => `    - name: t_${sub}
+      action: component
+      use: acme/api@1.0.0
+      op: ping
+      config: { sub: ${sub} }`,
+        )
+        .join("\n");
+      writeFileSync(path("agent.yaml"), spec(tools));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const r = await probe(tools, () => json({}), ["--probe"], env);
+      expect(r.calls.map((c) => c.url).sort()).toEqual([
+        "https://one.example.com/ping",
+        "https://two.example.com/ping",
+      ]);
+    });
+
+    it("never runs a project module's code to probe it", async () => {
+      install(
+        MANIFEST(
+          "permissions: { egress: [api.example.com] }\nauth:\n  slots:\n    token: { env: ACME_TOKEN, hosts: [api.example.com], probe: { op: greet } }\n",
+        ),
+        "export async function invoke(op, input, ctx) { await ctx.fetch('https://api.example.com/'); return {}; }",
+      );
+      writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const r = await probe(HELLO_TOOL, () => json({}), ["--probe"], env);
+      expect(r.calls).toEqual([]);
+      expect(r.text).toContain("does not run a project module's code");
+    });
+  });
 });

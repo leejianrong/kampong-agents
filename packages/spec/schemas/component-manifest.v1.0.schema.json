@@ -79,6 +79,31 @@
                       "pattern": "^[A-Za-z0-9.*{}_ :-]+$"
                     }
                   },
+                  "probe": {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      },
+                      "with": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "refused_when": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": ["op"],
+                    "additionalProperties": false
+                  },
                   "inject": {
                     "type": "object",
                     "properties": {
@@ -437,6 +462,31 @@
                       "type": "string",
                       "pattern": "^[A-Za-z0-9.*{}_ :-]+$"
                     }
+                  },
+                  "probe": {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      },
+                      "with": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "refused_when": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": ["op"],
+                    "additionalProperties": false
                   },
                   "inject": {
                     "type": "object",

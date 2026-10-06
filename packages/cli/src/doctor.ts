@@ -5,7 +5,12 @@ import {
   desugarLegacyTool,
   DirectoryComponentRegistry,
   fixtureFilePrefix,
+  InProcessModuleRunner,
+  invokeOp,
   isFirstPartyId,
+  ToolCallError,
+  type ComponentTool,
+  type ToolFetchImpl,
 } from "@kampong/engine";
 import {
   describePermissions,
@@ -37,6 +42,13 @@ export interface DoctorOptions {
   toolsMode?: "live" | "record" | "replay";
   fixturesDir?: string;
   connect?: ConnectFn;
+  /**
+   * Call each credential's probe op (a read-only request to the service, carrying the credential).
+   * Off by default: it is the one check that sends a secret over the network.
+   */
+  probe?: boolean;
+  /** Test seam for the probe's HTTP calls; the real `fetch` otherwise. */
+  probeFetch?: ToolFetchImpl;
 }
 
 const ENV_REF = /\$\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
@@ -149,6 +161,12 @@ export async function runDoctor(
   };
   const used = new Set<string>();
   const moduleKinds = new Map<string, string>();
+  // A component is probed only when its bytes are the ones a reviewer pinned (or it ships with kampong).
+  const trusted = new Map<string, string | true>();
+  const probes = new Map<
+    string,
+    { use: string; manifest: ComponentManifest; slot: string; envName: string; tool: ComponentTool }
+  >();
   const unprobed = new Set<string>();
   for (const declared of tools) {
     const legacy = desugarLegacyTool(declared);
@@ -196,6 +214,7 @@ export async function runDoctor(
           "component",
           `${tool.use} resolves (first-party; may do: ${describePermissions(permissions)})`,
         );
+        trusted.set(tool.use, true);
       } else {
         const pinned = lockFor();
         const pin =
@@ -204,13 +223,16 @@ export async function runDoctor(
             : undefined;
         if (lockError) {
           add("fail", "component", `${tool.use}: ${lockError}`);
+          trusted.set(tool.use, "its lockfile is unreadable");
         } else if (!pin) {
+          trusted.set(tool.use, "it is not pinned");
           add(
             "fail",
             "component",
             `${tool.use} is not pinned in ${lockPathFor(specPath)}; run \`kampong lock\``,
           );
         } else if (pin.digest !== digest) {
+          trusted.set(tool.use, "it changed since it was pinned");
           const wider = pin.permissions ? diffPermissions(pin.permissions, permissions) : [];
           add(
             "fail",
@@ -224,6 +246,7 @@ export async function runDoctor(
             "component",
             `${tool.use} resolves and matches its pin (may do: ${describePermissions(permissions)})`,
           );
+          trusted.set(tool.use, true);
         }
         if (manifest.kind === "module") {
           add(
@@ -257,8 +280,18 @@ export async function runDoctor(
       // As the engine reads a remap: `${NAME}`, or a bare name.
       const remapped =
         tool.secrets && Object.hasOwn(tool.secrets, name) ? tool.secrets[name]! : undefined;
+      const envName =
+        remapped === undefined ? slot.env : (/^\$\{(.+)\}$/.exec(remapped)?.[1] ?? remapped);
+      if (slot.probe)
+        probes.set(`${tool.use}|${name}|${envName}|${JSON.stringify(tool.config ?? {})}`, {
+          use: tool.use,
+          manifest,
+          slot: name,
+          envName,
+          tool,
+        });
       checkEnv(
-        remapped === undefined ? slot.env : (/^\$\{(.+)\}$/.exec(remapped)?.[1] ?? remapped),
+        envName,
         `secret slot ${name} of ${tool.use}`,
         manifest.kind === "module" ? "warn" : "fail",
       );
@@ -298,6 +331,70 @@ export async function runDoctor(
           `tool ${declared.name} has no recorded fixture in ${dir}; record one with --tools record`,
         );
       }
+    }
+  }
+
+  // Credentials, only when asked: one read-only request per secret, to the host its slot is bound to.
+  if (options.probe) {
+    const runner = new InProcessModuleRunner(registry);
+    const probeOne = async ({
+      use,
+      manifest,
+      slot,
+      envName,
+      tool,
+    }: {
+      use: string;
+      manifest: ComponentManifest;
+      slot: string;
+      envName: string;
+      tool: ComponentTool;
+    }): Promise<DoctorCheck | undefined> => {
+      const what = `the credential in ${envName} (slot ${slot} of ${use})`;
+      const check = (status: CheckStatus, message: string): DoctorCheck => ({
+        status,
+        area: "network",
+        message: `${what} ${message}`,
+      });
+      const probe = manifest.auth!.slots[slot]!.probe!;
+      if (!isSet(env, envName)) return undefined; // already reported as not set
+      const reason = trusted.get(use);
+      if (reason !== true) {
+        return check("warn", `was not probed: ${reason ?? "the component was not checked"}`);
+      }
+      if (manifest.kind === "module" && !isFirstPartyId(manifest.id)) {
+        return check("warn", "was not probed: doctor does not run a project module's code");
+      }
+      try {
+        await invokeOp(manifest, probe.op, probe.with ?? {}, {
+          config: tool.config,
+          secretEnv: tool.secrets,
+          env,
+          runner,
+          fetchImpl: options.probeFetch,
+          toolName: `doctor.${manifest.id}.${probe.op}`,
+        });
+        return check("pass", `was accepted (${probe.op})`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // 401 is the service saying the credential is not valid. Anything else (a 403 that may be a
+        // missing scope, a gateway, a quota, a 5xx, a timeout) says nothing about the credential unless
+        // the component declares, in `probe.refused_when`, a reason that does (ADR-0032).
+        const status =
+          err instanceof ToolCallError
+            ? (err.status ?? (err.cause as { status?: number } | undefined)?.status)
+            : undefined;
+        const refused =
+          status === 401 || (probe.refused_when ?? []).some((reason) => message.includes(reason));
+        return check(
+          refused ? "fail" : "warn",
+          `${refused ? "was refused" : "could not be confirmed"}: ${message}`,
+        );
+      }
+    };
+    // Independent requests: run together, report in the order the tools were declared.
+    for (const result of await Promise.all([...probes.values()].map(probeOne))) {
+      if (result) checks.push(result);
     }
   }
 

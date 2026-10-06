@@ -13,6 +13,7 @@ import {
   Pacer,
   type ModelClient,
   type RunEvent,
+  type ToolFetchImpl,
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
@@ -98,7 +99,7 @@ Commands:
                                       in kampong.lock (next to the spec).
 
   doctor <spec>.yaml                 Preflight a spec: components, pins, permissions, credentials
-                                      (names only) and, with --online, host reachability.
+                                      (names only), with --online host reachability, and with --probe whether each credential is accepted.
 
 Run "kampong <command> --help" for command-specific options.`;
 
@@ -166,6 +167,7 @@ export interface RunCliTestOptions {
   /** Test-only seams for `kampong doctor`: the environment it reads and the TCP dial it uses. */
   env?: NodeJS.ProcessEnv;
   connect?: ConnectFn;
+  probeFetch?: ToolFetchImpl;
 }
 
 export async function runCli(
@@ -1085,7 +1087,7 @@ async function runLockCommand(args: string[], io: CliIO): Promise<number> {
 
 // --- doctor ---------------------------------------------------------------
 
-const DOCTOR_HELP_TEXT = `kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--json]
+const DOCTOR_HELP_TEXT = `kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--probe] [--json]
 
 A read-only preflight of everything that would stop \`kampong run\`: each component the spec uses
 resolves, is pinned and unchanged, and passes its static check; each environment variable a
@@ -1095,6 +1097,10 @@ with --tools replay, each tool has a recorded fixture (matched by tool name; the
 Options:
   --online       Also open a TCP connection to each host the spec's components and tools may
                  reach, and to the Ollama server. Off by default: nothing leaves the machine.
+  --probe        Check each credential is accepted: call the read-only probe op its component
+                 declares (Slack auth.test, Gmail getProfile). The credential is sent to the
+                 service it is bound to, so this is opt-in. Only components that are pinned and
+                 unchanged are probed, and a project's own module code is never run.
   --tools replay Check fixtures as \`kampong run --tools replay\` would use them.
   --fixtures <dir>  Fixture directory (default: "<spec dir>/.kampong/fixtures")
   --json         Print one JSON object: { ok, checks: [{ status, area, message }] }
@@ -1113,6 +1119,7 @@ async function runDoctorCommand(
     return EXIT_SUCCESS;
   }
   let online = false;
+  let probe = false;
   let json = false;
   let toolsMode: "live" | "record" | "replay" = "live";
   let fixturesDir: string | undefined;
@@ -1120,6 +1127,7 @@ async function runDoctorCommand(
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--online") online = true;
+    else if (arg === "--probe") probe = true;
     else if (arg === "--json") json = true;
     else if (arg === "--tools") {
       const value = args[++i];
@@ -1164,6 +1172,8 @@ async function runDoctorCommand(
   const checks = await runDoctor(spec, specPath, {
     env: testOptions.env ?? process.env,
     online,
+    probe,
+    probeFetch: testOptions.probeFetch,
     toolsMode,
     fixturesDir,
     connect: testOptions.connect,
