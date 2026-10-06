@@ -27,10 +27,15 @@ export {
   substitutePlaceholders,
   resolveEnvValue,
   extractField,
+  readResponsePath,
+  ToolCallError,
+  type ToolErrorCode,
   type HttpToolCallOptions,
   type ToolContext,
   type ToolFetchImpl,
 } from "./http-tool.js";
+
+export { Pacer, instantClock, realClock, type Clock } from "./pacing.js";
 
 export {
   buildApprovalBlocks,

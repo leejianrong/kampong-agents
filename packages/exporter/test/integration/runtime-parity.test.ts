@@ -50,6 +50,7 @@ const VENDORED_FROM_ENGINE = [
   "run.ts",
   "slack-approval.ts",
   "redact.ts",
+  "pacing.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

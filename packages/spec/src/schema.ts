@@ -52,6 +52,13 @@ export const toolSchema = z.discriminatedUnion("action", [
           path: ["body"],
         });
       }
+      if (tool.failure_when !== undefined && (tool.response?.mode ?? "json") !== "json") {
+        ctx.addIssue({
+          code: "custom",
+          message: `failure_when only applies to a json response (response mode is "${tool.response?.mode}")`,
+          path: ["failure_when"],
+        });
+      }
       if (tool.extract !== undefined && (tool.response?.mode ?? "json") !== "json") {
         ctx.addIssue({
           code: "custom",

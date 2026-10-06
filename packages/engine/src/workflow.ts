@@ -50,6 +50,9 @@ export interface EngineDeps {
   fetchImpl?: HttpToolCallOptions["fetchImpl"];
   /** Resolves connector `${ENV}` tokens (KAN-1430). Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
+  /** Tool call pacing and retry delays (KAN-1846); real timers by default, injectable for replay and tests. */
+  pacer?: HttpToolCallOptions["pacer"];
+  clock?: HttpToolCallOptions["clock"];
 }
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
@@ -142,6 +145,8 @@ export async function* runWorkflow(
           const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
             fetchImpl: deps.fetchImpl,
             env: deps.env,
+            pacer: deps.pacer,
+            clock: deps.clock,
           });
           stepOutputs[step.step] = output;
           yield { type: "step_completed", step: step.step, output };
@@ -202,6 +207,8 @@ export async function* runWorkflow(
         const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
           fetchImpl: deps.fetchImpl,
           env: deps.env,
+          pacer: deps.pacer,
+          clock: deps.clock,
         });
         stepOutputs[step.step] = output;
         yield { type: "step_completed", step: step.step, output };
