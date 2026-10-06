@@ -57,11 +57,16 @@ export class MissingFixtureError extends Error {
   constructor(
     public readonly toolName: string,
     public readonly fixturePath: string,
+    hasRequestBody = false,
   ) {
     super(
       `No recorded fixture for tool "${toolName}" at ${fixturePath}. Run once with tool mode ` +
         `"record" (against a live network) to create it before replaying in "replay" mode -- ` +
-        `mock mode never falls back to a live call.`,
+        `mock mode never falls back to a live call.` +
+        (hasRequestBody
+          ? ` The request body is part of the fixture key, so a fixture recorded with a ` +
+            `different body (or before bodies were keyed) needs re-recording.`
+          : ""),
     );
     this.name = "MissingFixtureError";
   }
@@ -71,6 +76,8 @@ interface FixtureFile {
   toolName: string;
   method: string;
   url: string;
+  /** Normalised (redacted, canonical-JSON) request body; absent for body-less requests. */
+  requestBody?: string;
   status: number;
   body: unknown;
 }
@@ -101,16 +108,61 @@ function redactDeep(value: unknown, secrets: string[]): unknown {
   return value;
 }
 
+/** JSON with object keys sorted at every depth, so key order never changes a request's identity. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * The request body as it is keyed and persisted: secrets redacted first (so a rotated secret still
+ * finds its fixture), and a JSON body canonicalised (so key order and whitespace don't matter).
+ * `undefined` for a request with no body. A body type we can't key faithfully is an error, never a
+ * silent collision on "[object Object]".
+ */
+function normalizedBody(body: RequestInit["body"], secrets: string[]): string | undefined {
+  if (body === undefined || body === null) return undefined;
+  let text: string;
+  if (typeof body === "string") text = body;
+  else if (body instanceof URLSearchParams) text = body.toString();
+  else {
+    throw new Error(
+      "Fixture mock/record layer can only key string or URLSearchParams request bodies; " +
+        `got ${Object.prototype.toString.call(body)}.`,
+    );
+  }
+  if (text === "") return undefined;
+  const redacted = redactString(text, secrets);
+  try {
+    return canonicalJson(JSON.parse(redacted));
+  } catch {
+    return redacted;
+  }
+}
+
 /**
  * The fixture key: tool name + method + the already-*substituted* URL
  * (params, e.g. `{charge_id}`, vary run to run -- the substituted URL is
  * what's actually deterministic across replays of "the same recorded
- * scenario", per SLICES.md's phrasing). Hashed rather than used verbatim as
- * a filename since a URL can contain characters that aren't safe/portable
- * as a path segment.
+ * scenario", per SLICES.md's phrasing) + a hash of the normalised request
+ * body when there is one (KAN-1829: two POSTs to one URL, e.g. Slack
+ * `chat.postMessage`, must not share a fixture). A request with no body
+ * keeps the original key, so fixtures recorded before this change still
+ * replay. Hashed rather than used verbatim as a filename since a URL can
+ * contain characters that aren't safe/portable as a path segment.
  */
-function fixtureKey(toolName: string, method: string, url: string): string {
-  return createHash("sha256").update(`${toolName}::${method}::${url}`).digest("hex").slice(0, 16);
+function fixtureKey(toolName: string, method: string, url: string, body?: string): string {
+  const bodyPart = body === undefined ? "" : `::${createHash("sha256").update(body).digest("hex")}`;
+  return createHash("sha256")
+    .update(`${toolName}::${method}::${url}${bodyPart}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function fixturePathFor(
@@ -118,9 +170,10 @@ function fixturePathFor(
   toolName: string,
   method: string,
   url: string,
+  body?: string,
 ): string {
   const safeName = toolName.replace(/[^A-Za-z0-9_-]/g, "_") || "tool";
-  return join(fixturesDir, `${safeName}.${fixtureKey(toolName, method, url)}.json`);
+  return join(fixturesDir, `${safeName}.${fixtureKey(toolName, method, url, body)}.json`);
 }
 
 /**
@@ -142,11 +195,12 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
     const url = typeof input === "string" ? input : input.toString();
     const method = init?.method ?? "GET";
     const toolName = context.toolName;
-    const path = fixturePathFor(fixturesDir, toolName, method, url);
+    const requestBody = normalizedBody(init?.body, secrets);
+    const path = fixturePathFor(fixturesDir, toolName, method, url, requestBody);
 
     if (mode === "replay") {
       if (!existsSync(path)) {
-        throw new MissingFixtureError(toolName, path);
+        throw new MissingFixtureError(toolName, path, requestBody !== undefined);
       }
       const fixture = JSON.parse(readFileSync(path, "utf8")) as FixtureFile;
       return new Response(JSON.stringify(fixture.body), {
@@ -168,6 +222,7 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
       toolName,
       method,
       url: redactString(url, secrets),
+      ...(requestBody === undefined ? {} : { requestBody }),
       status: response.status,
       body: redactDeep(body, secrets),
     };
