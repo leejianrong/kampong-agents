@@ -149,6 +149,10 @@ and V6–V8. V5's hosted backend + canvas UI are built and merged but parked unt
 (its remaining cards KAN-1408/1427/1393/1389 stay open); the near-term push is closing the
 LangGraph/Mastra/n8n expressiveness gap so a real workflow can be built, demoed, and deployed.
 
+**Re-sequenced again (2026-10-06):** V11 (platform primitives and the component repository, ADRs
+0025-0028) now follows V9 and is sequenced **ahead of** the rest of V5, V6 and V10. The F1-F11
+findings below are absorbed into V11 phases; see the mapping table under F1-F11.
+
 ## V9: Real-World Workflows (single-agent)
 
 **Scoped by:** ADR-0021 (direction + the workflow-model extension). Board epic EPIC-214.
@@ -209,6 +213,128 @@ tier metering sits on the deployment record, later.
   completes; exporter test that the generated app boots and serves the same endpoint.
 - **D:** a Slack-interaction callback test (signed payload → run resolves), driven against the
   engine's approval machinery with a mocked Slack post.
+
+## V11: Authorable real-world workflows — platform primitives and the component repository
+
+**Scoped by:** ADR-0025 (component model and repository), ADR-0026 (trust tiers, vetting, MCP as an
+import layer), ADR-0027 (expression language and data model), ADR-0028 (durable state store).
+Research: the 2026-10-06 discovery write-up (five `mastra-projects/` demos against `main`).
+
+**Delivers:** a user can author on the canvas each of the five `mastra-projects/` demos
+(support-triage, market-etl, incident-responder, pr-review-swarm, research-analyst) as an `AgentSpec`
+plus first-party components, run it on recorded fixtures with no credentials, then live, and export
+it with behavioural equivalence. The five workflows ship as **templates**, and each one is the
+acceptance test that closes its phase. Single-agent still (ADR-0001); dynamic fan-out is shared
+design work with V7.
+
+**Why this is mostly platform work:** the demo code shows the blockers are structural, not missing
+connectors. Typed step output and loops with an error policy block all five demos, the flat data
+model blocks four, and `http_request` cannot call GitHub or Alpha Vantage at all. The repository
+holds components and templates; the platform layer (expression language, state, runner, error
+policy, connector framework) is built first.
+
+**Priority:** sequenced ahead of the rest of V5, V6 and V10 (hosting stays parked, as in ADR-0021).
+Rough sequential estimate: 15-22 weeks for one team. These are planning figures, not commitments.
+
+**Readiness today → after the phase** (0-5, by reading code): support-triage 2 → 5, market-etl 1 → 5,
+incident-responder 1 → 4, pr-review-swarm 1 → 4, research-analyst 0.5 → 4.
+
+### Phase 0 (EPIC-307, 3-4 weeks): authoring foundations
+
+- **Expression language spike (1 week), then the data model.** JSONata is the pick (ADR-0027); the
+  spike confirms determinism, bounded evaluation, a canvas-editable subset and located errors. On
+  pass: version-gated expression syntax, `vars`, `trigger.*`, deep paths and arrays.
+- **Per-step `instructions`, `model`, `temperature`.** **Structured output** via `output_schema` with
+  validate-and-retry; `confidence` becomes an ordinary field.
+- **Secrets in any field** (URL, headers, body) and multi-part credential objects.
+- **`http_request` v2** (F7a): headers, query, JSON/form/raw body, text/JSON/bytes responses.
+  **Failure detection and pacing** (F7b): `failure_when` body rules, per-connector pacing, retry with
+  `Retry-After`.
+- **`knowledge_base: mode: inject`** (F2 stage 1), **webhook auth presets and trigger filter**
+  (F5, widened), **`respond: sync`**.
+- Canvas forms for all of the above (Material Design 3), exporter support, round-trip fixtures.
+
+**Demo:** market-etl's fetch-and-validate leg and incident-responder's `/debug` leg are authored on
+the canvas with generic REST, and an authenticated webhook starts a run with `trigger.*` available.
+
+### Phase 1 (EPIC-308, 3-4 weeks): unattended execution
+
+- **StateStore** (ADR-0028): interface, SQLite local, Postgres hosted under RLS; pending approvals
+  resumable from persisted state.
+- **Unattended runner** with overlap lock, jitter and backoff; **`schedule`** and **`poll`**
+  triggers (dedupe enums over a persisted cursor, one run per item) (F1 with F4).
+- **`foreach` with `on_error`**, **`branch`**, **`transform`**, **`validate`**, **`dedupe`**.
+- **Components:** Supabase PostgREST manifest, Alpha Vantage preset, Slack operations (blocks,
+  update, thread, body-level failure detection), **Gmail IMAP module** (list, get, draft, flag) (F6).
+- Slack HITL local-dev story (F3): documented tunnel and relay-safe signing, or a clear "needs a
+  public URL" message.
+- **Templates:** `market-etl`, then `support-triage` (the ADR-0021 hero).
+
+**Demo:** the triage template polls a real inbox, classifies with the FAQ injected, drafts a reply,
+escalates the low-confidence ones to Slack for approval, and survives a process restart with the
+approval still pending.
+
+### Phase 2 (EPIC-309, 2-3 weeks): record-mode approval and alerts
+
+- **`notify` step and record-mode approval** (F9): an interactive message that does not pause; the
+  decision is an event on the run. `on_decision` and `on_resolved` continuations.
+- **Alertmanager trigger preset** (bearer auth, split `alerts[]`, dedupe by fingerprint, resolved
+  routing). **Slack interactions ingress in the hosted server** with routing by `callback_id`.
+- **Template:** `incident-responder` (propose-only; agent-executed remediation F10 stays out).
+
+### Phase 3 (EPIC-310, 3-5 weeks): GitHub and fan-out
+
+- **GitHub manifest:** get pull request, get diff as text, list files with **pagination**, create
+  comment and review, and a diff-size truncation policy for model context.
+- **Static `parallel` step**, then **planner-selected fan-out** designed with V7 (a short ADR on
+  `sub_agents` semantics before building). **Template:** `pr-review`.
+
+### Phase 4 (EPIC-311, 4-6 weeks): retrieval
+
+- **Embeddings component** (HTTP, bring-your-own key, plus local), **Postgres/pgvector module**.
+- **RAG ingest step** (heading- and sentence-aware chunking, incremental by content hash) and
+  **retrieve-and-cite step** (hybrid search, citation validation) (F2 stage 2); `knowledge_base:
+mode: retrieve`.
+- **Template:** `rag-qa`; swap the inlined FAQ in `support-triage` for retrieval.
+
+### Cross-cutting (EPIC-312, scheduled alongside the phases)
+
+- **Regression and quick wins, done first:** the fixture key includes the request body (regression
+  test first); exact version pins for `@mastra/core` and `@ai-sdk/*` in exports (F11); an honest
+  "not executed" warning for `knowledge_base` until Phase 0 ships `inject`.
+- **Connector framework** (ADR-0025): manifest schema, registry, canvas form generation, module
+  loader behind a `Runner` interface, and a **fixture seam** at the connector `invoke(op, params)`
+  boundary so IMAP, Postgres and embeddings are deterministic. Started with Phase 1.
+- **Repository foundations** (ADR-0025, ADR-0026): `components/` layout, `id@version` plus digest,
+  `kampong.lock`, permission manifest and host-bound secret slots enforced on first-party
+  components, exporter vendoring by digest, SBOM and digests in every export, a registry index with
+  a revocation field, Sigstore signing in release CI, `security.txt`.
+- **`kampong doctor`:** preflight that checks each connector's credentials and reachability.
+
+### Deferred (roadmap EPIC-313, V12)
+
+Tier 1 and tier 2 publishing, the full vetting pipeline (ADR-0026 section 3), ratings, payments,
+hosted execution of custom code, and an MCP import command (`kampong import mcp`). Opened only when
+a second publisher exists. A sandbox technology is chosen after a dedicated threat review.
+
+### Test plan
+
+- **Every phase closes on its template.** The template must (1) be a spec-only build, (2) run to
+  completion on recorded fixtures with no network and no credentials, (3) pass exporter behavioural
+  equivalence (`npm install && npm start` in a clean directory against the same input), and (4) have
+  one live smoke test gated behind real tokens, skipped in CI like the DB suites.
+- **Unit:** expression evaluation (paths, arrays, arithmetic, `abs`, `len`), determinism and bounds;
+  `vars` resolution; `output_schema` validate-and-retry; `failure_when` matchers; pacing and
+  `Retry-After`; webhook auth presets (constant-time compare, replay window); `StateStore`
+  semantics including `putIfAbsent` under concurrency; dedupe enums; manifest and permission
+  linting; lockfile digest verification.
+- **Integration:** the `AgentSpec` round-trip fixed point (ADR-0007) gains a fixture for every new
+  field and step kind; a restart with a pending approval resumes; a poll cycle with one bad item
+  continues; a fixture recorded for two POSTs with different bodies replays each correctly (the
+  regression test for the key bug); a component that requests an egress host outside its manifest
+  is refused.
+- **E2E:** per-template behavioural equivalence; the canvas authors each new step kind and the
+  YAML validates against the published JSON Schema.
 
 ## V5: Hosted / BYOK SaaS Mode
 
@@ -422,3 +548,20 @@ against V5–V10; one board epic per finding, all `[ROADMAP]`. Order below is th
 | EPIC-302 (F9)  | HITL "record a decision after the fact" mode                                 | incident-responder                                  | M      |
 | EPIC-303 (F10) | Agent-executed remediation after approval (ADR-0004); depends on F3, F4, F9  | incident-responder                                  | L      |
 | EPIC-304 (F11) | Exact version pinning in exported projects                                   | pr-review-swarm                                     | S      |
+
+**Absorbed into V11 (2026-10-06).** The F epics stay as the traceability record; the work is done in
+the V11 epics, with these corrections from the code analysis:
+
+| Finding | Lands in                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------- |
+| F1      | V11-P1 (schedule, poll, runner), built together with F4                                                     |
+| F2      | Staged: `mode: inject` in V11-P0, `mode: retrieve` in V11-P4                                                |
+| F3      | V11-P1 (docs and the tunnel decision); hosted ingress in V11-P2                                             |
+| F4      | V11-P1 (ADR-0028 StateStore); wider than run state: dedupe, cursors, locks                                  |
+| F5      | V11-P0, widened to trigger filtering, normalisation and `respond: sync`                                     |
+| F6      | V11-P1 (IMAP module first; Gmail REST with OAuth is the managed path, later)                                |
+| F7      | **Split:** F7a `http_request` completeness (V11-P0, ahead of F1), F7b failure detection and pacing (V11-P0) |
+| F8      | V11-P3 (static parallel first; planner-selected fan-out shared with V7)                                     |
+| F9      | V11-P2                                                                                                      |
+| F10     | Still last; depends on F3, F4, F9. Not scheduled                                                            |
+| F11     | V11-X (quick win, done first)                                                                               |
