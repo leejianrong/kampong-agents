@@ -29,6 +29,7 @@ import {
   requiredComponentRefs,
   explicitComponentRefs,
 } from "@kampong/exporter";
+import { runDoctor, type ConnectFn } from "./doctor.js";
 import { createDevServer } from "./server.js";
 import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
 
@@ -96,6 +97,9 @@ Commands:
   lock <spec>.yaml [--update]        Pin the components a spec uses to their content digests
                                       in kampong.lock (next to the spec).
 
+  doctor <spec>.yaml                 Preflight a spec: components, pins, permissions, credentials
+                                      (names only) and, with --online, host reachability.
+
 Run "kampong <command> --help" for command-specific options.`;
 
 const DEV_HELP_TEXT = `kampong dev [dir] [options]
@@ -159,6 +163,9 @@ export interface RunCliTestOptions {
    * this -- see the bottom of this file.
    */
   model?: ModelClient;
+  /** Test-only seams for `kampong doctor`: the environment it reads and the TCP dial it uses. */
+  env?: NodeJS.ProcessEnv;
+  connect?: ConnectFn;
 }
 
 export async function runCli(
@@ -179,6 +186,8 @@ export async function runCli(
       return runExportCommand(rest, io);
     case "lock":
       return runLockCommand(rest, io);
+    case "doctor":
+      return runDoctorCommand(rest, io, testOptions);
     case "-v":
     case "--version":
       io.stdout(getVersion());
@@ -1072,6 +1081,103 @@ async function runLockCommand(args: string[], io: CliIO): Promise<number> {
   for (const use of outcome.unchanged) io.stdout(`unchanged ${use}`);
   io.stdout(`Lockfile: ${lockPathFor(specPath)}`);
   return EXIT_SUCCESS;
+}
+
+// --- doctor ---------------------------------------------------------------
+
+const DOCTOR_HELP_TEXT = `kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--json]
+
+A read-only preflight of everything that would stop \`kampong run\`: each component the spec uses
+resolves, is pinned and unchanged, and passes its static check; each environment variable a
+model key, connector credential or request field needs is set (names are shown, values never);
+with --tools replay, each tool has a recorded fixture.
+
+Options:
+  --online       Also open a TCP connection to each host the spec's components and tools may
+                 reach, and to the Ollama server. Off by default: nothing leaves the machine.
+  --tools replay Check fixtures as \`kampong run --tools replay\` would use them.
+  --fixtures <dir>  Fixture directory (default: "<spec dir>/.kampong/fixtures")
+  --json         Print one JSON object: { ok, checks: [{ status, area, message }] }
+  -h, --help     Show this help
+
+Exit codes: 0 nothing would stop a run (warnings allowed); 1 the spec failed validation;
+2 a check failed; 64 bad arguments.`;
+
+async function runDoctorCommand(
+  args: string[],
+  io: CliIO,
+  testOptions: RunCliTestOptions,
+): Promise<number> {
+  if (args.includes("-h") || args.includes("--help")) {
+    io.stdout(DOCTOR_HELP_TEXT);
+    return EXIT_SUCCESS;
+  }
+  let online = false;
+  let json = false;
+  let toolsMode: "live" | "record" | "replay" = "live";
+  let fixturesDir: string | undefined;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--online") online = true;
+    else if (arg === "--json") json = true;
+    else if (arg === "--tools") {
+      const value = args[++i];
+      if (value !== "live" && value !== "record" && value !== "replay") {
+        io.stderr(`kampong doctor: --tools expects live, record or replay\n${DOCTOR_HELP_TEXT}`);
+        return EXIT_USAGE_ERROR;
+      }
+      toolsMode = value;
+    } else if (arg === "--fixtures") {
+      fixturesDir = args[++i];
+      if (!fixturesDir) {
+        io.stderr(`kampong doctor: --fixtures expects a directory\n${DOCTOR_HELP_TEXT}`);
+        return EXIT_USAGE_ERROR;
+      }
+    } else if (arg.startsWith("-")) {
+      io.stderr(`kampong doctor: unknown option ${arg}\n${DOCTOR_HELP_TEXT}`);
+      return EXIT_USAGE_ERROR;
+    } else positional.push(arg);
+  }
+  if (positional.length !== 1) {
+    io.stderr(`kampong doctor: expected exactly one spec path\n${DOCTOR_HELP_TEXT}`);
+    return EXIT_USAGE_ERROR;
+  }
+  const specPath = positional[0]!;
+  let source: string;
+  try {
+    source = readFileSync(specPath, "utf8");
+  } catch (err) {
+    io.stderr(`kampong doctor: could not read spec file at ${specPath}: ${(err as Error).message}`);
+    return EXIT_VALIDATION_FAILURE;
+  }
+  const { success, spec, errors } = parseSpec(source);
+  if (!success || !spec) {
+    io.stderr(`kampong doctor: spec validation failed: ${specPath}`);
+    for (const e of errors) {
+      io.stderr(
+        `  ${e.path.join(".") || "(root)"}: ${e.message}${e.line ? ` (line ${e.line})` : ""}`,
+      );
+    }
+    return EXIT_VALIDATION_FAILURE;
+  }
+  const checks = await runDoctor(spec, specPath, {
+    env: testOptions.env ?? process.env,
+    online,
+    toolsMode,
+    fixturesDir,
+    connect: testOptions.connect,
+  });
+  const ok = !checks.some((c) => c.status === "fail");
+  if (json) {
+    io.stdout(JSON.stringify({ ok, checks }));
+  } else {
+    const label = { pass: "ok  ", warn: "warn", fail: "FAIL" } as const;
+    for (const c of checks) io.stdout(`${label[c.status]} ${c.message}`);
+    const failed = checks.filter((c) => c.status === "fail").length;
+    io.stdout(ok ? "Nothing would stop a run." : `${failed} problem(s) would stop a run.`);
+  }
+  return ok ? EXIT_SUCCESS : EXIT_EXECUTION_FAILURE;
 }
 
 // --- entry point ----------------------------------------------------------
