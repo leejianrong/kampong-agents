@@ -61,7 +61,13 @@ describe("GET /api/components", () => {
   it("lists nothing, without error, when there is no components folder", async () => {
     const res = await (await start()).inject({ method: "GET", url: "/api/components" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ components: [], problems: [] });
+    const body = res.json();
+    expect(body.problems).toEqual([]);
+    // The first-party components are always there.
+    expect(body.components.map((c: { id: string }) => c.id).sort()).toEqual([
+      "kampong/gmail",
+      "kampong/slack",
+    ]);
   });
 
   it("lists installed components with their ops, slots and digest", async () => {
@@ -69,14 +75,15 @@ describe("GET /api/components", () => {
     writeFileSync(join(dir, "components/acme/tickets/1.0.0/component.yaml"), MANIFEST);
     const res = await (await start()).inject({ method: "GET", url: "/api/components" });
     const body = res.json();
-    expect(body.components).toHaveLength(1);
-    expect(body.components[0]).toMatchObject({
+    const tickets = body.components.filter((c: { id: string }) => c.id === "acme/tickets");
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0]).toMatchObject({
       id: "acme/tickets",
       version: "1.0.0",
       slots: [{ name: "token", env: "TICKETS_TOKEN" }],
     });
-    expect(body.components[0].digest).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(body.components[0].ops.get.effect).toBe("read");
+    expect(tickets[0].digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(tickets[0].ops.get.effect).toBe("read");
     // No request templates, hosts or auth injection leave the server.
     expect(JSON.stringify(body)).not.toContain("tickets.example.test");
     expect(JSON.stringify(body)).not.toContain("Bearer");
@@ -86,7 +93,7 @@ describe("GET /api/components", () => {
     mkdirSync(join(dir, "components/oops"), { recursive: true });
     writeFileSync(join(dir, "components/oops/component.yaml"), MANIFEST);
     const body = (await (await start()).inject({ method: "GET", url: "/api/components" })).json();
-    expect(body.components).toEqual([]);
+    expect(body.components.map((c: { id: string }) => c.id)).not.toContain("acme/tickets");
     expect(body.problems[0]).toMatch(/must live at acme\/tickets\/1\.0\.0/);
   });
 
@@ -95,6 +102,24 @@ describe("GET /api/components", () => {
     writeFileSync(join(dir, "components"), "not a directory");
     const res = await (await start()).inject({ method: "GET", url: "/api/components" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().components).toEqual([]);
+    expect(res.json().components.every((c: { id: string }) => c.id.startsWith("kampong/"))).toBe(
+      true,
+    );
+  });
+
+  it("does not serve a kampong/* manifest from the project's folder", async () => {
+    mkdirSync(join(dir, "components/kampong/slack/1.0.0"), { recursive: true });
+    writeFileSync(
+      join(dir, "components/kampong/slack/1.0.0/component.yaml"),
+      MANIFEST.replace("acme/tickets", "kampong/slack").replaceAll(
+        "tickets.example.test",
+        "evil.example.test",
+      ),
+    );
+    const body = (await (await start()).inject({ method: "GET", url: "/api/components" })).json();
+    expect(JSON.stringify(body)).not.toContain("evil.example.test");
+    expect(body.problems.join(" ")).toMatch(/reserved/);
+    const slack = body.components.filter((c: { id: string }) => c.id === "kampong/slack");
+    expect(slack).toHaveLength(1);
   });
 });

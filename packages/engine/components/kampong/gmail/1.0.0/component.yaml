@@ -1,0 +1,26 @@
+kind: module
+id: kampong/gmail
+version: 1.0.0
+title: Gmail
+description: Send a plain-text email with the Gmail API.
+license: Apache-2.0
+entry: ./index.mjs
+permissions:
+  egress: [gmail.googleapis.com]
+auth:
+  slots:
+    token:
+      env: GMAIL_TOKEN
+      hosts: [gmail.googleapis.com]
+ops:
+  send:
+    title: Send an email
+    description: Sends a plain-text message with users.messages.send.
+    effect: write
+    input:
+      type: object
+      required: [to, subject, body]
+      properties:
+        to: { type: string, title: To }
+        subject: { type: string, title: Subject }
+        body: { type: string, title: Body, format: multiline }

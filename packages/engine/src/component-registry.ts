@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
-import { extname, join, relative, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, extname, join, relative, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parseComponentManifest,
   type ComponentManifest,
@@ -37,6 +37,11 @@ export interface ResolveOptions {
 export interface ComponentRegistry {
   resolve(id: string, version: string, options?: ResolveOptions): Promise<ResolvedComponent>;
   list(): Promise<ComponentSummary[]>;
+}
+
+/** `kampong/*` is reserved for the components that ship with kampong (ADR-0025). */
+export function isFirstPartyId(id: string): boolean {
+  return id.startsWith("kampong/");
 }
 
 /** Pins as a fixed map, or a function read on each use. */
@@ -125,7 +130,35 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
           : "";
       throw new ComponentResolutionError(`component ${ref} was not found (${hint}${broken})`);
     }
-    const dir = matches[0]!.dir;
+    return this.load(matches[0]!.dir, id, version, options);
+  }
+
+  /**
+   * Every component with its manifest and digest, from one scan. For a listing (the canvas catalog);
+   * a component that fails to load is reported as a problem next to the others, not thrown.
+   */
+  async resolveAll(): Promise<{ components: ResolvedComponent[]; problems: string[] }> {
+    const { found, problems } = await this.scan();
+    const components: ResolvedComponent[] = [];
+    const messages = problems.map((p) => p.message);
+    for (const entry of found) {
+      try {
+        components.push(await this.load(entry.dir, entry.id, entry.version, {}));
+      } catch (err) {
+        messages.push(`${entry.id}@${entry.version}: ${(err as Error).message}`);
+      }
+    }
+    return { components, problems: messages };
+  }
+
+  /** Reads, hashes and parses one component directory, then applies the pin and entry checks. */
+  private async load(
+    dir: string,
+    id: string,
+    version: string,
+    options: ResolveOptions,
+  ): Promise<ResolvedComponent> {
+    const ref = `${id}@${version}`;
     let hashed: Awaited<ReturnType<typeof hashDirectory>>;
     try {
       hashed = await hashDirectory(dir);
@@ -296,7 +329,7 @@ export class InProcessModuleRunner implements ModuleRunner {
     const expectedDigest = Object.hasOwn(pins, ref) ? pins[ref] : undefined;
     // The dispatcher checked the pin when it resolved the call; a pin removed since then must not turn
     // that into "no check".
-    if (this.options.requirePins && expectedDigest === undefined) {
+    if (this.options.requirePins && expectedDigest === undefined && !isFirstPartyId(manifest.id)) {
       throw new ComponentResolutionError(
         `component ${ref} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
       );
@@ -328,5 +361,35 @@ export class InProcessModuleRunner implements ModuleRunner {
     return await (
       mod.invoke as (op: string, input: unknown, ctx: ModuleContext) => Promise<unknown>
     )(op, input, ctx);
+  }
+}
+
+/** The components that ship with this package, under `packages/engine/components`. */
+export function createFirstPartyRegistry(): DirectoryComponentRegistry {
+  // `src/` and `dist/` are both one level below the package root, so this holds for either.
+  // Built from the module's own path as a string: `new URL(...)` would be the DOM's URL class under a
+  // jsdom test environment, which Node's fileURLToPath rejects.
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "components");
+  return new DirectoryComponentRegistry(dir, { firstParty: true });
+}
+
+/**
+ * The user's components plus the ones that ship with kampong. A `kampong/*` id is answered by the
+ * first-party registry alone and everything else by the user's, so a project's folder can never
+ * stand in for, or shadow, a first-party component.
+ */
+export class LayeredComponentRegistry implements ComponentRegistry {
+  constructor(
+    private readonly user: ComponentRegistry,
+    private readonly firstParty: ComponentRegistry,
+  ) {}
+
+  resolve(id: string, version: string, options?: ResolveOptions): Promise<ResolvedComponent> {
+    return (isFirstPartyId(id) ? this.firstParty : this.user).resolve(id, version, options);
+  }
+
+  async list(): Promise<ComponentSummary[]> {
+    const [user, firstParty] = await Promise.all([this.user.list(), this.firstParty.list()]);
+    return [...firstParty, ...user.filter((c) => !isFirstPartyId(c.id))];
   }
 }

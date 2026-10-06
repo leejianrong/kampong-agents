@@ -2,9 +2,12 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   createComponentDispatcher,
+  createFirstPartyRegistry,
   DirectoryComponentRegistry,
   InProcessModuleRunner,
+  LayeredComponentRegistry,
   type ComponentDispatcher,
+  type ComponentRegistry,
 } from "@kampong/engine";
 import {
   LOCKFILE_NAME,
@@ -13,7 +16,6 @@ import {
   catalogEntryFromManifest,
   type AgentSpec,
   type ComponentCatalog,
-  type ComponentCatalogEntry,
   type Lockfile,
 } from "@kampong/spec";
 
@@ -43,6 +45,14 @@ export function readLockfile(specPath: string): Lockfile {
   return parsed.lockfile;
 }
 
+/** The project's components plus the first-party ones that ship with kampong. */
+function registryFor(specPath: string): ComponentRegistry {
+  return new LayeredComponentRegistry(
+    new DirectoryComponentRegistry(componentsDirFor(specPath)),
+    createFirstPartyRegistry(),
+  );
+}
+
 function pinsFor(specPath: string): () => Record<string, string> {
   // Read on each call so a lockfile edited while `kampong dev` is running applies without a restart.
   return () =>
@@ -52,7 +62,7 @@ function pinsFor(specPath: string): () => Record<string, string> {
 }
 
 export function componentDispatcherFor(specPath: string): ComponentDispatcher {
-  const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
+  const registry = registryFor(specPath);
   const pins = pinsFor(specPath);
   return createComponentDispatcher({
     registry,
@@ -94,7 +104,7 @@ export async function lockComponents(
   } catch (err) {
     return { ok: false, message: (err as Error).message };
   }
-  const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
+  const registry = registryFor(specPath);
   const components = { ...lock.components };
   const added: string[] = [];
   const unchanged: string[] = [];
@@ -162,16 +172,16 @@ export async function componentCatalogFor(specPath: string): Promise<ComponentCa
 }
 
 async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
-  const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
-  const components: ComponentCatalogEntry[] = [];
-  const problems = (await registry.problems()).map((p) => p.message);
-  for (const summary of await registry.list()) {
-    try {
-      const { manifest, digest } = await registry.resolve(summary.id, summary.version);
-      components.push(catalogEntryFromManifest(manifest, digest));
-    } catch (err) {
-      problems.push(`${summary.id}@${summary.version}: ${(err as Error).message}`);
-    }
-  }
-  return { components, problems };
+  // One scan and one hash per component. The first-party components ship tested, so only the project's
+  // own folder can report problems; it also cannot supply a kampong/* component (the registry refuses).
+  const [firstParty, user] = await Promise.all([
+    createFirstPartyRegistry().resolveAll(),
+    new DirectoryComponentRegistry(componentsDirFor(specPath)).resolveAll(),
+  ]);
+  return {
+    components: [...firstParty.components, ...user.components].map(({ manifest, digest }) =>
+      catalogEntryFromManifest(manifest, digest),
+    ),
+    problems: [...firstParty.problems, ...user.problems],
+  };
 }

@@ -50,6 +50,9 @@ export {
 
 export {
   DirectoryComponentRegistry,
+  LayeredComponentRegistry,
+  createFirstPartyRegistry,
+  isFirstPartyId,
   type DirectoryComponentRegistryOptions,
   InProcessModuleRunner,
   ComponentResolutionError,
@@ -90,6 +93,7 @@ export { isBelowConfidenceThreshold } from "./guardrail.js";
 
 export {
   runWorkflow,
+  desugarLegacyTool,
   type RunEvent,
   type ApprovalDecision,
   type EngineDeps,

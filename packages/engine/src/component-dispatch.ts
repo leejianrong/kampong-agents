@@ -1,6 +1,6 @@
 import type { ComponentManifest, SchemaNode } from "@kampong/spec";
 import type { ComponentDispatcher, ComponentTool } from "./workflow.js";
-import { readPins } from "./component-registry.js";
+import { isFirstPartyId, readPins } from "./component-registry.js";
 import { invokeOp, opRequiresApproval, type ModuleRunner } from "./component.js";
 import type { ComponentRegistry, PinSource } from "./component-registry.js";
 
@@ -32,7 +32,7 @@ export function createComponentDispatcher({
       const at = tool.use.lastIndexOf("@");
       const current = await readPins(pins);
       const expectedDigest = Object.hasOwn(current, tool.use) ? current[tool.use] : undefined;
-      if (requirePins && expectedDigest === undefined) {
+      if (requirePins && expectedDigest === undefined && !isFirstPartyId(tool.use)) {
         throw new Error(
           `component ${tool.use} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
         );
