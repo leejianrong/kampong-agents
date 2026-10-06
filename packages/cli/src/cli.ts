@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import { parseSpec, type AgentSpec } from "@kampong/spec";
+import { parseSpec, specWarnings, type AgentSpec } from "@kampong/spec";
 import {
   createAgentRun,
   createFixtureFetch,
@@ -47,6 +47,14 @@ export interface CliIO {
   stdout: (line: string) => void;
   stderr: (line: string) => void;
   stdin: NodeJS.ReadableStream;
+}
+
+// Non-fatal spec findings (KAN-1831) go to stderr only, so `--json` keeps its promise of exactly one
+// JSON object on stdout and a warning never changes an exit code.
+function reportSpecWarnings(spec: AgentSpec, command: string, io: CliIO): void {
+  for (const warning of specWarnings(spec)) {
+    io.stderr(`kampong ${command}: warning: ${warning.message}`);
+  }
 }
 
 const defaultIO: CliIO = {
@@ -465,6 +473,9 @@ async function runServeCommand(
     return EXIT_EXECUTION_FAILURE;
   }
 
+  const served = parseSpec(readFileSync(resolvedSpecPath, "utf8"));
+  if (served.spec) reportSpecWarnings(served.spec, "serve", io);
+
   io.stdout(`kampong serve running at http://${host}:${port}`);
   io.stdout(`  spec:    ${resolvedSpecPath}`);
   io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
@@ -737,6 +748,7 @@ async function runRunCommand(
     }
     return EXIT_VALIDATION_FAILURE;
   }
+  reportSpecWarnings(spec, "run", io);
 
   const fetchImpl =
     toolsMode === "live"
@@ -924,6 +936,7 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
     }
     return EXIT_VALIDATION_FAILURE;
   }
+  reportSpecWarnings(spec, "export", io);
 
   let result: ReturnType<typeof exportProject>;
   try {

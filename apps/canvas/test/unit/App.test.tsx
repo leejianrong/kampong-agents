@@ -66,6 +66,38 @@ describe("App", () => {
     });
   });
 
+  it("shows a warning banner when the spec declares knowledge_base, which nothing executes (KAN-1831)", async () => {
+    const withKnowledgeBase = {
+      ...SPEC_RESPONSE,
+      spec: {
+        ...SPEC_RESPONSE.spec,
+        agent: {
+          ...SPEC_RESPONSE.spec.agent,
+          knowledge_base: [{ type: "url", source: "https://docs.example.com/policy" }],
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => ({ ok: true, status: 200, json: async () => withKnowledgeBase }) as Response,
+      ),
+    );
+
+    render(<App />);
+
+    const banner = await screen.findByTestId("spec-warnings");
+    expect(banner.textContent).toMatch(/knowledge_base/);
+    expect(banner.textContent).toMatch(/not.*executed/i);
+  });
+
+  it("shows no warning banner for a spec without inert fields", async () => {
+    render(<App />);
+
+    await waitFor(() => screen.getByText(/Trigger: Greeter/));
+    expect(screen.queryByTestId("spec-warnings")).toBeNull();
+  });
+
   it("does not show a conflict banner for an ordinary render", async () => {
     render(<App />);
 

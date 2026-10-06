@@ -321,6 +321,13 @@ select {
   color: var(--md-sys-color-on-error-container);
 }
 
+/* Non-blocking notice (spec warnings): M3 has no warning role, so the tertiary container marks it
+   as softer than an error and distinct from the primary-container info banners. */
+.md3-banner--warning {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
 .md3-banner__action {
   background: transparent;
   border: none;
