@@ -37,6 +37,11 @@ export interface ModuleContext {
   /** Reads a declared secret slot from the environment. Modules never see `process.env` directly. */
   secrets: { get(slot: string): string };
   /**
+   * Reads one of the non-secret environment variables the manifest names in `permissions.env`; any other
+   * name is refused. Undefined when the variable is declared but not set.
+   */
+  env: { get(name: string): string | undefined };
+  /**
    * A `fetch` that refuses any host outside the component's egress list, and, once the module has read
    * a secret slot, any host outside the hosts those slots are bound to. It never follows redirects on
    * its own: a 3xx comes back to the module, which must re-request through this function.
@@ -47,6 +52,12 @@ export interface ModuleContext {
 
 /** Runs `kind: module` components. The first implementation runs in-process; a sandbox can replace it. */
 export interface ModuleRunner {
+  /**
+   * How far the runner keeps a module away from the host. `none` runs it in this process, where the
+   * permission checks are the only fence; `sandbox` is a runner that confines the module itself
+   * (ADR-0031). A runner that does not say is treated as `none`.
+   */
+  readonly isolation?: ModuleIsolation;
   invoke(
     manifest: ModuleComponentManifest,
     op: string,
@@ -55,7 +66,15 @@ export interface ModuleRunner {
   ): Promise<unknown>;
 }
 
+export type ModuleIsolation = "none" | "sandbox";
+
 export interface InvokeOpOptions {
+  /**
+   * Refuse a module op unless the runner provides at least this much isolation. A hosted server that
+   * runs components with a tenant's secrets sets `sandbox`, so a module cannot run until a sandboxed
+   * runner exists. Has no effect on a rest component, which runs no code.
+   */
+  requireIsolation?: ModuleIsolation;
   /** Non-secret per-use values the manifest declares under `config` (a project ref, a region). */
   config?: Record<string, string>;
   /** Remaps a secret slot to a different environment variable (`SLOT -> "${NAME}"` or `"NAME"`). */
@@ -473,7 +492,14 @@ async function runModule(
       "input",
     );
   }
+  if (options.requireIsolation === "sandbox" && options.runner.isolation !== "sandbox") {
+    throw fail(
+      `${label}: ${manifest.id} is a module and the runner provides ${options.runner.isolation ?? "no"} isolation, but a sandbox is required`,
+      "permission",
+    );
+  }
   const egress = egressOf(manifest, config);
+  const declaredEnv = manifest.permissions?.env ?? [];
   const used: string[] = [];
   const readSlotHosts: string[] = [];
   const send = options.fetchImpl ?? ((url, init) => fetch(url, init));
@@ -499,6 +525,17 @@ async function runModule(
         used.push(value);
         readSlotHosts.push(...declared.hosts.map((host) => withConfig(host, config)));
         return value;
+      },
+    },
+    env: {
+      get(name) {
+        if (!declaredEnv.includes(name)) {
+          throw fail(
+            `${label}: environment variable ${name} is not declared in permissions.env`,
+            "permission",
+          );
+        }
+        return env[name];
       },
     },
     fetch: async (target, init) => {

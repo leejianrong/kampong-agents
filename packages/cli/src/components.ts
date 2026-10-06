@@ -16,6 +16,9 @@ import {
   parseLockfile,
   serializeLockfile,
   catalogEntryFromManifest,
+  describePermissions,
+  diffPermissions,
+  permissionsOf,
   type AgentSpec,
   type ComponentCatalog,
   type Lockfile,
@@ -75,7 +78,15 @@ export function componentDispatcherFor(specPath: string): ComponentDispatcher {
 }
 
 export type LockOutcome =
-  | { ok: true; added: string[]; unchanged: string[]; updated: string[]; none: boolean }
+  | {
+      ok: true;
+      added: string[];
+      unchanged: string[];
+      updated: string[];
+      none: boolean;
+      /** What each newly pinned or updated component may do, for the author to read. */
+      reviewed: { use: string; summary: string }[];
+    }
   | { ok: false; message: string };
 
 export function componentUsesOf(spec: AgentSpec): string[] {
@@ -94,11 +105,11 @@ export function componentUsesOf(spec: AgentSpec): string[] {
 export async function lockComponents(
   spec: AgentSpec,
   specPath: string,
-  { update }: { update: boolean },
+  { update, allowWiderPermissions = false }: { update: boolean; allowWiderPermissions?: boolean },
 ): Promise<LockOutcome> {
   const uses = componentUsesOf(spec);
   if (uses.length === 0) {
-    return { ok: true, added: [], unchanged: [], updated: [], none: true };
+    return { ok: true, added: [], unchanged: [], updated: [], none: true, reviewed: [] };
   }
   let lock: Lockfile;
   try {
@@ -112,26 +123,54 @@ export async function lockComponents(
   const unchanged: string[] = [];
   const updated: string[] = [];
   const refused: string[] = [];
+  const widened: string[] = [];
+  const backfilled: string[] = [];
+  const reviewed: { use: string; summary: string }[] = [];
   for (const use of uses) {
     const at = use.lastIndexOf("@");
     if (at <= 0) {
       return { ok: false, message: `${use}: expected "id@version" (for example acme/echo@1.0.0)` };
     }
     let digest: string;
+    let permissions: ReturnType<typeof permissionsOf>;
     try {
-      digest = (await registry.resolve(use.slice(0, at), use.slice(at + 1))).digest;
+      const resolved = await registry.resolve(use.slice(0, at), use.slice(at + 1));
+      digest = resolved.digest;
+      permissions = permissionsOf(resolved.manifest);
     } catch (err) {
       return { ok: false, message: `${use}: ${(err as Error).message}` };
     }
     const current = Object.hasOwn(components, use) ? components[use]!.digest : undefined;
     if (current === undefined) {
-      components[use] = { digest };
+      components[use] = { digest, permissions };
       added.push(use);
+      reviewed.push({ use, summary: describePermissions(permissions) });
     } else if (current === digest) {
       unchanged.push(use);
+      // The files are the ones that were pinned, so what they may do is what a record would say: write it
+      // down, so a later update has something to be compared with.
+      if (components[use]!.permissions === undefined) {
+        components[use] = { digest, permissions };
+        backfilled.push(use);
+      }
     } else if (update) {
-      components[use] = { digest };
+      // A pin that recorded what the component could do lets us tell a code change from a wider grant.
+      const before = components[use]!.permissions;
+      const summary = describePermissions(permissions);
+      // With no record there is nothing to compare, so anything the component may do counts as new.
+      const wider =
+        before === undefined
+          ? summary === "no permissions"
+            ? []
+            : [`no record of what it was reviewed for; it may now: ${summary}`]
+          : diffPermissions(before, permissions);
+      if (wider.length > 0 && !allowWiderPermissions) {
+        widened.push(`${use}: ${wider.join("; ")}`);
+        continue;
+      }
+      components[use] = { digest, permissions };
       updated.push(use);
+      reviewed.push({ use, summary: describePermissions(permissions) });
     } else {
       refused.push(use);
     }
@@ -142,7 +181,13 @@ export async function lockComponents(
       message: `${refused.join(", ")} changed since it was pinned in ${LOCKFILE_NAME}. Review the change, then run \`kampong lock --update\` to accept it.`,
     };
   }
-  if (added.length > 0 || updated.length > 0) {
+  if (widened.length > 0) {
+    return {
+      ok: false,
+      message: `the update widens what a component may do:\n  ${widened.join("\n  ")}\nReview it, then add --allow-wider-permissions to accept it.`,
+    };
+  }
+  if (added.length > 0 || updated.length > 0 || backfilled.length > 0) {
     // Resolving above took time; another `kampong lock` may have written meanwhile. Re-read the file
     // now (no awaits between here and the rename) and apply only this run's changes to it, so
     // concurrent runs cannot drop each other's pins.
@@ -153,14 +198,14 @@ export async function lockComponents(
       return { ok: false, message: (err as Error).message };
     }
     const merged = { ...latest.components };
-    for (const use of [...added, ...updated]) merged[use] = components[use]!;
+    for (const use of [...added, ...updated, ...backfilled]) merged[use] = components[use]!;
     // Written to a temporary file and renamed, so a crash cannot leave a truncated lockfile.
     const target = lockPathFor(specPath);
     const temp = `${target}.${process.pid}.tmp`;
     writeFileSync(temp, serializeLockfile({ version: 1, components: merged }));
     renameSync(temp, target);
   }
-  return { ok: true, added, unchanged, updated, none: false };
+  return { ok: true, added, unchanged, updated, none: false, reviewed };
 }
 
 /** What the canvas needs to build forms for the components installed beside a spec. */

@@ -1012,6 +1012,10 @@ files no longer match the pin.
 Options:
   --update       Accept a changed component: re-pin one whose digest differs from its pin.
                  Without it a changed component is refused and nothing is written.
+  --allow-wider-permissions
+                 With --update, also accept a component that now may do more than when it was
+                 pinned (a new host, env variable, fs mode, exec, or a secret reaching a new host).
+                 Without it such an update is refused and the widening is listed.
   -h, --help     Show this help`;
 
 async function runLockCommand(args: string[], io: CliIO): Promise<number> {
@@ -1020,7 +1024,13 @@ async function runLockCommand(args: string[], io: CliIO): Promise<number> {
     return EXIT_SUCCESS;
   }
   const update = args.includes("--update");
-  const rest = args.filter((a) => a !== "--update");
+  const allowWiderPermissions = args.includes("--allow-wider-permissions");
+  const rest = args.filter((a) => a !== "--update" && a !== "--allow-wider-permissions");
+  if (allowWiderPermissions && !update) {
+    io.stderr("kampong lock: --allow-wider-permissions only applies together with --update\n");
+    io.stderr(LOCK_HELP_TEXT);
+    return EXIT_USAGE_ERROR;
+  }
   const unknown = rest.find((a) => a.startsWith("-"));
   if (unknown || rest.length !== 1) {
     io.stderr(
@@ -1047,7 +1057,7 @@ async function runLockCommand(args: string[], io: CliIO): Promise<number> {
     }
     return EXIT_VALIDATION_FAILURE;
   }
-  const outcome = await lockComponents(spec, specPath, { update });
+  const outcome = await lockComponents(spec, specPath, { update, allowWiderPermissions });
   if (!outcome.ok) {
     io.stderr(`kampong lock: ${outcome.message}`);
     return EXIT_EXECUTION_FAILURE;
@@ -1056,8 +1066,9 @@ async function runLockCommand(args: string[], io: CliIO): Promise<number> {
     io.stdout("No components used by this spec; nothing to pin.");
     return EXIT_SUCCESS;
   }
-  for (const use of outcome.added) io.stdout(`pinned ${use}`);
-  for (const use of outcome.updated) io.stdout(`updated ${use}`);
+  const summaryOf = (use: string) => outcome.reviewed.find((r) => r.use === use)?.summary;
+  for (const use of outcome.added) io.stdout(`pinned ${use} (${summaryOf(use)})`);
+  for (const use of outcome.updated) io.stdout(`updated ${use} (${summaryOf(use)})`);
   for (const use of outcome.unchanged) io.stdout(`unchanged ${use}`);
   io.stdout(`Lockfile: ${lockPathFor(specPath)}`);
   return EXIT_SUCCESS;

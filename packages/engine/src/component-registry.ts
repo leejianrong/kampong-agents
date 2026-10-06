@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseComponentManifest, type ComponentManifest } from "@kampong/spec";
+import {
+  parseComponentManifest,
+  scanModuleSources,
+  type ComponentManifest,
+  type ModuleViolation,
+} from "@kampong/spec";
 import {
   ComponentResolutionError,
   type ComponentRegistry,
@@ -110,6 +115,19 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
     return { components, problems: messages };
   }
 
+  private readonly scanResults = new Map<string, ModuleViolation[]>();
+  /** How many static scans have actually run (not served from the cache); for tests. */
+  scansRun = 0;
+
+  private scanned(digest: string, run: () => ModuleViolation[]): ModuleViolation[] {
+    const known = this.scanResults.get(digest);
+    if (known) return known;
+    this.scansRun++;
+    const result = run();
+    this.scanResults.set(digest, result);
+    return result;
+  }
+
   /** Reads, hashes and parses one component directory, then applies the pin and entry checks. */
   private async load(
     dir: string,
@@ -152,6 +170,20 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
       if (!files.has(entry)) {
         throw new ComponentResolutionError(
           `component ${ref} names entry ${manifest.entry}, which is not a file in ${dir}`,
+        );
+      }
+      // The code must stay inside what the manifest declares (a static check, not a sandbox: ADR-0031).
+      // Refused here, before any of it is imported, so a violating module never runs.
+      // The result depends only on the bytes, which the digest identifies, so it is computed once.
+      const violations = this.scanned(digest, () =>
+        scanModuleSources(manifest, Object.fromEntries(files)),
+      );
+      if (violations.length > 0) {
+        const shown = violations
+          .slice(0, 5)
+          .map((v) => `${v.file}:${v.line} ${v.capability}: ${v.message}`);
+        throw new ComponentResolutionError(
+          `component ${ref} does not stay inside its manifest: ${shown.join("; ")}${violations.length > 5 ? `; and ${violations.length - 5} more` : ""}`,
         );
       }
     }

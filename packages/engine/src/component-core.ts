@@ -64,6 +64,9 @@ export class ComponentResolutionError extends Error {
  * until the process restarts.
  */
 export class InProcessModuleRunner implements ModuleRunner {
+  /** It imports the module into this process: the permission checks are the only fence. */
+  readonly isolation = "none" as const;
+
   constructor(
     private readonly registry: ComponentRegistry,
     /** `id@version` to the digest it must match (from kampong.lock). */

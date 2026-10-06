@@ -206,6 +206,141 @@ describe("kampong lock and pin enforcement", () => {
     expect(readFileSync(lockPath(), "utf8")).toMatch(/kampong\/slack@1\.0\.0/);
   });
 
+  describe("permission review at lock time (KAN-1835)", () => {
+    const manifestWith = (permissions: string) => `kind: module
+id: acme/hello
+version: 1.0.0
+entry: ./index.mjs
+permissions: ${permissions}
+ops:
+  greet:
+    effect: read
+    input:
+      type: object
+      required: [who]
+      properties: { who: { type: string } }
+`;
+    const manifestPath = () => join(dir, "components/acme/hello/1.0.0/component.yaml");
+
+    it("records what the component may do, and shows it so the author sees what they approve", async () => {
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test], fs: [read] }"));
+      const { io, out } = capture();
+      expect(await runCli(["lock", specPath()], io)).toBe(EXIT_SUCCESS);
+      expect(out.join("\n")).toMatch(
+        /pinned acme\/hello@1\.0\.0.*egress: api\.example\.test; fs: read/,
+      );
+      const text = readFileSync(lockPath(), "utf8");
+      expect(text).toContain("api.example.test");
+      expect(text).toMatch(/fs:\s*\n?\s*- read|fs: \[\s*read/);
+    });
+
+    it("refuses an update that widens the permissions, shows what widened, and writes nothing", async () => {
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test] }"));
+      await runCli(["lock", specPath()], capture().io);
+      const before = readFileSync(lockPath(), "utf8");
+      writeFileSync(
+        manifestPath(),
+        manifestWith("{ egress: [api.example.test, other.example.test], exec: true }"),
+      );
+      const { io, err } = capture();
+      expect(await runCli(["lock", specPath(), "--update"], io)).toBe(EXIT_EXECUTION_FAILURE);
+      const text = err.join("\n");
+      expect(text).toContain("egress adds other.example.test");
+      expect(text).toContain("exec is now allowed");
+      expect(text).toMatch(/--allow-wider-permissions/);
+      expect(readFileSync(lockPath(), "utf8")).toBe(before);
+    });
+
+    it("accepts the wider permissions only with --allow-wider-permissions, and records the new grant", async () => {
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test] }"));
+      await runCli(["lock", specPath()], capture().io);
+      writeFileSync(
+        manifestPath(),
+        manifestWith("{ egress: [api.example.test, other.example.test] }"),
+      );
+      const { io, out } = capture();
+      expect(await runCli(["lock", specPath(), "--update", "--allow-wider-permissions"], io)).toBe(
+        EXIT_SUCCESS,
+      );
+      expect(out.join("\n")).toMatch(/updated acme\/hello@1\.0\.0/);
+      expect(readFileSync(lockPath(), "utf8")).toContain("other.example.test");
+    });
+
+    it("updates freely when the permissions did not widen (a code-only change, or a narrower grant)", async () => {
+      writeFileSync(
+        manifestPath(),
+        manifestWith("{ egress: [api.example.test, other.example.test] }"),
+      );
+      await runCli(["lock", specPath()], capture().io);
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test] }"));
+      expect(await runCli(["lock", specPath(), "--update"], capture().io)).toBe(EXIT_SUCCESS);
+      writeFileSync(entry(), "export async function invoke() { return { v: 2 }; }");
+      expect(await runCli(["lock", specPath(), "--update"], capture().io)).toBe(EXIT_SUCCESS);
+    });
+
+    const OLD_PIN = (digest: string) =>
+      `version: 1\ncomponents:\n  acme/hello@1.0.0:\n    digest: ${digest}\n`;
+    const digestInLock = () =>
+      /digest: (sha256:[0-9a-f]{64})/.exec(readFileSync(lockPath(), "utf8"))![1]!;
+
+    it("fills in the permissions record of a pin that was made without one, so it is protected from then on", async () => {
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test] }"));
+      await runCli(["lock", specPath()], capture().io);
+      const digest = digestInLock();
+      writeFileSync(lockPath(), OLD_PIN(digest));
+      const { io } = capture();
+      expect(await runCli(["lock", specPath()], io)).toBe(EXIT_SUCCESS);
+      const text = readFileSync(lockPath(), "utf8");
+      expect(text).toContain(digest);
+      expect(text).toContain("api.example.test");
+      // Now a widening update is caught.
+      writeFileSync(
+        manifestPath(),
+        manifestWith("{ egress: [api.example.test, evil.example.test] }"),
+      );
+      const refused = capture();
+      expect(await runCli(["lock", specPath(), "--update"], refused.io)).toBe(
+        EXIT_EXECUTION_FAILURE,
+      );
+      expect(refused.err.join("\n")).toContain("egress adds evil.example.test");
+    });
+
+    it("an update of a pin with no record of what was reviewed needs --allow-wider-permissions when the component may do anything", async () => {
+      writeFileSync(manifestPath(), manifestWith("{ egress: [api.example.test] }"));
+      await runCli(["lock", specPath()], capture().io);
+      writeFileSync(lockPath(), OLD_PIN(digestInLock()));
+      writeFileSync(entry(), "export async function invoke() { return { v: 3 }; }");
+      const { io, err } = capture();
+      expect(await runCli(["lock", specPath(), "--update"], io)).toBe(EXIT_EXECUTION_FAILURE);
+      expect(err.join("\n")).toMatch(/no record of what it was reviewed for/);
+      expect(err.join("\n")).toContain("egress: api.example.test");
+      expect(
+        await runCli(["lock", specPath(), "--update", "--allow-wider-permissions"], capture().io),
+      ).toBe(EXIT_SUCCESS);
+    });
+
+    it("an update of a pin with no record is free when the component may do nothing", async () => {
+      await runCli(["lock", specPath()], capture().io);
+      writeFileSync(lockPath(), OLD_PIN(digestInLock()));
+      writeFileSync(entry(), "export async function invoke() { return { v: 4 }; }");
+      expect(await runCli(["lock", specPath(), "--update"], capture().io)).toBe(EXIT_SUCCESS);
+    });
+
+    it("--allow-wider-permissions without --update is a usage error", async () => {
+      expect(await runCli(["lock", specPath(), "--allow-wider-permissions"], capture().io)).toBe(
+        EXIT_USAGE_ERROR,
+      );
+    });
+
+    it("refuses to pin a module whose code reaches outside its manifest", async () => {
+      writeFileSync(entry(), "export async function invoke() { return process.env.HOME; }");
+      const { io, err } = capture();
+      expect(await runCli(["lock", specPath()], io)).toBe(EXIT_EXECUTION_FAILURE);
+      expect(err.join("\n")).toMatch(/index\.mjs:1.*process/);
+      expect(existsSync(lockPath())).toBe(false);
+    });
+  });
+
   it("keeps pins that belong to other specs when it adds one", async () => {
     const other = `version: 1\ncomponents:\n  other/thing@2.0.0:\n    digest: sha256:${"c".repeat(64)}\n`;
     writeFileSync(lockPath(), other);

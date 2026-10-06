@@ -135,7 +135,30 @@ const egressEntrySchema = z
       'a wildcard is only allowed as a leading "*." with at least two labels after it (*.example.com, never *.com)',
   });
 
-const permissionsSchema = z.object({ egress: z.array(egressEntrySchema).min(1) }).strict();
+// What a component may do beyond its declared secrets (ADR-0026, ADR-0031). `egress` is enforced by the
+// op-call pipeline on every request. `env`, `fs` and `exec` apply to a module's code: a module gets only
+// the named env variables through `ctx.env`, and a static check refuses code that reaches for the file
+// system or a child process without declaring it. A rest component runs no code, so it declares none.
+// Plain env is for configuration (a timezone, a log level). A name that reads as a credential is
+// refused so it cannot be read through `ctx.env` without the host binding an auth slot gives it.
+const SECRET_LOOKING = /KEY|TOKEN|SECRET|PASSW|CREDENTIAL|PRIVATE/i;
+
+const unique = (items: readonly unknown[]): boolean => new Set(items).size === items.length;
+
+const permissionsSchema = z
+  .object({
+    egress: z.array(egressEntrySchema).refine(unique, "duplicate entry").optional(),
+    env: z
+      .array(z.string().regex(NAME, "must be an environment variable name such as TZ"))
+      .refine(unique, "duplicate entry")
+      .optional(),
+    fs: z
+      .array(z.enum(["read", "write"]))
+      .refine(unique, "duplicate entry")
+      .optional(),
+    exec: z.boolean().optional(),
+  })
+  .strict();
 
 const slotSchema = z
   .object({
@@ -421,8 +444,34 @@ function lintManifest(
     }
   }
 
+  // A secret reaches code only through its slot; naming its variable as plain env would hand a module
+  // the value without the host binding.
+  const slotEnvs = new Set(Object.values(manifest.auth?.slots ?? {}).map((slot) => slot.env));
+  for (const [i, name] of (manifest.permissions?.env ?? []).entries()) {
+    if (SECRET_LOOKING.test(name)) {
+      issue(
+        `${name} looks like a secret; declare an auth slot for it, bound to the hosts it may be sent to, instead of plain env`,
+        ["permissions", "env", i],
+      );
+    }
+    if (slotEnvs.has(name)) {
+      issue(`${name} is a secret slot's variable; read it through the slot, not as plain env`, [
+        "permissions",
+        "env",
+        i,
+      ]);
+    }
+  }
+
   if (manifest.kind !== "rest") return;
-  if (!manifest.permissions) {
+  const granted = manifest.permissions;
+  if (
+    granted &&
+    (granted.env !== undefined || granted.fs !== undefined || granted.exec !== undefined)
+  ) {
+    issue("a rest component runs no code, so it cannot declare env, fs or exec", ["permissions"]);
+  }
+  if (!manifest.permissions || (manifest.permissions.egress ?? []).length === 0) {
     issue("a rest component must declare permissions.egress, or none of its requests can be sent", [
       "permissions",
     ]);

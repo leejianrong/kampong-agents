@@ -92,7 +92,7 @@ interface ComponentHeader {
   title?: string;
   description?: string;
   license?: string;
-  permissions?: { egress: string[] };
+  permissions?: { egress?: string[]; env?: string[]; fs?: ("read" | "write")[]; exec?: boolean };
   auth?: { slots: Record<string, ComponentAuthSlot> };
   config?: Record<string, ComponentConfigParam>;
 }
