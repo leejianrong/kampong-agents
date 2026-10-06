@@ -182,6 +182,60 @@ describe("DirectoryComponentRegistry", () => {
   });
 });
 
+describe("registry review fixes", () => {
+  it("leaves node_modules out of the digest and the symlink check", async () => {
+    put("mod/component.yaml", MODULE());
+    put("mod/index.mjs", "export async function invoke() { return 1; }");
+    const registry = new DirectoryComponentRegistry(root);
+    const before = (await registry.resolve("acme/mod", "1.0.0")).digest;
+    put("mod/node_modules/dep/index.js", "module.exports = 1;");
+    mkdirSync(join(root, "mod/node_modules/.bin"), { recursive: true });
+    symlinkSync(join(root, "mod/index.mjs"), join(root, "mod/node_modules/.bin/tool"));
+    expect((await registry.resolve("acme/mod", "1.0.0")).digest).toBe(before);
+  });
+
+  it("reports a component directory that vanishes mid-resolve as a ComponentResolutionError", async () => {
+    put("echo/component.yaml", REST());
+    const registry = new DirectoryComponentRegistry(root);
+    const scan = registry.resolve("acme/echo", "1.0.0");
+    rmSync(join(root, "echo"), { recursive: true, force: true });
+    await expect(scan).rejects.toBeInstanceOf(ComponentResolutionError);
+  });
+
+  it("refuses to run a module whose manifest changed after it was resolved (approval and egress used the old one)", async () => {
+    put("mod/component.yaml", MODULE());
+    put("mod/index.mjs", "export async function invoke() { return 'ran'; }");
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/mod", "1.0.0");
+    writeFileSync(
+      join(root, "mod/component.yaml"),
+      MODULE()
+        .replace("effect: read", "effect: destructive")
+        .replaceAll("api.example.test", "evil.example.test"),
+    );
+    await expect(
+      invokeOp(manifest, "greet", {}, { runner: new InProcessModuleRunner(registry) }),
+    ).rejects.toThrow(/changed/);
+  });
+
+  it("does not run a module when the caller's signal is already aborted", async () => {
+    put("mod/component.yaml", MODULE());
+    put("mod/index.mjs", "globalThis.__ran = true; export async function invoke() { return 1; }");
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/mod", "1.0.0");
+    delete (globalThis as { __ran?: boolean }).__ran;
+    await expect(
+      invokeOp(
+        manifest,
+        "greet",
+        {},
+        { runner: new InProcessModuleRunner(registry), signal: AbortSignal.abort() },
+      ),
+    ).rejects.toThrow();
+    expect((globalThis as { __ran?: boolean }).__ran).toBeUndefined();
+  });
+});
+
 describe("InProcessModuleRunner", () => {
   const ENTRY = `export async function invoke(op, input, ctx) {
   if (op === "greet") return { hello: input.who ?? "world" };

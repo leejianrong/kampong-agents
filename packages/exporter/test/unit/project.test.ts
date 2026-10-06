@@ -8,6 +8,7 @@ import {
   slugifyPackageName,
   ExportDirectoryNotEmptyError,
   ExportUnsupportedError,
+  collectRequiredEnvVars,
 } from "../../src/index.js";
 
 // SLICES.md V4 (KAN-1114) unit test plan: "Codegen correctly translates
@@ -341,5 +342,26 @@ describe("exportProject with a component tool", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("collectRequiredEnvVars with a component tool", () => {
+  it("includes the env vars its secrets name, so the export docs list them once components export", () => {
+    const spec = {
+      version: "1.0",
+      agent: {
+        ...FULL_SPEC.agent,
+        tools: [
+          {
+            name: "post",
+            action: "component",
+            use: "acme/slack@1.0.0",
+            op: "post_message",
+            secrets: { token: "${ACME_TOKEN}" },
+          },
+        ],
+      },
+    } as unknown as AgentSpec;
+    expect(collectRequiredEnvVars(spec)).toContain("ACME_TOKEN");
   });
 });

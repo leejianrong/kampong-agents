@@ -150,7 +150,7 @@ export async function* runWorkflow(
           return;
         }
 
-        const result = yield* executeTool(spec, tool, step.step, stepOutputs, input, deps);
+        const result = yield* executeTool(tool, step.step, stepOutputs, input, deps);
         if (!result) return;
         stepOutputs[step.step] = result.output;
         yield { type: "step_completed", step: step.step, output: result.output };
@@ -183,7 +183,7 @@ export async function* runWorkflow(
         };
         return;
       }
-      const result = yield* executeTool(spec, tool, step.step, stepOutputs, input, deps);
+      const result = yield* executeTool(tool, step.step, stepOutputs, input, deps);
       if (!result) return;
       stepOutputs[step.step] = result.output;
       yield { type: "step_completed", step: step.step, output: result.output };
@@ -320,24 +320,10 @@ function buildStepPrompt(
   return lines.join("\n");
 }
 
-/**
- * Tool params for `execute_tool(name)` resolve from every prior step's
- * scalar output fields, namespaced under that step's name (`{step_name.field}`
- * placeholders in the tool URL), plus the run's original input under its own
- * top-level `input` key -- V2's schema has no explicit param-mapping syntax
- * (e.g. `{{steps.x.field}}`), so this is a deliberately simple stand-in.
- * Namespacing (rather than a flat merge of every step's fields into one bag)
- * is what stops two steps that happen to share a field name -- or a field
- * literally named `input` -- from silently clobbering each other before
- * substitution. A placeholder with no matching key is left as-is in the URL
- * (see substitutePlaceholders), which surfaces as an honest HTTP failure
- * rather than a silent wrong value.
- */
 // Runs one tool for a step: approval first (an explicit `requires_approval`, else the op's effect for
 // a component), then the call. Yields the awaiting_approval / rejected / failed events itself and
 // returns the output, or undefined once the run has reached a terminal state.
 async function* executeTool(
-  _spec: AgentSpec,
   tool: Tool,
   stepName: string,
   stepOutputs: Record<string, unknown>,
@@ -424,6 +410,19 @@ function substituteDeep(value: unknown, params: Record<string, string>): Record<
   return (walk(value ?? {}) as Record<string, unknown>) ?? {};
 }
 
+/**
+ * Tool params for `execute_tool(name)` resolve from every prior step's
+ * scalar output fields, namespaced under that step's name (`{step_name.field}`
+ * placeholders in the tool URL), plus the run's original input under its own
+ * top-level `input` key -- V2's schema has no explicit param-mapping syntax
+ * (e.g. `{{steps.x.field}}`), so this is a deliberately simple stand-in.
+ * Namespacing (rather than a flat merge of every step's fields into one bag)
+ * is what stops two steps that happen to share a field name -- or a field
+ * literally named `input` -- from silently clobbering each other before
+ * substitution. A placeholder with no matching key is left as-is in the URL
+ * (see substitutePlaceholders), which surfaces as an honest HTTP failure
+ * rather than a silent wrong value.
+ */
 function buildToolParams(
   stepOutputs: Record<string, unknown>,
   input: string,

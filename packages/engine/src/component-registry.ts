@@ -99,13 +99,25 @@ export class DirectoryComponentRegistry implements ComponentRegistry {
       throw new ComponentResolutionError(`component ${ref} was not found (${hint}${broken})`);
     }
     const dir = matches[0]!.dir;
-    const { digest, files } = await hashDirectory(dir);
+    let hashed: Awaited<ReturnType<typeof hashDirectory>>;
+    try {
+      hashed = await hashDirectory(dir);
+    } catch (err) {
+      if (err instanceof ComponentResolutionError) throw err;
+      throw new ComponentResolutionError(
+        `component ${ref} could not be read (${(err as Error).message}); it may have been edited while resolving`,
+      );
+    }
+    const { digest, files } = hashed;
 
     // Parse the very bytes the digest covers, so a file swapped between hashing and parsing cannot
     // yield a manifest the digest does not describe.
     const bytes = files.get(MANIFEST_FILE);
     const parsed = bytes ? parseComponentManifest(bytes.toString("utf8")) : undefined;
     const manifest = parsed?.manifest;
+    if (!bytes) {
+      throw new ComponentResolutionError(`component ${ref} has no ${MANIFEST_FILE}`);
+    }
     if (!manifest || manifest.id !== id || manifest.version !== version) {
       throw new ComponentResolutionError(
         `component ${ref} changed on disk while it was being read`,
@@ -179,6 +191,10 @@ async function hashDirectory(dir: string): Promise<{ digest: string; files: Map<
   let total = 0;
   const walk = async (current: string): Promise<void> => {
     for (const entry of await readdir(current, { withFileTypes: true })) {
+      // Installed dependencies are pinned by exact version in the manifest's `deps` and installed
+      // from a lockfile (KAN-1834); hashing them would make every `npm install` change the digest,
+      // trip the file cap, and choke on `.bin` symlinks.
+      if (entry.name === "node_modules" || entry.name === ".DS_Store") continue;
       const full = join(current, entry.name);
       const rel = relative(dir, full).split(sep).join("/");
       const stat = await lstat(full);
@@ -234,6 +250,13 @@ export class InProcessModuleRunner implements ModuleRunner {
     const resolved = await this.registry.resolve(manifest.id, manifest.version, { expectedDigest });
     if (resolved.manifest.kind !== "module") {
       throw new ComponentResolutionError(`${ref} is not a module component`);
+    }
+    // Approval, egress and slot checks were made against the manifest the caller resolved. If the file
+    // has changed since, those checks describe a different component, so refuse rather than run it.
+    if (JSON.stringify(resolved.manifest) !== JSON.stringify(manifest)) {
+      throw new ComponentResolutionError(
+        `${ref}: the manifest changed on disk after it was resolved; re-run so its permissions are checked again`,
+      );
     }
     const entry = resolved.manifest.entry;
     if (![".js", ".mjs", ".cjs"].includes(extname(entry))) {

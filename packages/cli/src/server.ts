@@ -85,8 +85,8 @@ export function createDevServer({
   const store: SpecRepository = new SpecStore(specPath, layoutPath);
   const watcher = new SpecFileWatcher(specPath);
   const runManager = new RunManager({
-    components: componentDispatcherFor(specPath),
     ...runOptions,
+    components: runOptions?.components ?? componentDispatcherFor(specPath),
   });
   watcher.start();
 

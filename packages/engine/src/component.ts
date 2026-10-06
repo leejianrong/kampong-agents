@@ -473,6 +473,10 @@ async function runModule(
   const readSlotHosts: string[] = [];
   const send = options.fetchImpl ?? ((url, init) => fetch(url, init));
   const signal = options.signal ?? AbortSignal.timeout(MODULE_TIMEOUT_MS);
+  // An already-aborted signal never fires its event, so check it before the module gets to run.
+  if (signal.aborted) {
+    throw new ToolCallError(`${label}: cancelled before the module ran`, "timeout", false);
+  }
 
   const ctx: ModuleContext = {
     secrets: {

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ModelClient } from "@kampong/engine";
+import { createServeServer } from "../../src/serve-server.js";
 import { EXIT_EXECUTION_FAILURE, EXIT_SUCCESS, runCli } from "../../src/cli.js";
 import { capture } from "../unit/test-helpers.js";
 
@@ -81,5 +82,37 @@ describe("kampong run with a component tool", () => {
     });
     expect(code).toBe(EXIT_EXECUTION_FAILURE);
     expect(out.join("\n") + err.join("\n")).toContain("acme/hello@1.0.0");
+  });
+
+  it("kampong serve keeps its default components folder when run options pass components: undefined", async () => {
+    mkdirSync(join(dir, "components/hello"), { recursive: true });
+    writeFileSync(join(dir, "components/hello/component.yaml"), MANIFEST);
+    writeFileSync(
+      join(dir, "components/hello/index.mjs"),
+      "export async function invoke(op, input) { return { greeting: 'hi ' + input.who }; }",
+    );
+    writeFileSync(join(dir, "agent.yaml"), SPEC());
+    const app = createServeServer({
+      specPath: join(dir, "agent.yaml"),
+      run: { createModel: () => model, components: undefined },
+    });
+    try {
+      await app.ready();
+      const hook = await app.inject({
+        method: "POST",
+        url: "/webhook",
+        headers: { "content-type": "text/plain" },
+        payload: "kai",
+      });
+      const id = hook.json().id as string;
+      let status = "";
+      for (let i = 0; i < 100 && status !== "completed" && status !== "failed"; i += 1) {
+        await new Promise((r) => setTimeout(r, 25));
+        status = (await app.inject({ method: "GET", url: `/runs/${id}` })).json().state?.status;
+      }
+      expect(status).toBe("completed");
+    } finally {
+      await app.close();
+    }
   });
 });

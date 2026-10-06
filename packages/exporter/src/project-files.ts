@@ -53,6 +53,9 @@ export function collectRequiredEnvVars(spec: AgentSpec): string[] {
     if (tool.action === "slack_post_message" || tool.action === "gmail_send") {
       add(tool.token);
     }
+    if (tool.action === "component") {
+      for (const placeholder of Object.values(tool.secrets ?? {})) add(placeholder);
+    }
   }
   add(spec.agent.approval_notifier?.token);
   if (spec.agent.approval_notifier?.type === "slack") vars.add("SLACK_SIGNING_SECRET");

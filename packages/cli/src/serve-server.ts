@@ -60,8 +60,8 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
   // Slack when the spec configures a target, unlike `kampong dev`'s canvas
   // server (server.ts), which never sets this.
   const runManager = new RunManager({
-    components: componentDispatcherFor(specPath),
     ...run,
+    components: run?.components ?? componentDispatcherFor(specPath),
     notifyApprovalsViaSlack: true,
   });
   const slackFetchImpl = run?.slackFetchImpl;
