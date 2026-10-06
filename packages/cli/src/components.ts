@@ -10,7 +10,10 @@ import {
   LOCKFILE_NAME,
   parseLockfile,
   serializeLockfile,
+  catalogEntryFromManifest,
   type AgentSpec,
+  type ComponentCatalog,
+  type ComponentCatalogEntry,
   type Lockfile,
 } from "@kampong/spec";
 
@@ -146,4 +149,29 @@ export async function lockComponents(
     renameSync(temp, target);
   }
   return { ok: true, added, unchanged, updated, none: false };
+}
+
+/** What the canvas needs to build forms for the components installed beside a spec. */
+export async function componentCatalogFor(specPath: string): Promise<ComponentCatalog> {
+  try {
+    return await buildCatalog(specPath);
+  } catch (err) {
+    // The canvas expects a catalog; an unreadable folder is reported as a problem, not a 500.
+    return { components: [], problems: [`could not read components: ${(err as Error).message}`] };
+  }
+}
+
+async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
+  const registry = new DirectoryComponentRegistry(componentsDirFor(specPath));
+  const components: ComponentCatalogEntry[] = [];
+  const problems = (await registry.problems()).map((p) => p.message);
+  for (const summary of await registry.list()) {
+    try {
+      const { manifest, digest } = await registry.resolve(summary.id, summary.version);
+      components.push(catalogEntryFromManifest(manifest, digest));
+    } catch (err) {
+      problems.push(`${summary.id}@${summary.version}: ${(err as Error).message}`);
+    }
+  }
+  return { components, problems };
 }

@@ -19,7 +19,7 @@
 // erased at build time, is the safe way to share these shapes without
 // pulling a Node-only package into the browser bundle.
 import type { PendingApproval, RunEvent, RunState } from "@kampong/engine";
-import type { SpecSummary } from "@kampong/spec";
+import type { ComponentCatalog, SpecSummary } from "@kampong/spec";
 
 export interface SpecErrorDto {
   path: (string | number)[];
@@ -65,7 +65,7 @@ export type RunEventMessage =
   { type: "state"; state: RunState } | { type: "event"; event: RunEvent; state: RunState };
 
 export type { PendingApproval, RunEvent, RunState };
-export type { SpecSummary };
+export type { ComponentCatalog, SpecSummary };
 
 /**
  * The editor surface both server modes implement. `App`/`RunPanel` depend on
@@ -82,6 +82,11 @@ export interface ApiClient {
    * so App's auto-reload/conflict paths simply never fire in hosted mode.
    */
   subscribeToEvents(onEvent: (event: { type: string; source: string }) => void): () => void;
+  /**
+   * The components installed beside the spec, for generated tool forms (KAN-1885). Only the local
+   * server has them; the hosted client omits this and the form hides the Component kind.
+   */
+  listComponents?(): Promise<ComponentCatalog>;
   startRun(input: string): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
@@ -161,6 +166,17 @@ export function createApiClient(baseUrl = ""): ApiClient {
         );
       }
       return (await res.json()) as ApplyPatchResponse;
+    },
+
+    async listComponents(): Promise<ComponentCatalog> {
+      const res = await fetch(`${baseUrl}/api/components`, withCredentials());
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Failed to list components (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
+      return (await res.json()) as ComponentCatalog;
     },
 
     subscribeToEvents(onEvent: (event: { type: string; source: string }) => void): () => void {

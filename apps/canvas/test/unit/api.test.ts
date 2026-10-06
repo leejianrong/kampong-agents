@@ -117,4 +117,24 @@ describe("createApiClient", () => {
       api.applyPatch([{ op: "set", path: ["agent", "workflow", 0, "step"], value: "" }]),
     ).rejects.toThrow(/must not be empty/);
   });
+
+  it("listComponents reads /api/components", async () => {
+    const body = { components: [], problems: ["x"] };
+    const fetchMock = vi.fn(async (_url: string) => fakeResponse(200, body));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createApiClient("http://h").listComponents!()).toEqual(body);
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://h/api/components");
+  });
+
+  it("listComponents throws a typed ApiError on a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => fakeResponse(500, { error: "boom" })),
+    );
+    await expect(createApiClient().listComponents!()).rejects.toMatchObject({
+      name: "ApiError",
+      status: 500,
+      message: "boom",
+    });
+  });
 });

@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import { createDevServer } from "@kampong/cli";
 import type { FastifyInstance } from "fastify";
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseSpec } from "@kampong/spec";
 import { App } from "../../src/App.js";
 
 // The real acceptance criterion (SLICES.md V1): build a two-step agent with
@@ -152,6 +153,56 @@ describe("canvas against a real local server (no mocks)", () => {
       expect(screen.getByText(/Workflow: evaluate_policy/)).toBeTruthy();
       expect(screen.getByText(/Guardrails:/)).toBeTruthy();
     });
+  });
+
+  it("builds a component tool from a generated form against the real server (KAN-1885)", async () => {
+    mkdirSync(join(dir, "components/acme/tickets/1.0.0"), { recursive: true });
+    writeFileSync(
+      join(dir, "components/acme/tickets/1.0.0/component.yaml"),
+      `kind: rest
+id: acme/tickets
+version: 1.0.0
+permissions: { egress: [tickets.example.test] }
+ops:
+  create:
+    effect: write
+    input:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        priority: { type: integer }
+    request:
+      method: POST
+      url: https://tickets.example.test/tickets
+      body: { json: { title: "{{ input.title }}", priority: "{{ input.priority }}" } }
+`,
+    );
+    await startServer(MINIMAL_SPEC);
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+
+    fireEvent.click(screen.getByText("Add Tool"));
+    fireEvent.click(await screen.findByRole("button", { name: "Component" }));
+    const form = screen.getByRole("form", { name: "Add Tool" });
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "make_ticket" } });
+    fireEvent.change(within(form).getByLabelText(/^title/), { target: { value: "Broken login" } });
+    fireEvent.change(within(form).getByLabelText("priority"), { target: { value: "2" } });
+    fireEvent.click(within(form).getByText("Save Tool"));
+
+    await waitFor(() => expect(readFileSync(specPath, "utf8")).toContain("make_ticket"));
+    const parsed = parseSpec(readFileSync(specPath, "utf8"));
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.spec?.agent.tools).toEqual([
+      {
+        name: "make_ticket",
+        action: "component",
+        use: "acme/tickets@1.0.0",
+        op: "create",
+        with: { title: "Broken login", priority: 2 },
+      },
+    ]);
+    await waitFor(() => expect(screen.getByText(/Tool: make_ticket/)).toBeTruthy());
   });
 
   it("builds a two-step agent with a confidence-gated action step and a conditional guardrail branch entirely on the canvas (KAN-1175)", async () => {

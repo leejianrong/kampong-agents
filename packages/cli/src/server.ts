@@ -5,7 +5,7 @@ import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } fro
 import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
-import { componentDispatcherFor } from "./components.js";
+import { componentCatalogFor, componentDispatcherFor } from "./components.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
@@ -112,6 +112,9 @@ export function createDevServer({
       return body;
     }
   });
+
+  // KAN-1885: installed components, for the canvas's generated forms.
+  app.get("/api/components", async () => componentCatalogFor(specPath));
 
   app.put<{ Body: { ops: PatchOp[] } }>("/api/spec", async (request, reply) => {
     watcher.beginMutation();

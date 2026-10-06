@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { buildToolFromForm, parseKeyValueLines, type RequestBody, type Tool } from "@kampong/spec";
+import {
+  buildToolFromForm,
+  parseKeyValueLines,
+  type ComponentCatalogEntry,
+  type OutputReferenceOption,
+  type RequestBody,
+  type Tool,
+} from "@kampong/spec";
+import { ComponentToolForm } from "./ComponentToolForm.js";
 
 // The "Add Tool" affordance (PLAN.md Affordances, Q12/R5): a structured
 // form, zero LLM calls. Validation/tool-building logic lives in
@@ -10,14 +18,28 @@ import { buildToolFromForm, parseKeyValueLines, type RequestBody, type Tool } fr
 // ${ENV} token (never a literal). The "Tool kind" control picks which shape
 // buildToolFromForm builds.
 
-type ToolKind = "http_request" | "slack_post_message" | "gmail_send";
+type ToolKind = "http_request" | "slack_post_message" | "gmail_send" | "component";
 
 export interface ToolFormProps {
+  /**
+   * Installed components (KAN-1885). When omitted, which is the case on a server that has none to offer,
+   * the Component kind is not shown.
+   */
+  components?: ComponentCatalogEntry[];
+  componentProblems?: string[];
+  /** References to earlier steps' declared outputs, offered inside a component form. */
+  references?: OutputReferenceOption[];
   onSubmit: (tool: Tool) => void;
   onCancel: () => void;
 }
 
-export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
+export function ToolForm({
+  components,
+  componentProblems,
+  references,
+  onSubmit,
+  onCancel,
+}: ToolFormProps) {
   const [kind, setKind] = useState<ToolKind>("http_request");
   const [name, setName] = useState("");
   const [method, setMethod] = useState("GET");
@@ -61,6 +83,51 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
     return {
       value: { raw: bodyContent, ...(bodyContentType && { content_type: bodyContentType }) },
     };
+  }
+
+  const kinds: readonly (readonly [ToolKind, string])[] = [
+    ["http_request", "HTTP"],
+    ["slack_post_message", "Slack"],
+    ["gmail_send", "Gmail"],
+    ...(components !== undefined ? ([["component", "Component"]] as const) : []),
+  ];
+  const kindSwitcher = (
+    <div className="md3-field">
+      <span className="md3-field__label md3-label-large">Tool kind</span>
+      <div className="md3-segmented-button" role="group" aria-label="Tool kind">
+        {kinds.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={kind === value}
+            className={
+              kind === value
+                ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
+                : "md3-segmented-button__segment"
+            }
+            onClick={() => setKind(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (kind === "component" && components !== undefined) {
+    return (
+      <ComponentToolForm
+        // Re-mounted when the installed list changes, so the first selection follows what is there now
+        // rather than what was there when the form opened.
+        key={components.map((c) => `${c.id}@${c.version}`).join(",")}
+        components={components}
+        problems={componentProblems}
+        references={references}
+        header={kindSwitcher}
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+    );
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -120,32 +187,7 @@ export function ToolForm({ onSubmit, onCancel }: ToolFormProps) {
     <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-card md3-form">
       <h2 className="md3-title-medium">Add Tool</h2>
 
-      <div className="md3-field">
-        <span className="md3-field__label md3-label-large">Tool kind</span>
-        <div className="md3-segmented-button" role="group" aria-label="Tool kind">
-          {(
-            [
-              ["http_request", "HTTP"],
-              ["slack_post_message", "Slack"],
-              ["gmail_send", "Gmail"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={kind === value}
-              className={
-                kind === value
-                  ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
-                  : "md3-segmented-button__segment"
-              }
-              onClick={() => setKind(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {kindSwitcher}
 
       <label className="md3-field">
         <span className="md3-field__label md3-label-large">Name</span>
