@@ -1,4 +1,11 @@
-import type { ComponentManifest, SchemaNode } from "@kampong/spec";
+// Vendored from packages/engine/src/component-dispatch.ts as part of a `kampong export`
+// -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
+// only change from the source file is the type import, which now comes from
+// the local ./spec-types.js rather than "@kampong/spec" (this project has no
+// dependency on that package -- ADR-0002). From here on this file is yours: it
+// will not be touched again by a future export.
+//
+import type { ComponentManifest, SchemaNode } from "./spec-types.js";
 import type { ComponentDispatcher, ComponentTool } from "./workflow.js";
 import { isFirstPartyId, readPins } from "./component-core.js";
 import { invokeOp, opRequiresApproval, type ModuleRunner } from "./component.js";

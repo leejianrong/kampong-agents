@@ -16,11 +16,17 @@ import {
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
-import { componentDispatcherFor, lockComponents, lockPathFor } from "./components.js";
+import {
+  componentDispatcherFor,
+  lockComponents,
+  lockPathFor,
+  resolveExportComponents,
+} from "./components.js";
 import {
   exportProject,
   ExportDirectoryNotEmptyError,
-  ExportUnsupportedError,
+  ExportMissingComponentsError,
+  requiredComponentRefs,
 } from "@kampong/exporter";
 import { createDevServer } from "./server.js";
 import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
@@ -957,9 +963,17 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
   }
   reportSpecWarnings(spec, "export", io);
 
+  let components: Awaited<ReturnType<typeof resolveExportComponents>>;
+  try {
+    components = await resolveExportComponents(specPath, requiredComponentRefs(spec));
+  } catch (err) {
+    io.stderr(`kampong export: ${(err as Error).message}`);
+    return EXIT_EXECUTION_FAILURE;
+  }
+
   let result: ReturnType<typeof exportProject>;
   try {
-    result = exportProject(spec, outputDir, { force });
+    result = exportProject(spec, outputDir, { force, components });
   } catch (err) {
     if (err instanceof ExportDirectoryNotEmptyError) {
       io.stderr(
@@ -967,7 +981,7 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
       );
       return EXIT_EXECUTION_FAILURE;
     }
-    if (err instanceof ExportUnsupportedError) {
+    if (err instanceof ExportMissingComponentsError) {
       io.stderr(`kampong export: ${err.message}`);
       return EXIT_EXECUTION_FAILURE;
     }

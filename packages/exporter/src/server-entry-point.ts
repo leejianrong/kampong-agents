@@ -23,7 +23,10 @@ function sanitizeForLineComment(value: string): string {
     .join("");
 }
 
-export function buildServerEntryPointSource(spec: AgentSpec): string {
+export function buildServerEntryPointSource(
+  spec: AgentSpec,
+  options: { components?: boolean } = {},
+): string {
   const specLiteral = JSON.stringify(spec, null, 2);
   const safeAgentId = sanitizeForLineComment(spec.agent.id);
 
@@ -44,7 +47,7 @@ export function buildServerEntryPointSource(spec: AgentSpec): string {
 // always-on per-workflow worker.
 
 import Fastify from "fastify";
-import { RunManager } from "./runtime/run-manager.js";
+import { RunManager } from "./runtime/run-manager.js";${options.components ? '\nimport { components } from "./components.generated.js";' : ""}
 import {
   isApproveAction,
   isRejectAction,
@@ -67,7 +70,7 @@ const app = Fastify({ logger: false });
 // KAN-1432 (ADR-0021 Slice D): headless -- no canvas is ever attached to
 // this server -- so every approval pause here should try to notify Slack
 // when the spec configures a target.
-const runManager = new RunManager({ notifyApprovalsViaSlack: true });
+const runManager = new RunManager({ notifyApprovalsViaSlack: true${options.components ? ", components" : ""} });
 
 // Accept any non-JSON content type as a raw string body, so \`curl -d "..."\`
 // (which defaults to urlencoded) and text/plain both work; JSON bodies keep

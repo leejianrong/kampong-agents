@@ -40,7 +40,10 @@ function sanitizeForLineComment(value: string): string {
     .join("");
 }
 
-export function buildEntryPointSource(spec: AgentSpec): string {
+export function buildEntryPointSource(
+  spec: AgentSpec,
+  options: { components?: boolean } = {},
+): string {
   const specLiteral = JSON.stringify(spec, null, 2);
   const safeAgentId = sanitizeForLineComment(spec.agent.id);
 
@@ -52,7 +55,7 @@ export function buildEntryPointSource(spec: AgentSpec): string {
 // be regenerated or touched by a future export of the same spec.
 
 import { createInterface } from "node:readline/promises";
-import { createAgentRun } from "./runtime/run.js";
+import { createAgentRun } from "./runtime/run.js";${options.components ? '\nimport { components } from "./components.generated.js";' : ""}
 import type { AgentSpec } from "./runtime/spec-types.js";
 import type { RunState } from "./runtime/run.js";
 
@@ -186,7 +189,7 @@ async function main(): Promise<void> {
 
   let run: ReturnType<typeof createAgentRun>;
   try {
-    run = createAgentRun(SPEC);
+    run = createAgentRun(SPEC${options.components ? ", { components }" : ""});
   } catch (err) {
     reportFailure(err, json);
     process.exitCode = 2;

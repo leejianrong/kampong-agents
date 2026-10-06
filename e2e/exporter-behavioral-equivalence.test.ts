@@ -1,12 +1,18 @@
 import { createServer, type Server } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseSpec } from "@kampong/spec";
-import { createAgentRun, type RunState } from "@kampong/engine";
-import { exportProject } from "@kampong/exporter";
+import {
+  createAgentRun,
+  createComponentDispatcher,
+  DirectoryComponentRegistry,
+  InProcessModuleRunner,
+  type RunState,
+} from "@kampong/engine";
+import { exportProject, type ExportComponent } from "@kampong/exporter";
 
 // SLICES.md V4's headline e2e acceptance test (KAN-1117), the acceptance
 // criterion for R4: export a fixture spec, `npm install && npm start` it in
@@ -31,6 +37,8 @@ import { exportProject } from "@kampong/exporter";
 interface FakeServer {
   port: number;
   requests: number;
+  /** The Authorization header of each request the fake tool server received. */
+  authorizations?: string[];
   close: () => Promise<void>;
 }
 
@@ -73,8 +81,10 @@ function startFakeOllamaServer(replyText: string): Promise<FakeServer> {
 
 function startFakeToolServer(status: string): Promise<FakeServer> {
   let requests = 0;
+  const authorizations: string[] = [];
   const server: Server = createServer((req, res) => {
     requests++;
+    authorizations.push(String(req.headers.authorization ?? ""));
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ status }));
   });
@@ -84,6 +94,7 @@ function startFakeToolServer(status: string): Promise<FakeServer> {
       const port = typeof address === "object" && address ? address.port : 0;
       resolvePromise({
         port,
+        authorizations,
         get requests() {
           return requests;
         },
@@ -222,4 +233,160 @@ describe("exported project behavioral equivalence (SLICES.md V4, KAN-1117, R4)",
     expect(ollama.requests).toBe(2);
     expect(tool.requests).toBe(2);
   });
+
+  it("an export that uses a rest and a module component runs them, secrets included, exactly as the engine does", async () => {
+    const componentsDir = join(exportDir, "..", `${exportDir.split("/").pop()}-components`);
+    const put = (rel: string, content: string) => {
+      const full = join(componentsDir, rel);
+      mkdirSync(join(full, ".."), { recursive: true });
+      writeFileSync(full, content);
+    };
+    const host = `127.0.0.1:${tool.port}`;
+    const slot = `    token:
+      env: E2E_COMPONENT_TOKEN
+      hosts: ["${host}"]`;
+    put(
+      "acme/charges/1.0.0/component.yaml",
+      `kind: rest
+id: acme/charges
+version: 1.0.0
+permissions: { egress: ["${host}"] }
+auth:
+  slots:
+${slot}
+      inject: { header: Authorization, template: "Bearer {{ secret }}" }
+ops:
+  get:
+    effect: read
+    input: { type: object, required: [id], properties: { id: { type: string } } }
+    request:
+      method: GET
+      url: "http://${host}/charges/{{ input.id }}"
+`,
+    );
+    put(
+      "acme/shout/1.0.0/component.yaml",
+      `kind: module
+id: acme/shout
+version: 1.0.0
+entry: ./index.mjs
+permissions: { egress: ["${host}"] }
+auth:
+  slots:
+${slot}
+ops:
+  run:
+    effect: read
+    input: { type: object, required: [status], properties: { status: { type: string } } }
+`,
+    );
+    put(
+      "acme/shout/1.0.0/index.mjs",
+      `export async function invoke(op, input, ctx) {
+  const token = ctx.secrets.get("token");
+  const res = await ctx.fetch("http://${host}/confirm", { headers: { Authorization: "Bearer " + token } });
+  const body = await res.json();
+  return { shouted: input.status.toUpperCase(), confirmed: body.status };
+}
+`,
+    );
+
+    const source = `version: "1.0"
+agent:
+  id: e2e-component-agent
+  name: "E2E Component Agent"
+  role: "Support"
+  goal: "Look up a charge with components."
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${ollama.port}"
+  tools:
+    - name: check_charge
+      action: component
+      use: acme/charges@1.0.0
+      op: get
+      with: { id: "off-e2e-42" }
+      extract: status
+    - name: shout
+      action: component
+      use: acme/shout@1.0.0
+      op: run
+      with: { status: "{{ charge }}" }
+  workflow:
+    - step: parse
+      action: extract_entities
+    - step: charge
+      type: tool
+      tool: check_charge
+    - step: loud
+      type: tool
+      tool: shout
+`;
+    const { success, spec, errors } = parseSpec(source);
+    expect(errors).toEqual([]);
+    expect(success).toBe(true);
+
+    const previousToken = process.env.E2E_COMPONENT_TOKEN;
+    process.env.E2E_COMPONENT_TOKEN = "secret-e2e";
+    try {
+      // Reference: the engine, with the same components from a directory registry.
+      const registry = new DirectoryComponentRegistry(componentsDir);
+      const referenceRun = createAgentRun(spec!, {
+        components: createComponentDispatcher({
+          registry,
+          runner: new InProcessModuleRunner(registry),
+        }),
+      });
+      const referenceState = await referenceRun.start(FIXED_INPUT);
+      expect(referenceState.status, JSON.stringify(referenceState)).toBe("completed");
+      expect(referenceState.finalOutput?.loud).toEqual({
+        shouted: "SUCCEEDED",
+        confirmed: TOOL_STATUS,
+      });
+      const referenceOutcome = toOutcome(referenceState);
+      const referenceRequests = tool.requests;
+      expect(referenceRequests).toBe(2);
+
+      // Export, with the components resolved the way the CLI does it.
+      const components: ExportComponent[] = [];
+      for (const [id, version] of [
+        ["acme/charges", "1.0.0"],
+        ["acme/shout", "1.0.0"],
+      ] as const) {
+        const resolved = await registry.resolve(id, version);
+        components.push({
+          manifest: resolved.manifest,
+          digest: resolved.digest,
+          files: Object.fromEntries(resolved.files ?? []),
+        });
+      }
+      exportProject(spec!, exportDir, { components });
+
+      const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+      expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      const start = await runNpm(
+        ["start", "--silent", "--", "--input", FIXED_INPUT, "--json"],
+        exportDir,
+      );
+      expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
+      const jsonLine = start.stdout
+        .trim()
+        .split("\n")
+        .find((line) => line.trim().startsWith("{"));
+      expect(jsonLine, `expected one JSON line on stdout, got:\n${start.stdout}`).toBeDefined();
+      const exportedOutcome = JSON.parse(jsonLine!) as RunOutcome;
+
+      expect(exportedOutcome).toEqual(referenceOutcome);
+      // Both runs reached the fake server twice (the rest op and the module), each carrying the
+      // injected secret; and the secret is nowhere in the outcome.
+      expect(tool.requests).toBe(referenceRequests * 2);
+      expect(new Set(tool.authorizations)).toEqual(new Set(["Bearer secret-e2e"]));
+      expect(JSON.stringify(exportedOutcome)).not.toContain("secret-e2e");
+    } finally {
+      if (previousToken === undefined) delete process.env.E2E_COMPONENT_TOKEN;
+      else process.env.E2E_COMPONENT_TOKEN = previousToken;
+      rmSync(componentsDir, { recursive: true, force: true });
+    }
+  }, 240_000);
 });

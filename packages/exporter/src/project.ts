@@ -7,6 +7,7 @@ import { buildReadme } from "./readme.js";
 import { buildEntryPointSource } from "./entry-point.js";
 import { buildServerEntryPointSource } from "./server-entry-point.js";
 import { buildDockerfile, buildDockerignore } from "./dockerfile.js";
+import { buildComponentsModule, selectComponents, type ExportComponent } from "./components.js";
 import { readRuntimeFiles } from "./runtime-files.js";
 
 // The exporter's public entry point (PLAN.md Shape S6, SLICES.md V4
@@ -37,6 +38,12 @@ export interface ExportProjectOptions {
    * so a bare re-export must not silently truncate those hand edits.
    */
   force?: boolean;
+  /**
+   * The components the spec uses (its component tools and the first-party ones behind the legacy Slack
+   * and Gmail tools), resolved by the caller. The export copies their files and bakes their manifests
+   * in. Anything the spec needs and this lacks is an `ExportMissingComponentsError`.
+   */
+  components?: ExportComponent[];
 }
 
 /**
@@ -57,50 +64,49 @@ export class ExportDirectoryNotEmptyError extends Error {
   }
 }
 
-/** The spec uses something the exporter cannot carry into a standalone project yet. */
-export class ExportUnsupportedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ExportUnsupportedError";
-  }
-}
-
 export function exportProject(
   spec: AgentSpec,
   outputDir: string,
   options: ExportProjectOptions = {},
 ): ExportResult {
-  // Checked first so nothing is written: the component interpreter is not vendored into exports yet
-  // (KAN-1886), and a project that fails on its first tool call is worse than a refused export.
-  const components = (spec.agent.tools ?? []).filter((t) => t.action === "component");
-  if (components.length > 0) {
-    throw new ExportUnsupportedError(
-      `Tool(s) ${components.map((t) => `"${t.name}"`).join(", ")} use \`action: component\`, which kampong export does not support yet. Run the spec with \`kampong run\` or \`kampong dev\` instead.`,
-    );
-  }
+  // Checked first so nothing is written: a project that fails on its first tool call is worse than a
+  // refused export.
+  const components = selectComponents(spec, options.components ?? []);
   if (!options.force && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
     throw new ExportDirectoryNotEmptyError(outputDir);
   }
 
   const written: string[] = [];
 
-  const write = (relativePath: string, contents: string): void => {
+  const writeBytes = (relativePath: string, contents: string | Uint8Array): void => {
     const fullPath = join(outputDir, relativePath);
     mkdirSync(dirname(fullPath), { recursive: true });
     writeFileSync(fullPath, contents);
     written.push(relativePath);
   };
+  const write = (relativePath: string, contents: string): void =>
+    writeBytes(relativePath, contents);
 
   write("package.json", `${JSON.stringify(buildPackageJson(spec), null, 2)}\n`);
   write("tsconfig.json", `${JSON.stringify(buildTsconfig(), null, 2)}\n`);
-  write("README.md", buildReadme(spec));
+  write("README.md", buildReadme(spec, components));
   write(".gitignore", buildGitignore());
   write(".dockerignore", buildDockerignore());
-  write("Dockerfile", buildDockerfile());
-  write("src/index.ts", buildEntryPointSource(spec));
-  write("src/server.ts", buildServerEntryPointSource(spec));
+  write("Dockerfile", buildDockerfile({ components: components.length > 0 }));
+  write("src/index.ts", buildEntryPointSource(spec, { components: components.length > 0 }));
+  write("src/server.ts", buildServerEntryPointSource(spec, { components: components.length > 0 }));
 
-  const envExample = buildEnvExample(spec);
+  if (components.length > 0) {
+    write("src/components.generated.ts", buildComponentsModule(components));
+    for (const component of components) {
+      const { id, version } = component.manifest;
+      for (const [path, contents] of Object.entries(component.files)) {
+        writeBytes(join("components", ...id.split("/"), version, ...path.split("/")), contents);
+      }
+    }
+  }
+
+  const envExample = buildEnvExample(spec, components);
   if (envExample) write(".env.example", envExample);
 
   for (const file of readRuntimeFiles()) {
