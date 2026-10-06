@@ -56,7 +56,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("DirectoryComponentRegistry", () => {
   it("resolves an exact id@version and reports a stable digest", async () => {
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     const a = await registry.resolve("acme/echo", "1.0.0");
     const b = await registry.resolve("acme/echo", "1.0.0");
@@ -66,8 +66,8 @@ describe("DirectoryComponentRegistry", () => {
   });
 
   it("keeps several versions of one component apart", async () => {
-    put("echo-1/component.yaml", REST("1.0.0"));
-    put("echo-2/component.yaml", REST("2.0.0"));
+    put("acme/echo/1.0.0/component.yaml", REST("1.0.0"));
+    put("acme/echo/2.0.0/component.yaml", REST("2.0.0"));
     const registry = new DirectoryComponentRegistry(root);
     expect((await registry.resolve("acme/echo", "2.0.0")).manifest.version).toBe("2.0.0");
     expect((await registry.resolve("acme/echo", "1.0.0")).manifest.version).toBe("1.0.0");
@@ -78,7 +78,7 @@ describe("DirectoryComponentRegistry", () => {
   });
 
   it("fails visibly for an unknown component or version, naming what exists", async () => {
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     await expect(registry.resolve("acme/echo", "9.9.9")).rejects.toThrow(/acme\/echo@1\.0\.0/);
     await expect(registry.resolve("acme/none", "1.0.0")).rejects.toBeInstanceOf(
@@ -88,7 +88,7 @@ describe("DirectoryComponentRegistry", () => {
 
   it("does not silently skip an invalid manifest: resolving it reports the parse errors", async () => {
     put("bad/component.yaml", "kind: rest\nid: Not Valid\nversion: 1\n");
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     expect(await registry.problems()).toHaveLength(1);
     // Other components still resolve; the broken one is reported, not hidden.
@@ -96,15 +96,32 @@ describe("DirectoryComponentRegistry", () => {
     expect((await registry.problems())[0]!.message).toMatch(/bad/);
   });
 
-  it("refuses two manifests that claim the same id@version", async () => {
-    put("a/component.yaml", REST());
-    put("b/component.yaml", REST());
+  it("only registers a manifest at components/<namespace>/<name>/<version>, and reports one that is elsewhere", async () => {
+    put("anywhere/component.yaml", REST());
+    put("acme/echo/2.0.0/component.yaml", REST("1.0.0"));
     const registry = new DirectoryComponentRegistry(root);
-    await expect(registry.resolve("acme/echo", "1.0.0")).rejects.toThrow(/more than one/);
+    await expect(registry.resolve("acme/echo", "1.0.0")).rejects.toBeInstanceOf(
+      ComponentResolutionError,
+    );
+    const problems = (await registry.problems()).map((p) => p.message).join("\n");
+    expect(problems).toContain("acme/echo/1.0.0");
+    expect(problems).toMatch(/anywhere/);
+    expect(problems).toMatch(/2\.0\.0/);
+  });
+
+  it("reserves kampong/* for first-party roots: a user's components folder cannot claim it", async () => {
+    put("kampong/slack/1.0.0/component.yaml", REST().replace("acme/echo", "kampong/slack"));
+    const user = new DirectoryComponentRegistry(root);
+    await expect(user.resolve("kampong/slack", "1.0.0")).rejects.toBeInstanceOf(
+      ComponentResolutionError,
+    );
+    expect((await user.problems())[0]!.message).toMatch(/reserved/);
+    const firstParty = new DirectoryComponentRegistry(root, { firstParty: true });
+    await expect(firstParty.resolve("kampong/slack", "1.0.0")).resolves.toBeDefined();
   });
 
   it("checks an expected digest and refuses a mismatch", async () => {
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     const { digest } = await registry.resolve("acme/echo", "1.0.0");
     await expect(
@@ -116,7 +133,7 @@ describe("DirectoryComponentRegistry", () => {
   });
 
   it("re-reads the disk: a manifest edited after first use changes the digest and fails a pin", async () => {
-    const file = put("echo/component.yaml", REST());
+    const file = put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     const { digest } = await registry.resolve("acme/echo", "1.0.0");
     writeFileSync(file, REST().replace("/ping", "/pong"));
@@ -126,21 +143,21 @@ describe("DirectoryComponentRegistry", () => {
   });
 
   it("covers every file in the component directory, not just the manifest", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", "export async function invoke() { return 1; }");
-    put("mod/helper.mjs", "export const x = 1;");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 1; }");
+    put("acme/mod/1.0.0/helper.mjs", "export const x = 1;");
     const registry = new DirectoryComponentRegistry(root);
     const before = (await registry.resolve("acme/mod", "1.0.0")).digest;
-    writeFileSync(join(root, "mod/helper.mjs"), "export const x = 2;");
+    writeFileSync(join(root, "acme/mod/1.0.0/helper.mjs"), "export const x = 2;");
     expect((await registry.resolve("acme/mod", "1.0.0")).digest).not.toBe(before);
   });
 
   it("refuses a symlink inside a component directory", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", "export async function invoke() { return 1; }");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 1; }");
     const outside = mkdtempSync(join(tmpdir(), "kampong-outside-"));
     writeFileSync(join(outside, "secret.mjs"), "export const x = 1;");
-    symlinkSync(join(outside, "secret.mjs"), join(root, "mod/linked.mjs"));
+    symlinkSync(join(outside, "secret.mjs"), join(root, "acme/mod/1.0.0/linked.mjs"));
     const registry = new DirectoryComponentRegistry(root);
     await expect(registry.resolve("acme/mod", "1.0.0")).rejects.toThrow(/symlink/);
     rmSync(outside, { recursive: true, force: true });
@@ -150,7 +167,8 @@ describe("DirectoryComponentRegistry", () => {
     const outside = mkdtempSync(join(tmpdir(), "kampong-outside-"));
     mkdirSync(join(outside, "echo"));
     writeFileSync(join(outside, "echo/component.yaml"), REST());
-    symlinkSync(join(outside, "echo"), join(root, "linked"));
+    mkdirSync(join(root, "acme/echo"), { recursive: true });
+    symlinkSync(join(outside, "echo"), join(root, "acme/echo/1.0.0"));
     const registry = new DirectoryComponentRegistry(root);
     await expect(registry.resolve("acme/echo", "1.0.0")).rejects.toBeInstanceOf(
       ComponentResolutionError,
@@ -167,7 +185,7 @@ describe("DirectoryComponentRegistry", () => {
   });
 
   it("an rest component runs end to end through invokeOp", async () => {
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/echo", "1.0.0");
     const out = await invokeOp(
@@ -184,31 +202,34 @@ describe("DirectoryComponentRegistry", () => {
 
 describe("registry review fixes", () => {
   it("leaves node_modules out of the digest and the symlink check", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", "export async function invoke() { return 1; }");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 1; }");
     const registry = new DirectoryComponentRegistry(root);
     const before = (await registry.resolve("acme/mod", "1.0.0")).digest;
-    put("mod/node_modules/dep/index.js", "module.exports = 1;");
-    mkdirSync(join(root, "mod/node_modules/.bin"), { recursive: true });
-    symlinkSync(join(root, "mod/index.mjs"), join(root, "mod/node_modules/.bin/tool"));
+    put("acme/mod/1.0.0/node_modules/dep/index.js", "module.exports = 1;");
+    mkdirSync(join(root, "acme/mod/1.0.0/node_modules/.bin"), { recursive: true });
+    symlinkSync(
+      join(root, "acme/mod/1.0.0/index.mjs"),
+      join(root, "acme/mod/1.0.0/node_modules/.bin/tool"),
+    );
     expect((await registry.resolve("acme/mod", "1.0.0")).digest).toBe(before);
   });
 
   it("reports a component directory that vanishes mid-resolve as a ComponentResolutionError", async () => {
-    put("echo/component.yaml", REST());
+    put("acme/echo/1.0.0/component.yaml", REST());
     const registry = new DirectoryComponentRegistry(root);
     const scan = registry.resolve("acme/echo", "1.0.0");
-    rmSync(join(root, "echo"), { recursive: true, force: true });
+    rmSync(join(root, "acme/echo/1.0.0"), { recursive: true, force: true });
     await expect(scan).rejects.toBeInstanceOf(ComponentResolutionError);
   });
 
   it("refuses to run a module whose manifest changed after it was resolved (approval and egress used the old one)", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", "export async function invoke() { return 'ran'; }");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 'ran'; }");
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/mod", "1.0.0");
     writeFileSync(
-      join(root, "mod/component.yaml"),
+      join(root, "acme/mod/1.0.0/component.yaml"),
       MODULE()
         .replace("effect: read", "effect: destructive")
         .replaceAll("api.example.test", "evil.example.test"),
@@ -219,8 +240,11 @@ describe("registry review fixes", () => {
   });
 
   it("does not run a module when the caller's signal is already aborted", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", "globalThis.__ran = true; export async function invoke() { return 1; }");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      "globalThis.__ran = true; export async function invoke() { return 1; }",
+    );
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/mod", "1.0.0");
     delete (globalThis as { __ran?: boolean }).__ran;
@@ -243,8 +267,8 @@ describe("InProcessModuleRunner", () => {
 }`;
 
   async function run(entrySource: string, input: Record<string, unknown> = { who: "kai" }) {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", entrySource);
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", entrySource);
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/mod", "1.0.0");
     return invokeOp(manifest, "greet", input, {
@@ -263,14 +287,14 @@ describe("InProcessModuleRunner", () => {
   });
 
   it("fails visibly when the entry file is missing", async () => {
-    put("mod/component.yaml", MODULE());
+    put("acme/mod/1.0.0/component.yaml", MODULE());
     const registry = new DirectoryComponentRegistry(root);
     await expect(registry.resolve("acme/mod", "1.0.0")).rejects.toThrow(/entry/);
   });
 
   it("rejects a TypeScript entry with a clear message instead of failing obscurely", async () => {
-    put("mod/component.yaml", MODULE("1.0.0", "./index.ts"));
-    put("mod/index.ts", "export async function invoke() { return 1; }");
+    put("acme/mod/1.0.0/component.yaml", MODULE("1.0.0", "./index.ts"));
+    put("acme/mod/1.0.0/index.ts", "export async function invoke() { return 1; }");
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/mod", "1.0.0");
     await expect(
@@ -281,7 +305,7 @@ describe("InProcessModuleRunner", () => {
   it("picks up a changed entry (no stale module cache) and checks the digest each call", async () => {
     expect(await run(ENTRY)).toEqual({ hello: "kai" });
     writeFileSync(
-      join(root, "mod/index.mjs"),
+      join(root, "acme/mod/1.0.0/index.mjs"),
       `export async function invoke() { return { hello: "changed" }; }`,
     );
     const registry = new DirectoryComponentRegistry(root);
@@ -292,12 +316,15 @@ describe("InProcessModuleRunner", () => {
   });
 
   it("refuses to run when the component changed after it was pinned", async () => {
-    put("mod/component.yaml", MODULE());
-    put("mod/index.mjs", ENTRY);
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", ENTRY);
     const registry = new DirectoryComponentRegistry(root);
     const pinned = await registry.resolve("acme/mod", "1.0.0");
     const runner = new InProcessModuleRunner(registry, { [`acme/mod@1.0.0`]: pinned.digest });
-    writeFileSync(join(root, "mod/index.mjs"), `export async function invoke() { return "evil"; }`);
+    writeFileSync(
+      join(root, "acme/mod/1.0.0/index.mjs"),
+      `export async function invoke() { return "evil"; }`,
+    );
     await expect(invokeOp(pinned.manifest, "greet", {}, { runner })).rejects.toThrow(/digest/);
   });
 

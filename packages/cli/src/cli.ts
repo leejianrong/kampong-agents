@@ -16,7 +16,7 @@ import {
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
-import { componentDispatcherFor } from "./components.js";
+import { componentDispatcherFor, lockComponents, lockPathFor } from "./components.js";
 import {
   exportProject,
   ExportDirectoryNotEmptyError,
@@ -86,6 +86,8 @@ Commands:
   run <spec>.yaml --input "<text>"   Run a spec headlessly -- no server, no browser.
   export <spec>.yaml <output-dir>    Export a spec to a standalone, runnable TypeScript
                                       project -- one-way, zero dependency on this tool.
+  lock <spec>.yaml [--update]        Pin the components a spec uses to their content digests
+                                      in kampong.lock (next to the spec).
 
 Run "kampong <command> --help" for command-specific options.`;
 
@@ -168,6 +170,8 @@ export async function runCli(
       return runRunCommand(rest, io, testOptions);
     case "export":
       return runExportCommand(rest, io);
+    case "lock":
+      return runLockCommand(rest, io);
     case "-v":
     case "--version":
       io.stdout(getVersion());
@@ -975,6 +979,68 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
 
   io.stdout(`Exported "${spec.agent.id}" to ${outputDir} (${result.files.length} files).`);
   io.stdout(`  cd ${outputDir} && npm install && npm start`);
+  return EXIT_SUCCESS;
+}
+
+// --- lock -----------------------------------------------------------------
+
+const LOCK_HELP_TEXT = `kampong lock <spec>.yaml [--update]
+
+Pins every component the spec uses (\`action: component\`) to its content digest in
+kampong.lock, next to the spec. A run refuses a component that is not pinned, or whose
+files no longer match the pin.
+
+Options:
+  --update       Accept a changed component: re-pin one whose digest differs from its pin.
+                 Without it a changed component is refused and nothing is written.
+  -h, --help     Show this help`;
+
+async function runLockCommand(args: string[], io: CliIO): Promise<number> {
+  if (args.includes("-h") || args.includes("--help")) {
+    io.stdout(LOCK_HELP_TEXT);
+    return EXIT_SUCCESS;
+  }
+  const update = args.includes("--update");
+  const rest = args.filter((a) => a !== "--update");
+  const unknown = rest.find((a) => a.startsWith("-"));
+  if (unknown || rest.length !== 1) {
+    io.stderr(
+      `kampong lock: ${unknown ? `unknown option ${unknown}` : "expected exactly one spec path"}\n`,
+    );
+    io.stderr(LOCK_HELP_TEXT);
+    return EXIT_USAGE_ERROR;
+  }
+  const specPath = rest[0]!;
+  let source: string;
+  try {
+    source = readFileSync(specPath, "utf8");
+  } catch (err) {
+    io.stderr(`kampong lock: could not read spec file at ${specPath}: ${(err as Error).message}`);
+    return EXIT_VALIDATION_FAILURE;
+  }
+  const { success, spec, errors } = parseSpec(source);
+  if (!success || !spec) {
+    io.stderr(`kampong lock: spec validation failed: ${specPath}`);
+    for (const e of errors) {
+      io.stderr(
+        `  ${e.path.join(".") || "(root)"}: ${e.message}${e.line ? ` (line ${e.line})` : ""}`,
+      );
+    }
+    return EXIT_VALIDATION_FAILURE;
+  }
+  const outcome = await lockComponents(spec, specPath, { update });
+  if (!outcome.ok) {
+    io.stderr(`kampong lock: ${outcome.message}`);
+    return EXIT_EXECUTION_FAILURE;
+  }
+  if (outcome.none) {
+    io.stdout("No components used by this spec; nothing to pin.");
+    return EXIT_SUCCESS;
+  }
+  for (const use of outcome.added) io.stdout(`pinned ${use}`);
+  for (const use of outcome.updated) io.stdout(`updated ${use}`);
+  for (const use of outcome.unchanged) io.stdout(`unchanged ${use}`);
+  io.stdout(`Lockfile: ${lockPathFor(specPath)}`);
   return EXIT_SUCCESS;
 }
 

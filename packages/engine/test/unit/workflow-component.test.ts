@@ -113,13 +113,14 @@ async function drive(
     return new Response(JSON.stringify({ id: "9", nested: { ok: true } }), { status: 200 });
   }) as unknown as typeof fetch;
   const events: RunEvent[] = [];
-  const { registry, componentPins, runner, ...rest } = deps as {
+  const { registry, componentPins, requirePins, runner, ...rest } = deps as {
     registry?: ComponentRegistry;
-    componentPins?: Record<string, string>;
+    componentPins?: Record<string, string> | (() => Record<string, string>);
+    requirePins?: boolean;
     runner?: never;
   };
   const components = registry
-    ? createComponentDispatcher({ registry, runner, pins: componentPins })
+    ? createComponentDispatcher({ registry, runner, pins: componentPins, requirePins })
     : undefined;
   const gen = runWorkflow(
     agent,
@@ -294,5 +295,58 @@ describe("component tool approval defaults", () => {
     });
     expect(events.some((e) => e.type === "awaiting_approval")).toBe(false);
     expect(failed(events)).toBeDefined();
+  });
+});
+
+describe("pin enforcement (kampong.lock)", () => {
+  it("with requirePins, a component that has no pin fails before any approval or request", async () => {
+    const { events, seen } = await drive(spec({ op: "purge", with: { id: "1" } }), {
+      registry: registryOf(),
+      requirePins: true,
+      componentPins: {},
+    });
+    expect(seen).toHaveLength(0);
+    expect(events.some((e) => e.type === "awaiting_approval")).toBe(false);
+    expect(failed(events)?.error).toMatch(/not pinned.*kampong lock/s);
+  });
+
+  it("with requirePins, a matching pin runs the call", async () => {
+    const { events, seen } = await drive(spec({ op: "get", with: { id: "1" } }), {
+      registry: registryOf("sha256:abc"),
+      requirePins: true,
+      componentPins: { "acme/tickets@1.0.0": "sha256:abc" },
+    });
+    expect(failed(events)).toBeUndefined();
+    expect(seen).toHaveLength(1);
+  });
+
+  it("reads pins afresh for every call, so an edited lockfile takes effect without a restart", async () => {
+    let pins: Record<string, string> = { "acme/tickets@1.0.0": "sha256:old" };
+    const registry = registryOf("sha256:abc");
+    const first = await drive(spec({ op: "get", with: { id: "1" } }), {
+      registry,
+      requirePins: true,
+      componentPins: () => pins,
+    });
+    expect(failed(first.events)?.error).toMatch(/pinned digest/);
+    pins = { "acme/tickets@1.0.0": "sha256:abc" };
+    const second = await drive(spec({ op: "get", with: { id: "1" } }), {
+      registry,
+      requirePins: true,
+      componentPins: () => pins,
+    });
+    expect(failed(second.events)).toBeUndefined();
+  });
+
+  it("surfaces a failure to read the pins as a visible run failure", async () => {
+    const { events, seen } = await drive(spec({ op: "get", with: { id: "1" } }), {
+      registry: registryOf(),
+      requirePins: true,
+      componentPins: () => {
+        throw new Error("kampong.lock is not valid");
+      },
+    });
+    expect(seen).toHaveLength(0);
+    expect(failed(events)?.error).toMatch(/kampong\.lock is not valid/);
   });
 });
