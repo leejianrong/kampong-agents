@@ -1,6 +1,6 @@
 import type { ComponentManifest, SchemaNode } from "@kampong/spec";
 import type { ComponentDispatcher, ComponentTool } from "./workflow.js";
-import { readPins } from "./component-registry.js";
+import { isFirstPartyId, readPins } from "./component-registry.js";
 import { invokeOp, opRequiresApproval, type ModuleRunner } from "./component.js";
 import type { ComponentRegistry, PinSource } from "./component-registry.js";
 
@@ -27,12 +27,18 @@ export function createComponentDispatcher({
   requirePins = false,
 }: CreateComponentDispatcherOptions): ComponentDispatcher {
   return {
-    async prepare(tool: ComponentTool) {
+    async prepare(tool: ComponentTool, options: { legacy?: boolean } = {}) {
       // `use` is validated as id@version by the spec schema; split on the last "@" regardless.
       const at = tool.use.lastIndexOf("@");
-      const current = await readPins(pins);
+      // A desugared legacy tool never consults the lockfile: it ran without one before components.
+      const current = options.legacy ? {} : await readPins(pins);
       const expectedDigest = Object.hasOwn(current, tool.use) ? current[tool.use] : undefined;
-      if (requirePins && expectedDigest === undefined) {
+      if (
+        requirePins &&
+        !options.legacy &&
+        expectedDigest === undefined &&
+        !isFirstPartyId(tool.use)
+      ) {
         throw new Error(
           `component ${tool.use} is not pinned in kampong.lock; review it and run \`kampong lock\` to pin it`,
         );

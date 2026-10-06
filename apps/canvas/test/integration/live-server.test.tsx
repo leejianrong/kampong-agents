@@ -85,6 +85,8 @@ describe("canvas against a real local server (no mocks)", () => {
   afterEach(async () => {
     cleanup();
     vi.unstubAllGlobals();
+    // Requests the canvas left in flight keep Fastify's 72s keep-alive connections open; drop them.
+    app.server.closeAllConnections();
     await app.close();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -185,6 +187,9 @@ ops:
     fireEvent.click(screen.getByText("Add Tool"));
     fireEvent.click(await screen.findByRole("button", { name: "Component" }));
     const form = screen.getByRole("form", { name: "Add Tool" });
+    fireEvent.change(within(form).getByLabelText("Component"), {
+      target: { value: "acme/tickets@1.0.0" },
+    });
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "make_ticket" } });
     fireEvent.change(within(form).getByLabelText(/^title/), { target: { value: "Broken login" } });
     fireEvent.change(within(form).getByLabelText("priority"), { target: { value: "2" } });

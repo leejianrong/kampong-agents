@@ -1,0 +1,2 @@
+# First-party components are hashed byte for byte (kampong.lock digests): never convert line endings.
+packages/engine/components/** -text

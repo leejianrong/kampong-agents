@@ -64,8 +64,44 @@ export interface EngineDeps {
 
 export type ComponentTool = Extract<Tool, { action: "component" }>;
 
+/**
+ * The legacy Slack and Gmail tool kinds expressed as calls to the first-party components (KAN-1886).
+ * Both kinds stay valid in a spec; this is how they run when a component dispatcher is available.
+ * `use` for these is pinned to the version that ships with kampong, not to a lockfile entry.
+ */
+export function desugarLegacyTool(tool: Tool): ComponentTool | undefined {
+  const shared = {
+    name: tool.name,
+    action: "component" as const,
+    ...(tool.requires_approval !== undefined && { requires_approval: tool.requires_approval }),
+    ...(tool.extract !== undefined && { extract: tool.extract }),
+  };
+  if (tool.action === "slack_post_message") {
+    return {
+      ...shared,
+      use: "kampong/slack@1.0.0",
+      op: "post_message",
+      with: { channel: tool.channel, text: tool.text },
+      secrets: { token: tool.token },
+    };
+  }
+  if (tool.action === "gmail_send") {
+    return {
+      ...shared,
+      use: "kampong/gmail@1.0.0",
+      op: "send",
+      with: { to: tool.to, subject: tool.subject, body: tool.body },
+      secrets: { token: tool.token },
+    };
+  }
+  return undefined;
+}
+
 /** What a component call needs from the engine at run time. */
-export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock">;
+export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock"> & {
+  /** The name the record/replay layer files this call under (the legacy tool's own name). */
+  toolName?: string;
+};
 
 export interface PreparedComponentCall {
   /** The op's effect decides this unless the spec set `requires_approval`. */
@@ -79,7 +115,11 @@ export interface PreparedComponentCall {
  * component (and fails if it cannot) before any approval is asked for.
  */
 export interface ComponentDispatcher {
-  prepare(tool: ComponentTool): Promise<PreparedComponentCall>;
+  /**
+   * `legacy` marks a Slack or Gmail tool desugared onto its first-party component: it runs without a
+   * lockfile pin and never reads the lockfile, as it did before components existed.
+   */
+  prepare(tool: ComponentTool, options?: { legacy?: boolean }): Promise<PreparedComponentCall>;
 }
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
@@ -324,13 +364,18 @@ function buildStepPrompt(
 // a component), then the call. Yields the awaiting_approval / rejected / failed events itself and
 // returns the output, or undefined once the run has reached a terminal state.
 async function* executeTool(
-  tool: Tool,
+  declared: Tool,
   stepName: string,
   stepOutputs: Record<string, unknown>,
   input: string,
   deps: EngineDeps,
 ): AsyncGenerator<RunEvent, { output: unknown } | undefined, ApprovalDecision | undefined> {
   const params = buildToolParams(stepOutputs, input);
+  // With a component dispatcher configured, the legacy Slack and Gmail kinds run as their first-party
+  // components. Without one (a bare engine, an export that has not vendored components) they take the
+  // original request builders.
+  const desugared = deps.components ? desugarLegacyTool(declared) : undefined;
+  const tool = desugared ?? declared;
   let needsApproval = tool.requires_approval ?? false;
   let prepared: PreparedComponentCall | undefined;
 
@@ -343,7 +388,7 @@ async function* executeTool(
           `Tool "${tool.name}" uses component ${tool.use}, but no component registry is configured.`,
         );
       }
-      prepared = await deps.components.prepare(tool);
+      prepared = await deps.components.prepare(tool, { legacy: desugared !== undefined });
     } catch (err) {
       yield { type: "failed", step: stepName, error: (err as Error).message };
       return undefined;
@@ -378,6 +423,7 @@ async function* executeTool(
         fetchImpl: deps.fetchImpl,
         pacer: deps.pacer,
         clock: deps.clock,
+        ...(desugared !== undefined && { toolName: declared.name }),
       });
       return { output: extractField(result, tool.extract) };
     }

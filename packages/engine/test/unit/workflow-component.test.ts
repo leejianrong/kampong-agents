@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseComponentManifest, type AgentSpec } from "@kampong/spec";
 import { createComponentDispatcher } from "../../src/component-dispatch.js";
+import { createFirstPartyRegistry, InProcessModuleRunner } from "../../src/component-registry.js";
 import type { ComponentRegistry, ResolvedComponent } from "../../src/component-registry.js";
 import { runWorkflow, type ApprovalDecision, type RunEvent } from "../../src/workflow.js";
 import type { ModelClient } from "../../src/model.js";
@@ -406,5 +407,112 @@ describe("templated values for typed fields", () => {
       expect(seen, text).toHaveLength(0);
       expect(failed(events), text).toBeDefined();
     }
+  });
+});
+
+describe("legacy Slack and Gmail tools with a component dispatcher (KAN-1886)", () => {
+  async function runLegacy(
+    tool: Record<string, unknown>,
+    fetchBody: unknown = { ok: true, ts: "1.2" },
+  ) {
+    const registry = createFirstPartyRegistry();
+    const components = createComponentDispatcher({
+      registry,
+      runner: new InProcessModuleRunner(registry, {}, { requirePins: true }),
+      // No pins at all: first-party components do not need a lockfile entry.
+      requirePins: true,
+    });
+    const seen: { url: string; body?: unknown; toolName?: string }[] = [];
+    const fetchImpl = (async (
+      url: string | URL,
+      init?: RequestInit,
+      ctx?: { toolName?: string },
+    ) => {
+      seen.push({ url: String(url), body: init?.body, toolName: ctx?.toolName });
+      return new Response(JSON.stringify(fetchBody), { status: 200 });
+    }) as unknown as typeof fetch;
+    const agent = {
+      version: "1.0",
+      agent: {
+        id: "a",
+        name: "A",
+        role: "R",
+        goal: "G",
+        tools: [{ name: "t", ...tool }],
+        workflow: [{ step: "go", type: "tool", tool: "t" }],
+      },
+    } as unknown as AgentSpec;
+    const events: RunEvent[] = [];
+    const gen = runWorkflow(
+      agent,
+      { model, fetchImpl, components, env: { SLACK_BOT_TOKEN: "xoxb-1", GMAIL_TOKEN: "ya29" } },
+      "hello",
+    );
+    let next = await gen.next(undefined);
+    while (!next.done) {
+      events.push(next.value);
+      next = await gen.next(undefined);
+    }
+    return { events, seen };
+  }
+
+  it("runs slack_post_message as kampong/slack without a lockfile entry", async () => {
+    const { events, seen } = await runLegacy({
+      action: "slack_post_message",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#ops",
+      text: "got {{ input }}",
+    });
+    expect(failed(events)).toBeUndefined();
+    expect(seen[0]?.url).toBe("https://slack.com/api/chat.postMessage");
+    expect(JSON.parse(String(seen[0]?.body))).toEqual({ channel: "#ops", text: "got hello" });
+  });
+
+  it("files the call under the tool's own name, for the record/replay layer, as before", async () => {
+    const slack = await runLegacy({
+      action: "slack_post_message",
+      token: "${SLACK_BOT_TOKEN}",
+      channel: "#ops",
+      text: "x",
+    });
+    expect(slack.seen[0]?.toolName).toBe("t");
+    const gmail = await runLegacy(
+      { action: "gmail_send", token: "${GMAIL_TOKEN}", to: "a@b.c", subject: "s", body: "b" },
+      { id: "m" },
+    );
+    expect(gmail.seen[0]?.toolName).toBe("t");
+  });
+
+  it("runs gmail_send as kampong/gmail", async () => {
+    const { events, seen } = await runLegacy(
+      {
+        action: "gmail_send",
+        token: "${GMAIL_TOKEN}",
+        to: "a@b.c",
+        subject: "hi",
+        body: "{{ input }}",
+      },
+      { id: "m1" },
+    );
+    expect(failed(events)).toBeUndefined();
+    expect(seen[0]?.url).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+  });
+
+  it("surfaces a Slack ok:false as a failed step", async () => {
+    const { events } = await runLegacy(
+      { action: "slack_post_message", token: "${SLACK_BOT_TOKEN}", channel: "#x", text: "t" },
+      { ok: false, error: "channel_not_found" },
+    );
+    expect(failed(events)?.error).toMatch(/channel_not_found/);
+  });
+
+  it("still requires a pin for a user component when first-party ones do not", async () => {
+    const { events, seen } = await drive(spec({ op: "get", with: { id: "1" } }), {
+      registry: registryOf(),
+      requirePins: true,
+      componentPins: {},
+    });
+    expect(seen).toHaveLength(0);
+    expect(failed(events)?.error).toMatch(/not pinned/);
   });
 });

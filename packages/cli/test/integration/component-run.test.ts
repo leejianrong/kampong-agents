@@ -196,6 +196,16 @@ describe("kampong lock and pin enforcement", () => {
     expect((await run()).code).toBe(EXIT_SUCCESS);
   });
 
+  it("pins a first-party component used by name, and a legacy Slack tool needs no pin to run", async () => {
+    writeFileSync(
+      specPath(),
+      `version: "1.0"\nagent:\n  id: a\n  name: A\n  role: R\n  goal: G\n  tools:\n    - name: post\n      action: component\n      use: kampong/slack@1.0.0\n      op: post_message\n      with: { channel: "#x", text: hi }\n  workflow:\n    - step: s\n      type: tool\n      tool: post\n`,
+    );
+    const { io } = capture();
+    expect(await runCli(["lock", specPath()], io)).toBe(EXIT_SUCCESS);
+    expect(readFileSync(lockPath(), "utf8")).toMatch(/kampong\/slack@1\.0\.0/);
+  });
+
   it("keeps pins that belong to other specs when it adds one", async () => {
     const other = `version: 1\ncomponents:\n  other/thing@2.0.0:\n    digest: sha256:${"c".repeat(64)}\n`;
     writeFileSync(lockPath(), other);
