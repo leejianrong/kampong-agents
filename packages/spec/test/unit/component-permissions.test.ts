@@ -58,6 +58,27 @@ describe("permissions schema", () => {
     expect(errors).toMatch(/secret slot/);
   });
 
+  it.each([
+    "ANTHROPIC_API_KEY",
+    "AWS_SECRET_ACCESS_KEY",
+    "GITHUB_TOKEN",
+    "DB_PASSWORD",
+    "my_credentials",
+    "SSH_PRIVATE_KEY",
+  ])(
+    "refuses %s in permissions.env: a secret goes through an auth slot, bound to its hosts",
+    (name) => {
+      const message = parse(MODULE(`{ env: [${name}] }`))
+        .errors.map((e) => e.message)
+        .join(" ");
+      expect(message).toMatch(/auth slot/);
+    },
+  );
+
+  it("still allows ordinary configuration variables", () => {
+    expect(parse(MODULE("{ env: [TZ, LANG, LOG_LEVEL, NODE_ENV] }")).errors).toEqual([]);
+  });
+
   const REST = (permissions: string) => `kind: rest
 id: acme/rest
 version: 1.0.0
@@ -101,6 +122,7 @@ describe("permissionsOf and describePermissions", () => {
       fs: ["read", "write"],
       exec: false,
       slots: {},
+      slotEnv: {},
     });
   });
 
@@ -112,6 +134,7 @@ describe("permissionsOf and describePermissions", () => {
       ),
     ).manifest!;
     expect(permissionsOf(m).slots).toEqual({ token: ["api.example.test", "other.example.test"] });
+    expect(permissionsOf(m).slotEnv).toEqual({ token: "T" });
   });
 
   it("describes a grant in words a reviewer can read, and says none for an empty one", () => {
@@ -157,6 +180,32 @@ describe("diffPermissions", () => {
       "secret slot t now reaches b.example.test",
       "new secret slot u reaches c.example.test",
     ]);
+  });
+
+  it("treats re-pointing a secret slot at a different environment variable as a widening", () => {
+    const slot = (env: string) =>
+      p(
+        MODULE(
+          "{ egress: [slack.com] }",
+          `auth:\n  slots:\n    token: { env: ${env}, hosts: [slack.com] }\n`,
+        ),
+      );
+    expect(diffPermissions(slot("SLACK_TOKEN"), slot("SLACK_TOKEN"))).toEqual([]);
+    expect(diffPermissions(slot("SLACK_TOKEN"), slot("AWS_SECRET_ACCESS_KEY"))).toEqual([
+      "secret slot token now reads AWS_SECRET_ACCESS_KEY instead of SLACK_TOKEN",
+    ]);
+  });
+
+  it("cannot compare slot variables when the earlier record predates them, and says nothing then", () => {
+    const after = p(
+      MODULE(
+        "{ egress: [slack.com] }",
+        "auth:\n  slots:\n    token: { env: T, hosts: [slack.com] }\n",
+      ),
+    );
+    const older = { ...after } as Partial<typeof after>;
+    delete older.slotEnv;
+    expect(diffPermissions(older as never, after)).toEqual([]);
   });
 });
 
@@ -272,6 +321,84 @@ const t = \`eval(\${1})\`;
     expect(violations("const a = 1;\n\nconst b = process.cwd();\n")).toEqual([
       "index.mjs:3 process",
     ]);
+  });
+
+  it.each([
+    ["a ternary operand", "const p = ok ? process : null;", "process"],
+    ["a ternary operand fetch", "const f = ok ? fetch : null;", "network"],
+    ["a case label", "switch (x) { case eval: break; }", "eval"],
+    [
+      "after a regex that contains a backtick",
+      "const a = s.replace(/`/g, 'x'); const e = process.env;",
+      "process",
+    ],
+    [
+      "after a regex that ends in two slashes",
+      "const re = /^https?:\\/\\//; const e = process.env;",
+      "process",
+    ],
+    ["after a regex with a quote", "const re = /[\"']/g; const e = process.env;", "process"],
+    ["a dynamic import with a literal prefix", 'await import("./" + name);', "import"],
+    ["a dynamic import of a template", "await import(`./${name}.mjs`);", "import"],
+    ["a dynamic import with a literal then more", 'await import("fs" + "");', "import"],
+  ])("does not let %s hide a use", (_n, source, capability) => {
+    const found = violations(source);
+    expect(
+      found.some((v) => v.endsWith(` ${capability}`)),
+      `${source} -> ${found}`,
+    ).toBe(true);
+  });
+
+  it("still ignores an object key or shorthand named like a forbidden global when it is only a key", () => {
+    expect(violations("const o = { fetch: 1, process: 2, eval: 3 };\nconst k = o.fetch;")).toEqual(
+      [],
+    );
+    expect(violations("const o = {\n  fetch: 1,\n  process: 2,\n};")).toEqual([]);
+  });
+
+  it("a literal dynamic import of an allowed module is fine", () => {
+    expect(
+      violations('await import("./helper.mjs");', undefined, undefined, {
+        "helper.mjs": "export const x = 1;",
+      }),
+    ).toEqual([]);
+    expect(violations('await import("node:crypto");')).toEqual([]);
+  });
+
+  it("does not mistake division, or a slash in a string or comment, for a regex", () => {
+    expect(
+      violations(
+        'const a = 4 / 2 / 1;\nconst u = "http://x.test";\n// http://y.test\nconst b = a / 2;',
+      ),
+    ).toEqual([]);
+    expect(violations("const a = (4 / 2) / 1; const e = process.env;")).toEqual([
+      "index.mjs:1 process",
+    ]);
+  });
+
+  it("fs: [read] does not allow writing; fs: [write] does", () => {
+    const write = "import { writeFileSync } from 'node:fs'; writeFileSync('x', 'y');";
+    const read = "import { readFileSync } from 'node:fs'; readFileSync('x');";
+    expect(violations(read, "{ fs: [read] }")).toEqual([]);
+    expect(violations(write, "{ fs: [read] }").some((v) => v.endsWith(" fs"))).toBe(true);
+    expect(violations(write, "{ fs: [write] }")).toEqual([]);
+    expect(
+      violations("import fs from 'node:fs/promises'; await fs.rm('x');", "{ fs: [read] }"),
+    ).not.toEqual([]);
+    expect(
+      violations("import fs from 'node:fs'; fs.createWriteStream('x');", "{ fs: [read] }"),
+    ).not.toEqual([]);
+  });
+
+  it("refuses a local binding named like a forbidden global too, and says to rename it", () => {
+    const found = scanModuleSources(
+      manifest(),
+      files(
+        "export async function invoke(op, input, { fetch }) { return fetch('https://api.example.test'); }",
+      ),
+    );
+    expect(found.length).toBeGreaterThan(0);
+    expect(found[0]!.message).toMatch(/even a local|rename/i);
   });
 
   it("does not take ctx.fetch or a property called fetch for the global", () => {

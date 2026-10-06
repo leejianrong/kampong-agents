@@ -95,6 +95,7 @@ describe("kampong.lock", () => {
             fs: ["read"],
             exec: false,
             slots: { token: ["a.example.test"] },
+            slotEnv: { token: "T" },
           },
         },
       },
@@ -103,6 +104,9 @@ describe("kampong.lock", () => {
     const parsed = parseLockfile(text);
     expect(parsed.errors).toEqual([]);
     expect(parsed.lockfile?.components["acme/echo@1.0.0"]?.permissions?.fs).toEqual(["read"]);
+    expect(parsed.lockfile?.components["acme/echo@1.0.0"]?.permissions?.slotEnv).toEqual({
+      token: "T",
+    });
     expect(serializeLockfile(parsed.lockfile!)).toBe(text);
   });
 

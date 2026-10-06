@@ -17,6 +17,8 @@ export interface Permissions {
   exec: boolean;
   /** Each secret slot and the hosts it may be sent to. */
   slots: Record<string, string[]>;
+  /** The environment variable each secret slot reads. Absent in a record made before this was kept. */
+  slotEnv?: Record<string, string>;
 }
 
 const sorted = <T extends string>(items: readonly T[] | undefined): T[] =>
@@ -26,8 +28,10 @@ const sorted = <T extends string>(items: readonly T[] | undefined): T[] =>
 export function permissionsOf(manifest: ComponentManifest): Permissions {
   const granted = manifest.permissions;
   const slots: Record<string, string[]> = {};
+  const slotEnv: Record<string, string> = {};
   for (const name of Object.keys(manifest.auth?.slots ?? {}).sort()) {
     slots[name] = sorted(manifest.auth!.slots[name]!.hosts);
+    slotEnv[name] = manifest.auth!.slots[name]!.env;
   }
   return {
     egress: sorted(granted?.egress),
@@ -35,6 +39,7 @@ export function permissionsOf(manifest: ComponentManifest): Permissions {
     fs: sorted(granted?.fs),
     exec: granted?.exec === true,
     slots,
+    slotEnv,
   };
 }
 
@@ -47,9 +52,11 @@ export function describePermissions(permissions: Permissions): string {
   if (permissions.exec) parts.push("exec: yes");
   const slots = Object.entries(permissions.slots);
   if (slots.length > 0) {
-    parts.push(
-      `secret slots: ${slots.map(([name, hosts]) => `${name} -> ${hosts.join(", ")}`).join("; ")}`,
-    );
+    const describeSlot = ([name, hosts]: [string, string[]]): string => {
+      const env = permissions.slotEnv?.[name];
+      return `${name} -> ${hosts.join(", ")}${env ? ` (reads ${env})` : ""}`;
+    };
+    parts.push(`secret slots: ${slots.map(describeSlot).join("; ")}`);
   }
   return parts.length > 0 ? parts.join("; ") : "no permissions";
 }
@@ -69,6 +76,17 @@ export function diffPermissions(before: Permissions, after: Permissions): string
   if (after.exec && !before.exec) out.push("exec is now allowed");
   for (const [name, hosts] of Object.entries(after.slots)) {
     const known = Object.hasOwn(before.slots, name) ? before.slots[name]! : undefined;
+    const wasReading =
+      before.slotEnv && Object.hasOwn(before.slotEnv, name) ? before.slotEnv[name] : undefined;
+    const nowReading = after.slotEnv?.[name];
+    if (
+      known !== undefined &&
+      wasReading !== undefined &&
+      nowReading !== undefined &&
+      wasReading !== nowReading
+    ) {
+      out.push(`secret slot ${name} now reads ${nowReading} instead of ${wasReading}`);
+    }
     for (const host of hosts) {
       if (known === undefined) out.push(`new secret slot ${name} reaches ${host}`);
       else if (!known.includes(host)) out.push(`secret slot ${name} now reaches ${host}`);
@@ -88,17 +106,36 @@ export interface ModuleViolation {
 }
 
 interface Blanked {
-  /** Comments and the contents of strings and template text replaced by spaces; code and newlines kept. */
+  /** Comments and the contents of strings, regular expressions and template text replaced by spaces; code and newlines kept. */
   code: string;
   /** Comments replaced by spaces; strings kept, so an import specifier can be read. */
   text: string;
 }
 
+// After one of these a `/` starts a regular expression; after anything else that ends an operand it is
+// a division.
+const REGEX_AFTER_WORD = new Set([
+  "return",
+  "typeof",
+  "case",
+  "do",
+  "else",
+  "in",
+  "of",
+  "instanceof",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "yield",
+  "await",
+]);
+const REGEX_AFTER_CHAR = "(,=:[!&|?{};+-*%<>~^";
+
 /**
- * Blanks comments and string contents so a forbidden word in a comment or a message is not mistaken for
- * code, while the code inside a template's `${}` is kept. Offsets and line breaks are preserved.
- * Regular-expression literals are not recognised; one containing a quote can confuse the scan, which
- * errs toward reporting rather than hiding.
+ * Blanks comments and the insides of strings, regular expressions and template text, so a forbidden word
+ * in a comment or a message is not mistaken for code and a quote inside a regex does not confuse the
+ * scan, while the code inside a template's `${}` is kept. Offsets and line breaks are preserved.
  */
 function blank(source: string): Blanked {
   const code: string[] = [];
@@ -106,6 +143,45 @@ function blank(source: string): Blanked {
   let i = 0;
   const n = source.length;
   const keepNewline = (ch: string): string => (ch === "\n" || ch === "\r" ? ch : " ");
+
+  const lastSignificant = (): { char: string; word: string } => {
+    let end = code.length - 1;
+    while (end >= 0 && /\s/.test(code[end]!)) end--;
+    if (end < 0) return { char: "", word: "" };
+    const char = code[end]!;
+    let start = end;
+    while (start >= 0 && /[\w$]/.test(code[start]!)) start--;
+    return { char, word: code.slice(start + 1, end + 1).join("") };
+  };
+
+  const startsRegex = (): boolean => {
+    const { char, word } = lastSignificant();
+    if (char === "") return true;
+    if (/[\w$]/.test(char)) return REGEX_AFTER_WORD.has(word);
+    return REGEX_AFTER_CHAR.includes(char);
+  };
+
+  // Returns the end index (exclusive) of a regex literal starting at `from`, or -1 if it is not one.
+  const regexEnd = (from: number): number => {
+    let j = from + 1;
+    let inClass = false;
+    while (j < n && source[j] !== "\n") {
+      const ch = source[j]!;
+      if (ch === "\\") {
+        j += 2;
+        continue;
+      }
+      if (ch === "[") inClass = true;
+      else if (ch === "]") inClass = false;
+      else if (ch === "/" && !inClass) {
+        j++;
+        while (j < n && /[a-z]/i.test(source[j]!)) j++;
+        return j;
+      }
+      j++;
+    }
+    return -1;
+  };
 
   const scan = (untilBrace: boolean): void => {
     let depth = 0;
@@ -135,6 +211,21 @@ function blank(source: string): Blanked {
           i += 2;
         }
         continue;
+      }
+      if (c === "/" && startsRegex()) {
+        const end = regexEnd(i);
+        if (end !== -1) {
+          code.push("/");
+          text.push("/");
+          for (let j = i + 1; j < end - 1; j++) {
+            code.push(" ");
+            text.push(" ");
+          }
+          code.push("/");
+          text.push("/");
+          i = end;
+          continue;
+        }
       }
       if (c === '"' || c === "'") {
         code.push(c);
@@ -206,11 +297,21 @@ function blank(source: string): Blanked {
   return { code: code.join(""), text: text.join("") };
 }
 
-const lineOf = (source: string, index: number): number => {
-  let line = 1;
-  for (let i = 0; i < index && i < source.length; i++) if (source[i] === "\n") line++;
-  return line;
-};
+/** Maps a character offset to a 1-based line, without rescanning the file for each match. */
+function lineFinder(source: string): (index: number) => number {
+  const starts = [0];
+  for (let i = 0; i < source.length; i++) if (source[i] === "\n") starts.push(i + 1);
+  return (index) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid]! <= index) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+}
 
 // Node built-ins by what they let code do. Anything not listed here or below is refused as `import`.
 const SAFE_BUILTINS = new Set([
@@ -262,63 +363,58 @@ const OTHER_BUILTINS = new Set([
 
 const SOURCE_FILE = /\.(?:mjs|cjs|js)$/;
 
-// Plain identifier uses, not `.name` property reads and not an object key `name:`.
-const ident = (name: string): RegExp => new RegExp(`(?<![.\\w$])${name}\\b(?!\\s*:)`, "g");
+const LOCAL = "; even a local variable with this name is refused, so rename it";
 
-const CODE_RULES: { pattern: RegExp; capability: string; message: string }[] = [
-  {
-    pattern: ident("process"),
-    capability: "process",
-    message: "process is not available to a module; use ctx.env and ctx.secrets",
-  },
-  {
-    pattern: ident("globalThis"),
-    capability: "global",
-    message: "globalThis gives a module the host's globals",
-  },
-  {
-    pattern: ident("global"),
-    capability: "global",
-    message: "global gives a module the host's globals",
-  },
-  { pattern: ident("eval"), capability: "eval", message: "eval is not allowed" },
+interface CodeRule {
+  pattern: RegExp;
+  capability: string;
+  message: string;
+  /** A plain identifier: skip it when it is only an object key (`{ name: 1 }`). */
+  identifier?: boolean;
+}
+
+const ident = (name: string, capability: string, message: string, lookahead = ""): CodeRule => ({
+  pattern: new RegExp(`(?<![.\\w$])${name}\\b${lookahead}`, "g"),
+  capability,
+  message,
+  identifier: true,
+});
+
+const CODE_RULES: CodeRule[] = [
+  ident(
+    "process",
+    "process",
+    `process is not available to a module; use ctx.env and ctx.secrets${LOCAL}`,
+  ),
+  ident("globalThis", "global", `globalThis gives a module the host's globals${LOCAL}`),
+  ident("global", "global", `global gives a module the host's globals${LOCAL}`),
+  ident("eval", "eval", "eval is not allowed"),
   { pattern: /\bnew\s+Function\b/g, capability: "eval", message: "new Function is not allowed" },
-  {
-    pattern: ident("Function(?=\\s*\\()"),
-    capability: "eval",
-    message: "Function() is not allowed",
-  },
+  ident("Function", "eval", "Function() is not allowed", "(?=\\s*\\()"),
   {
     pattern: /\.\s*constructor\s*\(/g,
     capability: "eval",
     message: "calling a constructor can build a Function",
   },
-  {
-    pattern: ident("require"),
-    capability: "require",
-    message: "require is not allowed; use import of a declared dependency",
-  },
-  {
-    pattern: ident("fetch"),
-    capability: "network",
-    message: "the global fetch bypasses the egress list; use ctx.fetch",
-  },
-  {
-    pattern: ident("XMLHttpRequest"),
-    capability: "network",
-    message: "XMLHttpRequest bypasses the egress list; use ctx.fetch",
-  },
-  {
-    pattern: ident("WebSocket"),
-    capability: "network",
-    message: "WebSocket bypasses the egress list; use ctx.fetch",
-  },
-  {
-    pattern: ident("EventSource"),
-    capability: "network",
-    message: "EventSource bypasses the egress list; use ctx.fetch",
-  },
+  ident("require", "require", "require is not allowed; import a declared dependency instead"),
+  ident("fetch", "network", `the global fetch bypasses the egress list; use ctx.fetch${LOCAL}`),
+  ident("XMLHttpRequest", "network", "XMLHttpRequest bypasses the egress list; use ctx.fetch"),
+  ident("WebSocket", "network", "WebSocket bypasses the egress list; use ctx.fetch"),
+  ident("EventSource", "network", "EventSource bypasses the egress list; use ctx.fetch"),
 ];
+
+/** True when the match at `index` is only an object key: `{ name: ...` or `, name: ...`. */
+function isObjectKey(code: string, index: number, length: number): boolean {
+  if (!/^\s*:/.test(code.slice(index + length))) return false;
+  let before = index - 1;
+  while (before >= 0 && /\s/.test(code[before]!)) before--;
+  return before >= 0 && (code[before] === "{" || code[before] === ",");
+}
+
+// File-system calls that change something. Checked in a file that imports fs when the manifest declares
+// `fs: [read]` only.
+const FS_WRITE_API =
+  /(?<![\w$])(?:write|writeSync|writev|writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|mkdir|mkdirSync|mkdtemp|mkdtempSync|rm|rmSync|rmdir|rmdirSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|truncate|truncateSync|ftruncate|chmod|chown|lchown|fchmod|symlink|symlinkSync|link|linkSync|utimes|open|openSync)\b/g;
 
 const IMPORT_SPEC = /\b(?:import|from)\s*["'`]/g;
 const DYNAMIC_IMPORT = /\bimport\s*\(\s*(["'`]?)/g;
@@ -340,20 +436,32 @@ function packageName(specifier: string): string {
   return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
+interface ImportProblem {
+  capability: string;
+  message: string;
+}
+
 function classifyImport(
   file: string,
   specifier: string,
   manifest: ModuleComponentManifest,
-): { capability: string; message: string } | undefined {
+): { problem?: ImportProblem; fs?: boolean } {
   if (specifier.startsWith(".")) {
     return normalizeRelative(file, specifier) === undefined
-      ? { capability: "import", message: `${specifier} leaves the component's directory` }
-      : undefined;
+      ? {
+          problem: {
+            capability: "import",
+            message: `${specifier} leaves the component's directory`,
+          },
+        }
+      : {};
   }
   if (/^https?:/i.test(specifier)) {
     return {
-      capability: "network",
-      message: `${specifier}: code fetched over the network is not allowed`,
+      problem: {
+        capability: "network",
+        message: `${specifier}: code fetched over the network is not allowed`,
+      },
     };
   }
   if (
@@ -361,8 +469,10 @@ function classifyImport(
     (/^[a-z][a-z0-9+.-]*:/i.test(specifier) && !specifier.startsWith("node:"))
   ) {
     return {
-      capability: "import",
-      message: `${specifier}: only relative paths, declared dependencies and allowed node: modules can be imported`,
+      problem: {
+        capability: "import",
+        message: `${specifier}: only relative paths, declared dependencies and allowed node: modules can be imported`,
+      },
     };
   }
   const name = specifier.startsWith("node:") ? specifier.slice(5) : specifier;
@@ -374,36 +484,40 @@ function classifyImport(
     FS_BUILTINS.has(name) ||
     OTHER_BUILTINS.has(name);
   if (isBuiltin) {
-    if (SAFE_BUILTINS.has(name)) return undefined;
+    if (SAFE_BUILTINS.has(name)) return {};
     if (NETWORK_BUILTINS.has(name)) {
       return {
-        capability: "network",
-        message: `${specifier} bypasses the egress list; use ctx.fetch`,
+        problem: {
+          capability: "network",
+          message: `${specifier} bypasses the egress list; use ctx.fetch`,
+        },
       };
     }
     if (EXEC_BUILTINS.has(name)) {
       return manifest.permissions?.exec === true
-        ? undefined
-        : { capability: "exec", message: `${specifier} needs permissions.exec: true` };
+        ? {}
+        : { problem: { capability: "exec", message: `${specifier} needs permissions.exec: true` } };
     }
     if (FS_BUILTINS.has(name)) {
       return (manifest.permissions?.fs ?? []).length > 0
-        ? undefined
-        : { capability: "fs", message: `${specifier} needs permissions.fs` };
+        ? { fs: true }
+        : { problem: { capability: "fs", message: `${specifier} needs permissions.fs` } };
     }
-    return { capability: "import", message: `${specifier} is not an allowed built-in` };
+    return {
+      problem: { capability: "import", message: `${specifier} is not an allowed built-in` },
+    };
   }
   return Object.hasOwn(manifest.deps ?? {}, packageName(specifier))
-    ? undefined
-    : { capability: "import", message: `${specifier} is not declared in deps` };
+    ? {}
+    : { problem: { capability: "import", message: `${specifier} is not declared in deps` } };
 }
 
 /**
  * Checks every JavaScript file of a module component against its manifest: no use of `process`, the
  * global object, `eval`, `require` or the global network APIs, and imports only of relative files,
- * declared dependencies and the built-ins the manifest's permissions allow. A best-effort static check:
- * it catches mistakes and obvious misbehaviour in reviewed code, and it can be evaded by code written to
- * evade it. See ADR-0031.
+ * declared dependencies and the built-ins the manifest's permissions allow (`fs: [read]` does not allow
+ * a file-system write). A best-effort static check: it catches mistakes and obvious misbehaviour in
+ * reviewed code, and it can be evaded by code written to evade it. See ADR-0031.
  */
 export function scanModuleSources(
   manifest: ModuleComponentManifest,
@@ -411,43 +525,63 @@ export function scanModuleSources(
 ): ModuleViolation[] {
   const found: ModuleViolation[] = [];
   const decoder = new TextDecoder("utf-8");
+  const mayWrite = (manifest.permissions?.fs ?? []).includes("write");
   for (const file of Object.keys(files).sort()) {
     if (!SOURCE_FILE.test(file)) continue;
     const raw = files[file]!;
     const source = typeof raw === "string" ? raw : decoder.decode(raw);
     const { code, text } = blank(source);
+    const lineOf = lineFinder(source);
     const add = (index: number, capability: string, message: string) =>
-      found.push({ file, line: lineOf(source, index), capability, message });
+      found.push({ file, line: lineOf(index), capability, message });
 
     for (const rule of CODE_RULES) {
-      for (const match of code.matchAll(rule.pattern))
+      for (const match of code.matchAll(rule.pattern)) {
+        if (rule.identifier && isObjectKey(code, match.index!, match[0].length)) continue;
         add(match.index!, rule.capability, rule.message);
+      }
     }
 
-    const readSpecifier = (quoteAt: number): string | undefined => {
+    const readLiteral = (quoteAt: number): { value: string; end: number } | undefined => {
       const quote = text[quoteAt];
       if (quote !== '"' && quote !== "'" && quote !== "`") return undefined;
       const end = text.indexOf(quote, quoteAt + 1);
-      return end === -1 ? undefined : text.slice(quoteAt + 1, end);
+      return end === -1 ? undefined : { value: text.slice(quoteAt + 1, end), end };
     };
+    let importsFs = false;
     for (const match of code.matchAll(IMPORT_SPEC)) {
-      const specifier = readSpecifier(match.index! + match[0].length - 1);
-      if (specifier === undefined) continue;
-      const problem = classifyImport(file, specifier, manifest);
-      if (problem) add(match.index!, problem.capability, problem.message);
+      const literal = readLiteral(match.index! + match[0].length - 1);
+      if (literal === undefined) continue;
+      const result = classifyImport(file, literal.value, manifest);
+      if (result.fs) importsFs = true;
+      if (result.problem) add(match.index!, result.problem.capability, result.problem.message);
     }
     for (const match of code.matchAll(DYNAMIC_IMPORT)) {
-      if (match[1] === "") {
-        add(match.index!, "import", "a dynamic import must name its module with a string literal");
+      const literal = match[1] === "" ? undefined : readLiteral(match.index! + match[0].length - 1);
+      // Only `import("literal")` can be checked; anything computed, templated or concatenated could name
+      // any module, including one outside the component.
+      const closed = literal !== undefined && /^\s*[),]/.test(text.slice(literal.end + 1));
+      if (literal === undefined || !closed || literal.value.includes("${")) {
+        add(
+          match.index!,
+          "import",
+          "a dynamic import must name its module with a plain string literal",
+        );
+        continue;
       }
-      // A literal dynamic import is also matched by IMPORT_SPEC's `import (`? No: that needs a quote
-      // straight after `import`, so classify it here.
-      if (match[1] !== "") {
-        const specifier = readSpecifier(match.index! + match[0].length - 1);
-        if (specifier !== undefined) {
-          const problem = classifyImport(file, specifier, manifest);
-          if (problem) add(match.index!, problem.capability, problem.message);
-        }
+      const result = classifyImport(file, literal.value, manifest);
+      if (result.fs) importsFs = true;
+      if (result.problem) add(match.index!, result.problem.capability, result.problem.message);
+    }
+
+    // `fs: [read]` is a statement about reads; a call that changes the file system needs `write`.
+    if (importsFs && !mayWrite) {
+      for (const match of code.matchAll(FS_WRITE_API)) {
+        add(
+          match.index!,
+          "fs",
+          `${match[0]} can change the file system, which needs permissions.fs: write`,
+        );
       }
     }
   }

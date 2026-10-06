@@ -29,6 +29,7 @@ const permissionsRecordSchema = z
     fs: z.array(z.enum(["read", "write"])),
     exec: z.boolean(),
     slots: z.record(z.string(), z.array(z.string())),
+    slotEnv: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 

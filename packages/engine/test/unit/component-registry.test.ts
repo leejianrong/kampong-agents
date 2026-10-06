@@ -344,6 +344,22 @@ ops:
     await expect(registry.resolve("acme/mod", "1.0.0")).rejects.toThrow(/helper\.mjs:1.*process/);
   });
 
+  it("scans a given set of files once: a second resolve of the same bytes reuses the result", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return 1; }\n");
+    const registry = new DirectoryComponentRegistry(root);
+    await registry.resolve("acme/mod", "1.0.0");
+    await registry.resolve("acme/mod", "1.0.0");
+    await registry.resolveAll();
+    expect(registry.scansRun).toBe(1);
+    writeFileSync(
+      join(root, "acme/mod/1.0.0/index.mjs"),
+      "export async function invoke() { return 2; }\n",
+    );
+    await registry.resolve("acme/mod", "1.0.0");
+    expect(registry.scansRun).toBe(2);
+  });
+
   it("does not scan a rest component, which has no code", async () => {
     put("acme/echo/1.0.0/component.yaml", REST());
     put("acme/echo/1.0.0/notes.js", "process.env; eval('x');");

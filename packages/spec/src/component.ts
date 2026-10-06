@@ -139,6 +139,10 @@ const egressEntrySchema = z
 // op-call pipeline on every request. `env`, `fs` and `exec` apply to a module's code: a module gets only
 // the named env variables through `ctx.env`, and a static check refuses code that reaches for the file
 // system or a child process without declaring it. A rest component runs no code, so it declares none.
+// Plain env is for configuration (a timezone, a log level). A name that reads as a credential is
+// refused so it cannot be read through `ctx.env` without the host binding an auth slot gives it.
+const SECRET_LOOKING = /KEY|TOKEN|SECRET|PASSW|CREDENTIAL|PRIVATE/i;
+
 const unique = (items: readonly unknown[]): boolean => new Set(items).size === items.length;
 
 const permissionsSchema = z
@@ -444,6 +448,12 @@ function lintManifest(
   // the value without the host binding.
   const slotEnvs = new Set(Object.values(manifest.auth?.slots ?? {}).map((slot) => slot.env));
   for (const [i, name] of (manifest.permissions?.env ?? []).entries()) {
+    if (SECRET_LOOKING.test(name)) {
+      issue(
+        `${name} looks like a secret; declare an auth slot for it, bound to the hosts it may be sent to, instead of plain env`,
+        ["permissions", "env", i],
+      );
+    }
     if (slotEnvs.has(name)) {
       issue(`${name} is a secret slot's variable; read it through the slot, not as plain env`, [
         "permissions",
