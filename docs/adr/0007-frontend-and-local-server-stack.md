@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-03
 - Deciders: Jian (product owner)
+- Amended by: ADR-0028 (a durable state store for runtime state; the spec and layout stay files)
 
 ## Context
 
