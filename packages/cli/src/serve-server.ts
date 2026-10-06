@@ -9,6 +9,7 @@ import {
   verifySlackSignature,
   type RunEvent,
 } from "@kampong/engine";
+import { componentDispatcherFor } from "./components.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1431 (ADR-0021/ADR-0022): the server behind `kampong serve <spec>` -- the
@@ -58,7 +59,11 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
   // `kampong serve` -- so every approval pause here should try to notify
   // Slack when the spec configures a target, unlike `kampong dev`'s canvas
   // server (server.ts), which never sets this.
-  const runManager = new RunManager({ ...run, notifyApprovalsViaSlack: true });
+  const runManager = new RunManager({
+    components: componentDispatcherFor(specPath),
+    ...run,
+    notifyApprovalsViaSlack: true,
+  });
   const slackFetchImpl = run?.slackFetchImpl;
   const env = run?.env ?? process.env;
 

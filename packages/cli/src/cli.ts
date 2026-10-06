@@ -16,7 +16,12 @@ import {
   type RunState,
   type ToolFixtureMode,
 } from "@kampong/engine";
-import { exportProject, ExportDirectoryNotEmptyError } from "@kampong/exporter";
+import { componentDispatcherFor } from "./components.js";
+import {
+  exportProject,
+  ExportDirectoryNotEmptyError,
+  ExportUnsupportedError,
+} from "@kampong/exporter";
 import { createDevServer } from "./server.js";
 import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
 
@@ -768,6 +773,7 @@ async function runRunCommand(
     run = createAgentRun(spec, {
       fetchImpl,
       model: testOptions.model,
+      components: componentDispatcherFor(specPath),
       timeoutMs,
       ...(replayClock ? { toolClock: replayClock, toolPacer: new Pacer(replayClock) } : {}),
     });
@@ -955,6 +961,10 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
       io.stderr(
         `kampong export: ${outputDir} already exists and is not empty. Pass --force to overwrite it.`,
       );
+      return EXIT_EXECUTION_FAILURE;
+    }
+    if (err instanceof ExportUnsupportedError) {
+      io.stderr(`kampong export: ${err.message}`);
       return EXIT_EXECUTION_FAILURE;
     }
     io.stderr(

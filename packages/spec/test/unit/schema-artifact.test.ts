@@ -17,3 +17,14 @@ describe("checked-in JSON Schema artifact", () => {
     expect(onDisk).toEqual(generateAgentSpecJsonSchema());
   });
 });
+
+describe("checked-in component manifest JSON Schema artifact", () => {
+  it("matches what generateComponentManifestJsonSchema() produces right now", async () => {
+    const { componentManifestJsonSchemaFilename, generateComponentManifestJsonSchema } =
+      await import("../../src/json-schema.js");
+    const path = fileURLToPath(
+      new URL(`../../schemas/${componentManifestJsonSchemaFilename()}`, import.meta.url),
+    );
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(generateComponentManifestJsonSchema());
+  });
+});

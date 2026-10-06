@@ -5,6 +5,7 @@ import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } fro
 import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
+import { componentDispatcherFor } from "./components.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
@@ -83,7 +84,10 @@ export function createDevServer({
   // `SpecRepository` implementation later.
   const store: SpecRepository = new SpecStore(specPath, layoutPath);
   const watcher = new SpecFileWatcher(specPath);
-  const runManager = new RunManager(runOptions);
+  const runManager = new RunManager({
+    components: componentDispatcherFor(specPath),
+    ...runOptions,
+  });
   watcher.start();
 
   app.addHook("onClose", (_instance, done) => {

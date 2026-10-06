@@ -5,6 +5,7 @@ import {
   postApprovalRequest,
   resolveEnvValue,
   SlackApiError,
+  type ComponentDispatcher,
   type ModelClient,
   type RunEvent,
   type RunState,
@@ -41,6 +42,8 @@ export interface StartRunResult {
 export interface RunManagerOptions {
   env?: NodeJS.ProcessEnv;
   fetchImpl?: ToolFetchImpl;
+  /** Runs `action: component` tools; the servers default it to the spec's `components/` folder. */
+  components?: ComponentDispatcher;
   /** Test-only seam: overrides real BYOK/Mastra model resolution with a fake ModelClient. */
   createModel?: (spec: AgentSpec) => ModelClient;
   /** Test-only seam: how long a terminal run stays in `runs` before eviction (default 10 minutes). */
@@ -87,6 +90,7 @@ export class RunManager {
     const run = createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
+      components: this.options.components,
       model: this.options.createModel?.(spec),
     });
     run.on("event", (event: RunEvent) => {

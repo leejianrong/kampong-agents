@@ -8,6 +8,7 @@ export const PACKAGE_NAME = "@kampong/exporter";
 export {
   exportProject,
   ExportDirectoryNotEmptyError,
+  ExportUnsupportedError,
   type ExportResult,
   type ExportProjectOptions,
 } from "./project.js";

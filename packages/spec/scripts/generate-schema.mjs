@@ -7,7 +7,12 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateAgentSpecJsonSchema, agentSpecJsonSchemaFilename } from "../dist/json-schema.js";
+import {
+  generateAgentSpecJsonSchema,
+  agentSpecJsonSchemaFilename,
+  generateComponentManifestJsonSchema,
+  componentManifestJsonSchemaFilename,
+} from "../dist/json-schema.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, "..", "schemas");
@@ -18,3 +23,7 @@ const outPath = join(outDir, agentSpecJsonSchemaFilename());
 writeFileSync(outPath, `${JSON.stringify(schema, null, 2)}\n`);
 
 console.log(`Wrote ${outPath}`);
+
+const manifestPath = join(outDir, componentManifestJsonSchemaFilename());
+writeFileSync(manifestPath, `${JSON.stringify(generateComponentManifestJsonSchema(), null, 2)}\n`);
+console.log(`Wrote ${manifestPath}`);

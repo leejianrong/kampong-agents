@@ -86,6 +86,19 @@ export type Tool =
       body: string;
       requires_approval?: boolean;
       extract?: string;
+    }
+  | {
+      // KAN-1884: a component call. The exporter does not vendor the component interpreter yet, so an
+      // export that uses one is refused; the shape is here so the vendored workflow type-checks.
+      name: string;
+      action: "component";
+      use: string;
+      op: string;
+      with?: Record<string, unknown>;
+      config?: Record<string, string>;
+      secrets?: Record<string, string>;
+      requires_approval?: boolean;
+      extract?: string;
     };
 
 export type FallbackAction = "escalate_to_human";

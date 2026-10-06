@@ -35,6 +35,30 @@ export {
   type ToolFetchImpl,
 } from "./http-tool.js";
 
+export {
+  invokeOp,
+  opRequiresApproval,
+  type InvokeOpOptions,
+  type ModuleContext,
+  type ModuleRunner,
+} from "./component.js";
+
+export {
+  createComponentDispatcher,
+  type CreateComponentDispatcherOptions,
+} from "./component-dispatch.js";
+
+export {
+  DirectoryComponentRegistry,
+  InProcessModuleRunner,
+  ComponentResolutionError,
+  type ComponentRegistry,
+  type ComponentSummary,
+  type ComponentProblem,
+  type ResolvedComponent,
+  type ResolveOptions,
+} from "./component-registry.js";
+
 export { Pacer, instantClock, realClock, type Clock } from "./pacing.js";
 
 export {
@@ -62,7 +86,16 @@ export { evaluateCondition } from "./condition.js";
 
 export { isBelowConfidenceThreshold } from "./guardrail.js";
 
-export { runWorkflow, type RunEvent, type ApprovalDecision, type EngineDeps } from "./workflow.js";
+export {
+  runWorkflow,
+  type RunEvent,
+  type ApprovalDecision,
+  type EngineDeps,
+  type ComponentDispatcher,
+  type ComponentTool,
+  type ComponentRuntime,
+  type PreparedComponentCall,
+} from "./workflow.js";
 
 export {
   AgentRun,

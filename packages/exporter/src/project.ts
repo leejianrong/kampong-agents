@@ -57,11 +57,27 @@ export class ExportDirectoryNotEmptyError extends Error {
   }
 }
 
+/** The spec uses something the exporter cannot carry into a standalone project yet. */
+export class ExportUnsupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportUnsupportedError";
+  }
+}
+
 export function exportProject(
   spec: AgentSpec,
   outputDir: string,
   options: ExportProjectOptions = {},
 ): ExportResult {
+  // Checked first so nothing is written: the component interpreter is not vendored into exports yet
+  // (KAN-1886), and a project that fails on its first tool call is worse than a refused export.
+  const components = (spec.agent.tools ?? []).filter((t) => t.action === "component");
+  if (components.length > 0) {
+    throw new ExportUnsupportedError(
+      `Tool(s) ${components.map((t) => `"${t.name}"`).join(", ")} use \`action: component\`, which kampong export does not support yet. Run the spec with \`kampong run\` or \`kampong dev\` instead.`,
+    );
+  }
   if (!options.force && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
     throw new ExportDirectoryNotEmptyError(outputDir);
   }

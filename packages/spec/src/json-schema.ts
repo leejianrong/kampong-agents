@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { componentManifestSchema } from "./component.js";
 import { agentSpecSchema, SCHEMA_VERSION } from "./schema.js";
 
 // Published JSON Schema artifact (PLAN.md Shape S7, ADR-0008): lets external
@@ -24,4 +25,20 @@ export function generateAgentSpecJsonSchema(): Record<string, unknown> {
 
 export function agentSpecJsonSchemaFilename(): string {
   return `agent-spec.v${SCHEMA_VERSION}.schema.json`;
+}
+
+// The component manifest (ADR-0029) is published the same way, so an editor or agentic tool authoring
+// a manifest gets validation and autocomplete. The cross-field lint (undeclared references, egress
+// coverage) is code, not schema, so `kampong doctor` and the loader remain the full check.
+export const COMPONENT_MANIFEST_SCHEMA_VERSION = "1.0";
+
+export function generateComponentManifestJsonSchema(): Record<string, unknown> {
+  return z.toJSONSchema(componentManifestSchema, {
+    target: "draft-07",
+    reused: "inline",
+  }) as Record<string, unknown>;
+}
+
+export function componentManifestJsonSchemaFilename(): string {
+  return `component-manifest.v${COMPONENT_MANIFEST_SCHEMA_VERSION}.schema.json`;
 }

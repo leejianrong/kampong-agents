@@ -6,10 +6,15 @@
 // will not be touched again by a future export.
 //
 import { z } from "zod";
-import type { AgentSpec, WorkflowStep } from "./spec-types.js";
+import type { AgentSpec, Tool, WorkflowStep } from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
-import { callHttpTool, substitutePlaceholders, type HttpToolCallOptions } from "./http-tool.js";
+import {
+  callHttpTool,
+  extractField,
+  substitutePlaceholders,
+  type HttpToolCallOptions,
+} from "./http-tool.js";
 import type { ModelClient } from "./model.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
@@ -60,6 +65,28 @@ export interface EngineDeps {
   /** Tool call pacing and retry delays (KAN-1846); real timers by default, injectable for replay and tests. */
   pacer?: HttpToolCallOptions["pacer"];
   clock?: HttpToolCallOptions["clock"];
+  /** Runs `action: component` tools (KAN-1884); without one, a component tool fails visibly. */
+  components?: ComponentDispatcher;
+}
+
+export type ComponentTool = Extract<Tool, { action: "component" }>;
+
+/** What a component call needs from the engine at run time. */
+export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock">;
+
+export interface PreparedComponentCall {
+  /** The op's effect decides this unless the spec set `requires_approval`. */
+  requiresApproval: boolean;
+  run(input: Record<string, unknown>, runtime: ComponentRuntime): Promise<unknown>;
+}
+
+/**
+ * The seam between the workflow and the component machinery (component.ts, component-registry.ts), so
+ * the workflow, which is vendored into exports, does not depend on them. `prepare` resolves the
+ * component (and fails if it cannot) before any approval is asked for.
+ */
+export interface ComponentDispatcher {
+  prepare(tool: ComponentTool): Promise<PreparedComponentCall>;
 }
 
 const EXECUTE_TOOL_PATTERN = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
@@ -130,37 +157,10 @@ export async function* runWorkflow(
           return;
         }
 
-        if (tool.requires_approval) {
-          const decision = yield {
-            type: "awaiting_approval",
-            step: step.step,
-            kind: "tool",
-            toolName: tool.name,
-            reason: `Tool "${tool.name}" requires approval before it runs.`,
-          };
-          if (!decision?.approved) {
-            yield {
-              type: "rejected",
-              step: step.step,
-              reason: decision?.reason ?? "Approval was rejected.",
-            };
-            return;
-          }
-        }
-
-        try {
-          const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
-            fetchImpl: deps.fetchImpl,
-            env: deps.env,
-            pacer: deps.pacer,
-            clock: deps.clock,
-          });
-          stepOutputs[step.step] = output;
-          yield { type: "step_completed", step: step.step, output };
-        } catch (err) {
-          yield { type: "failed", step: step.step, error: (err as Error).message };
-          return;
-        }
+        const result = yield* executeTool(spec, tool, step.step, stepOutputs, input, deps);
+        if (!result) return;
+        stepOutputs[step.step] = result.output;
+        yield { type: "step_completed", step: step.step, output: result.output };
         continue;
       }
 
@@ -190,39 +190,10 @@ export async function* runWorkflow(
         };
         return;
       }
-      if (tool.requires_approval) {
-        const decision = yield {
-          type: "awaiting_approval",
-          step: step.step,
-          kind: "tool",
-          toolName: tool.name,
-          reason: `Tool "${tool.name}" requires approval before it runs.`,
-        };
-        if (!decision?.approved) {
-          yield {
-            type: "rejected",
-            step: step.step,
-            reason: decision?.reason ?? "Approval was rejected.",
-          };
-          return;
-        }
-      }
-      try {
-        // callHttpTool builds the request (generic HTTP or a connector) and
-        // resolves `{{ step.field }}` / `{placeholder}` references in every
-        // field via substitutePlaceholders (KAN-1429/KAN-1430).
-        const output = await callHttpTool(tool, buildToolParams(stepOutputs, input), {
-          fetchImpl: deps.fetchImpl,
-          env: deps.env,
-          pacer: deps.pacer,
-          clock: deps.clock,
-        });
-        stepOutputs[step.step] = output;
-        yield { type: "step_completed", step: step.step, output };
-      } catch (err) {
-        yield { type: "failed", step: step.step, error: (err as Error).message };
-        return;
-      }
+      const result = yield* executeTool(spec, tool, step.step, stepOutputs, input, deps);
+      if (!result) return;
+      stepOutputs[step.step] = result.output;
+      yield { type: "step_completed", step: step.step, output: result.output };
       continue;
     }
 
@@ -369,6 +340,97 @@ function buildStepPrompt(
  * (see substitutePlaceholders), which surfaces as an honest HTTP failure
  * rather than a silent wrong value.
  */
+// Runs one tool for a step: approval first (an explicit `requires_approval`, else the op's effect for
+// a component), then the call. Yields the awaiting_approval / rejected / failed events itself and
+// returns the output, or undefined once the run has reached a terminal state.
+async function* executeTool(
+  _spec: AgentSpec,
+  tool: Tool,
+  stepName: string,
+  stepOutputs: Record<string, unknown>,
+  input: string,
+  deps: EngineDeps,
+): AsyncGenerator<RunEvent, { output: unknown } | undefined, ApprovalDecision | undefined> {
+  const params = buildToolParams(stepOutputs, input);
+  let needsApproval = tool.requires_approval ?? false;
+  let prepared: PreparedComponentCall | undefined;
+
+  if (tool.action === "component") {
+    // Resolved before asking for approval: the op's effect decides the default, and a component that
+    // cannot be found should fail the run, not ask a human to approve a call that cannot happen.
+    try {
+      if (!deps.components) {
+        throw new Error(
+          `Tool "${tool.name}" uses component ${tool.use}, but no component registry is configured.`,
+        );
+      }
+      prepared = await deps.components.prepare(tool);
+    } catch (err) {
+      yield { type: "failed", step: stepName, error: (err as Error).message };
+      return undefined;
+    }
+    needsApproval = prepared.requiresApproval;
+  }
+
+  if (needsApproval) {
+    const decision = yield {
+      type: "awaiting_approval",
+      step: stepName,
+      kind: "tool",
+      toolName: tool.name,
+      reason: `Tool "${tool.name}" requires approval before it runs.`,
+    };
+    if (!decision?.approved) {
+      yield {
+        type: "rejected",
+        step: stepName,
+        reason: decision?.reason ?? "Approval was rejected.",
+      };
+      return undefined;
+    }
+  }
+
+  try {
+    if (tool.action === "component" && prepared) {
+      // `with` takes run data (`{{ step.field }}`) but `config` and `secrets` never do: config can form
+      // part of a host, and a secret slot only ever names an environment variable.
+      const result = await prepared.run(substituteDeep(tool.with, params), {
+        env: deps.env,
+        fetchImpl: deps.fetchImpl,
+        pacer: deps.pacer,
+        clock: deps.clock,
+      });
+      return { output: extractField(result, tool.extract) };
+    }
+    // callHttpTool builds the request (generic HTTP or a connector) and resolves
+    // `{{ step.field }}` / `{placeholder}` references in every field via substitutePlaceholders
+    // (KAN-1429/KAN-1430).
+    const output = await callHttpTool(tool, params, {
+      fetchImpl: deps.fetchImpl,
+      env: deps.env,
+      pacer: deps.pacer,
+      clock: deps.clock,
+    });
+    return { output };
+  } catch (err) {
+    yield { type: "failed", step: stepName, error: (err as Error).message };
+    return undefined;
+  }
+}
+
+/** Resolves `{{ ... }}` references in every string of a `with` block, leaving other values typed. */
+function substituteDeep(value: unknown, params: Record<string, string>): Record<string, unknown> {
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") return substitutePlaceholders(node, params);
+    if (Array.isArray(node)) return node.map(walk);
+    if (node !== null && typeof node === "object") {
+      return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, walk(v)]));
+    }
+    return node;
+  };
+  return (walk(value ?? {}) as Record<string, unknown>) ?? {};
+}
+
 function buildToolParams(
   stepOutputs: Record<string, unknown>,
   input: string,
