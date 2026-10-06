@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -253,20 +253,212 @@ describe("registry review fixes", () => {
     put("acme/mod/1.0.0/component.yaml", MODULE());
     put(
       "acme/mod/1.0.0/index.mjs",
-      "globalThis.__ran = true; export async function invoke() { return 1; }",
+      "export async function invoke(op, input, ctx) { await ctx.fetch('https://api.example.test/x'); return 1; }",
     );
     const registry = new DirectoryComponentRegistry(root);
     const { manifest } = await registry.resolve("acme/mod", "1.0.0");
-    delete (globalThis as { __ran?: boolean }).__ran;
+    let calls = 0;
     await expect(
       invokeOp(
         manifest,
         "greet",
         {},
-        { runner: new InProcessModuleRunner(registry), signal: AbortSignal.abort() },
+        {
+          runner: new InProcessModuleRunner(registry),
+          signal: AbortSignal.abort(),
+          fetchImpl: async () => {
+            calls++;
+            return new Response("{}");
+          },
+        },
       ),
     ).rejects.toThrow();
-    expect((globalThis as { __ran?: boolean }).__ran).toBeUndefined();
+    expect(calls).toBe(0);
+  });
+});
+
+describe("a module's code must stay inside its manifest (KAN-1835)", () => {
+  const MODULE_WITH = (permissions: string) => `kind: module
+id: acme/mod
+version: 1.0.0
+entry: ./index.mjs
+permissions: ${permissions}
+ops:
+  greet:
+    effect: read
+`;
+
+  it("refuses to resolve a module whose code reaches for process, naming the file, line and capability", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      "export async function invoke() {\n  return process.env.HOME;\n}\n",
+    );
+    const registry = new DirectoryComponentRegistry(root);
+    await expect(registry.resolve("acme/mod", "1.0.0")).rejects.toThrow(/index\.mjs:2.*process/);
+  });
+
+  it("does not run the module's top-level code when it is refused", async () => {
+    const marker = join(root, "ran.txt");
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(marker)}, "ran");\nexport async function invoke() { return 1; }\n`,
+    );
+    const registry = new DirectoryComponentRegistry(root);
+    const resolved = await registry.resolve("acme/mod", "1.0.0").catch((e: Error) => e);
+    expect(resolved).toBeInstanceOf(ComponentResolutionError);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("allows what the manifest declares", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE_WITH("{ fs: [read] }"));
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      `import { readFileSync } from "node:fs";\nexport async function invoke() { return typeof readFileSync; }\n`,
+    );
+    const registry = new DirectoryComponentRegistry(root);
+    await expect(registry.resolve("acme/mod", "1.0.0")).resolves.toBeDefined();
+  });
+
+  it("reports the violation as a problem in a listing, next to the components that are fine", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", "export async function invoke() { return eval('1'); }\n");
+    put("acme/echo/1.0.0/component.yaml", REST());
+    const registry = new DirectoryComponentRegistry(root);
+    const all = await registry.resolveAll();
+    expect(all.components.map((c) => c.manifest.id)).toEqual(["acme/echo"]);
+    expect(all.problems.join(" ")).toMatch(/acme\/mod@1\.0\.0.*eval/);
+  });
+
+  it("checks a helper file the entry imports, and a changed file after it was first resolved", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      `import { x } from "./helper.mjs";\nexport async function invoke() { return x; }\n`,
+    );
+    put("acme/mod/1.0.0/helper.mjs", "export const x = 1;\n");
+    const registry = new DirectoryComponentRegistry(root);
+    await expect(registry.resolve("acme/mod", "1.0.0")).resolves.toBeDefined();
+    writeFileSync(join(root, "acme/mod/1.0.0/helper.mjs"), "export const x = process.pid;\n");
+    await expect(registry.resolve("acme/mod", "1.0.0")).rejects.toThrow(/helper\.mjs:1.*process/);
+  });
+
+  it("does not scan a rest component, which has no code", async () => {
+    put("acme/echo/1.0.0/component.yaml", REST());
+    put("acme/echo/1.0.0/notes.js", "process.env; eval('x');");
+    const registry = new DirectoryComponentRegistry(root);
+    await expect(registry.resolve("acme/echo", "1.0.0")).resolves.toBeDefined();
+  });
+});
+
+describe("ctx.env and the runner's isolation (KAN-1835)", () => {
+  const WITH_ENV = `kind: module
+id: acme/mod
+version: 1.0.0
+entry: ./index.mjs
+permissions: { env: [TZ] }
+ops:
+  greet:
+    effect: read
+`;
+
+  async function runWith(
+    source: string,
+    env: NodeJS.ProcessEnv = { TZ: "UTC", SECRET_THING: "s" },
+  ) {
+    put("acme/mod/1.0.0/component.yaml", WITH_ENV);
+    put("acme/mod/1.0.0/index.mjs", source);
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/mod", "1.0.0");
+    return invokeOp(manifest, "greet", {}, { runner: new InProcessModuleRunner(registry), env });
+  }
+
+  it("hands a module the env variables its manifest names, and only those", async () => {
+    expect(
+      await runWith(`export async function invoke(op, input, ctx) { return ctx.env.get("TZ"); }`),
+    ).toBe("UTC");
+    await expect(
+      runWith(
+        `export async function invoke(op, input, ctx) { return ctx.env.get("SECRET_THING"); }`,
+      ),
+    ).rejects.toThrow(/SECRET_THING.*permissions\.env/);
+  });
+
+  it("gives a declared but unset variable as undefined, not an error", async () => {
+    expect(
+      await runWith(
+        `export async function invoke(op, input, ctx) { return ctx.env.get("TZ") ?? "unset"; }`,
+        {},
+      ),
+    ).toBe("unset");
+  });
+
+  it("a module that declares no env gets none", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put(
+      "acme/mod/1.0.0/index.mjs",
+      `export async function invoke(op, input, ctx) { return ctx.env.get("TZ"); }`,
+    );
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/mod", "1.0.0");
+    await expect(
+      invokeOp(
+        manifest,
+        "greet",
+        {},
+        { runner: new InProcessModuleRunner(registry), env: { TZ: "UTC" } },
+      ),
+    ).rejects.toThrow(/permissions\.env/);
+  });
+
+  it("the in-process runner says it provides no isolation", () => {
+    expect(new InProcessModuleRunner(new DirectoryComponentRegistry(root)).isolation).toBe("none");
+  });
+
+  it("requireIsolation refuses a module on a runner that provides less, before running anything", async () => {
+    put("acme/mod/1.0.0/component.yaml", MODULE());
+    put("acme/mod/1.0.0/index.mjs", `export async function invoke() { return 1; }`);
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/mod", "1.0.0");
+    let invoked = false;
+    const runner = {
+      isolation: "none" as const,
+      async invoke() {
+        invoked = true;
+        return 1;
+      },
+    };
+    await expect(
+      invokeOp(manifest, "greet", {}, { runner, requireIsolation: "sandbox" }),
+    ).rejects.toThrow(/isolation/);
+    expect(invoked).toBe(false);
+    await expect(invokeOp(manifest, "greet", {}, { runner })).resolves.toBe(1);
+    await expect(
+      invokeOp(
+        manifest,
+        "greet",
+        {},
+        { runner: { ...runner, isolation: "sandbox" as const }, requireIsolation: "sandbox" },
+      ),
+    ).resolves.toBe(1);
+  });
+
+  it("requireIsolation does not affect a rest component, which runs no code", async () => {
+    put("acme/echo/1.0.0/component.yaml", REST());
+    const registry = new DirectoryComponentRegistry(root);
+    const { manifest } = await registry.resolve("acme/echo", "1.0.0");
+    await expect(
+      invokeOp(
+        manifest,
+        "ping",
+        {},
+        {
+          requireIsolation: "sandbox",
+          fetchImpl: async () => new Response("{}"),
+        },
+      ),
+    ).resolves.toBeDefined();
   });
 });
 

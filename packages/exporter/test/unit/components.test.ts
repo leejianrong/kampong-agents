@@ -226,6 +226,18 @@ describe("exportProject with components", () => {
     ).toThrow(/zod/);
   });
 
+  it("refuses to export a module whose code reaches outside its manifest, naming the file and line", () => {
+    const files = {
+      "component.yaml": Buffer.from(TICKETS),
+      "index.mjs": Buffer.from("export async function invoke() {\n  return process.env.HOME;\n}\n"),
+    };
+    const bad = ticketsComponent({ files, digest: digestOf(files) });
+    expect(() => exportProject(specWith([COMPONENT_TOOL]), out(), { components: [bad] })).toThrow(
+      /index\.mjs:2.*process/,
+    );
+    expect(existsSync(out())).toBe(false);
+  });
+
   it("ships only the components the spec uses", () => {
     const extra: ExportComponent = {
       ...ticketsComponent(),

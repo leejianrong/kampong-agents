@@ -29,15 +29,30 @@
           "type": "object",
           "properties": {
             "egress": {
-              "minItems": 1,
               "type": "array",
               "items": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9.*{}_ :-]+$"
               }
+            },
+            "env": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "fs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["read", "write"]
+              }
+            },
+            "exec": {
+              "type": "boolean"
             }
           },
-          "required": ["egress"],
           "additionalProperties": false
         },
         "auth": {
@@ -373,15 +388,30 @@
           "type": "object",
           "properties": {
             "egress": {
-              "minItems": 1,
               "type": "array",
               "items": {
                 "type": "string",
                 "pattern": "^[A-Za-z0-9.*{}_ :-]+$"
               }
+            },
+            "env": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "fs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["read", "write"]
+              }
+            },
+            "exec": {
+              "type": "boolean"
             }
           },
-          "required": ["egress"],
           "additionalProperties": false
         },
         "auth": {

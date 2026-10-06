@@ -8,6 +8,7 @@ export const PACKAGE_NAME = "@kampong/spec";
 
 export * from "./request.js";
 export * from "./component.js";
+export * from "./permissions.js";
 export * from "./lockfile.js";
 export * from "./schema.js";
 export * from "./parse.js";

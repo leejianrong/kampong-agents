@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   componentIdSchema,
   parseComponentManifest,
+  scanModuleSources,
   exactVersionSchema,
   type AgentSpec,
   type ComponentManifest,
@@ -118,6 +119,16 @@ export function selectComponents(
       throw new Error(
         `Refusing to export ${id}@${version}: its digest ${component.digest} does not match its files (${actual}).`,
       );
+    }
+    // The code must stay inside what the manifest declares (a static check, not a sandbox: ADR-0031).
+    if (component.manifest.kind === "module") {
+      const violations = scanModuleSources(component.manifest, component.files);
+      if (violations.length > 0) {
+        const shown = violations.slice(0, 5).map((v) => `${v.file}:${v.line} ${v.capability}`);
+        throw new Error(
+          `Refusing to export ${id}@${version}: its code does not stay inside its manifest (${shown.join(", ")}).`,
+        );
+      }
     }
     const manifestFile = component.files["component.yaml"];
     const parsed =

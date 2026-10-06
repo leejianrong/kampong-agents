@@ -82,4 +82,45 @@ describe("kampong.lock", () => {
     expect(() => parseLockfile(text)).not.toThrow();
     expect(parseLockfile(text).success).toBe(false);
   });
+
+  it("records the permissions a component was reviewed with, and round-trips them", () => {
+    const text = serializeLockfile({
+      version: 1,
+      components: {
+        "acme/echo@1.0.0": {
+          digest: D1,
+          permissions: {
+            egress: ["a.example.test"],
+            env: [],
+            fs: ["read"],
+            exec: false,
+            slots: { token: ["a.example.test"] },
+          },
+        },
+      },
+    });
+    expect(text).toContain("a.example.test");
+    const parsed = parseLockfile(text);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.lockfile?.components["acme/echo@1.0.0"]?.permissions?.fs).toEqual(["read"]);
+    expect(serializeLockfile(parsed.lockfile!)).toBe(text);
+  });
+
+  it("still reads an entry that has no permissions record", () => {
+    const parsed = parseLockfile(
+      `version: 1\ncomponents:\n  acme/echo@1.0.0:\n    digest: ${D1}\n`,
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.lockfile?.components["acme/echo@1.0.0"]?.permissions).toBeUndefined();
+  });
+
+  it.each([
+    ["an unknown fs mode", "fs: [execute]"],
+    ["a non-boolean exec", "exec: maybe"],
+    ["an unknown field", "network: true"],
+    ["slots that are not lists", "slots: { t: a.example.test }"],
+  ])("rejects a permissions record with %s", (_n, line) => {
+    const text = `version: 1\ncomponents:\n  acme/echo@1.0.0:\n    digest: ${D1}\n    permissions:\n      egress: []\n      env: []\n      fs: []\n      exec: false\n      slots: {}\n      ${line}\n`;
+    expect(parseLockfile(text).success).toBe(false);
+  });
 });

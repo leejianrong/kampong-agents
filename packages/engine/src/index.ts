@@ -40,6 +40,7 @@ export {
   opRequiresApproval,
   type InvokeOpOptions,
   type ModuleContext,
+  type ModuleIsolation,
   type ModuleRunner,
 } from "./component.js";
 

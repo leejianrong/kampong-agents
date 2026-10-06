@@ -16,6 +16,9 @@ import {
   parseLockfile,
   serializeLockfile,
   catalogEntryFromManifest,
+  describePermissions,
+  diffPermissions,
+  permissionsOf,
   type AgentSpec,
   type ComponentCatalog,
   type Lockfile,
@@ -75,7 +78,15 @@ export function componentDispatcherFor(specPath: string): ComponentDispatcher {
 }
 
 export type LockOutcome =
-  | { ok: true; added: string[]; unchanged: string[]; updated: string[]; none: boolean }
+  | {
+      ok: true;
+      added: string[];
+      unchanged: string[];
+      updated: string[];
+      none: boolean;
+      /** What each newly pinned or updated component may do, for the author to read. */
+      reviewed: { use: string; summary: string }[];
+    }
   | { ok: false; message: string };
 
 export function componentUsesOf(spec: AgentSpec): string[] {
@@ -94,11 +105,11 @@ export function componentUsesOf(spec: AgentSpec): string[] {
 export async function lockComponents(
   spec: AgentSpec,
   specPath: string,
-  { update }: { update: boolean },
+  { update, allowWiderPermissions = false }: { update: boolean; allowWiderPermissions?: boolean },
 ): Promise<LockOutcome> {
   const uses = componentUsesOf(spec);
   if (uses.length === 0) {
-    return { ok: true, added: [], unchanged: [], updated: [], none: true };
+    return { ok: true, added: [], unchanged: [], updated: [], none: true, reviewed: [] };
   }
   let lock: Lockfile;
   try {
@@ -112,26 +123,40 @@ export async function lockComponents(
   const unchanged: string[] = [];
   const updated: string[] = [];
   const refused: string[] = [];
+  const widened: string[] = [];
+  const reviewed: { use: string; summary: string }[] = [];
   for (const use of uses) {
     const at = use.lastIndexOf("@");
     if (at <= 0) {
       return { ok: false, message: `${use}: expected "id@version" (for example acme/echo@1.0.0)` };
     }
     let digest: string;
+    let permissions: ReturnType<typeof permissionsOf>;
     try {
-      digest = (await registry.resolve(use.slice(0, at), use.slice(at + 1))).digest;
+      const resolved = await registry.resolve(use.slice(0, at), use.slice(at + 1));
+      digest = resolved.digest;
+      permissions = permissionsOf(resolved.manifest);
     } catch (err) {
       return { ok: false, message: `${use}: ${(err as Error).message}` };
     }
     const current = Object.hasOwn(components, use) ? components[use]!.digest : undefined;
     if (current === undefined) {
-      components[use] = { digest };
+      components[use] = { digest, permissions };
       added.push(use);
+      reviewed.push({ use, summary: describePermissions(permissions) });
     } else if (current === digest) {
       unchanged.push(use);
     } else if (update) {
-      components[use] = { digest };
+      // A pin that recorded what the component could do lets us tell a code change from a wider grant.
+      const before = components[use]!.permissions;
+      const wider = before === undefined ? [] : diffPermissions(before, permissions);
+      if (wider.length > 0 && !allowWiderPermissions) {
+        widened.push(`${use}: ${wider.join("; ")}`);
+        continue;
+      }
+      components[use] = { digest, permissions };
       updated.push(use);
+      reviewed.push({ use, summary: describePermissions(permissions) });
     } else {
       refused.push(use);
     }
@@ -140,6 +165,12 @@ export async function lockComponents(
     return {
       ok: false,
       message: `${refused.join(", ")} changed since it was pinned in ${LOCKFILE_NAME}. Review the change, then run \`kampong lock --update\` to accept it.`,
+    };
+  }
+  if (widened.length > 0) {
+    return {
+      ok: false,
+      message: `the update widens what a component may do:\n  ${widened.join("\n  ")}\nReview it, then add --allow-wider-permissions to accept it.`,
     };
   }
   if (added.length > 0 || updated.length > 0) {
@@ -160,7 +191,7 @@ export async function lockComponents(
     writeFileSync(temp, serializeLockfile({ version: 1, components: merged }));
     renameSync(temp, target);
   }
-  return { ok: true, added, unchanged, updated, none: false };
+  return { ok: true, added, unchanged, updated, none: false, reviewed };
 }
 
 /** What the canvas needs to build forms for the components installed beside a spec. */
