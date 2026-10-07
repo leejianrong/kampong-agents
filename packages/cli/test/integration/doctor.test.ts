@@ -528,6 +528,35 @@ ops:
       expect(refused.code).toBe(EXIT_EXECUTION_FAILURE);
     });
 
+    it("probes the first-party GitHub component with GET /user, and fails a 401 but not a 403 (KAN-1872)", async () => {
+      const GITHUB = `    - name: pr
+      action: component
+      use: kampong/github@1.0.0
+      op: get_pull_request
+      with: { owner: acme, repo: widgets, pull_number: 7 }`;
+      const env = { ANTHROPIC_API_KEY: SECRET, GITHUB_TOKEN: "ghp_s3cret" };
+      const ok = await probe(GITHUB, () => json({ login: "octo" }), ["--probe"], env);
+      expect(ok.code).toBe(EXIT_SUCCESS);
+      expect(ok.calls).toEqual([
+        { url: "https://api.github.com/user", method: "GET", auth: "Bearer ghp_s3cret" },
+      ]);
+      const refused = await probe(
+        GITHUB,
+        () => json({ message: "Bad credentials" }, 401),
+        ["--probe"],
+        env,
+      );
+      expect(refused.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(refused.text).not.toContain("ghp_s3cret");
+      const scoped = await probe(
+        GITHUB,
+        () => json({ message: "Forbidden" }, 403),
+        ["--probe"],
+        env,
+      );
+      expect(scoped.code).toBe(EXIT_SUCCESS);
+    });
+
     it("does not probe a credential that is not set; the missing variable is the failure", async () => {
       const r = await probe(SLACK, () => json({ ok: true }), ["--probe"], {
         ANTHROPIC_API_KEY: SECRET,

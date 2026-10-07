@@ -25,9 +25,9 @@ describe("first-party components folder", () => {
     expect(await registry.problems()).toEqual([]);
   });
 
-  it("ships kampong/slack and kampong/gmail", async () => {
+  it("ships kampong/slack, kampong/gmail and kampong/github", async () => {
     const ids = (await registry.list()).map((c) => `${c.id}@${c.version}`).sort();
-    expect(ids).toEqual(["kampong/gmail@1.0.0", "kampong/slack@1.0.0"]);
+    expect(ids).toEqual(["kampong/github@1.0.0", "kampong/gmail@1.0.0", "kampong/slack@1.0.0"]);
   });
 
   it("declares Apache-2.0 on every component", async () => {
