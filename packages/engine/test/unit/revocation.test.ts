@@ -9,6 +9,7 @@ import {
 } from "../../src/component-registry.js";
 import {
   loadRevocations,
+  mergeShippedIndex,
   PROJECT_REGISTRY_INDEX,
   RevocationRegistry,
   RevokedComponentError,
@@ -134,8 +135,78 @@ describe("loadRevocations", () => {
   it("fails rather than ignores a project index it cannot read, which would hide a revocation", () => {
     writeLocal("{ not json");
     expect(() => loadRevocations(dir)).toThrow(/this project's registry index .* is not valid/);
-    writeLocal(JSON.stringify({ version: 1, components: [{ id: "x" }] }));
+    writeLocal(JSON.stringify({ version: 2, components: [] }));
+    expect(() => loadRevocations(dir)).toThrow(/unknown index version 2/);
+    writeLocal(
+      JSON.stringify({
+        version: 1,
+        components: [{ id: "acme/z", version: "1.0.0", tier: 2, revoked: { reason: "", at: "x" } }],
+      }),
+    );
     expect(() => loadRevocations(dir)).toThrow(/is not valid/);
+  });
+
+  it("is not stopped by an entry that is not a revocation and that it does not understand", () => {
+    writeLocal(
+      JSON.stringify({
+        version: 1,
+        components: [
+          { id: "NOT VALID", mystery: true },
+          { id: "acme/z", version: "1.0.0", tier: 2, revoked: { reason: "bad", at: "2026-10-07" } },
+        ],
+      }),
+    );
+    expect(loadRevocations(dir)[1]!.components.map((c) => c.id)).toEqual(["acme/z"]);
+  });
+});
+
+describe("mergeShippedIndex (what regenerating the shipped index does)", () => {
+  const D = (c: string) => `sha256:${c.repeat(64)}`;
+  const revoked = { reason: "bad", at: "2026-10-07" };
+  const disk = [{ id: "kampong/a", version: "1.0.0", digest: D("a") }];
+
+  it("lists what is on disk at tier 0", () => {
+    expect(mergeShippedIndex(undefined, disk).components).toEqual([
+      { id: "kampong/a", version: "1.0.0", digest: D("a"), tier: 0 },
+    ]);
+  });
+
+  it("carries a revocation over for the same bytes", () => {
+    const previous: RegistryIndex = {
+      version: 1,
+      components: [{ id: "kampong/a", version: "1.0.0", digest: D("a"), tier: 0, revoked }],
+    };
+    expect(mergeShippedIndex(previous, disk).components).toEqual(previous.components);
+  });
+
+  it("keeps the record of a revoked version whose files changed or are gone, and one with no digest", () => {
+    const previous: RegistryIndex = {
+      version: 1,
+      components: [
+        { id: "kampong/a", version: "1.0.0", digest: D("z"), tier: 0, revoked },
+        { id: "kampong/gone", version: "2.0.0", digest: D("g"), tier: 0, revoked },
+        { id: "kampong/any", version: "1.0.0", tier: 0, revoked },
+      ],
+    };
+    const merged = mergeShippedIndex(previous, disk).components;
+    expect(
+      merged.map((c) => `${c.id}@${c.version}:${c.digest ?? "*"}:${c.revoked ? "r" : "-"}`).sort(),
+    ).toEqual([
+      `kampong/a@1.0.0:${D("a")}:-`,
+      `kampong/a@1.0.0:${D("z")}:r`,
+      `kampong/any@1.0.0:*:r`,
+      `kampong/gone@2.0.0:${D("g")}:r`,
+    ]);
+    // Regenerating again changes nothing.
+    expect(mergeShippedIndex({ version: 1, components: merged }, disk).components).toEqual(merged);
+  });
+
+  it("drops an entry that is not revoked and no longer on disk", () => {
+    const previous: RegistryIndex = {
+      version: 1,
+      components: [{ id: "kampong/old", version: "1.0.0", digest: D("o"), tier: 0 }],
+    };
+    expect(mergeShippedIndex(previous, disk).components.map((c) => c.id)).toEqual(["kampong/a"]);
   });
 });
 

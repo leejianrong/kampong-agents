@@ -14,23 +14,29 @@ bad, stop running it", and a release had no verifiable origin.
   first-party, 1 verified, 2 community) and an optional `revoked: { reason, at, advisory? }`. One ships with
   the engine (`packages/engine/components/registry-index.json`), generated from the first-party components
   by `npm run generate:registry-index`; a test fails when it is stale, and CI's release job regenerates and
-  diffs it. Regenerating carries every recorded revocation over, so it can never silently un-revoke.
-- **Revocation is by exact bytes.** An entry revokes `id@version` with that digest. A different digest under
-  the same name is a different thing, and the lockfile's digest check already refuses it.
+  diffs it. Regenerating carries every recorded revocation over (also for files that changed or are gone),
+  and refuses to run over a file it cannot parse, so it can never silently un-revoke.
+- **Revocation is by bytes, or by version.** An entry with a digest revokes exactly those files. A revoked
+  entry may omit the digest to revoke every build of that `id@version`, so a publisher re-spinning the
+  files under the same name cannot slip past it. A different digest on a digest-bearing entry is a different
+  thing, and the lockfile's digest check already refuses it.
 - **Honoured everywhere a component resolves**, through one `RevocationRegistry` around the project's
   registry: a run, `kampong lock`, an export, `kampong doctor` (a failure naming the reason), and the canvas
   (a banner with the reason, date and advisory, and no pin button). The server's pin route refuses it too.
   The indexes are read on each resolve, so a new revocation applies to the next call.
 - **Fail closed, and only take trust away.** A project may add `.kampong/registry-index.json`. Only its
-  revoked entries are used, so an unverified file can revoke a component but never vouch for one or lift
-  a revocation, and a file that cannot be read stops the call instead of being ignored.
+  revoked entries are read, so an unverified file can revoke a component but never vouch for one or lift
+  a revocation. An entry or field it does not understand elsewhere in the file does not stop the revocations
+  beside it; an entry that claims a revocation but is invalid, a format version this kampong does not know,
+  and a file that cannot be read all stop the call instead of being ignored. The advisory link must be https.
 - **Not vendored.** The revocation code is outside what an export carries. An exported project cannot be
   revoked remotely (threat T9); the digests, `kampong.lock`, `sbom.json` and the startup check (ADR-0033)
   are the mitigation, and `SECURITY.md` says to watch advisories.
 - **Release signing.** `.github/workflows/release.yml`, on a `v*` tag, runs the merge gate, builds a
-  reproducible bundle (sorted, fixed mtime and owner), the registry index and a CycloneDX SBOM, and attests
-  each with `actions/attest-build-provenance`, which signs keylessly with Sigstore against the workflow's
-  OIDC identity. There is no long-lived key. `gh attestation verify <file> --repo <owner>/<repo>` checks one.
+  reproducible bundle (sorted, fixed mtime and owner; for inspection against the attestation, not an
+  installable package), the registry index, a CycloneDX SBOM and `SHA256SUMS`, and attests each with `actions/attest-build-provenance`, which signs keylessly with Sigstore against the workflow's
+  OIDC identity. There is no long-lived key. A tag must be on main, and a tag with a hyphen is published as a
+  pre-release, never as Latest. The actions are pinned by tag, not by commit SHA. `gh attestation verify <file> --repo <owner>/<repo>` checks one.
 - **Disclosure.** `SECURITY.md` (private advisory reporting and a response target), `.well-known/security.txt`
   (RFC 9116), and a test that fails when its `Expires` lapses, as a reminder to renew it.
 
@@ -47,5 +53,10 @@ bad, stop running it", and a release had no verifiable origin.
 - **security.txt at a domain root.** The docs site is a GitHub Pages project site, which cannot serve
   `/.well-known/` at its host root, so the file lives in the repository; the contact is GitHub's private
   advisory form, not an email address.
+- **Hash-to-import window.** A module is hashed (and checked for revocation) when it resolves and imported
+  a moment later; a process that can write the component folder in between is not stopped (as before), and
+  a run already in flight when a revocation lands keeps the module it has loaded.
+- **security.txt is inert** unless private vulnerability reporting is enabled in the repository settings, which
+  is a setting, not code.
 - **Tier 1 and 2.** The index carries the tier, but only tier 0 exists; the vetting pipeline is still
   required before either opens (ADR-0026).

@@ -1,40 +1,41 @@
 // Regenerates components/registry-index.json from the first-party components on disk (KAN-1838). Run via
 // `npm run generate:registry-index` in this package after adding or changing a first-party component. A
-// revocation recorded in the existing file is carried over, including for a version no longer on disk, so
-// regenerating never silently un-revokes anything. The registry-index test fails if the file is stale.
+// revocation recorded in the existing file is carried over (see mergeShippedIndex), so regenerating never
+// silently un-revokes anything; a file that exists but does not parse stops the script rather than being
+// treated as having no revocations. The registry-index test fails if the file is stale.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { createFirstPartyRegistry, shippedRegistryIndexPath } from "../dist/index.js";
+import {
+  createFirstPartyRegistry,
+  mergeShippedIndex,
+  shippedRegistryIndexPath,
+} from "../dist/index.js";
 import { parseRegistryIndex, serializeRegistryIndex } from "@kampong/spec";
 
 const path = shippedRegistryIndexPath();
-const previous = existsSync(path)
-  ? parseRegistryIndex(readFileSync(path, "utf8")).index
-  : undefined;
+let previous;
+if (existsSync(path)) {
+  const parsed = parseRegistryIndex(readFileSync(path, "utf8"));
+  if (!parsed.index) {
+    console.error(
+      `${path} exists but is not valid, so its revocations cannot be carried over. Fix it first:\n  ` +
+        parsed.errors.map((e) => `${e.path.join(".") || "(root)"}: ${e.message}`).join("\n  "),
+    );
+    process.exit(1);
+  }
+  previous = parsed.index;
+}
 const { components, problems } = await createFirstPartyRegistry().resolveAll();
 if (problems.length > 0) {
   console.error(`first-party components failed to load:\n  ${problems.join("\n  ")}`);
   process.exit(1);
 }
-const entries = components.map(({ manifest, digest }) => {
-  const old = previous?.components.find(
-    (c) => c.id === manifest.id && c.version === manifest.version && c.digest === digest,
-  );
-  return {
+const merged = mergeShippedIndex(
+  previous,
+  components.map(({ manifest, digest }) => ({
     id: manifest.id,
     version: manifest.version,
     digest,
-    tier: 0,
-    ...(old?.revoked && { revoked: old.revoked }),
-  };
-});
-// Keep a revoked entry whose files are gone or changed: that is the record of what must not run.
-for (const old of previous?.components ?? []) {
-  if (
-    old.revoked &&
-    !entries.some((e) => e.id === old.id && e.version === old.version && e.digest === old.digest)
-  ) {
-    entries.push(old);
-  }
-}
-writeFileSync(path, serializeRegistryIndex({ version: 1, components: entries }));
-console.log(`Wrote ${path} (${entries.length} entries)`);
+  })),
+);
+writeFileSync(path, serializeRegistryIndex(merged));
+console.log(`Wrote ${path} (${merged.components.length} entries)`);

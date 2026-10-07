@@ -17,7 +17,10 @@ export const revocationSchema = z
     /** When it was revoked, `YYYY-MM-DD`. */
     at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be a date such as 2026-10-07"),
     /** Where to read more (a security advisory). */
-    advisory: z.url().optional(),
+    advisory: z
+      .url()
+      .refine((u) => u.startsWith("https://"), "must be an https:// link")
+      .optional(),
   })
   .strict();
 
@@ -25,13 +28,20 @@ export const registryEntrySchema = z
   .object({
     id: componentIdSchema,
     version: exactVersionSchema,
-    /** The content digest of the files of this version, as `kampong lock` pins it. */
-    digest: z.string().regex(DIGEST, "must be sha256:<64 hex digits>"),
+    /**
+     * The content digest of the files of this version, as `kampong lock` pins it. A revoked entry may omit
+     * it to revoke every build of that `id@version`, so re-spinning the files cannot evade the revocation.
+     */
+    digest: z.string().regex(DIGEST, "must be sha256:<64 hex digits>").optional(),
     /** 0 first-party, 1 verified, 2 community (ADR-0026). */
     tier: z.union([z.literal(0), z.literal(1), z.literal(2)]),
     revoked: revocationSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((entry) => entry.digest !== undefined || entry.revoked !== undefined, {
+    message: "an entry needs a digest unless it is a revocation of every build of that version",
+    path: ["digest"],
+  });
 
 export const registryIndexSchema = z
   .object({
@@ -42,7 +52,7 @@ export const registryIndexSchema = z
   .superRefine((index, ctx) => {
     const seen = new Set<string>();
     index.components.forEach((entry, i) => {
-      const key = `${entry.id}@${entry.version}:${entry.digest}`;
+      const key = `${entry.id}@${entry.version}:${entry.digest ?? "*"}`;
       if (seen.has(key)) {
         ctx.addIssue({
           code: "custom",
@@ -89,7 +99,7 @@ export function serializeRegistryIndex(index: RegistryIndex): string {
     .map((entry) => ({
       id: entry.id,
       version: entry.version,
-      digest: entry.digest,
+      ...(entry.digest !== undefined && { digest: entry.digest }),
       tier: entry.tier,
       ...(entry.revoked && { revoked: entry.revoked }),
     }));
@@ -97,9 +107,9 @@ export function serializeRegistryIndex(index: RegistryIndex): string {
 }
 
 /**
- * The revocation that applies to these exact bytes of `id@version`, if any. A revoked version is matched on
- * its digest, so a component that merely reuses the name with different files is a different thing (the
- * lockfile's digest check already refuses it).
+ * The revocation that applies to these bytes of `id@version`, if any. An entry with a digest revokes exactly
+ * those files; one without revokes every build of that version, which is how a revocation survives the
+ * publisher re-spinning the files under the same name.
  */
 export function findRevocation(
   indexes: readonly RegistryIndex[],
@@ -113,11 +123,72 @@ export function findRevocation(
         entry.revoked &&
         entry.id === id &&
         entry.version === version &&
-        entry.digest === digest
+        (entry.digest === undefined || entry.digest === digest)
       ) {
         return entry.revoked;
       }
     }
   }
   return undefined;
+}
+
+export type ParsedRevocations =
+  | { revocations: RegistryIndex; errors: [] }
+  | { revocations?: undefined; errors: { path: (string | number)[]; message: string }[] };
+
+/**
+ * Reads only the revocations out of an index nobody has verified (a project's own file). Entries without a
+ * `revoked` field are not looked at, so a field this version does not know, or an entry that is not a
+ * revocation, cannot stop the revocations beside it from applying. An entry that does claim a revocation
+ * must be valid, and a file in a format this version does not know is an error: ignoring it would hide a
+ * revocation.
+ */
+export function parseRevocations(text: string): ParsedRevocations {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    return { errors: [{ path: [], message: `not valid JSON: ${(err as Error).message}` }] };
+  }
+  const obj = raw as { version?: unknown; components?: unknown } | null;
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+    return { errors: [{ path: [], message: "expected an object" }] };
+  }
+  if (obj.version !== REGISTRY_INDEX_VERSION) {
+    return {
+      errors: [
+        {
+          path: ["version"],
+          message: `unknown index version ${JSON.stringify(obj.version)}; this kampong reads version ${REGISTRY_INDEX_VERSION}. Upgrade kampong, or remove the file`,
+        },
+      ],
+    };
+  }
+  if (!Array.isArray(obj.components)) {
+    return { errors: [{ path: ["components"], message: "expected a list" }] };
+  }
+  const components: RegistryEntry[] = [];
+  const errors: { path: (string | number)[]; message: string }[] = [];
+  obj.components.forEach((candidate, i) => {
+    const claimsRevocation =
+      candidate && typeof candidate === "object" && "revoked" in (candidate as object);
+    if (!claimsRevocation) return;
+    const parsed = registryEntrySchema.safeParse(candidate);
+    if (parsed.success) components.push(parsed.data);
+    else {
+      for (const issue of parsed.error.issues) {
+        errors.push({
+          path: [
+            "components",
+            i,
+            ...issue.path.filter((p): p is string | number => typeof p !== "symbol"),
+          ],
+          message: issue.message,
+        });
+      }
+    }
+  });
+  return errors.length > 0
+    ? { errors: errors as ParsedRevocations["errors"] }
+    : { revocations: { version: REGISTRY_INDEX_VERSION, components }, errors: [] };
 }

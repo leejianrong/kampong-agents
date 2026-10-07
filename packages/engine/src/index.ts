@@ -122,6 +122,7 @@ export {
 export type { ModuleFixtureOutcome, ModuleFixtureSeam } from "./component.js";
 export {
   loadRevocations,
+  mergeShippedIndex,
   PROJECT_REGISTRY_INDEX,
   RevocationRegistry,
   RevokedComponentError,

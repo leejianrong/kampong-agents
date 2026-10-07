@@ -1,5 +1,5 @@
 # Security contact for Kampong Agents (RFC 9116).
 Contact: https://github.com/leejianrong/kampong-agents/security/advisories/new
-Expires: 2027-10-07T00:00:00.000Z
+Expires: 2027-09-30T00:00:00.000Z
 Preferred-Languages: en
 Policy: https://github.com/leejianrong/kampong-agents/blob/main/SECURITY.md

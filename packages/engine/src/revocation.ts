@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   findRevocation,
   parseRegistryIndex,
+  parseRevocations,
   type RegistryIndex,
   type Revocation,
 } from "@kampong/spec";
@@ -57,8 +58,9 @@ function readIndex(path: string, what: string): RegistryIndex {
 /**
  * The indexes whose revocations apply to a project: the one shipped with kampong, and the project's own
  * `.kampong/registry-index.json` if it has one. The project's file can only take trust away: only its
- * revoked entries are used, so nobody-verified text can revoke a component but never vouch for one. A
- * file that cannot be read is an error, not "no revocations": failing open here would hide a revocation.
+ * revoked entries are read, so unverified text can revoke a component but never vouch for one, and an
+ * entry or field it does not understand elsewhere in the file does not stop the revocations. A file that
+ * cannot be read is an error, not "no revocations": failing open here would hide a revocation.
  */
 export function loadRevocations(projectDir: string): RegistryIndex[] {
   const indexes = [
@@ -66,8 +68,14 @@ export function loadRevocations(projectDir: string): RegistryIndex[] {
   ];
   const local = join(projectDir, PROJECT_REGISTRY_INDEX);
   if (existsSync(local)) {
-    const index = readIndex(local, "this project's registry index");
-    indexes.push({ ...index, components: index.components.filter((c) => c.revoked) });
+    const parsed = parseRevocations(readFileSync(local, "utf8"));
+    if (!parsed.revocations) {
+      const first = parsed.errors[0];
+      throw new Error(
+        `this project's registry index (${local}) is not valid: ${first?.path.join(".") || "(root)"}: ${first?.message ?? "unreadable"}`,
+      );
+    }
+    indexes.push(parsed.revocations);
   }
   return indexes;
 }
@@ -89,4 +97,33 @@ export class RevocationRegistry implements ComponentRegistry {
   list(): Promise<ComponentSummary[]> {
     return this.inner.list();
   }
+}
+
+/**
+ * The shipped index for the first-party components on disk: each at tier 0, with every revocation recorded
+ * in `previous` carried over (also one whose files are gone or changed, and one that names no digest), so
+ * regenerating can never silently un-revoke anything.
+ */
+export function mergeShippedIndex(
+  previous: RegistryIndex | undefined,
+  onDisk: { id: string; version: string; digest: string }[],
+): RegistryIndex {
+  const components: RegistryIndex["components"] = onDisk.map(({ id, version, digest }) => {
+    const old = previous?.components.find(
+      (c) => c.id === id && c.version === version && c.digest === digest && c.revoked,
+    );
+    return { id, version, digest, tier: 0, ...(old?.revoked && { revoked: old.revoked }) };
+  });
+  for (const old of previous?.components ?? []) {
+    if (!old.revoked) continue;
+    const kept = components.some(
+      (c) =>
+        c.id === old.id &&
+        c.version === old.version &&
+        c.digest === old.digest &&
+        c.revoked !== undefined,
+    );
+    if (!kept) components.push(old);
+  }
+  return { version: 1, components };
 }

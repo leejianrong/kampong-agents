@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   findRevocation,
+  parseRevocations,
   parseRegistryIndex,
   serializeRegistryIndex,
   type RegistryIndex,
@@ -110,6 +111,111 @@ describe("findRevocation", () => {
   it("finds a revocation in any of several indexes", () => {
     const clean: RegistryIndex = { version: 1, components: [] };
     expect(findRevocation([clean, idx], "acme/x", "1.0.0", D1)).toEqual(revoked);
+  });
+});
+
+describe("a revocation of every build of a version", () => {
+  const entry = {
+    id: "acme/x",
+    version: "1.0.0",
+    tier: 2,
+    revoked: { reason: "r", at: "2026-10-07" },
+  };
+
+  it("needs no digest, and matches any files claiming that id@version", () => {
+    const parsed = parseRegistryIndex(index([entry]));
+    expect(parsed.errors).toEqual([]);
+    expect(findRevocation([parsed.index!], "acme/x", "1.0.0", D1)).toBeDefined();
+    expect(findRevocation([parsed.index!], "acme/x", "1.0.0", D2)).toBeDefined();
+    expect(findRevocation([parsed.index!], "acme/x", "1.0.1", D1)).toBeUndefined();
+  });
+
+  it("is only for a revocation: an ordinary entry still needs its digest", () => {
+    const { revoked: _revoked, ...plain } = entry;
+    void _revoked;
+    expect(
+      parseRegistryIndex(index([plain]))
+        .errors.map((e) => e.message)
+        .join(" "),
+    ).toMatch(/needs a digest/);
+  });
+
+  it("round-trips without inventing a digest", () => {
+    const text = serializeRegistryIndex(parseRegistryIndex(index([entry])).index!);
+    expect(text).not.toContain("digest");
+    expect(parseRegistryIndex(text).errors).toEqual([]);
+  });
+});
+
+describe("a revocation's advisory link", () => {
+  const withAdvisory = (advisory: string) =>
+    parseRegistryIndex(
+      index([
+        {
+          id: "a/b",
+          version: "1.0.0",
+          digest: D1,
+          tier: 0,
+          revoked: { reason: "r", at: "2026-10-07", advisory },
+        },
+      ]),
+    );
+  it("must be https", () => {
+    expect(withAdvisory("https://example.com/a").errors).toEqual([]);
+    for (const bad of ["javascript:alert(1)", "http://example.com/a", "data:text/html,x"]) {
+      expect(withAdvisory(bad).index, bad).toBeUndefined();
+    }
+  });
+});
+
+describe("parseRevocations (an index nobody has verified)", () => {
+  const ok = {
+    id: "acme/z",
+    version: "1.0.0",
+    digest: D1,
+    tier: 2,
+    revoked: { reason: "bad", at: "2026-10-07" },
+  };
+
+  it("returns only the revoked entries", () => {
+    const parsed = parseRevocations(
+      JSON.stringify({
+        version: 1,
+        components: [{ id: "acme/y", version: "1.0.0", digest: D2, tier: 0 }, ok],
+      }),
+    );
+    expect(parsed.revocations?.components.map((c) => c.id)).toEqual(["acme/z"]);
+  });
+
+  it("is not stopped by what it does not understand in an entry that is not a revocation", () => {
+    const parsed = parseRevocations(
+      JSON.stringify({
+        version: 1,
+        components: [{ id: "NOT VALID", tier: 99, future_field: true }, "garbage", ok],
+      }),
+    );
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.revocations?.components).toHaveLength(1);
+  });
+
+  it("is an error when an entry that claims a revocation is not valid, so it cannot be silently skipped", () => {
+    const parsed = parseRevocations(
+      JSON.stringify({
+        version: 1,
+        components: [{ ...ok, revoked: { reason: "", at: "yesterday" } }],
+      }),
+    );
+    expect(parsed.revocations).toBeUndefined();
+    expect(parsed.errors.length).toBeGreaterThan(0);
+  });
+
+  it("is an error for a format version it does not know, naming it, and for text that is not an index", () => {
+    expect(
+      parseRevocations(JSON.stringify({ version: 2, components: [] })).errors[0]!.message,
+    ).toMatch(/unknown index version 2/);
+    expect(parseRevocations("{").errors[0]!.message).toMatch(/not valid JSON/);
+    expect(parseRevocations("[]").errors).toHaveLength(1);
+    expect(parseRevocations(JSON.stringify({ version: 1 })).errors).toHaveLength(1);
   });
 });
 

@@ -28,6 +28,15 @@ jobs:
       attestations: write # store the attestations
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the next step needs main's history
+      - name: Require the tag to be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || {
+            echo "::error::${GITHUB_REF_NAME} is not on main; releases are cut from main only"
+            exit 1
+          }
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -49,8 +58,10 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           mkdir -p out
           # Built output and the first-party components (with the registry index), nothing from node_modules.
+          # This is the build to inspect and verify against the attestation, not an installable package: to
+          # install, build from the tagged source.
           tar --sort=name --mtime="@0" --owner=0 --group=0 --numeric-owner -czf "out/kampong-${VERSION}.tgz" \
-            package.json package-lock.json LICENSE README.md SECURITY.md \
+            package.json LICENSE README.md SECURITY.md \
             packages/*/package.json packages/*/dist packages/engine/components apps/canvas/dist
           cp packages/engine/components/registry-index.json out/registry-index.json
           npm sbom --sbom-format cyclonedx --omit dev > out/sbom.cdx.json
@@ -62,9 +73,13 @@ jobs:
             out/kampong-*.tgz
             out/registry-index.json
             out/sbom.cdx.json
+            out/SHA256SUMS
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A tag with a hyphen (v0.1.0-rc.1) is a pre-release and must not become "Latest".
+          FLAGS=""
+          case "${GITHUB_REF_NAME}" in *-*) FLAGS="--prerelease --latest=false" ;; esac
           gh release create "${GITHUB_REF_NAME}" out/* \
-            --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+            --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag ${FLAGS}
