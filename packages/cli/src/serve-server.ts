@@ -41,6 +41,21 @@ export interface CreateServeServerOptions {
   run?: RunManagerOptions;
 }
 
+// Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text values.
+// Credentials never are: they would end up in step outputs, prompts and run traces.
+const NOT_FORWARDED = new Set(["authorization", "proxy-authorization", "cookie", "set-cookie"]);
+
+function triggerHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined || NOT_FORWARDED.has(name.toLowerCase())) continue;
+    out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
+  }
+  return out;
+}
+
 export function createServeServer({ specPath, run }: CreateServeServerOptions): FastifyInstance {
   const source = readFileSync(specPath, "utf8");
   const parsed = parseSpec(source);
@@ -79,7 +94,9 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
   // /runs/:id/approve (Slack-button approval is a later slice).
   app.post("/webhook", async (request, reply) => {
     const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
-    const { id, state } = await runManager.start(spec, input);
+    const { id, state } = await runManager.start(spec, input, {
+      headers: triggerHeaders(request.headers),
+    });
     return reply.code(201).send({ success: true, id, state });
   });
 

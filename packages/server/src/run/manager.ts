@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import {
-  assertRunnableVersion,
   createAgentRun,
   type AgentRun,
   type ModelClient,
@@ -41,6 +40,22 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<RunEvent["type"]> = new Set([
   "failed",
 ]);
 const DEFAULT_EVICT_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Version 1.1 specs are valid and run locally (KAN-1841), but this server does not run them yet: user
+ * expressions on a shared server need a process boundary for memory (ADR-0027, spike result) that is not
+ * built. The routes answer 422 with this message.
+ */
+export class UnsupportedSpecVersionError extends Error {
+  constructor() {
+    super(
+      'This spec uses version "1.1" (expressions and vars), which the hosted server cannot run yet: ' +
+        "expressions need isolation before they run on a shared server. Run it locally with `kampong run`, " +
+        'or set version to "1.0" to run it here.',
+    );
+    this.name = "UnsupportedSpecVersionError";
+  }
+}
 
 export class InvalidStoredSpecError extends Error {
   constructor(specId: string) {
@@ -113,8 +128,8 @@ export class HostedRunManager {
       throw new InvalidStoredSpecError(specId);
     }
     const spec = parsed.spec as AgentSpec;
-    // Before the workspace's model key is looked up, so a spec this build cannot run is reported as that.
-    assertRunnableVersion(spec);
+    // Before the workspace's model key is looked up, so a spec this server will not run is reported as that.
+    if (spec.version === "1.1") throw new UnsupportedSpecVersionError();
 
     const model = this.options.createModel
       ? await this.options.createModel(spec)

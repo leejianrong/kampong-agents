@@ -38,6 +38,7 @@ export const ENGINE_DEPENDENCY_VERSIONS = {
   "@ai-sdk/openai": "4.0.57",
   "@mastra/core": "1.64.0",
   ai: "7.0.91",
+  jsonata: "2.2.2",
   zod: "4.5.4",
 } as const;
 

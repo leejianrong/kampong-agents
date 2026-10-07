@@ -24,4 +24,3 @@ export * from "./pragma.js";
 export * from "./repository.js";
 export * from "./warnings.js";
 export * from "./expression.js";
-export * from "./vars.js";

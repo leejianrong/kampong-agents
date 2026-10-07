@@ -85,13 +85,18 @@ export class RunManager {
   // including the first step_started -- is driven purely by the AgentRun's
   // "event" emitter, which server.ts's /api/runs/:id/events SSE route (and
   // this class's own eviction hook, below) already subscribe to.
-  async start(spec: AgentSpec, input: string): Promise<StartRunResult> {
+  async start(
+    spec: AgentSpec,
+    input: string,
+    trigger?: { headers?: Record<string, string> },
+  ): Promise<StartRunResult> {
     const id = randomUUID();
     const run = createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
       components: this.options.components,
       model: this.options.createModel?.(spec),
+      ...(trigger ? { trigger } : {}),
     });
     run.on("event", (event: RunEvent) => {
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);

@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../packages/spec/schemas/agent-spec.v1.0.schema.json
+#
+# Version 1.1: conditions and {{ }} are expressions, and `vars` are run-time parameters (ADR-0027).
+# Try it against any server that answers GET /alerts/<id> and POST /page/<who>:
+#
+#   kampong run examples/incident-responder.yaml --var api=http://127.0.0.1:4399 \
+#     --input '{"alerts":[{"id":"A7"}],"change":-12}' --approve-all
+#
+version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 5
+  api:
+    type: string
+    default: "https://api.example.com"
+agent:
+  id: responder
+  name: "Incident Responder"
+  role: "On-call engineer"
+  goal: "Look up the alert and page the right person."
+  model: { provider: ollama, name: llama3.1 }
+  tools:
+    - name: lookup
+      action: http_request
+      method: GET
+      url: "{{ vars.api }}/alerts/{{ trigger.alerts[0].id }}"
+    - name: page
+      action: http_request
+      method: POST
+      url: "{{ vars.api }}/page/{{ fetch.owner.oncall[0] }}?tier={{ $min(fetch.services.tier) }}"
+      body:
+        json:
+          team: "{{ fetch.owner.team }}"
+          change: "{{ $abs(trigger.change) }}"
+  workflow:
+    - step: fetch
+      type: tool
+      tool: lookup
+    - step: decide
+      type: condition
+      if: "$abs(trigger.change) >= vars.threshold and fetch.severity = 'critical'"
+      then: "execute_tool(page)"
+      else: "request_human_approval"

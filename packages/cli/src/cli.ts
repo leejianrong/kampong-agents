@@ -138,6 +138,10 @@ Options:
                           failure, never a silent live fallback)
   --fixtures <dir>       Fixture storage directory for --tools record/replay
                           (default: "<spec dir>/.kampong/fixtures")
+  --var <name=value>     A value for one of the spec's \`vars\` (version 1.1), winning over its
+                          default. Repeat for several; a list is comma-separated or a JSON array.
+  --header <name=value>  A request header a webhook would have carried, read as
+                          \`trigger.headers\` in an expression. Repeat for several.
   --approve-all          Auto-approve every requires_approval / guardrail pause instead of
                           prompting on stdin -- for non-interactive/CI use. Without it, a
                           paused run prompts on stdin exactly like the canvas's approval
@@ -540,6 +544,10 @@ interface RunArgs {
   fixturesDir?: string;
   approveAll: boolean;
   timeoutMs?: number;
+  /** `--var name=value`: values for the spec's `vars`, which win over their defaults. */
+  vars: Record<string, string>;
+  /** `--header name=value`: request headers a webhook would have carried, read as `trigger.headers`. */
+  headers: Record<string, string>;
 }
 
 function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: false; error: string } {
@@ -550,6 +558,14 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
   let fixturesDir: string | undefined;
   let approveAll = false;
   let timeoutMs: number | undefined;
+  const vars: Record<string, string> = Object.create(null) as Record<string, string>;
+  const headers: Record<string, string> = Object.create(null) as Record<string, string>;
+  const pair = (flag: string, value: string): [string, string] | string => {
+    const at = value.indexOf("=");
+    return at <= 0
+      ? `${flag} expects name=value, got "${value}".`
+      : [value.slice(0, at), value.slice(at + 1)];
+  };
 
   try {
     for (let i = 0; i < args.length; i++) {
@@ -558,6 +574,15 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
         case "--input":
           input = requireValue(args, ++i, "--input");
           break;
+        case "--var":
+        case "--header": {
+          const parsedPair = pair(arg, requireValue(args, ++i, arg));
+          if (typeof parsedPair === "string") return { ok: false, error: parsedPair };
+          (arg === "--var" ? vars : headers)[
+            arg === "--var" ? parsedPair[0] : parsedPair[0].toLowerCase()
+          ] = parsedPair[1];
+          break;
+        }
         case "--json":
           json = true;
           break;
@@ -617,6 +642,8 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
       fixturesDir,
       approveAll,
       timeoutMs,
+      vars: { ...vars },
+      headers: { ...headers },
     },
   };
 }
@@ -755,7 +782,8 @@ async function runRunCommand(
     io.stderr(RUN_HELP_TEXT);
     return EXIT_USAGE_ERROR;
   }
-  const { specPath, input, json, toolsMode, fixturesDir, approveAll, timeoutMs } = parsed.value;
+  const { specPath, input, json, toolsMode, fixturesDir, approveAll, timeoutMs, vars, headers } =
+    parsed.value;
 
   let source: string;
   try {
@@ -782,6 +810,15 @@ async function runRunCommand(
     return EXIT_VALIDATION_FAILURE;
   }
   reportSpecWarnings(spec, "run", io);
+  const declared = Object.keys(spec.vars ?? {});
+  const unknownVars = Object.keys(vars).filter((name) => !declared.includes(name));
+  if (unknownVars.length > 0) {
+    io.stderr(
+      `kampong run: --var ${unknownVars.join(", ")} is not declared in the spec's vars` +
+        (declared.length > 0 ? ` (declared: ${declared.join(", ")}).` : " (it has no vars)."),
+    );
+    return EXIT_USAGE_ERROR;
+  }
 
   const fetchImpl =
     toolsMode === "live"
@@ -813,6 +850,8 @@ async function runRunCommand(
       model: testOptions.model,
       components: componentDispatcherFor(specPath),
       timeoutMs,
+      vars,
+      ...(Object.keys(headers).length > 0 ? { trigger: { headers } } : {}),
       ...(replayClock ? { toolClock: replayClock, toolPacer: new Pacer(replayClock) } : {}),
     });
   } catch (err) {

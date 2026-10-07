@@ -166,6 +166,26 @@ agent:
     expect(errors[1]!.message).toContain("{{ oops. }}");
   });
 
+  it("refuses a step named trigger, input or vars, which an expression's roots would hide", () => {
+    for (const name of ["trigger", "input", "vars"]) {
+      const source = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: ${name}
+      action: x
+`;
+      expect(messages(source).join(" "), name).toContain(
+        `"${name}" is a reserved name in a version "1.1" spec`,
+      );
+      // ...but it is fine in a 1.0 spec, which has no such roots.
+      expect(parseSpec(source.replace('"1.1"', '"1.0"')).success, name).toBe(true);
+    }
+  });
+
   it("does not look at {{ }} in a 1.0 spec, which the original syntax handles", () => {
     expect(
       messages(

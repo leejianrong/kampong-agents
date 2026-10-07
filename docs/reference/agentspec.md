@@ -33,18 +33,30 @@ The `version` decides how references and conditions are written. Nothing else ch
   provides (a mistyped `vars.thresold`, a step that does not exist), because such a reference does not
   fail at run time, it silently reads as empty.
 
-!!! note "A 1.1 spec cannot run or be exported yet"
+!!! note "Where a 1.1 spec runs"
 
-    The evaluator that runs 1.1 expressions is being added to the engine and the exported runtime
-    separately. Until then `kampong run` and `kampong export` refuse a 1.1 spec by name; validation,
-    the canvas and `kampong doctor` already accept it.
+    `kampong run`, `kampong dev` (the canvas test run) and `kampong serve` run a 1.1 spec. The hosted
+    server does not yet (expressions on a shared server need isolation first), and `kampong export` does
+    not yet (the exported entry points do not pass the webhook payload or vars to the evaluator); both
+    refuse it by name. See `examples/incident-responder.yaml`.
 
 ### Expressions
 
-Expressions read `trigger` (the parsed webhook payload), `input`, `vars`, and the output of an earlier
-step by its step name (`review.findings[0].title`). They are a pure function of that data: the clock and
+Expressions read `trigger` (what started the run), `input` (the raw input text), `vars`, and the full
+output of an earlier step by its step name (`review.findings[0].title`). `trigger` holds the webhook body's
+fields at the top level (`trigger.alerts[0].id`), the whole body as `trigger.body`, and the request headers
+as `trigger.headers` (lowercase names; `authorization` and `cookie` are never passed). A body that is not
+JSON is `trigger.body` as text. `kampong run` treats `--input` as the body, and takes `--header name=value`
+for headers and `--var name=value` for vars. A step may not be named `trigger`, `input` or `vars`. They are a pure function of that data: the clock and
 random built-ins (`$now`, `$millis`, `$random`, `$shuffle`) and `$eval` are refused, and so are regular
-expression literals. An expression is at most 4000 characters.
+expression literals. An expression is at most 4000 characters, and a run limits each one in time (1 second), depth, steps and the
+size of what it builds, so a runaway expression fails its step instead of hanging the run.
+
+At run time a `{{ expression }}` that is the whole of a field keeps the value's type (a number stays a number,
+a list a list), so a component input can be filled with real data; inside other text it is written as text
+(a string as is, a number or boolean as its text, anything else as JSON). One that selects nothing fails the
+step, naming the expression. A condition must come out `true` or `false`: nothing, or any other type, fails
+the step (`$exists(x)` tests whether a name is there, `$boolean(x)` tests truthiness).
 
 ### `vars`
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { SpecVars } from "@kampong/spec";
 import { parseVarText, resolveVars } from "../../src/vars.js";
-import type { SpecVars } from "../../src/schema.js";
 
 // KAN-1840: what `vars.x` holds is a pure function of the declaration, the environment and overrides.
 
