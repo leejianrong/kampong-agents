@@ -120,3 +120,11 @@ export {
   type CreateModuleFixturesOptions,
 } from "./module-fixtures.js";
 export type { ModuleFixtureOutcome, ModuleFixtureSeam } from "./component.js";
+export {
+  loadRevocations,
+  mergeShippedIndex,
+  PROJECT_REGISTRY_INDEX,
+  RevocationRegistry,
+  RevokedComponentError,
+  shippedRegistryIndexPath,
+} from "./revocation.js";

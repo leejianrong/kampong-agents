@@ -1,0 +1,85 @@
+# Builds a release bundle from a version tag and signs it (KAN-1838, ADR-0026 and ADR-0037).
+#
+# Signing is keyless: each artifact gets a build provenance attestation (Sigstore) bound to this
+# workflow run by GitHub's OIDC identity, so there is no long-lived signing key to steal. A user checks
+# one with `gh attestation verify <file> --repo leejianrong/kampong-agents` (see SECURITY.md).
+#
+# Not exercised yet: this file was written without a release to run it on. Push a tag such as v0.0.1-rc.1 to
+# try it, and fix whatever the first run finds before relying on it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # the OIDC identity Sigstore signs against
+      attestations: write # store the attestations
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the next step needs main's history
+      - name: Require the tag to be on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || {
+            echo "::error::${GITHUB_REF_NAME} is not on main; releases are cut from main only"
+            exit 1
+          }
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # The same gate as a merge: a release is never built from code that does not pass it.
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - name: Check the shipped registry index is current
+        run: |
+          cd packages/engine
+          npm run generate:registry-index
+          git diff --exit-code components/registry-index.json
+      - name: Assemble the release bundle
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p out
+          # Built output and the first-party components (with the registry index), nothing from node_modules.
+          # This is the build to inspect and verify against the attestation, not an installable package: to
+          # install, build from the tagged source.
+          tar --sort=name --mtime="@0" --owner=0 --group=0 --numeric-owner -czf "out/kampong-${VERSION}.tgz" \
+            package.json LICENSE README.md SECURITY.md \
+            packages/*/package.json packages/*/dist packages/engine/components apps/canvas/dist
+          cp packages/engine/components/registry-index.json out/registry-index.json
+          npm sbom --sbom-format cyclonedx --omit dev > out/sbom.cdx.json
+          (cd out && sha256sum "kampong-${VERSION}.tgz" registry-index.json sbom.cdx.json > SHA256SUMS)
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            out/kampong-*.tgz
+            out/registry-index.json
+            out/sbom.cdx.json
+            out/SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A tag with a hyphen (v0.1.0-rc.1) is a pre-release and must not become "Latest".
+          FLAGS=""
+          case "${GITHUB_REF_NAME}" in *-*) FLAGS="--prerelease --latest=false" ;; esac
+          gh release create "${GITHUB_REF_NAME}" out/* \
+            --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag ${FLAGS}

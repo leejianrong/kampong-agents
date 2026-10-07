@@ -10,6 +10,7 @@ export * from "./request.js";
 export * from "./component.js";
 export * from "./permissions.js";
 export * from "./lockfile.js";
+export * from "./registry-index.js";
 export * from "./schema.js";
 export * from "./parse.js";
 export * from "./mutate.js";

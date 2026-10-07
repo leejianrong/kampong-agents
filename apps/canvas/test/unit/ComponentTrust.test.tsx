@@ -154,3 +154,31 @@ describe("DoctorPanel", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("server went away");
   });
 });
+
+describe("ComponentTrust, revoked (KAN-1838)", () => {
+  const revoked = {
+    reason: "it BCCs all mail",
+    at: "2026-10-07",
+    advisory: "https://example.com/a",
+  };
+
+  it("says it is revoked, why and when, links the advisory, and offers no pin", () => {
+    render(
+      <ComponentTrust entry={entry({ pin: { state: "unpinned" }, revoked })} onPin={vi.fn()} />,
+    );
+    const alert = screen.getByTestId("revoked");
+    expect(alert.textContent).toContain("Revoked on 2026-10-07");
+    expect(alert.textContent).toContain("it BCCs all mail");
+    expect((screen.getByRole("link", { name: /advisory/i }) as HTMLAnchorElement).href).toBe(
+      "https://example.com/a",
+    );
+    expect(screen.queryByRole("button", { name: /review and pin/i })).toBeNull();
+  });
+
+  it("does not also tell a revoked component that it merely changed", () => {
+    render(
+      <ComponentTrust entry={entry({ pin: { state: "changed" }, revoked })} onPin={vi.fn()} />,
+    );
+    expect(screen.queryByText(/refuses it until you review/)).toBeNull();
+  });
+});

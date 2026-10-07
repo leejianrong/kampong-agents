@@ -33,7 +33,9 @@ export function ComponentTrust({ entry, onPin }: ComponentTrustProps) {
   const acceptId = useId();
   const state = entry.pin?.state;
   const widened = entry.pin?.widened ?? [];
-  const needsPin = state === "unpinned" || state === "changed";
+  const revoked = entry.revoked;
+  // A revoked component is refused everywhere, so there is nothing to review and pin.
+  const needsPin = !revoked && (state === "unpinned" || state === "changed");
 
   async function pin() {
     if (!onPin) return;
@@ -68,7 +70,22 @@ export function ComponentTrust({ entry, onPin }: ComponentTrustProps) {
         {entry.permissionsSummary}
       </p>
 
-      {state === "changed" && (
+      {revoked && (
+        <div role="alert" className="md3-banner md3-banner--error" data-testid="revoked">
+          <p>
+            <strong>Revoked on {revoked.at}:</strong> {revoked.reason}. A run, a pin and an export
+            all refuse it. Remove it from your tools or use a version that has not been revoked.
+          </p>
+          {revoked.advisory && (
+            <p>
+              <a href={revoked.advisory} target="_blank" rel="noreferrer noopener">
+                Read the advisory
+              </a>
+            </p>
+          )}
+        </div>
+      )}
+      {!revoked && state === "changed" && (
         <div role="alert" className="md3-banner md3-banner--warning">
           <p>
             Its files are different from what was pinned, so a run refuses it until you review and

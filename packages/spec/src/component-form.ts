@@ -1,6 +1,7 @@
 import { parseDocument } from "yaml";
 import type { ComponentManifest, OpEffect, SchemaNode } from "./component.js";
 import { describePermissions, permissionsOf } from "./permissions.js";
+import type { Revocation } from "./registry-index.js";
 import { toolSchema, type AgentSpec, type Tool } from "./schema.js";
 
 // KAN-1885: what the canvas needs to build a form for a component op, as pure functions so the logic
@@ -36,6 +37,8 @@ export interface ComponentCatalogEntry {
   permissionsSummary: string;
   /** Set by a server that knows the project's lockfile; absent where there is none to compare with. */
   pin?: ComponentPinStatus;
+  /** Set when the registry index revokes exactly these files: a run, a pin and an export all refuse it. */
+  revoked?: Revocation;
   title?: string;
   description?: string;
   /** Secret slots a spec may remap: the default environment variable each reads. */
