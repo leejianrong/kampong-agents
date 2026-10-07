@@ -102,6 +102,14 @@ export function validateSpecExpressions(
   };
 
   spec.agent.workflow.forEach((step, i) => {
+    // An expression reads `trigger`, `input` and `vars` from the root; a step with one of those names would
+    // be hidden by it (the engine gives the reserved name precedence).
+    if ((ROOTS as readonly string[]).includes(step.step)) {
+      report(
+        ["agent", "workflow", i, "step"],
+        `"${step.step}" is a reserved name in a version "1.1" spec (an expression reads ${ROOTS.join(", ")} from the root): rename the step`,
+      );
+    }
     if ("if" in step) check(["agent", "workflow", i, "if"], step.if, `condition "${step.step}"`);
     scan(step, ["agent", "workflow", i]);
   });

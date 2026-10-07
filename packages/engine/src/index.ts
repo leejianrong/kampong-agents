@@ -107,9 +107,7 @@ export {
 
 export {
   AgentRun,
-  assertRunnableVersion,
   createAgentRun,
-  UnsupportedSpecVersionError,
   type RunStatus,
   type RunState,
   type PendingApproval,

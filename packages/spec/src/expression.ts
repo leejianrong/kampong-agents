@@ -119,6 +119,15 @@ export function parseExpression(source: string): ParsedExpression {
   return errors.length > 0 ? { ok: false, errors } : { ok: true, ast };
 }
 
+/** Whether an expression refers to the built-in `$name` (calls it or passes it as a value). */
+export function expressionUses(ast: ExpressionNode, name: string): boolean {
+  let found = false;
+  walk(ast, (n) => {
+    if (n.type === "variable" && n.value === name) found = true;
+  });
+  return found;
+}
+
 /**
  * What an expression reads from the data it is given: the leading names of each path that starts at the
  * root (`["vars", "threshold"]`, `["trigger", "alerts"]`, `["review", "summary"]`). Names inside a filter, a

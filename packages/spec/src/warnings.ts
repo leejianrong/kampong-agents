@@ -1,3 +1,9 @@
+import {
+  expressionPaths,
+  expressionUses,
+  parseExpression,
+  templateExpressions,
+} from "./expression.js";
 import type { AgentSpec } from "./schema.js";
 
 // Non-fatal findings about a spec that is valid but will not behave the way a reader might assume
@@ -6,7 +12,11 @@ import type { AgentSpec } from "./schema.js";
 // schema accepts but no engine path reads is never silently ignored.
 
 export interface SpecWarning {
-  code: "knowledge_base_not_executed" | "legacy_condition_syntax" | "legacy_placeholder_syntax";
+  code:
+    | "knowledge_base_not_executed"
+    | "legacy_condition_syntax"
+    | "legacy_placeholder_syntax"
+    | "unencoded_url_value";
   path: (string | number)[];
   message: string;
 }
@@ -25,7 +35,36 @@ export function specWarnings(spec: AgentSpec): SpecWarning[] {
   }
 
   if (spec.version === "1.0") warnings.push(...legacySyntaxWarnings(spec));
+  if (spec.version === "1.1") warnings.push(...unencodedUrlWarnings(spec));
 
+  return warnings;
+}
+
+// A value from the trigger goes into a URL exactly as it arrives: a space, `&`, `#` or `../` in it changes
+// the request. An expression that reads the trigger inside a tool's `url` should say how it is encoded
+// (KAN-1841). A warning, not an error: a trigger value that is a known-safe id is common.
+function unencodedUrlWarnings(spec: AgentSpec): SpecWarning[] {
+  const warnings: SpecWarning[] = [];
+  (spec.agent.tools ?? []).forEach((tool, i) => {
+    if (tool.action !== "http_request" || typeof tool.url !== "string") return;
+    for (const { expression } of templateExpressions(tool.url)) {
+      const parsed = parseExpression(expression);
+      if (!parsed.ok) continue;
+      const readsTrigger = expressionPaths(parsed.ast).some((p) => p[0] === "trigger");
+      const encodes =
+        expressionUses(parsed.ast, "encodeUrlComponent") || expressionUses(parsed.ast, "encodeUrl");
+      if (readsTrigger && !encodes) {
+        warnings.push({
+          code: "unencoded_url_value",
+          path: ["agent", "tools", i, "url"],
+          message:
+            `Tool "${tool.name}" puts {{ ${expression.trim()} }}, a value from the trigger, into its url as it ` +
+            `arrives: a space, &, # or ../ in it changes the request. Wrap it in $encodeUrlComponent(...) unless it is known to be safe.`,
+        });
+        return;
+      }
+    }
+  });
   return warnings;
 }
 

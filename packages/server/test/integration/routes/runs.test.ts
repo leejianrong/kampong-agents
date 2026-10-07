@@ -240,7 +240,7 @@ describe.skipIf(!DATABASE_URL)("Hosted run routes against a real Postgres", () =
     expect(res.statusCode).toBe(404);
   });
 
-  it("answers 422 with the reason, not a 500, for a version 1.1 spec this build cannot run (KAN-1840)", async () => {
+  it("answers 422 with the reason, not a 500, for a version 1.1 spec the hosted server will not run (KAN-1841)", async () => {
     const { cookie } = await newUserWithWorkspace();
     const created = await app.inject({
       method: "POST",
@@ -256,7 +256,7 @@ describe.skipIf(!DATABASE_URL)("Hosted run routes against a real Postgres", () =
       payload: { input: "hi" },
     });
     expect(res.statusCode).toBe(422);
-    expect(res.json().error).toMatch(/version "1\.1".*cannot run yet/);
+    expect(res.json().error).toMatch(/version "1\.1".*hosted server cannot run yet/);
   });
 
   it("isolates runs per workspace: one workspace cannot read another's run", async () => {

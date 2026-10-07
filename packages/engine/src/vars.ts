@@ -1,7 +1,8 @@
-import type { SpecVar, SpecVars } from "./schema.js";
+import type { SpecVar, SpecVars } from "@kampong/spec";
 
 // Resolving a spec's `vars` block into values (KAN-1840, ADR-0027): a pure function of the declaration, the
-// environment and any overrides, so the engine, the exporter and the canvas agree on what `vars.x` holds.
+// environment and any overrides, so a run and an export agree on what `vars.x` holds. It lives in the engine,
+// not the spec package, because a run needs it and the exported runtime vendors engine files only.
 
 export type VarValue = number | string | (number | string)[];
 

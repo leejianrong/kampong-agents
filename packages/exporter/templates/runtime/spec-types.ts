@@ -240,8 +240,18 @@ export interface ApprovalNotifier {
   channel: string;
 }
 
+/** A run-time parameter (KAN-1840): see packages/spec's varSchema. */
+export interface SpecVar {
+  type: "number" | "string" | "list";
+  items?: "string" | "number";
+  description?: string;
+  default?: number | string | (string | number)[];
+}
+export type SpecVars = Record<string, SpecVar>;
+
 export interface AgentSpec {
   version: string;
+  vars?: SpecVars;
   agent: {
     id: string;
     name: string;

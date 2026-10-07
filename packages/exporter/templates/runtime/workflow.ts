@@ -17,6 +17,14 @@ import {
 } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
 import type { ModuleFixtureSeam } from "./component.js";
+import {
+  evaluateCondition as evaluateExpressionCondition,
+  ExpressionError,
+  resolveTemplate,
+  resolveTemplatesDeep,
+  type ExpressionLimits,
+} from "./expressions.js";
+import { resolveVars } from "./vars.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
 // 1105). Deliberately NOT built on Mastra's own `workflows` module: the
@@ -58,8 +66,25 @@ export type RunEvent =
   | { type: "rejected"; step: string; reason: string }
   | { type: "failed"; step?: string; error: string };
 
+/**
+ * What started the run, as a webhook delivers it. Expressions in a version 1.1 spec read it as `trigger`
+ * (KAN-1841): the body's fields at the top level (`trigger.alerts[0].id`), the whole body as `trigger.body`,
+ * and the request headers as `trigger.headers`. Without one, the run input is the body: parsed as JSON if it
+ * is JSON, kept as text if not.
+ */
+export interface RunTrigger {
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
 export interface EngineDeps {
   model: ModelClient;
+  /** What started the run; see RunTrigger. */
+  trigger?: RunTrigger;
+  /** Values for the spec's `vars`, by name, that win over their defaults (`kampong run --var`). */
+  vars?: Record<string, unknown>;
+  /** Overrides the evaluator's time, depth and size limits; the defaults are set for untrusted specs. */
+  expressionLimits?: Partial<ExpressionLimits>;
   fetchImpl?: HttpToolCallOptions["fetchImpl"];
   /** Record or replay module component ops at the `invoke(op)` boundary (KAN-1833, ADR-0034). */
   moduleFixtures?: ModuleFixtureSeam;
@@ -158,15 +183,33 @@ export async function* runWorkflow(
   const stepOutputs: Record<string, unknown> = {};
   const guardrails = spec.agent.guardrails;
 
+  // Version 1.1 computes values with expressions over this scope: every earlier step's full output by its
+  // name, the trigger, the raw input, and the resolved vars. The reserved names win over a step's.
+  let scope: (() => Record<string, unknown>) | undefined;
+  if (spec.version === "1.1") {
+    const resolved = resolveVars(spec.vars, deps.env ?? process.env, deps.vars);
+    if (resolved.errors.length > 0) {
+      yield { type: "failed", error: resolved.errors.map((e) => e.message).join("; ") };
+      return;
+    }
+    const trigger = buildTrigger(input, deps.trigger);
+    const vars = { ...resolved.values };
+    scope = () => ({ ...stepOutputs, trigger, input, vars });
+  }
+  const expressionContext = scope && { scope, limits: deps.expressionLimits };
+
   for (const step of spec.agent.workflow) {
     yield { type: "step_started", step: step.step };
 
     if (isConditionStep(step)) {
       let branch: string;
       try {
-        branch = evaluateCondition(step.if, stepOutputs) ? step.then : step.else;
+        const truth = scope
+          ? await evaluateExpressionCondition(step.if, scope(), deps.expressionLimits)
+          : evaluateCondition(step.if, stepOutputs);
+        branch = truth ? step.then : step.else;
       } catch (err) {
-        yield { type: "failed", step: step.step, error: (err as Error).message };
+        yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
         return;
       }
 
@@ -203,7 +246,14 @@ export async function* runWorkflow(
           return;
         }
 
-        const result = yield* executeTool(tool, step.step, stepOutputs, input, deps);
+        const result = yield* executeTool(
+          tool,
+          step.step,
+          stepOutputs,
+          input,
+          deps,
+          expressionContext,
+        );
         if (!result) return;
         stepOutputs[step.step] = result.output;
         yield { type: "step_completed", step: step.step, output: result.output };
@@ -236,7 +286,14 @@ export async function* runWorkflow(
         };
         return;
       }
-      const result = yield* executeTool(tool, step.step, stepOutputs, input, deps);
+      const result = yield* executeTool(
+        tool,
+        step.step,
+        stepOutputs,
+        input,
+        deps,
+        expressionContext,
+      );
       if (!result) return;
       stepOutputs[step.step] = result.output;
       yield { type: "step_completed", step: step.step, output: result.output };
@@ -246,9 +303,15 @@ export async function* runWorkflow(
     // KAN-1429 (ADR-0021): a first-class approval step -- pause for a human,
     // reject stops the run (reusing the approval/resume machinery).
     if (isApprovalStep(step)) {
-      const reason = step.message
-        ? substitutePlaceholders(step.message, buildToolParams(stepOutputs, input))
-        : `Step "${step.step}" requires human approval.`;
+      let reason: string;
+      try {
+        reason = step.message
+          ? await renderText(step.message, stepOutputs, input, expressionContext)
+          : `Step "${step.step}" requires human approval.`;
+      } catch (err) {
+        yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+        return;
+      }
       const decision = yield {
         type: "awaiting_approval",
         step: step.step,
@@ -273,9 +336,9 @@ export async function* runWorkflow(
 
     let stepResult: { output: unknown; confidence?: number };
     try {
-      stepResult = await runActionStep(step, spec, deps, stepOutputs, input);
+      stepResult = await runActionStep(step, spec, deps, stepOutputs, input, expressionContext);
     } catch (err) {
-      yield { type: "failed", step: step.step, error: (err as Error).message };
+      yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
       return;
     }
     stepOutputs[step.step] = stepResult.output;
@@ -336,9 +399,14 @@ async function runActionStep(
   deps: EngineDeps,
   stepOutputs: Record<string, unknown>,
   input: string,
+  expressions: ExpressionContext | undefined,
 ): Promise<{ output: unknown; confidence?: number }> {
   const instructions = `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`;
-  const prompt = buildStepPrompt(step, input, stepOutputs);
+  const query =
+    step.query !== undefined
+      ? await renderText(step.query, stepOutputs, input, expressions)
+      : undefined;
+  const prompt = buildStepPrompt(step, input, stepOutputs, query);
 
   if (step.confidence_gate) {
     const structured = await deps.model.generateStructured({
@@ -357,11 +425,11 @@ function buildStepPrompt(
   step: Extract<WorkflowStep, { action: string }>,
   input: string,
   stepOutputs: Record<string, unknown>,
+  query: string | undefined,
 ): string {
   const lines = [`User input: ${input}`, `Step: ${step.step}`, `Action: ${step.action}`];
   if (step.inputs?.length) lines.push(`Relevant fields: ${step.inputs.join(", ")}`);
-  if (step.query)
-    lines.push(`Query: ${substitutePlaceholders(step.query, buildToolParams(stepOutputs, input))}`);
+  if (query) lines.push(`Query: ${query}`);
   if (Object.keys(stepOutputs).length > 0) {
     lines.push(`Prior step outputs: ${JSON.stringify(stepOutputs)}`);
   }
@@ -382,6 +450,7 @@ async function* executeTool(
   stepOutputs: Record<string, unknown>,
   input: string,
   deps: EngineDeps,
+  expressions: ExpressionContext | undefined,
 ): AsyncGenerator<RunEvent, { output: unknown } | undefined, ApprovalDecision | undefined> {
   const params = buildToolParams(stepOutputs, input);
   // With a component dispatcher configured, the legacy Slack and Gmail kinds run as their first-party
@@ -409,6 +478,32 @@ async function* executeTool(
     needsApproval = prepared.requiresApproval;
   }
 
+  // Version 1.1: every `{{ expression }}` in the tool is resolved now, before a human is asked to approve a
+  // call that could not be built, and the call below then sees plain text and typed values.
+  let resolvedWith: Record<string, unknown> | undefined;
+  let resolvedTool: Tool = tool;
+  if (expressions) {
+    try {
+      const data = expressions.scope();
+      if (tool.action === "component") {
+        resolvedWith = (await resolveTemplatesDeep(tool.with ?? {}, data, {
+          limits: expressions.limits,
+        })) as Record<string, unknown>;
+      } else {
+        resolvedTool = (await resolveTemplatesDeep(tool, data, {
+          limits: expressions.limits,
+          skip: TOOL_KEYS_NOT_TEMPLATED,
+          // callHttpTool reads `${ENV}` from the text it is given. Values from data (a webhook body) must
+          // arrive as text, never as a reference, so a body cannot pull a secret into a request.
+          escapeData: (text) => text.replaceAll("${", () => "$${"),
+        })) as Tool;
+      }
+    } catch (err) {
+      yield { type: "failed", step: stepName, error: describeFailure(stepName, err) };
+      return undefined;
+    }
+  }
+
   if (needsApproval) {
     const decision = yield {
       type: "awaiting_approval",
@@ -431,7 +526,7 @@ async function* executeTool(
     if (tool.action === "component" && prepared) {
       // `with` takes run data (`{{ step.field }}`) but `config` and `secrets` never do: config can form
       // part of a host, and a secret slot only ever names an environment variable.
-      const result = await prepared.run(substituteDeep(tool.with, params), {
+      const result = await prepared.run(resolvedWith ?? substituteDeep(tool.with, params), {
         env: deps.env,
         fetchImpl: deps.fetchImpl,
         moduleFixtures: deps.moduleFixtures,
@@ -444,7 +539,10 @@ async function* executeTool(
     // callHttpTool builds the request (generic HTTP or a connector) and resolves
     // `{{ step.field }}` / `{placeholder}` references in every field via substitutePlaceholders
     // (KAN-1429/KAN-1430).
-    const output = await callHttpTool(tool, params, {
+    // In version 1.1 the expressions have already been resolved, so the original `{name}` placeholders are
+    // not substituted a second time: with no params they are left as written, and a value that happens to
+    // contain `{input}` or `{{ x }}` stays text.
+    const output = await callHttpTool(resolvedTool, expressions ? {} : params, {
       fetchImpl: deps.fetchImpl,
       env: deps.env,
       pacer: deps.pacer,
@@ -455,6 +553,63 @@ async function* executeTool(
     yield { type: "failed", step: stepName, error: (err as Error).message };
     return undefined;
   }
+}
+
+// The parts of a tool that are never run through the expression evaluator: identity, the method, the
+// credential placeholder, and what a component takes from config and secrets (a secret slot only ever
+// names an environment variable, and config can form part of a host).
+const TOOL_KEYS_NOT_TEMPLATED: ReadonlySet<string> = new Set([
+  "name",
+  "action",
+  "method",
+  "token",
+  "use",
+  "op",
+  "config",
+  "secrets",
+  "extract",
+  "requires_approval",
+]);
+
+interface ExpressionContext {
+  scope: () => Record<string, unknown>;
+  limits?: Partial<ExpressionLimits>;
+}
+
+/** The trigger an expression reads (see RunTrigger). */
+function buildTrigger(input: string, trigger: RunTrigger | undefined): Record<string, unknown> {
+  let body: unknown = trigger?.body;
+  if (body === undefined) {
+    try {
+      body = JSON.parse(input);
+    } catch {
+      body = input;
+    }
+  }
+  const fields =
+    body !== null && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  return { ...fields, headers: trigger?.headers ?? {}, body };
+}
+
+/** Text with references resolved: expressions in a 1.1 spec, the original placeholders otherwise. */
+async function renderText(
+  text: string,
+  stepOutputs: Record<string, unknown>,
+  input: string,
+  expressions: ExpressionContext | undefined,
+): Promise<string> {
+  if (!expressions) return substitutePlaceholders(text, buildToolParams(stepOutputs, input));
+  const value = await resolveTemplate(text, expressions.scope(), expressions.limits);
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/** An expression failure reads as the step it happened in; any other error is passed on as it is. */
+function describeFailure(step: string, err: unknown): string {
+  return err instanceof ExpressionError
+    ? `Step "${step}": ${err.message} [${err.expression.trim().slice(0, 120)}]`
+    : (err as Error).message;
 }
 
 /** Resolves `{{ ... }}` references in every string of a `with` block, leaving other values typed. */

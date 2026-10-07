@@ -166,6 +166,26 @@ agent:
     expect(errors[1]!.message).toContain("{{ oops. }}");
   });
 
+  it("refuses a step named trigger, input or vars, which an expression's roots would hide", () => {
+    for (const name of ["trigger", "input", "vars"]) {
+      const source = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: ${name}
+      action: x
+`;
+      expect(messages(source).join(" "), name).toContain(
+        `"${name}" is a reserved name in a version "1.1" spec`,
+      );
+      // ...but it is fine in a 1.0 spec, which has no such roots.
+      expect(parseSpec(source.replace('"1.1"', '"1.0"')).success, name).toBe(true);
+    }
+  });
+
   it("does not look at {{ }} in a 1.0 spec, which the original syntax handles", () => {
     expect(
       messages(
@@ -304,6 +324,42 @@ agent:
     );
     expect(specWarnings(v10.spec!).map((w) => w.code)).toEqual(["legacy_condition_syntax"]);
     expect(specWarnings(parseSpec(VALID_FIXTURE_V1_1).spec!)).toEqual([]);
+  });
+});
+
+describe("a trigger value in a url", () => {
+  const url = (u: string) =>
+    parseSpec(`version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  tools:
+    - name: t
+      action: http_request
+      method: GET
+      url: ${JSON.stringify(u)}
+  workflow:
+    - step: go
+      type: tool
+      tool: t
+`);
+
+  it("warns when it goes in as it arrives, and not when it is encoded or is not from the trigger", () => {
+    const codes = (u: string) => specWarnings(url(u).spec!).map((w) => w.code);
+    expect(codes("https://x.test/{{ trigger.id }}")).toEqual(["unencoded_url_value"]);
+    expect(codes("https://x.test/?q={{ $string(trigger.q) }}")).toEqual(["unencoded_url_value"]);
+    expect(codes("https://x.test/{{ $encodeUrlComponent(trigger.id) }}")).toEqual([]);
+    expect(codes("{{ $encodeUrl(trigger.next) }}")).toEqual([]);
+    expect(codes("https://x.test/{{ input }}")).toEqual([]);
+    expect(codes("https://x.test/plain")).toEqual([]);
+  });
+
+  it("warns once per tool, naming the expression", () => {
+    const [w] = specWarnings(url("https://x.test/{{ trigger.a }}/{{ trigger.b }}").spec!);
+    expect(w!.message).toContain("{{ trigger.a }}");
+    expect(w!.path).toEqual(["agent", "tools", 0, "url"]);
   });
 });
 

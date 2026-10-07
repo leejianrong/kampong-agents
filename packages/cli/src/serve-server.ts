@@ -41,6 +41,23 @@ export interface CreateServeServerOptions {
   run?: RunManagerOptions;
 }
 
+// Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text
+// values. A header that looks like a credential is not passed, so it cannot end up in a message, a query or a
+// run trace through `{{ trigger.headers }}`; a webhook's own verification belongs in the trigger (KAN-1848).
+const CREDENTIAL_HEADER =
+  /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
+
+function triggerHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined || CREDENTIAL_HEADER.test(name)) continue;
+    out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
+  }
+  return out;
+}
+
 export function createServeServer({ specPath, run }: CreateServeServerOptions): FastifyInstance {
   const source = readFileSync(specPath, "utf8");
   const parsed = parseSpec(source);
@@ -79,7 +96,9 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
   // /runs/:id/approve (Slack-button approval is a later slice).
   app.post("/webhook", async (request, reply) => {
     const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
-    const { id, state } = await runManager.start(spec, input);
+    const { id, state } = await runManager.start(spec, input, {
+      headers: triggerHeaders(request.headers),
+    });
     return reply.code(201).send({ success: true, id, state });
   });
 

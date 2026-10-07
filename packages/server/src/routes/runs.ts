@@ -1,11 +1,15 @@
 import type { FastifyInstance } from "fastify";
-import { UnsupportedSpecVersionError, type RunEvent } from "@kampong/engine";
+import type { RunEvent } from "@kampong/engine";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
-import { HostedRunManager, InvalidStoredSpecError } from "../run/manager.js";
+import {
+  HostedRunManager,
+  InvalidStoredSpecError,
+  UnsupportedSpecVersionError,
+} from "../run/manager.js";
 
 // KAN-1231/KAN-1425 (ADR-0014, SLICES.md V5 build-plan step 11): the
 // workspace-scoped, durable hosted-execution routes -- start a run of one of

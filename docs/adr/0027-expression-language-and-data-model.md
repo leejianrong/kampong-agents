@@ -144,10 +144,7 @@ guards is determinism, and the guards are cheap, testable, and fail visibly.
   place that turns a declaration into values: an override wins, then the default; an environment value is
   parsed as the declared type (a list is a JSON array or comma-separated); an unset or empty variable, an
   unparseable value, or a var with nothing to give it is an error naming the var, never a guess.
-- **Not in this card.** Evaluation (KAN-1841) and the exporter's evaluator (KAN-1851): until they land,
-  `createAgentRun`, `AgentRun` and `exportProject` refuse a 1.1 spec by name rather than misread it with the
-  1.0 grammar. The refusal is an `UnsupportedSpecVersionError`, raised before the model key is resolved, and
-  the hosted routes answer 422 with it.
+- **Not in this card.** Evaluation (KAN-1841, below).
   `{{ … }}` ends at the first `}}` that is not inside a string literal or a brace the expression opened, so nested
   object constructors and strings holding `}}` are read whole. Reads written through `$` (`$.vars.typo`,
   `$lookup(vars, 'typo')`) are not checked, so a typo there still reads as empty; names inside a transform
@@ -158,3 +155,61 @@ guards is determinism, and the guards are cheap, testable, and fail visibly.
   (`agent-spec.v1.0.schema.json`, which existing specs' pragma points at) and now describes both versions;
   the cross-field rules (vars needs 1.1, the var name pattern, default types, expressions) are code, as with
   `model.api_key`.
+
+## Evaluation (KAN-1841)
+
+A version 1.1 spec runs in `kampong run`, `kampong dev` and `kampong serve`.
+
+- **The evaluator** is `packages/engine/src/expressions.ts`, and implements the spike's contract (above): a fresh
+  JSONata expression per evaluation with `timeout` (1 s) and `stack` (400) set, the denied built-ins and regular
+  expressions refused from the syntax tree and shadowed as a second layer, a step budget and string and list
+  size limits in the per-node hook, `$pad` capped, errors as `ExpressionError { code, position, line, column,
+  expression }`, and results returned as plain JSON (JSONata's `sequence` marker on lists is removed). It
+  imports nothing from `@kampong/spec`, so it is vendored into exports with the rest of the engine (ADR-0010);
+  tests keep its denied list and its `{{ }}` scanner in step with the validator's. `resolveVars` moved from
+  the spec package to `packages/engine/src/vars.ts` for the same reason.
+- **Data model.** An expression's root is `{ ...stepOutputs, trigger, input, vars }`: every earlier step's
+  *full* output by step name (no more scalar flattening; the 1.0 `buildToolParams` is unchanged for 1.0 specs),
+  the trigger, the raw input, and the resolved vars, with the reserved names winning (a step may not be named
+  one of them; the spec says so at load). `trigger` is the webhook body's fields at the top level,
+  `trigger.body` the whole body, and `trigger.headers` the request headers (lowercase; any header whose name contains `authorization`, `cookie`,
+  `token`, `secret`, `signature`, `api-key`, `apikey`, `password` or `credential` is never passed, so a credential
+  cannot be read into a message, a query or a run trace through `{{ trigger.headers }}`). With no explicit trigger the run input is the body: JSON if it parses, text
+  if not. A body field named `headers` or `body` is shadowed by those members.
+- **Where expressions are evaluated.** A condition's `if`; every string in a tool (`url`, `headers`, `query`,
+  `body`, a component's `with`, and the legacy Slack and Gmail fields), except identity, `method`, `token`,
+  `config`, `secrets`, `extract` and `requires_approval`; an approval step's `message`; an action step's
+  `query`. A tool's templates are resolved before a human is asked to approve it, so a call that cannot be
+  built is not offered for approval. A string that is exactly one `{{ }}` keeps the value's type; text around
+  spans is built from each value.
+- **Failure is visible.** A condition must be `true` or `false`; nothing (a name it reads is missing) or
+  any other type fails the step (`$exists` and `$boolean` say what is meant). A `{{ }}` that selects nothing
+  fails the step, as does any syntax or run-time error, a refused construct, or a limit; the message names
+  the step, the character and the expression. A var with no value, an unset `${ENV}` default, or an
+  unparseable value fails the run before step one, naming the var. This is the "undefined is silent"
+  mitigation from the spike, completed at run time.
+- **Run inputs.** `kampong run` takes `--var name=value` (an undeclared name is a usage error) and
+  `--header name=value`; `kampong serve` passes the webhook's headers and JSON body.
+- **Not yet.** The hosted server refuses a 1.1 spec (422, by name): expressions on a shared server need the
+  process boundary the spike found memory limits require. `kampong export` refuses one too: the exported
+  runtime now carries the evaluator (and pins `jsonata`), but its entry points do not yet pass vars or the
+  webhook payload to it (KAN-1851). Structured output (`output_schema`, KAN-1843) and the canvas editor
+  (KAN-1850) are separate cards.
+- **Data is data.** A tool's strings are resolved by the evaluator and then handed to `callHttpTool`, which reads
+  `${ENV}` references and `{name}` placeholders in the text it is given. Without care a webhook body containing
+  `${SECRET}` would have been expanded there, so in a 1.1 tool every string that comes from data (an evaluated
+  value, text built from one, and strings inside a list or object value) has `${` escaped as `$${` before that
+  pass (the escape `callHttpTool` already honours), and the legacy `{name}` substitution is given no params, so
+  it leaves everything as written. The author's own `${ENV}` still expands. Components are unaffected: their
+  `with` values are data from the start.
+- **Native built-ins are capped.** `$sort` and `$distinct` run inside one call that no per-node hook or timeout can
+  interrupt, and `$sort` uses memory that grows with the square of the list (60 000 numbers exhausted a 2 GB
+  heap, which a 1 MB webhook body can carry), so they refuse a list over 10 000 items (`sortItems`). `$pad` is
+  capped as before. They are re-registered with JSONata's own signatures, so `$ ~> $sort()` still works. The
+  other bounds stay soft, as the spike found: `kampong serve` evaluates expressions in its own process.
+- **One time budget per structure.** The expressions in one tool (or `with`) run one at a time and share a
+  single budget (the timeout), so many slow spans cannot take many times the limit and the error reported does
+  not depend on timing.
+- **URLs.** A value from the trigger goes into a `url` exactly as it arrives, as a 1.0 step output did. A spec
+  that reads `trigger.*` inside a tool's `url` without `$encodeUrlComponent` (or `$encodeUrl`) gets a note
+  (`unencoded_url_value`), never an error.
