@@ -57,6 +57,14 @@ export class AgentRun extends EventEmitter {
     private readonly deps: EngineDeps,
   ) {
     super();
+    // Version 1.1 specs (expressions, vars) are valid but the evaluator that runs them is not in the engine
+    // yet (KAN-1841). Running one with the 1.0 grammar would misread its conditions, so refuse it by name.
+    if (spec.version === "1.1") {
+      throw new Error(
+        'This spec uses version "1.1" (expressions and vars), which this build cannot run yet: ' +
+          'the expression evaluator is not in the engine. Set version to "1.0" to run it with the original syntax.',
+      );
+    }
   }
 
   getState(): RunState {

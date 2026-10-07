@@ -1,6 +1,7 @@
 import type { ZodIssue } from "zod";
 import { Document, LineCounter, parseDocument } from "yaml";
 import { agentSpecSchema, type AgentSpec } from "./schema.js";
+import { validateSpecExpressions } from "./spec-expressions.js";
 
 // AgentSpec parser/validator (PLAN.md Shape S1, ADR-0002: YAML is the
 // single lossless source of truth). Uses the `yaml` package's Document API
@@ -44,6 +45,12 @@ export function parseSpec(source: string): ParseResult {
   if (!result.success) {
     const errors = result.error.issues.map((issue) => toSpecError(issue, doc, lineCounter));
     return { success: false, doc, errors };
+  }
+
+  // Expressions are checked after the shape, so a malformed spec reports its shape first.
+  const expressionErrors = validateSpecExpressions(result.data, doc, lineCounter);
+  if (expressionErrors.length > 0) {
+    return { success: false, doc, errors: expressionErrors };
   }
 
   return { success: true, spec: result.data, doc, errors: [] };

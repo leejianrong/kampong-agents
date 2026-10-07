@@ -119,3 +119,38 @@ agent:
     - step: greet
       action: say_hello
 `;
+
+// KAN-1840: a version "1.1" spec: vars, expressions in a condition and in a `{{ }}` template.
+export const VALID_FIXTURE_V1_1 = `# Incident responder (version 1.1: expressions and vars)
+version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 5
+    description: "Alert when the change is at least this big"
+  region:
+    type: string
+    default: "\${REGION}"
+  tickers:
+    type: list
+    items: string
+    default: [AAPL, MSFT]
+agent:
+  id: responder
+  name: "Incident Responder"
+  role: "On-call engineer"
+  goal: "Look up the alert and decide whether to page someone."
+  tools:
+    - name: lookup
+      action: http_request
+      method: GET
+      url: "https://x.test/{{ trigger.alerts[0].id }}?r={{ vars.region }}"
+  workflow:
+    - step: triage
+      action: classify
+    - step: decide
+      type: condition
+      if: "$abs(trigger.change) >= vars.threshold and $count(trigger.alerts) > 0"
+      then: "execute_tool(lookup)"
+      else: "request_human_approval"
+`;

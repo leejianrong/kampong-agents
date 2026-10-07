@@ -337,4 +337,17 @@ describe("collectRequiredEnvVars with a component tool", () => {
     } as unknown as AgentSpec;
     expect(collectRequiredEnvVars(spec)).toContain("ACME_TOKEN");
   });
+
+  it("refuses a version 1.1 spec by name, and writes nothing (KAN-1840)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-1-1-"));
+    try {
+      const out = join(dir, "out");
+      expect(() => exportProject({ ...FULL_SPEC, version: "1.1" }, out)).toThrow(
+        /version "1.1".*cannot be exported yet.*Set version to "1.0"/s,
+      );
+      expect(() => readFileSync(join(out, "package.json"))).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

@@ -124,3 +124,30 @@ The scripts and how to run them are in `docs/adr/0027-spike/`. All numbers are f
 Go. JSONata passes all four properties, so the fallbacks (a CEL subset, a minimal grammar) are not needed.
 The conditions above are part of the decision, not follow-ups. The one property that holds only with
 guards is determinism, and the guards are cheap, testable, and fail visibly.
+
+## Syntax, versions and `vars` (KAN-1840)
+
+- **Versions.** `version` is `"1.0"` or `"1.1"`; any other value is a validation error naming the two. `"1.1"`
+  makes a condition's `if` an expression and every `{{ … }}` in a tool or step an expression (the legacy
+  `{{ step.field }}` is already a valid JSONata path, so it needs no migration), and enables `vars`. In a
+  1.0 spec `vars` is an error. A 1.0 spec keeps loading and running, and gets a note (never an error) for
+  a condition step and for each `{step.field}` placeholder (`legacy_condition_syntax`,
+  `legacy_placeholder_syntax`); `{{ step.field }}` is not noted, because it is valid in both.
+- **Checked at load.** In a 1.1 spec each expression goes through the spike's parse-time rules (length, the
+  denied built-ins, no regular expressions) and each name it reads from the root must exist: `trigger`,
+  `input`, `vars` (and the var must be declared), or a step name. The error carries the YAML line and the
+  character in the expression. Names inside a filter, a lambda or a `.(…)` step are relative and not
+  checked. This is the "lint references" condition from the spike: a mistyped path would otherwise read as
+  `undefined` and make a condition silently false.
+- **`vars`.** A top-level map of `{ type: number | string | list, items?, default?, description? }`.
+  `default` is a literal of the declared type or `"${ENV_VAR}"`. `resolveVars(vars, env, overrides)` is the one
+  place that turns a declaration into values: an override wins, then the default; an environment value is
+  parsed as the declared type (a list is a JSON array or comma-separated); an unset or empty variable, an
+  unparseable value, or a var with nothing to give it is an error naming the var, never a guess.
+- **Not in this card.** Evaluation (KAN-1841) and the exporter's evaluator (KAN-1851): until they land,
+  `AgentRun` and `exportProject` refuse a 1.1 spec by name rather than misread it with the 1.0 grammar.
+  `{{ … }}` ends at the first `}}`, so an expression that itself contains `}}` (a nested object
+  constructor) cannot be written inline yet. The published JSON Schema keeps its file name
+  (`agent-spec.v1.0.schema.json`, which existing specs' pragma points at) and now describes both versions;
+  the cross-field rules (vars needs 1.1, the var name pattern, default types, expressions) are code, as with
+  `model.api_key`.

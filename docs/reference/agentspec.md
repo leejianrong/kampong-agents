@@ -15,8 +15,65 @@ agent:
 
 | Field     | Type   | Required | Notes                               |
 | --------- | ------ | -------- | ----------------------------------- |
-| `version` | string | yes      | Spec format version. `"1.0"` today. |
+| `version` | string | yes      | `"1.0"` or `"1.1"`; see below.      |
+| `vars`    | object | no       | Typed parameters (`"1.1"` only).    |
 | `agent`   | object | yes      | The agent definition, below.        |
+
+## Versions: `1.0` and `1.1`
+
+The `version` decides how references and conditions are written. Nothing else changes.
+
+- **`"1.0"`** keeps the original syntax: `{step.field}` and `{{ step.field }}` references, and the
+  `<step_id>.<field> <op> <literal>` condition grammar. These keep validating and running. A 1.0 spec that
+  uses a condition or a `{step.field}` placeholder gets a note (never an error) that `"1.1"` replaces them.
+- **`"1.1"`** makes everything that computes a value a [JSONata](https://jsonata.org) expression: a
+  condition's `if` is one (`$abs(trigger.change) >= vars.threshold`, with `=` for equality), and every
+  `{{ … }}` in a tool or a step holds one. It also enables `vars`. A 1.1 spec is checked when it loads:
+  a syntax error is reported with its line and the character in the expression, and so is a name nothing
+  provides (a mistyped `vars.thresold`, a step that does not exist), because such a reference does not
+  fail at run time, it silently reads as empty.
+
+!!! note "A 1.1 spec cannot run or be exported yet"
+
+    The evaluator that runs 1.1 expressions is being added to the engine and the exported runtime
+    separately. Until then `kampong run` and `kampong export` refuse a 1.1 spec by name; validation,
+    the canvas and `kampong doctor` already accept it.
+
+### Expressions
+
+Expressions read `trigger` (the parsed webhook payload), `input`, `vars`, and the output of an earlier
+step by its step name (`review.findings[0].title`). They are a pure function of that data: the clock and
+random built-ins (`$now`, `$millis`, `$random`, `$shuffle`) and `$eval` are refused, and so are regular
+expression literals. An expression is at most 4000 characters.
+
+### `vars`
+
+```yaml
+version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 5
+  region:
+    type: string
+    default: "${REGION}"
+  tickers:
+    type: list
+    items: string # string (the default) or number
+    default: [AAPL, MSFT]
+```
+
+| Field         | Type                         | Required | Notes                                                                                  |
+| ------------- | ---------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `type`        | `number`, `string` or `list` | yes      | What `vars.<name>` holds.                                                              |
+| `items`       | `string` or `number`         | no       | For a list: what it holds (default `string`).                                          |
+| `default`     | literal, or `"${ENV_VAR}"`   | no       | A literal of the declared type, or the name of an environment variable to read it from. |
+| `description` | string                       | no       | For people.                                                                            |
+
+An environment value is parsed as the declared type: a number must be finite, a list is a JSON array
+(`["a","b"]`) or comma-separated (`a, b`). A var with no default must be given a value when the spec runs,
+and a `${ENV_VAR}` default whose variable is unset or empty fails the run naming it; nothing is guessed.
+Var names are letters, digits and underscores.
 
 ## `agent`
 
@@ -208,7 +265,7 @@ At least one step. Each is either an action step or a condition step.
 | ------ | ----------- | -------- | -------------------------------------------------------------------------------------------------------- |
 | `step` | string      | yes      | Unique step name.                                                                                        |
 | `type` | `condition` | yes      | Marks this as a condition step.                                                                          |
-| `if`   | string      | yes      | `<step_id>.<field> <op> <literal>`; ops `== != > >= < <=`; literals `true`/`false`/number/quoted string. |
+| `if`   | string      | yes      | `<step_id>.<field> <op> <literal>`; ops `== != > >= < <=`; literals `true`/`false`/number/quoted string. In a `"1.1"` spec: a JSONata expression. |
 | `then` | string      | yes      | Branch when true: `execute_tool(<name>)` or `request_human_approval`.                                    |
 | `else` | string      | yes      | Branch when false: same two options.                                                                     |
 

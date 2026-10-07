@@ -6,7 +6,17 @@ import { requestOptionalFields } from "./request.js";
 // existing specs). Field shape follows the example already sketched in
 // ideation.md §4.2.
 
+// The version of the published JSON Schema *file* (`agent-spec.v1.0.schema.json`). It stays "1.0" because
+// the file name is what existing specs' `yaml-language-server` pragma points at; it describes every
+// spec version below.
 export const SCHEMA_VERSION = "1.0";
+
+// The spec `version` gates the syntax (KAN-1840, ADR-0027). "1.0" keeps the original reference syntax:
+// `{step.field}` / `{{ step.field }}` placeholders and the `step.field <op> literal` condition grammar.
+// "1.1" makes everything that computes a value a JSONata expression (a condition's `if` is one, and
+// `{{ … }}` holds one) and enables the top-level `vars` block.
+export const SPEC_VERSIONS = ["1.0", "1.1"] as const;
+export type SpecVersion = (typeof SPEC_VERSIONS)[number];
 
 export const knowledgeItemSchema = z.object({
   type: z.enum(["pdf", "url", "text"]),
@@ -250,26 +260,93 @@ export const approvalNotifierSchema = z.object({
   channel: z.string().min(1),
 });
 
-export const agentSpecSchema = z.object({
-  version: z.string().min(1),
-  agent: z.object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    role: z.string().min(1),
-    goal: z.string().min(1),
-    trigger: triggerSchema.optional(),
-    approval_notifier: approvalNotifierSchema.optional(),
-    // Optional so every V1 spec (authored before BYOK existed) keeps
-    // validating unchanged; the execution engine (not the schema) is what
-    // requires it to be present before a real run can start.
-    model: modelSchema.optional(),
-    knowledge_base: z.array(knowledgeItemSchema).optional(),
-    tools: z.array(toolSchema).optional(),
-    guardrails: guardrailsSchema.optional(),
-    workflow: z.array(workflowStepSchema).min(1),
-  }),
-});
+// A run-time parameter (KAN-1840): declared once, read in expressions as `vars.<name>`, so a deployed spec
+// can be re-tuned without editing it. `default` is a literal of the declared type, or `${ENV_VAR}` to take
+// the value from the environment (parsed by `resolveVars`: a number, a string, or a list given as a
+// comma-separated string or a JSON array).
+const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ENV_DEFAULT = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
 
+export const varSchema = z
+  .object({
+    type: z.enum(["number", "string", "list"]),
+    /** What a list holds. Defaults to strings. */
+    items: z.enum(["string", "number"]).optional(),
+    description: z.string().optional(),
+    default: z
+      .union([z.number(), z.string(), z.array(z.union([z.string(), z.number()]))])
+      .optional(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    const bad = (message: string, path: string[]) =>
+      ctx.addIssue({ code: "custom", message, path });
+    if (v.items !== undefined && v.type !== "list") {
+      bad('"items" only applies to a var of type list', ["items"]);
+    }
+    const d = v.default;
+    if (d === undefined) return;
+    if (typeof d === "string" && ENV_DEFAULT.test(d)) return; // taken from the environment
+    if (v.type === "number" && typeof d !== "number") {
+      bad("default must be a number, or ${ENV_VAR} to read it from the environment", ["default"]);
+    } else if (v.type === "string" && typeof d !== "string") {
+      bad("default must be a string, or ${ENV_VAR} to read it from the environment", ["default"]);
+    } else if (v.type === "list") {
+      const item = v.items ?? "string";
+      if (!Array.isArray(d) || d.some((x) => typeof x !== item)) {
+        bad(`default must be a list of ${item}s, or \${ENV_VAR} to read it from the environment`, [
+          "default",
+        ]);
+      }
+    }
+  });
+
+export const varsSchema = z.record(z.string(), varSchema);
+
+export const agentSpecSchema = z
+  .object({
+    version: z.enum(SPEC_VERSIONS, {
+      error: `unsupported spec version: this kampong reads ${SPEC_VERSIONS.map((v) => `"${v}"`).join(" and ")}`,
+    }),
+    vars: varsSchema.optional(),
+    agent: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      role: z.string().min(1),
+      goal: z.string().min(1),
+      trigger: triggerSchema.optional(),
+      approval_notifier: approvalNotifierSchema.optional(),
+      // Optional so every V1 spec (authored before BYOK existed) keeps
+      // validating unchanged; the execution engine (not the schema) is what
+      // requires it to be present before a real run can start.
+      model: modelSchema.optional(),
+      knowledge_base: z.array(knowledgeItemSchema).optional(),
+      tools: z.array(toolSchema).optional(),
+      guardrails: guardrailsSchema.optional(),
+      workflow: z.array(workflowStepSchema).min(1),
+    }),
+  })
+  .superRefine((spec, ctx) => {
+    for (const name of Object.keys(spec.vars ?? {})) {
+      if (!VAR_NAME.test(name)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `"${name}" is not a valid var name: use letters, digits and underscores, not starting with a digit`,
+          path: ["vars", name],
+        });
+      }
+    }
+    if (spec.vars !== undefined && spec.version !== "1.1") {
+      ctx.addIssue({
+        code: "custom",
+        message: 'vars needs version "1.1"',
+        path: ["vars"],
+      });
+    }
+  });
+
+export type SpecVars = z.infer<typeof varsSchema>;
+export type SpecVar = z.infer<typeof varSchema>;
 export type AgentSpec = z.infer<typeof agentSpecSchema>;
 export type Trigger = z.infer<typeof triggerSchema>;
 export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
