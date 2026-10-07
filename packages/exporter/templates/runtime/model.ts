@@ -322,6 +322,45 @@ function rethrowModelCallError(err: unknown, modelConfig: Model): never {
   wrapOllamaConnectionError(err, modelConfig);
 }
 
+/**
+ * A model answer that broke the structure `generateStructured` asked for (a wrong enum value, a wrong
+ * type, a missing field). Mastra throws one of these by default; it is the model's answer being wrong, not
+ * the call failing, so the caller can show `problems` to the model and ask again (ADR-0038). Anything else
+ * thrown by a model call (a timeout, Ollama unavailable) is still not one of these and is never retried.
+ */
+export class StructuredOutputError extends Error {
+  constructor(
+    message: string,
+    readonly problems: string[],
+    readonly raw: unknown,
+  ) {
+    super(message);
+    this.name = "StructuredOutputError";
+  }
+}
+
+// Mastra's "structured output validation failed" error: `id` identifies it, `details.value` holds the
+// answer text, and the message lists one "- path: problem" line per issue.
+function asStructuredOutputError(err: unknown): StructuredOutputError | undefined {
+  const e = err as { id?: unknown; message?: unknown; details?: { value?: unknown } } | null;
+  if (e?.id !== "STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED") return undefined;
+  const message = String(e.message ?? "");
+  // "Structured output validation failed: - severity: Invalid option ..." (the first issue can follow the
+  // heading on the same line, later ones start a new line).
+  const lines = [
+    ...message.matchAll(/(?:^|\s)-\s+([\w.[\]]+):\s*([^\n]*?)(?=\s*\n|\s+-\s+[\w.[\]]+:|$)/g),
+  ].map((m) => `output.${m[1]}: ${m[2]}`);
+  let raw: unknown = e.details?.value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      // keep the text as it came
+    }
+  }
+  return new StructuredOutputError(message, lines.length > 0 ? lines : [message], raw);
+}
+
 export interface GenerateTextInput {
   instructions: string;
   prompt: string;
@@ -433,6 +472,8 @@ export function createMastraModelClient(
         const result = await agent.generate(prompt, { instructions, structuredOutput: { schema } });
         return result.object as T;
       } catch (err) {
+        const wrong = asStructuredOutputError(err);
+        if (wrong) throw wrong;
         rethrowModelCallError(err, modelConfig);
       }
     },

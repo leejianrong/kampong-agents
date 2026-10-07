@@ -8,7 +8,7 @@ import {
   substitutePlaceholders,
   type HttpToolCallOptions,
 } from "./http-tool.js";
-import type { ModelClient } from "./model.js";
+import { StructuredOutputError, type ModelClient } from "./model.js";
 import type { ModuleFixtureSeam } from "./component.js";
 import {
   evaluateCondition as evaluateExpressionCondition,
@@ -17,6 +17,7 @@ import {
   resolveTemplatesDeep,
   type ExpressionLimits,
 } from "./expressions.js";
+import { schemaNodeToZod } from "./output-zod.js";
 import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
 import { resolveVars } from "./vars.js";
 
@@ -429,11 +430,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 // The model is asked for the object the step's `output_schema` describes, and the engine -- not the
-// provider -- is what decides whether it does (ADR-0038). The provider is given a loose object schema, so
-// a value that breaks a constraint comes back to us as a located error we can show the model once. Only
+// provider -- is what decides whether it does (ADR-0038). The provider is given the structure (output-zod.ts), not
+// the constraints, so a value that breaks one comes back to us as a located error we can show the model once. Only
 // a schema failure is retried: a model call that throws (timeout, unavailable) is not, as ADR-0004 says.
 export const OUTPUT_SCHEMA_RETRIES = 1;
-const looseObjectSchema = z.record(z.string(), z.unknown());
 
 async function runStructuredStep(
   step: Extract<WorkflowStep, { action: string }>,
@@ -442,6 +442,7 @@ async function runStructuredStep(
   instructions: string,
   prompt: string,
 ): Promise<{ output: unknown; confidence?: number }> {
+  const providerSchema = schemaNodeToZod(outputSchema);
   const base = [
     prompt,
     "Respond with only a JSON object that matches this JSON Schema:",
@@ -450,11 +451,21 @@ async function runStructuredStep(
   let attemptPrompt = base;
   let problems: string[] = [];
   for (let attempt = 0; attempt <= OUTPUT_SCHEMA_RETRIES; attempt++) {
-    const raw = await deps.model.generateStructured({
-      instructions,
-      prompt: attemptPrompt,
-      schema: looseObjectSchema,
-    });
+    let raw: unknown;
+    try {
+      raw = await deps.model.generateStructured({
+        instructions,
+        prompt: attemptPrompt,
+        schema: providerSchema,
+      });
+    } catch (err) {
+      // The model answered, but not in the shape: ask once more, naming what was wrong.
+      if (!(err instanceof StructuredOutputError)) throw err;
+      raw = err.raw;
+      problems = err.problems;
+      attemptPrompt = retryPrompt(base, problems, raw);
+      continue;
+    }
     const candidate = isPlainObject(raw) ? applySchemaDefaults(outputSchema, raw) : raw;
     problems = validateAgainstSchema(outputSchema, candidate, "output");
     if (problems.length === 0) {
@@ -468,17 +479,20 @@ async function runStructuredStep(
         return { output: candidate, confidence };
       }
     }
-    attemptPrompt = [
-      base,
-      `Your previous answer was rejected: ${problems.join("; ")}.`,
-      `Previous answer: ${JSON.stringify(raw)}`,
-      "Answer again with a corrected JSON object.",
-    ].join("\n");
+    attemptPrompt = retryPrompt(base, problems, raw);
   }
   throw new Error(
     `the model's answer did not match output_schema after ${OUTPUT_SCHEMA_RETRIES} retry: ${problems.join("; ")}`,
   );
 }
+
+const retryPrompt = (base: string, problems: string[], raw: unknown): string =>
+  [
+    base,
+    `Your previous answer was rejected: ${problems.join("; ")}.`,
+    `Previous answer: ${raw === undefined ? "(no answer)" : JSON.stringify(raw)}`,
+    "Answer again with a corrected JSON object.",
+  ].join("\n");
 
 function buildStepPrompt(
   step: Extract<WorkflowStep, { action: string }>,

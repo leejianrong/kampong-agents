@@ -307,6 +307,23 @@ describe("output_schema (KAN-1843)", () => {
     expect(low.at(-1)).toMatchObject({ type: "completed" });
   });
 
+  it("hands the provider the step's structure, not an open object", async () => {
+    let seen: unknown;
+    const model: ModelClient = {
+      async generateText() {
+        return "";
+      },
+      async generateStructured<T>({ schema }: { schema: unknown }) {
+        seen = schema;
+        return { severity: "low", confidence: 1 } as T;
+      },
+    };
+    await drive(spec(), { model }, "x");
+    const json = JSON.stringify((await import("zod")).z.toJSONSchema(seen as never));
+    expect(json).toContain('"severity"');
+    expect(json).not.toContain("propertyNames");
+  });
+
   it("sends the schema in the prompt", async () => {
     const prompts: string[] = [];
     await drive(spec(), { model: scripted([{ severity: "low", confidence: 1 }], prompts) }, "x");

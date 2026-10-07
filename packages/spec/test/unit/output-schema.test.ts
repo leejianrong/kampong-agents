@@ -47,6 +47,24 @@ describe("output_schema on an action step", () => {
     ]);
   });
 
+  it("refuses an object without properties or an array without items, at any depth", () => {
+    const open = (body: string) => spec("1.1", `      output_schema:\n${body}`);
+    expect(messages(open("        type: object\n"))).toEqual([
+      "an object in output_schema must list its properties (open objects are not supported)",
+    ]);
+    const nestedObject =
+      "        type: object\n        properties:\n          details: { type: object }\n";
+    expect(messages(open(nestedObject))).toHaveLength(1);
+    const untypedList =
+      "        type: object\n        properties:\n          tags: { type: array }\n";
+    expect(messages(open(untypedList))).toEqual([
+      "an array in output_schema must declare its items",
+    ]);
+    const deepList =
+      "        type: object\n        properties:\n          rows: { type: array, items: { type: object } }\n";
+    expect(messages(open(deepList))).toHaveLength(1);
+  });
+
   it("rejects keywords outside the supported subset", () => {
     const bad = "      output_schema: { type: object, oneOf: [] }\n";
     expect(parseSpec(spec("1.1", bad)).success).toBe(false);
