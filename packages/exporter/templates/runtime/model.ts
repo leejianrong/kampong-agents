@@ -18,24 +18,44 @@ import type { z } from "zod";
 // provider resolves straight through its Vercel AI SDK package -- no
 // gateway/proxy layer.
 //
+import { Agent } from "@mastra/core/agent";
+import type { MastraModelConfig } from "@mastra/core/llm";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import type { AgentSpec, Model, ModelProvider } from "./spec-types.js";
+import type { z } from "zod";
+
+// Model resolution (PLAN.md Shape S3, ADR-0003, ADR-0004, SLICES.md V2
+// KAN-1103/1106, V3 KAN-1112). Kept as a small name -> factory map, per
+// AGENTS.md, so the Ollama adapter below is a one-entry addition rather than
+// a redesign of this file. Every provider resolves straight through its
+// Vercel AI SDK package -- no gateway/proxy layer in v1 (ADR-0004).
+//
 // Ollama speaks an OpenAI-compatible `/v1` API, so rather than pull in a
-// dedicated Ollama Vercel-AI-SDK provider package, this reuses
-// `@ai-sdk/openai` -- already a dependency -- pointed at the local server
-// with a throwaway api key (Ollama doesn't check it). This still goes
-// straight through Mastra's AI SDK provider interface; nothing about it is
-// a gateway/proxy layer.
+// dedicated (and, as of this writing, less mature) Ollama Vercel-AI-SDK
+// provider package, this reuses `@ai-sdk/openai` -- already a dependency --
+// pointed at the local server with a throwaway api key (Ollama doesn't
+// check it). This still goes straight through Mastra's AI SDK provider
+// interface (ADR-0004); nothing about it is a gateway/proxy layer.
 //
 // OpenRouter is the same story for the same reason: it speaks an
-// OpenAI-compatible Chat Completions API too, so it reuses `@ai-sdk/openai`
-// rather than a dedicated OpenRouter SDK package. Unlike Ollama it's a real
-// cloud service with a fixed host -- no per-spec `base_url` override -- and
-// it does require a BYOK `api_key`.
+// OpenAI-compatible Chat Completions API too (its own docs: "OpenRouter's
+// request and response schemas are very similar to the OpenAI Chat API"),
+// so it reuses `@ai-sdk/openai` rather than a dedicated OpenRouter SDK
+// package. Unlike Ollama it's a real cloud service with a fixed host --
+// no per-spec `base_url` override -- and it does require a BYOK `api_key`.
 
 export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
-// A model call with no timeout can hang this project's own `npm start`
-// indefinitely with zero progress output. Tens-of-seconds is the right order
-// of magnitude for a real LLM call. Overridable per spec (`agent.model.timeout_ms`).
+// KAN-1185 (R6, ADR-0004): a model call with no timeout can hang a `kampong
+// run` indefinitely with zero progress output -- confirmed via a live repro
+// against a real, unusually slow Ollama daemon. Tens-of-seconds is the right
+// order of magnitude for a real LLM call (long enough not to false-positive
+// on a slow-but-alive provider, short enough that a CI job notices a hang
+// instead of burning its own job timeout). Overridable per spec
+// (`agent.model.timeout_ms`) and, taking precedence over that, per CLI
+// invocation (`kampong run --timeout <ms>`) so a CI job can tune it without
+// editing the spec file.
 export const DEFAULT_MODEL_TIMEOUT_MS = 60_000;
 
 // OpenRouter's API host is fixed (unlike Ollama's, which is typically local
@@ -49,13 +69,17 @@ const OPENROUTER_HEADERS: Record<string, string> = {
   "X-Title": "Kampong Agents",
 };
 
-// Which providers require a real BYOK `${ENV_VAR}` api_key -- "ollama" has
-// no key to check.
+// Which providers require a real BYOK `${ENV_VAR}` api_key (schema.ts made
+// `api_key` optional across the board specifically so "ollama" -- which has
+// no key to check -- doesn't need to fake one; this is where that split is
+// actually enforced).
 const CLOUD_PROVIDERS: ReadonlySet<ModelProvider> = new Set(["anthropic", "openai", "openrouter"]);
 
 /**
  * Whether a provider needs a BYOK API key (a cloud provider), as opposed to a
- * keyless local one like `ollama`.
+ * keyless local one like `ollama`. Exported so hosted-mode key resolution
+ * (`packages/server`, KAN-1230) can decide whether to look up and decrypt a
+ * workspace's stored key for a spec's provider without duplicating this set.
  */
 export function providerRequiresApiKey(provider: string): boolean {
   return CLOUD_PROVIDERS.has(provider as ModelProvider);
@@ -76,16 +100,22 @@ const PROVIDERS: Record<ModelProvider, ProviderFactory> = {
   // defaults to OpenAI's newer Responses API (`POST /v1/responses`), which
   // Ollama's OpenAI-compatibility layer does not implement -- Ollama only
   // serves the classic Chat Completions API (`POST /v1/chat/completions`).
+  // Verified empirically against a stub server before landing this; see the
+  // PR description for the request Ollama would actually 404 on otherwise.
   ollama: (name, { baseUrl, fetchImpl }) =>
     createOpenAI({
       apiKey: "ollama",
       baseURL: `${baseUrl ?? DEFAULT_OLLAMA_BASE_URL}/v1`,
       fetch: fetchImpl,
     }).chat(name),
-  // Same `.chat(name)` reasoning as Ollama above: OpenRouter documents a
-  // single `POST /api/v1/chat/completions` endpoint and does not implement
-  // OpenAI's newer Responses API (`POST /v1/responses`) that the bare
-  // `createOpenAI(...)(name)` factory call defaults to.
+  // Same `.chat(name)` reasoning as Ollama above, verified against
+  // OpenRouter's own docs rather than assumed just because Ollama needed
+  // it: OpenRouter documents a single `POST /api/v1/chat/completions`
+  // endpoint (Chat Completions shape) and does not implement OpenAI's
+  // newer Responses API (`POST /v1/responses`) that the bare
+  // `createOpenAI(...)(name)` factory call defaults to. See
+  // test/integration/openrouter.test.ts for a fake-server regression test
+  // that would catch a regression back to the bare (Responses-API) call.
   openrouter: (name, { apiKey, fetchImpl }) =>
     createOpenAI({
       apiKey,
@@ -121,9 +151,10 @@ export class UnknownModelProviderError extends Error {
 
 /**
  * The specific, actionable error thrown when the local Ollama server can't
- * be reached -- never a silent fallback to a paid cloud API. Unlike a
- * missing BYOK key, this can only be detected at call time -- there is no
- * key to check synchronously -- so it's raised from inside
+ * be reached (AGENTS.md / PLAN.md Q8: "a local model that's unavailable is
+ * a hard, visible error -- never a silent fallback to a paid cloud API").
+ * Unlike a missing BYOK key, this can only be detected at call time -- there
+ * is no key to check synchronously -- so it's raised from inside
  * generateText/generateStructured when the underlying fetch fails with a
  * connection-refused-shaped error (see isConnectionRefused below), and it is
  * never caught and retried against `anthropic`/`openai`.
@@ -145,9 +176,13 @@ export class OllamaUnavailableError extends Error {
 
 /**
  * The specific, actionable error thrown when a model call runs longer than
- * its configured timeout -- a clear, specific message naming the provider
- * and the exact timeout that elapsed, instead of a generic
- * `TypeError: fetch failed` or an indefinite hang. Never caught and retried.
+ * its configured timeout (KAN-1185, R6: "CLI commands scriptable/CI-friendly
+ * with meaningful exit codes" -- a silent, indefinite hang is the opposite of
+ * that). Follows ADR-0004's "a failed call fails visibly, never a silent
+ * retry/fallback" spirit: this is never caught and retried, just surfaced
+ * with a clear, specific message naming the provider and the exact timeout
+ * that elapsed, instead of a generic `TypeError: fetch failed` or an
+ * indefinite hang.
  */
 export class ModelCallTimeoutError extends Error {
   constructor(
@@ -171,9 +206,10 @@ export class ModelCallTimeoutError extends Error {
  * construction (a `fetch` option threaded through to `createAnthropic`/
  * `createOpenAI` does nothing on its own unless something actually attaches
  * an `AbortSignal` to each request, which is what this does). A caller-
- * supplied `signal` in `init` is honored too -- either one aborting the
- * request is enough -- while `timedOut` specifically tracks *our* timer
- * firing, so a caller-initiated abort is never misreported as a timeout.
+ * supplied `signal` in `init` (the AI SDK doesn't pass one today, but a
+ * future version might) is honored too -- either one aborting the request is
+ * enough -- while `timedOut` specifically tracks *our* timer firing, so a
+ * caller-initiated abort is never misreported as a timeout.
  */
 function createTimeoutFetch(
   fetchImpl: typeof fetch | undefined,
@@ -215,12 +251,14 @@ function createTimeoutFetch(
 
 /**
  * Finds a `ModelCallTimeoutError` anywhere in `err`'s `.cause` chain (and
- * `AggregateError.errors`) -- same walk shape as `isConnectionRefused`
- * below. Whatever the AI SDK/Mastra wrap a fetch rejection into on its way
- * back up through `agent.generate(...)`, the original `ModelCallTimeoutError`
- * thrown by `createTimeoutFetch` above is preserved somewhere in that chain,
- * so unwrapping it here is what lets the caller see the specific, actionable
- * message and type instead of whatever generic wrapper error sits on top.
+ * `AggregateError.errors`) -- same walk shape as `isConnectionRefused` below.
+ * Whatever the AI SDK/Mastra wrap a fetch rejection into on its way back up
+ * through `agent.generate(...)`, the original `ModelCallTimeoutError` thrown
+ * by `createTimeoutFetch` above is preserved somewhere in that chain (as a
+ * `.cause`, directly or nested), so unwrapping it here -- rather than
+ * depending on exactly how many layers of wrapping happen to exist today --
+ * is what lets the CLI/caller see the specific, actionable message and type
+ * instead of whatever generic wrapper error sits on top of it.
  */
 function findTimeoutError(err: unknown): ModelCallTimeoutError | undefined {
   const seen = new Set<unknown>();
@@ -242,7 +280,7 @@ function findTimeoutError(err: unknown): ModelCallTimeoutError | undefined {
  * Resolves a `${ENV_VAR}` placeholder from `env`. Never returns/logs a
  * value that isn't the resolved secret itself, and the error path never
  * echoes the (absent) value -- only the variable *name* -- so a missing key
- * can't leak a secret through an error message or log line.
+ * can't leak a secret through an error message or log line (KAN-1106).
  */
 export function resolveEnvVarPlaceholder(
   placeholder: string,
@@ -262,10 +300,17 @@ export function resolveEnvVarPlaceholder(
 }
 
 // Every failure code that means "the local Ollama server could not be
-// reached" -- not just an outright refusal. `ETIMEDOUT` and `EHOSTUNREACH`
-// are the equivalent plain Node/OS errno codes for a connect-level timeout /
-// unreachable host; `UND_ERR_CONNECT_TIMEOUT` is undici's own connect-timeout
-// code.
+// reached" -- not just an outright refusal. Verified empirically (see the
+// PR description / commit message for finding #7) rather than guessed:
+// pointing Node's built-in (undici-backed) `fetch` at a non-routable address
+// with a short connect timeout reproduces a real connect-timeout failure,
+// and its `.cause` chain bottoms out in an undici `ConnectTimeoutError` with
+// `code: "UND_ERR_CONNECT_TIMEOUT"` -- distinct from the plain OS-level
+// `ECONNREFUSED` the original code already recognized. `ETIMEDOUT` and
+// `EHOSTUNREACH` are the equivalent plain Node/OS errno codes for a
+// connect-level timeout / unreachable host respectively (e.g. when Node's
+// own TCP-level timeout fires, or a lower-level network stack reports the
+// host unreachable, rather than undici's own connect-timeout machinery).
 const UNREACHABLE_CODES: ReadonlySet<string> = new Set([
   "ECONNREFUSED",
   "ENOTFOUND",
@@ -277,8 +322,8 @@ const UNREACHABLE_CODES: ReadonlySet<string> = new Set([
 
 /**
  * True for the shape a Node/undici `fetch` rejection takes when the local
- * Ollama server can't be reached at all -- refused, timed out connecting, or
- * otherwise unreachable (see `UNREACHABLE_CODES` above) -- walked through
+ * Ollama server can't be reached at all -- refused, timed out connecting,
+ * or otherwise unreachable (see `UNREACHABLE_CODES` above) -- walked through
  * `.cause` (and `AggregateError.errors`, which undici uses for
  * multi-address connection attempts) since `fetch` itself always throws a
  * generic `TypeError: fetch failed` wrapper.
@@ -322,6 +367,45 @@ function rethrowModelCallError(err: unknown, modelConfig: Model): never {
   wrapOllamaConnectionError(err, modelConfig);
 }
 
+/**
+ * A model answer that broke the structure `generateStructured` asked for (a wrong enum value, a wrong
+ * type, a missing field). Mastra throws one of these by default; it is the model's answer being wrong, not
+ * the call failing, so the caller can show `problems` to the model and ask again (ADR-0038). Anything else
+ * thrown by a model call (a timeout, Ollama unavailable) is still not one of these and is never retried.
+ */
+export class StructuredOutputError extends Error {
+  constructor(
+    message: string,
+    readonly problems: string[],
+    readonly raw: unknown,
+  ) {
+    super(message);
+    this.name = "StructuredOutputError";
+  }
+}
+
+// Mastra's "structured output validation failed" error: `id` identifies it, `details.value` holds the
+// answer text, and the message lists one "- path: problem" line per issue.
+function asStructuredOutputError(err: unknown): StructuredOutputError | undefined {
+  const e = err as { id?: unknown; message?: unknown; details?: { value?: unknown } } | null;
+  if (e?.id !== "STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED") return undefined;
+  const message = String(e.message ?? "");
+  // "Structured output validation failed: - severity: Invalid option ..." (the first issue can follow the
+  // heading on the same line, later ones start a new line).
+  const lines = [
+    ...message.matchAll(/(?:^|\s)-\s+([\w.[\]]+):\s*([^\n]*?)(?=\s*\n|\s+-\s+[\w.[\]]+:|$)/g),
+  ].map((m) => `output.${m[1]}: ${m[2]}`);
+  let raw: unknown = e.details?.value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      // keep the text as it came
+    }
+  }
+  return new StructuredOutputError(message, lines.length > 0 ? lines : [message], raw);
+}
+
 export interface GenerateTextInput {
   instructions: string;
   prompt: string;
@@ -335,7 +419,10 @@ export interface GenerateStructuredInput<T> {
 
 /**
  * The engine's model-call seam. In production this is backed by a real
- * `@mastra/core` Agent (see `createMastraModelClient`).
+ * `@mastra/core` Agent (see `createMastraModelClient`); tests inject a fake
+ * implementation so guardrail/HITL/condition logic is fully exercisable
+ * without a live network call (AGENTS.md's testing approach) while the
+ * Mastra-backed path itself stays exactly what a real run uses.
  */
 export interface ModelClient {
   generateText(input: GenerateTextInput): Promise<string>;
@@ -344,33 +431,56 @@ export interface ModelClient {
 
 export interface CreateMastraModelClientOptions {
   /**
-   * Overrides the `fetch` implementation the underlying AI SDK provider
-   * uses -- mainly useful for testing this file itself; production callers
-   * omit this. Still gets wrapped in the timeout-enforcing fetch below.
+   * Test-only seam (also used by e2e's offline proof, KAN-1113): overrides
+   * the `fetch` implementation the underlying AI SDK provider uses, so a
+   * connection failure -- or a canned response -- can be exercised
+   * deterministically without a real Ollama server (or cloud endpoint)
+   * reachable. Production callers omit this; `undefined` here just means
+   * "use the AI SDK's own default fetch". Still gets wrapped in the
+   * timeout-enforcing fetch below -- this is the *underlying* fetch a test
+   * substitutes in, not an escape hatch from the timeout itself.
    */
   fetchImpl?: typeof fetch;
   /**
-   * Overrides the resolved timeout for this client -- takes precedence over
-   * `agent.model.timeout_ms` on the spec, which in turn takes precedence
-   * over `DEFAULT_MODEL_TIMEOUT_MS`.
+   * CLI override (`kampong run --timeout <ms>`, KAN-1185): takes precedence
+   * over `agent.model.timeout_ms` on the spec, which in turn takes
+   * precedence over `DEFAULT_MODEL_TIMEOUT_MS`, so a CI job can tune this
+   * without editing the spec file.
    */
   timeoutMs?: number;
   /**
-   * When set, used as the cloud provider's API key directly instead of
-   * resolving the spec's `${ENV_VAR}` `api_key` placeholder against `env`.
+   * Hosted-mode key seam (KAN-1230, ADR-0016). When set, this is used as the
+   * cloud provider's API key directly, INSTEAD of resolving the spec's
+   * `${ENV_VAR}` `api_key` placeholder against `env`. `packages/server`
+   * passes the decrypted BYOK key for the request's workspace here, at the
+   * moment a run actually needs to call the provider -- so a workspace's real
+   * key never lives in `process.env` and never has to be a spec placeholder
+   * server-side. Local mode (`kampong dev`/`run`) omits this and the existing
+   * `${ENV_VAR}` resolution is unchanged. ADR-0016 framed this as living on
+   * the `env` seam; the actual byte-for-byte decryption stays in
+   * `packages/server` (where the database and root key are -- the engine must
+   * not depend on either), and this option is the intentional injection point
+   * it feeds. Ignored for providers that need no key (`ollama`).
    */
   apiKeyOverride?: string;
-  /** When set, overrides the spec's `agent.model.base_url`. */
+  /**
+   * Hosted-mode base-URL seam (KAN-1230, ADR-0013). When set, overrides the
+   * spec's `agent.model.base_url` -- `packages/server` points every cloud
+   * provider call at the self-hosted LiteLLM gateway's internal address
+   * without rewriting each spec. Omitted in local mode, where the spec's own
+   * `base_url` (or the provider default) still applies.
+   */
   baseUrlOverride?: string;
 }
 
 /**
- * Builds a real Mastra `Agent` from the spec's role/goal/model and wraps it
- * behind `ModelClient`. Throws synchronously -- before any network call is
- * made -- on a missing/invalid model config or a missing BYOK env var, so a
- * caller surfaces a specific, immediate error rather than a run that fails
- * deep inside its first step. `api_key` is only resolved/required for the
- * cloud providers; "ollama" has none to resolve.
+ * Builds a real Mastra `Agent` from the spec's role/goal/model (KAN-1103)
+ * and wraps it behind `ModelClient`. Throws synchronously -- before any
+ * network call is made -- on a missing/invalid model config or a missing
+ * BYOK env var, so a caller (the CLI server, `kampong run`) can surface a
+ * specific, immediate error rather than a run that fails deep inside its
+ * first step. `api_key` is only resolved/required for the cloud providers;
+ * "ollama" has none to resolve.
  */
 export function createMastraModelClient(
   spec: AgentSpec,
@@ -392,6 +502,9 @@ export function createMastraModelClient(
   let apiKey = "";
   if (CLOUD_PROVIDERS.has(modelConfig.provider)) {
     if (options.apiKeyOverride !== undefined) {
+      // Hosted mode (KAN-1230): the caller already resolved the workspace's
+      // real key (decrypted from byok_keys, ADR-0016) and injects it here, so
+      // the spec needs no `${ENV_VAR}` placeholder server-side.
       apiKey = options.apiKeyOverride;
     } else {
       if (!modelConfig.api_key) {
@@ -433,6 +546,8 @@ export function createMastraModelClient(
         const result = await agent.generate(prompt, { instructions, structuredOutput: { schema } });
         return result.object as T;
       } catch (err) {
+        const wrong = asStructuredOutputError(err);
+        if (wrong) throw wrong;
         rethrowModelCallError(err, modelConfig);
       }
     },

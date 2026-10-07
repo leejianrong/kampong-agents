@@ -55,7 +55,7 @@ describe("schemaNodeToZod", () => {
     }
   });
 
-  it("parses a conforming value and rejects a wrong type or enum value", () => {
+  it("parses a conforming value and rejects a bad enum value and a missing required field", () => {
     const zodSchema = schemaNodeToZod(node);
     expect(zodSchema.safeParse({ severity: "low", confidence: 0.5 }).success).toBe(true);
     expect(zodSchema.safeParse({ severity: "mid", confidence: 0.5 }).success).toBe(false);

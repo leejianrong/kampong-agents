@@ -51,3 +51,21 @@ after the retry.
 
 Known, and not fixed here: the older `confidence_gate` request without an `output_schema` has the same
 open-object problem (its `result` is a `z.record`) and fails the same way on OpenAI-family models.
+
+### What the review of that fix added
+
+- **Mastra throws when the answer breaks the structure** (its default `errorStrategy` is strict), so with a
+  real structural schema a wrong enum value, a wrong type or a missing field would have failed the step on
+  the first answer, with no retry. `generateStructured` now turns that error into `StructuredOutputError`
+  (the issues as `output.<path>: <problem>`, and the raw answer), and the engine retries once on it like any
+  other schema failure. Only that error is retried; a timeout or an unavailable model still fails at once
+  (ADR-0004). A test drives this through the real Mastra agent with a canned HTTP response, since a fake
+  `ModelClient` cannot reproduce the throw.
+- **No open ends.** A strict provider needs every object's properties and every array's items spelled out, so
+  an `output_schema` with an object that has no `properties`, or an array with no `items`, is a validation
+  error at load rather than a silently closed `{}`.
+- **Known limits, not fixed.** On OpenAI-style providers (OpenAI, OpenRouter and Ollama go through the same
+  compatibility layer) Mastra advertises every optional property as required-but-nullable, so a model may
+  fill an optional field with `[]` or `""` instead of leaving it out. A number, integer or boolean `enum` is
+  not in the provider shape (the engine still enforces it, with the retry). A `null` on an optional field is
+  accepted by that layer but not by Anthropic's, where it counts as a schema failure and is retried.

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { requestOptionalFields } from "./request.js";
-import { schemaNodeSchema } from "./schema-node.js";
+import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 
 // Trimmed single-agent AgentSpec (ADR-0001: no multi-agent/sub_agents field
 // in v1, but the shape below leaves room to add one later without breaking
@@ -357,6 +357,30 @@ export const agentSpecSchema = z
         });
         return;
       }
+      // A provider that enforces structured output (OpenAI's strict mode) needs every object's properties and
+      // every array's items spelled out; an open object would be closed to `{}` and an untyped list refused.
+      const openEnds = (node: SchemaNode, path: (string | number)[]): void => {
+        if (node.type === "object" && Object.keys(node.properties ?? {}).length === 0) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              "an object in output_schema must list its properties (open objects are not supported)",
+            path,
+          });
+        }
+        if (node.type === "array" && !node.items) {
+          ctx.addIssue({
+            code: "custom",
+            message: "an array in output_schema must declare its items",
+            path,
+          });
+        }
+        for (const [name, child] of Object.entries(node.properties ?? {})) {
+          openEnds(child, [...path, "properties", name]);
+        }
+        if (node.items) openEnds(node.items, [...path, "items"]);
+      };
+      openEnds(step.output_schema, at);
       if (step.confidence_gate) {
         const confidence = step.output_schema.properties?.confidence;
         if (

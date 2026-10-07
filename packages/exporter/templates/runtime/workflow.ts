@@ -15,7 +15,7 @@ import {
   substitutePlaceholders,
   type HttpToolCallOptions,
 } from "./http-tool.js";
-import type { ModelClient } from "./model.js";
+import { StructuredOutputError, type ModelClient } from "./model.js";
 import type { ModuleFixtureSeam } from "./component.js";
 import {
   evaluateCondition as evaluateExpressionCondition,
@@ -458,11 +458,21 @@ async function runStructuredStep(
   let attemptPrompt = base;
   let problems: string[] = [];
   for (let attempt = 0; attempt <= OUTPUT_SCHEMA_RETRIES; attempt++) {
-    const raw = await deps.model.generateStructured({
-      instructions,
-      prompt: attemptPrompt,
-      schema: providerSchema,
-    });
+    let raw: unknown;
+    try {
+      raw = await deps.model.generateStructured({
+        instructions,
+        prompt: attemptPrompt,
+        schema: providerSchema,
+      });
+    } catch (err) {
+      // The model answered, but not in the shape: ask once more, naming what was wrong.
+      if (!(err instanceof StructuredOutputError)) throw err;
+      raw = err.raw;
+      problems = err.problems;
+      attemptPrompt = retryPrompt(base, problems, raw);
+      continue;
+    }
     const candidate = isPlainObject(raw) ? applySchemaDefaults(outputSchema, raw) : raw;
     problems = validateAgainstSchema(outputSchema, candidate, "output");
     if (problems.length === 0) {
@@ -476,17 +486,20 @@ async function runStructuredStep(
         return { output: candidate, confidence };
       }
     }
-    attemptPrompt = [
-      base,
-      `Your previous answer was rejected: ${problems.join("; ")}.`,
-      `Previous answer: ${JSON.stringify(raw)}`,
-      "Answer again with a corrected JSON object.",
-    ].join("\n");
+    attemptPrompt = retryPrompt(base, problems, raw);
   }
   throw new Error(
     `the model's answer did not match output_schema after ${OUTPUT_SCHEMA_RETRIES} retry: ${problems.join("; ")}`,
   );
 }
+
+const retryPrompt = (base: string, problems: string[], raw: unknown): string =>
+  [
+    base,
+    `Your previous answer was rejected: ${problems.join("; ")}.`,
+    `Previous answer: ${raw === undefined ? "(no answer)" : JSON.stringify(raw)}`,
+    "Answer again with a corrected JSON object.",
+  ].join("\n");
 
 function buildStepPrompt(
   step: Extract<WorkflowStep, { action: string }>,
