@@ -124,6 +124,7 @@ export interface ModuleOp {
   effect: OpEffect;
   input?: SchemaNode;
   output?: SchemaNode;
+  retry?: Retry;
 }
 
 export interface RestComponentManifest extends ComponentHeader {

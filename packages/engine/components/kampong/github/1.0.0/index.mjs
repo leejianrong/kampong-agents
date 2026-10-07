@@ -196,9 +196,33 @@ async function request(ctx, method, path, body, headers = {}) {
   if (!response.ok) {
     // `status` lets `kampong doctor` tell a refused token (401) from a service that is down, and lets a
     // recorded failure replay. The runner scrubs any secret from the message.
-    throw Object.assign(new Error(await describeFailure(response)), { status: response.status });
+    throw Object.assign(new Error(await describeFailure(response)), {
+      status: response.status,
+      ...retryHints(response),
+    });
   }
   return response;
+}
+
+// What the engine's retry policy needs. A 403 or 429 carrying Retry-After is GitHub's secondary rate limit:
+// it refused the call before acting, so even a write may be repeated. A spent primary limit says the same
+// through x-ratelimit-reset (the engine will not wait longer than the op's max_delay_ms).
+function retryHints(response) {
+  const hints = {};
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter >= 0 && response.headers.has("retry-after")) {
+    hints.retryAfterMs = retryAfter * 1000;
+  }
+  const refused = response.status === 429 || response.status === 403;
+  const spent = response.headers.get("x-ratelimit-remaining") === "0";
+  if (refused && (hints.retryAfterMs !== undefined || spent)) {
+    hints.retryable = true;
+    const reset = Number(response.headers.get("x-ratelimit-reset"));
+    if (hints.retryAfterMs === undefined && Number.isFinite(reset) && reset > 0) {
+      hints.retryAfterMs = Math.max(0, reset * 1000 - Date.now());
+    }
+  }
+  return hints;
 }
 
 // GitHub answers errors as { "message": "..." }; a rate limit is a 403 or 429 with the budget in headers.

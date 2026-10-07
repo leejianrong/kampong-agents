@@ -15,6 +15,7 @@ auth:
       probe: { op: get_user }
 ops:
   get_user:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: Check the token
     description: Reads the authenticated user (GET /user) to confirm the token is accepted. Changes nothing.
     effect: read
@@ -23,6 +24,7 @@ ops:
       properties:
         login: { type: string }
   get_pull_request:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: Get a pull request
     description: Title, description, state, branches, author and change counts of one pull request.
     effect: read
@@ -54,6 +56,7 @@ ops:
         deletions: { type: integer }
         html_url: { type: string }
   get_pull_diff:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: Get a pull request's diff
     description: >-
       The unified diff as text. A diff larger than max_chars is cut at a file boundary and says so
@@ -81,6 +84,7 @@ ops:
         files_included: { type: integer }
         files_omitted: { type: integer }
   list_pull_files:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: List the files a pull request changes
     description: >-
       Every changed file, following GitHub's pages (it returns 30 by default and stops there). Reads at
@@ -112,6 +116,7 @@ ops:
         total: { type: integer }
         truncated: { type: boolean }
   create_issue_comment:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: Comment on a pull request or issue
     description: Adds a comment to the conversation of a pull request or issue.
     effect: write
@@ -129,6 +134,7 @@ ops:
         id: { type: integer }
         html_url: { type: string }
   create_review:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
     title: Review a pull request
     description: >-
       Submits a review with an overall comment and, optionally, comments on lines of the diff. Event

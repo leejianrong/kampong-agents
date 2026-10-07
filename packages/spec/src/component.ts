@@ -284,6 +284,11 @@ const moduleOpSchema = z
     effect: effectSchema,
     input: inputSchema.optional(),
     output: schemaNodeSchema.optional(),
+    /**
+     * Re-attempts after a failure the module reports as retryable: an error carrying an HTTP-style `status`
+     * of 429, 408 or 5xx (a read op only, except 429), or `retryable: true` and an optional `retryAfterMs`.
+     */
+    retry: retrySchema.optional(),
     fixture_key: z.array(z.string()).optional(),
   })
   .strict();
