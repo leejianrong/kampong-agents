@@ -143,4 +143,29 @@ describe("module op retry", () => {
     );
     expect(runner.calls).toBe(1);
   });
+
+  it("does not run the module again once the call was cancelled during the wait", async () => {
+    const controller = new AbortController();
+    const runner = failing([err("slow down", { status: 429 })]);
+    const c: Clock = {
+      now: () => 0,
+      sleep: async () => controller.abort(), // cancelled while backing off
+    };
+    const e = await invokeOp(
+      manifest(),
+      "write",
+      {},
+      { runner, clock: c, signal: controller.signal },
+    ).catch((x) => x);
+    expect(e).toBeInstanceOf(ToolCallError);
+    expect(e.code).toBe("timeout");
+    expect(runner.calls).toBe(1);
+  });
+
+  it("ignores a retryAfterMs that is not a usable number", async () => {
+    const runner = failing([err("x", { status: 429, retryAfterMs: Number.NaN })]);
+    const c = clock();
+    await invokeOp(manifest(), "read", {}, { runner, clock: c });
+    expect(c.slept).toEqual([10]);
+  });
 });

@@ -650,7 +650,10 @@ async function runModule(
       } catch (err) {
         if (!policy || !moduleMayRetry(err, opDef.effect)) throw err;
         const retryAfterMs = (err as { retryAfterMs?: unknown }).retryAfterMs;
-        const wait = typeof retryAfterMs === "number" ? retryAfterMs : undefined;
+        const wait =
+          typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) && retryAfterMs >= 0
+            ? retryAfterMs
+            : undefined;
         const cap = policy.max_delay_ms ?? MODULE_RETRY_MAX_DELAY_MS;
         if (attempt >= maxAttempts || (wait !== undefined && wait > cap)) {
           const why =
@@ -664,6 +667,15 @@ async function runModule(
         const base = policy.base_ms ?? MODULE_RETRY_BASE_MS;
         const backoff = policy.backoff === "fixed" ? base : base * 2 ** (attempt - 1);
         await clock.sleep(Math.min(Math.max(backoff, wait ?? 0), cap));
+        // The race below has already reported a timeout or cancellation; a module that ignores
+        // ctx.signal must not be run again (and repeat a write) after that.
+        if (signal.aborted) {
+          throw new ToolCallError(
+            `${label}: cancelled before the module was retried`,
+            "timeout",
+            false,
+          );
+        }
       }
     }
   };
