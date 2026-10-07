@@ -11,6 +11,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, createApiClient, type ApiClient } from "./api.js";
 import { Canvas } from "./Canvas.js";
+import { DoctorPanel } from "./DoctorPanel.js";
+import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
@@ -39,7 +41,7 @@ export interface AppProps {
   onUnauthorized?: () => void;
 }
 
-type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null;
+type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks";
 
 export function App({
   apiBaseUrl = "",
@@ -167,6 +169,33 @@ export function App({
     return true;
   }
 
+  // Pins one component through the server, which decides whether a wider grant needs consent, and keeps
+  // the refreshed catalog so the form shows the new state without reopening.
+  async function handlePinComponent(
+    use: string,
+    allowWiderPermissions: boolean,
+    reviewedDigest: string,
+  ): Promise<PinResult> {
+    if (!api.pinComponent) return { ok: false, error: "This server cannot pin components." };
+    try {
+      const result = await api.pinComponent(use, {
+        allowWiderPermissions,
+        expectedDigest: reviewedDigest,
+      });
+      // On a refusal the server may send the catalog as it is now (the files changed under the review), so
+      // the form shows what is really there.
+      if (result.catalog) setCatalog(result.catalog);
+      if (!result.success)
+        return { ok: false, error: result.error ?? "Could not pin the component." };
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Could not pin the component.",
+      };
+    }
+  }
+
   async function handleAddTool(tool: Tool) {
     if (!(await applyPatchOrReportError([{ op: "add", path: ["agent", "tools"], value: tool }])))
       return;
@@ -216,6 +245,14 @@ export function App({
             Set Guardrails
           </button>
           <span className="md3-app__toolbar-spacer" />
+          {api.runDoctor && (
+            <button
+              className="md3-button md3-button-text"
+              onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
+            >
+              Checks
+            </button>
+          )}
           <button
             className="md3-button md3-button-filled"
             onClick={() => setOpenForm(openForm === "run" ? null : "run")}
@@ -275,6 +312,7 @@ export function App({
                 components={catalog?.components}
                 componentProblems={catalog?.problems}
                 references={references}
+                onPinComponent={api.pinComponent ? handlePinComponent : undefined}
                 onSubmit={(tool) => void handleAddTool(tool)}
                 onCancel={() => setOpenForm(null)}
               />
@@ -307,6 +345,11 @@ export function App({
         {openForm === "run" && (
           <div className="md3-app__run-dock">
             <RunPanel api={api} />
+          </div>
+        )}
+        {openForm === "checks" && api.runDoctor && (
+          <div className="md3-app__run-dock">
+            <DoctorPanel run={(options) => api.runDoctor!(options)} />
           </div>
         )}
         <YamlPreview source={source} />

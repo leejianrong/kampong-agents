@@ -352,7 +352,10 @@ async function runDevCommand(args: string[], io: CliIO): Promise<number> {
     return EXIT_EXECUTION_FAILURE;
   }
 
-  const app = createDevServer({ specPath, layoutPath, staticDir });
+  // Loopback is always answered; a host the author bound on purpose is too, and every interface means
+  // they meant to be reached by whatever name.
+  const allowedHosts = host === "0.0.0.0" || host === "::" ? ["*"] : [host];
+  const app = createDevServer({ specPath, layoutPath, staticDir, allowedHosts });
 
   try {
     await app.listen({ port, host });

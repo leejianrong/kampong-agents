@@ -21,6 +21,9 @@ import {
   permissionsOf,
   type AgentSpec,
   type ComponentCatalog,
+  type ComponentCatalogEntry,
+  type ComponentManifest,
+  type ComponentPinStatus,
   type Lockfile,
 } from "@kampong/spec";
 
@@ -87,7 +90,28 @@ export type LockOutcome =
       /** What each newly pinned or updated component may do, for the author to read. */
       reviewed: { use: string; summary: string }[];
     }
-  | { ok: false; message: string };
+  | {
+      ok: false;
+      message: string;
+      /** The files are not the ones the caller reviewed. */ stale?: boolean;
+    };
+
+/**
+ * What a component may do now that the pin it was reviewed under did not allow. A pin that recorded
+ * what the component could do lets us tell a code change from a wider grant; with no record there is
+ * nothing to compare, so anything it may do counts as new. The lock and the canvas both use this, so
+ * they cannot disagree about whether consent is needed.
+ */
+function widenedSince(
+  before: ReturnType<typeof permissionsOf> | undefined,
+  now: ReturnType<typeof permissionsOf>,
+): string[] {
+  if (before !== undefined) return diffPermissions(before, now);
+  const summary = describePermissions(now);
+  return summary === "no permissions"
+    ? []
+    : [`no record of what it was reviewed for; it may now: ${summary}`];
+}
 
 export function componentUsesOf(spec: AgentSpec): string[] {
   const uses = new Set<string>();
@@ -105,9 +129,21 @@ export function componentUsesOf(spec: AgentSpec): string[] {
 export async function lockComponents(
   spec: AgentSpec,
   specPath: string,
-  { update, allowWiderPermissions = false }: { update: boolean; allowWiderPermissions?: boolean },
+  options: { update: boolean; allowWiderPermissions?: boolean },
 ): Promise<LockOutcome> {
-  const uses = componentUsesOf(spec);
+  return lockUses(componentUsesOf(spec), specPath, options);
+}
+
+/** `lockComponents` for an explicit list of `id@version`, which is how the canvas pins one component. */
+export async function lockUses(
+  uses: string[],
+  specPath: string,
+  {
+    update,
+    allowWiderPermissions = false,
+    expectedDigest,
+  }: { update: boolean; allowWiderPermissions?: boolean; expectedDigest?: string },
+): Promise<LockOutcome> {
   if (uses.length === 0) {
     return { ok: true, added: [], unchanged: [], updated: [], none: true, reviewed: [] };
   }
@@ -140,6 +176,15 @@ export async function lockComponents(
     } catch (err) {
       return { ok: false, message: `${use}: ${(err as Error).message}` };
     }
+    // A caller that showed an author a digest (the canvas) must pin that one: files edited in between
+    // would otherwise be pinned unreviewed.
+    if (expectedDigest !== undefined && uses.length === 1 && digest !== expectedDigest) {
+      return {
+        ok: false,
+        stale: true,
+        message: `${use} changed since you reviewed it; review it again before pinning.`,
+      };
+    }
     const current = Object.hasOwn(components, use) ? components[use]!.digest : undefined;
     if (current === undefined) {
       components[use] = { digest, permissions };
@@ -154,16 +199,7 @@ export async function lockComponents(
         backfilled.push(use);
       }
     } else if (update) {
-      // A pin that recorded what the component could do lets us tell a code change from a wider grant.
-      const before = components[use]!.permissions;
-      const summary = describePermissions(permissions);
-      // With no record there is nothing to compare, so anything the component may do counts as new.
-      const wider =
-        before === undefined
-          ? summary === "no permissions"
-            ? []
-            : [`no record of what it was reviewed for; it may now: ${summary}`]
-          : diffPermissions(before, permissions);
+      const wider = widenedSince(components[use]!.permissions, permissions);
       if (wider.length > 0 && !allowWiderPermissions) {
         widened.push(`${use}: ${wider.join("; ")}`);
         continue;
@@ -218,6 +254,22 @@ export async function componentCatalogFor(specPath: string): Promise<ComponentCa
   }
 }
 
+function pinStatusFor(
+  entry: ComponentCatalogEntry,
+  firstParty: boolean,
+  lock: Lockfile | undefined,
+  manifestPermissions: ReturnType<typeof permissionsOf>,
+): ComponentPinStatus | undefined {
+  if (firstParty) return { state: "first-party" };
+  if (!lock) return undefined;
+  const ref = `${entry.id}@${entry.version}`;
+  if (!Object.hasOwn(lock.components, ref)) return { state: "unpinned" };
+  const pinned = lock.components[ref]!;
+  if (pinned.digest === entry.digest) return { state: "pinned" };
+  const widened = widenedSince(pinned.permissions, manifestPermissions);
+  return { state: "changed", ...(widened.length > 0 && { widened }) };
+}
+
 async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
   // One scan and one hash per component. The first-party components ship tested, so only the project's
   // own folder can report problems; it also cannot supply a kampong/* component (the registry refuses).
@@ -225,11 +277,23 @@ async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
     createFirstPartyRegistry().resolveAll(),
     new DirectoryComponentRegistry(componentsDirFor(specPath)).resolveAll(),
   ]);
+  // A lockfile that cannot be read is a problem to show, not a reason to hide the components.
+  const problems = [...firstParty.problems, ...user.problems];
+  let lock: Lockfile | undefined;
+  try {
+    lock = readLockfile(specPath);
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
+  const entry =
+    (firstPartyEntry: boolean) => (c: { manifest: ComponentManifest; digest: string }) => {
+      const base = catalogEntryFromManifest(c.manifest, c.digest);
+      const pin = pinStatusFor(base, firstPartyEntry, lock, permissionsOf(c.manifest));
+      return pin ? { ...base, pin } : base;
+    };
   return {
-    components: [...firstParty.components, ...user.components].map(({ manifest, digest }) =>
-      catalogEntryFromManifest(manifest, digest),
-    ),
-    problems: [...firstParty.problems, ...user.problems],
+    components: [...firstParty.components.map(entry(true)), ...user.components.map(entry(false))],
+    problems,
   };
 }
 
