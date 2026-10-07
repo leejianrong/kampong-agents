@@ -144,7 +144,7 @@ agent:
     - name: lookup
       action: http_request
       method: GET
-      url: "https://x.test/{{ trigger.alerts[0].id }}?r={{ vars.region }}"
+      url: "https://x.test/{{ $encodeUrlComponent(trigger.id) }}?r={{ vars.region }}"
   workflow:
     - step: triage
       action: classify

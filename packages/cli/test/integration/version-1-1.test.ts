@@ -141,7 +141,7 @@ agent:
   workflow:
     - step: ask
       type: approval
-      message: "event={{ trigger.headers.\`x-event\` }} n={{ trigger.n }} auth={{ $exists(trigger.headers.authorization) }} cookie={{ $exists(trigger.headers.cookie) }}"
+      message: "event={{ trigger.headers.\`x-event\` }} n={{ trigger.n }} auth={{ $exists(trigger.headers.authorization) }} cookie={{ $exists(trigger.headers.cookie) }} key={{ $exists(trigger.headers.\`x-api-key\`) }} sig={{ $exists(trigger.headers.\`x-hub-signature-256\`) }}"
 `;
 
     it("hands the webhook's headers and JSON body to expressions, never its credentials", async () => {
@@ -157,6 +157,8 @@ agent:
             "x-event": "push",
             authorization: "Bearer secret-token",
             cookie: "session=abc",
+            "x-api-key": "key-123",
+            "x-hub-signature-256": "sha256=abc",
           },
           payload: { n: 4 },
         });
@@ -167,8 +169,9 @@ agent:
           await new Promise((r) => setTimeout(r, 25));
           text = JSON.stringify((await app.inject({ method: "GET", url: `/runs/${id}` })).json());
         }
-        expect(text).toContain("event=push n=4 auth=false cookie=false");
+        expect(text).toContain("event=push n=4 auth=false cookie=false key=false sig=false");
         expect(text).not.toContain("secret-token");
+        expect(text).not.toContain("key-123");
       } finally {
         await app.close();
       }

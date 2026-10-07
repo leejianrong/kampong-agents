@@ -25,6 +25,8 @@ export interface ExpressionLimits {
   stringChars: number;
   /** Longest list any node may produce. */
   listItems: number;
+  /** Longest list `$sort` or `$distinct` will take. */
+  sortItems: number;
   /** Longest expression accepted. */
   sourceChars: number;
 }
@@ -35,6 +37,7 @@ export const DEFAULT_EXPRESSION_LIMITS: ExpressionLimits = {
   steps: 2_000_000,
   stringChars: 1_000_000,
   listItems: 200_000,
+  sortItems: 10_000,
   sourceChars: 4000,
 };
 
@@ -104,11 +107,22 @@ function walk(node: unknown, visit: (n: Node) => void): void {
   }
 }
 
-let padPromise: Promise<(...args: unknown[]) => unknown> | undefined;
-/** JSONata's own `$pad`, fetched once, so a capped wrapper can delegate to it. */
-function originalPad(): Promise<(...args: unknown[]) => unknown> {
-  padPromise ??= jsonata("$pad").evaluate({}) as Promise<(...args: unknown[]) => unknown>;
-  return padPromise;
+interface NativeFunction {
+  implementation: (this: unknown, ...args: unknown[]) => unknown;
+  signature?: { definition?: string };
+}
+const natives = new Map<string, Promise<NativeFunction>>();
+/** JSONata's own built-in by name (its function object), fetched once, so a guarded wrapper can delegate to it. */
+function originalNative(name: string): Promise<NativeFunction> {
+  let found = natives.get(name);
+  if (!found) {
+    found = (jsonata(`$${name}`).evaluate({}) as Promise<NativeFunction>).catch((err: unknown) => {
+      natives.delete(name); // never cache a failure
+      throw err;
+    });
+    natives.set(name, found);
+  }
+  return found;
 }
 
 const ENTRY = Symbol.for("jsonata.__evaluate_entry");
@@ -189,21 +203,52 @@ export async function evaluateExpression(
     }
   });
 
-  // Defence in depth: the denied built-ins throw if anything still reaches them, and `$pad` allocates before
-  // any hook can see the result, so its width is capped up front.
+  const [pad, sort, distinct] = await Promise.all(
+    ["pad", "sort", "distinct"].map((name) => originalNative(name)),
+  );
+  // `$sort` and `$distinct` do their work inside one native call, which no per-node hook or timeout can
+  // interrupt, and `$sort` uses memory that grows with the square of the list (60 000 numbers exhausted a
+  // 2 GB heap), so the list they are given is capped up front. `$pad` allocates before any hook can see
+  // the result, so its width is. Each keeps JSONata's own signature, so `$ ~> $sort()` and argument checks
+  // still work.
+  const guard = (name: string, native: NativeFunction, check: (args: unknown[]) => void) => {
+    expr.registerFunction(
+      name,
+      function (this: unknown, ...args: unknown[]) {
+        check(args);
+        return native.implementation.apply(this, args);
+      },
+      native.signature?.definition,
+    );
+  };
+  guard("pad", pad!, (args) => {
+    if (typeof args[1] === "number" && Math.abs(args[1]) > lim.stringChars) {
+      throw fail(source, `$pad width ${args[1]} is larger than ${lim.stringChars}`, "K0006");
+    }
+  });
+  for (const [name, native] of [
+    ["sort", sort!],
+    ["distinct", distinct!],
+  ] as const) {
+    guard(name, native, (args) => {
+      const list = args[0];
+      if (Array.isArray(list) && list.length > lim.sortItems) {
+        throw fail(
+          source,
+          `$${name} was given ${list.length} items; the limit is ${lim.sortItems}`,
+          "K0011",
+        );
+      }
+    });
+  }
+
+  // Defence in depth: the denied built-ins throw if anything still reaches them.
   const refuse = (name: string) => () => {
     throw fail(source, `$${name} is not available`, "K0003");
   };
-  const pad = await originalPad();
-  const bindings: Record<string, unknown> = {
-    ...Object.fromEntries(DENIED_FUNCTIONS.map((name) => [name, refuse(name)])),
-    pad: (...args: unknown[]) => {
-      if (typeof args[1] === "number" && Math.abs(args[1]) > lim.stringChars) {
-        throw fail(source, `$pad width ${args[1]} is larger than ${lim.stringChars}`, "K0006");
-      }
-      return pad(...args);
-    },
-  };
+  const bindings: Record<string, unknown> = Object.fromEntries(
+    DENIED_FUNCTIONS.map((name) => [name, refuse(name)]),
+  );
 
   let result: unknown;
   try {
@@ -309,6 +354,58 @@ function asText(source: string, value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** How the resolved text is going to be used, so a value cannot be read back as author text. */
+export interface ResolveOptions {
+  limits?: Partial<ExpressionLimits>;
+  /** Keys whose values are left alone (resolveTemplatesDeep). */
+  skip?: ReadonlySet<string>;
+  /**
+   * Applied to every string that comes from data (an evaluated value, text built from one, and strings
+   * inside a list or object value) and not to the author's own text. A later pass that reads `${ENV}` or
+   * `{name}` tokens uses it to keep a webhook body from smuggling one in.
+   */
+  escapeData?: (text: string) => string;
+  /** One time budget (ms) shared by every expression in the call; each evaluation gets what is left. */
+  totalTimeoutMs?: number;
+}
+
+function escapeDeep(value: unknown, escape: (text: string) => string): unknown {
+  if (typeof value === "string") return escape(value);
+  if (Array.isArray(value)) return value.map((v) => escapeDeep(v, escape));
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [escape(k), escapeDeep(v, escape)]),
+    );
+  }
+  return value;
+}
+
+interface Budget {
+  evaluate(source: string, data: unknown): Promise<unknown>;
+}
+
+function budgetFor(options: ResolveOptions): Budget {
+  const lim = { ...DEFAULT_EXPRESSION_LIMITS, ...options.limits };
+  const total = options.totalTimeoutMs ?? lim.timeoutMs;
+  const deadline = Date.now() + total;
+  return {
+    async evaluate(source, data) {
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        throw fail(
+          source,
+          `The expressions in this field took longer than ${total}ms in all`,
+          "K0012",
+        );
+      }
+      return evaluateExpression(source, data, {
+        ...options.limits,
+        timeoutMs: Math.min(lim.timeoutMs, left),
+      });
+    },
+  };
+}
+
 /**
  * Resolves the `{{ expression }}` spans in a string. A string that is exactly one span keeps the value's
  * type (a number stays a number, a list a list), so a component input can be filled with real data; text
@@ -318,13 +415,16 @@ function asText(source: string, value: unknown): string {
 export async function resolveTemplate(
   text: string,
   data: unknown,
-  limits?: Partial<ExpressionLimits>,
+  options: ResolveOptions | Partial<ExpressionLimits> = {},
+  budget: Budget = budgetFor(normaliseOptions(options)),
 ): Promise<unknown> {
+  const opts = normaliseOptions(options);
+  const escape = opts.escapeData;
   const spans = templateSpans(text);
   if (spans.length === 0) return text;
   const only = spans.length === 1 && spans[0]!.start === 0 && spans[0]!.end === text.length;
   if (only) {
-    const value = await evaluateExpression(spans[0]!.expression, data, limits);
+    const value = await budget.evaluate(spans[0]!.expression, data);
     if (value === undefined) {
       throw fail(
         spans[0]!.expression,
@@ -332,15 +432,16 @@ export async function resolveTemplate(
         "K0010",
       );
     }
-    return value;
+    return escape ? escapeDeep(value, escape) : value;
   }
   let out = "";
   let at = 0;
   for (const span of spans) {
     out += text.slice(at, span.start);
-    const value = await evaluateExpression(span.expression, data, limits);
+    const value = await budget.evaluate(span.expression, data);
+    let piece: string;
     try {
-      out += asText(span.expression, value);
+      piece = asText(span.expression, value);
     } catch {
       throw fail(
         span.expression,
@@ -348,27 +449,45 @@ export async function resolveTemplate(
         "K0010",
       );
     }
+    out += escape ? escape(piece) : piece;
     at = span.end;
   }
   return out + text.slice(at);
 }
 
-/** Resolves every string in a value (not the keys), leaving the rest as it is. `skip` names keys whose values are left alone. */
+// `resolveTemplate(text, data, limits)` took the limits directly; an options object is told apart by the keys
+// only it has.
+function normaliseOptions(options: ResolveOptions | Partial<ExpressionLimits>): ResolveOptions {
+  const o = options as Record<string, unknown>;
+  return "limits" in o || "skip" in o || "escapeData" in o || "totalTimeoutMs" in o
+    ? (options as ResolveOptions)
+    : { limits: options as Partial<ExpressionLimits> };
+}
+
+/** Resolves every string in a value (not the keys), leaving the rest as it is. */
 export async function resolveTemplatesDeep(
   value: unknown,
   data: unknown,
-  options: { limits?: Partial<ExpressionLimits>; skip?: ReadonlySet<string> } = {},
+  options: ResolveOptions = {},
 ): Promise<unknown> {
-  if (typeof value === "string") return resolveTemplate(value, data, options.limits);
-  if (Array.isArray(value)) {
-    return Promise.all(value.map((v) => resolveTemplatesDeep(v, data, options)));
-  }
-  if (value !== null && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      out[key] = options.skip?.has(key) ? entry : await resolveTemplatesDeep(entry, data, options);
+  // One budget for the whole structure, and one evaluation at a time, so a field with many slow spans
+  // cannot take many times the limit, and which error is reported does not depend on timing.
+  const budget = budgetFor(options);
+  const walk = async (node: unknown): Promise<unknown> => {
+    if (typeof node === "string") return resolveTemplate(node, data, options, budget);
+    if (Array.isArray(node)) {
+      const out: unknown[] = [];
+      for (const entry of node) out.push(await walk(entry));
+      return out;
     }
-    return out;
-  }
-  return value;
+    if (node !== null && typeof node === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(node)) {
+        out[key] = options.skip?.has(key) ? entry : await walk(entry);
+      }
+      return out;
+    }
+    return node;
+  };
+  return walk(value);
 }

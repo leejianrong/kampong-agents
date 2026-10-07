@@ -493,6 +493,9 @@ async function* executeTool(
         resolvedTool = (await resolveTemplatesDeep(tool, data, {
           limits: expressions.limits,
           skip: TOOL_KEYS_NOT_TEMPLATED,
+          // callHttpTool reads `${ENV}` from the text it is given. Values from data (a webhook body) must
+          // arrive as text, never as a reference, so a body cannot pull a secret into a request.
+          escapeData: (text) => text.replaceAll("${", () => "$${"),
         })) as Tool;
       }
     } catch (err) {
@@ -536,7 +539,10 @@ async function* executeTool(
     // callHttpTool builds the request (generic HTTP or a connector) and resolves
     // `{{ step.field }}` / `{placeholder}` references in every field via substitutePlaceholders
     // (KAN-1429/KAN-1430).
-    const output = await callHttpTool(resolvedTool, params, {
+    // In version 1.1 the expressions have already been resolved, so the original `{name}` placeholders are
+    // not substituted a second time: with no params they are left as written, and a value that happens to
+    // contain `{input}` or `{{ x }}` stays text.
+    const output = await callHttpTool(resolvedTool, expressions ? {} : params, {
       fetchImpl: deps.fetchImpl,
       env: deps.env,
       pacer: deps.pacer,

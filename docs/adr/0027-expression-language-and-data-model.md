@@ -172,9 +172,9 @@ A version 1.1 spec runs in `kampong run`, `kampong dev` and `kampong serve`.
   *full* output by step name (no more scalar flattening; the 1.0 `buildToolParams` is unchanged for 1.0 specs),
   the trigger, the raw input, and the resolved vars, with the reserved names winning (a step may not be named
   one of them; the spec says so at load). `trigger` is the webhook body's fields at the top level,
-  `trigger.body` the whole body, and `trigger.headers` the request headers (lowercase; `authorization`,
-  `proxy-authorization`, `cookie` and `set-cookie` are never passed, so a credential cannot end up in step
-  outputs, prompts or traces). With no explicit trigger the run input is the body: JSON if it parses, text
+  `trigger.body` the whole body, and `trigger.headers` the request headers (lowercase; any header whose name contains `authorization`, `cookie`,
+  `token`, `secret`, `signature`, `api-key`, `apikey`, `password` or `credential` is never passed, so a credential
+  cannot be read into a message, a query or a run trace through `{{ trigger.headers }}`). With no explicit trigger the run input is the body: JSON if it parses, text
   if not. A body field named `headers` or `body` is shadowed by those members.
 - **Where expressions are evaluated.** A condition's `if`; every string in a tool (`url`, `headers`, `query`,
   `body`, a component's `with`, and the legacy Slack and Gmail fields), except identity, `method`, `token`,
@@ -195,3 +195,21 @@ A version 1.1 spec runs in `kampong run`, `kampong dev` and `kampong serve`.
   runtime now carries the evaluator (and pins `jsonata`), but its entry points do not yet pass vars or the
   webhook payload to it (KAN-1851). Structured output (`output_schema`, KAN-1843) and the canvas editor
   (KAN-1850) are separate cards.
+- **Data is data.** A tool's strings are resolved by the evaluator and then handed to `callHttpTool`, which reads
+  `${ENV}` references and `{name}` placeholders in the text it is given. Without care a webhook body containing
+  `${SECRET}` would have been expanded there, so in a 1.1 tool every string that comes from data (an evaluated
+  value, text built from one, and strings inside a list or object value) has `${` escaped as `$${` before that
+  pass (the escape `callHttpTool` already honours), and the legacy `{name}` substitution is given no params, so
+  it leaves everything as written. The author's own `${ENV}` still expands. Components are unaffected: their
+  `with` values are data from the start.
+- **Native built-ins are capped.** `$sort` and `$distinct` run inside one call that no per-node hook or timeout can
+  interrupt, and `$sort` uses memory that grows with the square of the list (60 000 numbers exhausted a 2 GB
+  heap, which a 1 MB webhook body can carry), so they refuse a list over 10 000 items (`sortItems`). `$pad` is
+  capped as before. They are re-registered with JSONata's own signatures, so `$ ~> $sort()` still works. The
+  other bounds stay soft, as the spike found: `kampong serve` evaluates expressions in its own process.
+- **One time budget per structure.** The expressions in one tool (or `with`) run one at a time and share a
+  single budget (the timeout), so many slow spans cannot take many times the limit and the error reported does
+  not depend on timing.
+- **URLs.** A value from the trigger goes into a `url` exactly as it arrives, as a 1.0 step output did. A spec
+  that reads `trigger.*` inside a tool's `url` without `$encodeUrlComponent` (or `$encodeUrl`) gets a note
+  (`unencoded_url_value`), never an error.

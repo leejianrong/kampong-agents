@@ -41,16 +41,18 @@ export interface CreateServeServerOptions {
   run?: RunManagerOptions;
 }
 
-// Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text values.
-// Credentials never are: they would end up in step outputs, prompts and run traces.
-const NOT_FORWARDED = new Set(["authorization", "proxy-authorization", "cookie", "set-cookie"]);
+// Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text
+// values. A header that looks like a credential is not passed, so it cannot end up in a message, a query or a
+// run trace through `{{ trigger.headers }}`; a webhook's own verification belongs in the trigger (KAN-1848).
+const CREDENTIAL_HEADER =
+  /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
 
 function triggerHeaders(
   headers: Record<string, string | string[] | undefined>,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined || NOT_FORWARDED.has(name.toLowerCase())) continue;
+    if (value === undefined || CREDENTIAL_HEADER.test(name)) continue;
     out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
   }
   return out;

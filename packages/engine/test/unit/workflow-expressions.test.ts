@@ -280,6 +280,61 @@ describe("expressions in a version 1.1 run", () => {
   });
 });
 
+describe("data is data: a trigger value is never read back as author text", () => {
+  const requestsOf = () => {
+    const seen: { url: string; headers: Record<string, string>; body?: string }[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      seen.push({
+        url: String(url),
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        body: init?.body as string | undefined,
+      });
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    return { seen, fetchImpl };
+  };
+  const tool = {
+    name: "t",
+    action: "http_request",
+    method: "POST",
+    url: "https://x.test/{{ trigger.path }}",
+    headers: { "X-A": "{{ trigger.h }}", Authorization: "Bearer ${SECRET}" },
+    body: { json: { text: "say {{ trigger.text }}", list: "{{ trigger.list }}" } },
+  };
+  const s = make({ tools: [tool], workflow: [{ step: "go", type: "tool", tool: "t" }] });
+  const body = JSON.stringify({
+    path: "p${SECRET}",
+    h: "${SECRET}",
+    text: "hi ${SECRET} {input} {{ trigger.h }} $${SECRET}",
+    list: ["${SECRET}", { k: "${SECRET}" }],
+  });
+
+  it("does not expand ${ENV} that arrives in a webhook body, in a url, header, JSON body or list", async () => {
+    const { seen, fetchImpl } = requestsOf();
+    const events = await drive(s, body, { fetchImpl, env: { SECRET: "TOPSECRET" } });
+    expect(failed(events)).toBeUndefined();
+    const request = seen[0]!;
+    expect(request.url).toBe("https://x.test/p${SECRET}");
+    expect(request.headers["x-a"]).toBe("${SECRET}");
+    expect(JSON.parse(request.body!)).toEqual({
+      text: "say hi ${SECRET} {input} {{ trigger.h }} $${SECRET}",
+      list: ["${SECRET}", { k: "${SECRET}" }],
+    });
+    expect(JSON.stringify(seen)).not.toContain("TOPSECRET".concat("x")); // not smuggled in
+    // The author's own ${ENV} still expands.
+    expect(request.headers.authorization).toBe("Bearer TOPSECRET");
+    // And the value that was not smuggled is the only place the secret appears.
+    expect(JSON.stringify(seen).split("TOPSECRET")).toHaveLength(2);
+  });
+
+  it("does not substitute {name} or {{ name }} found in trigger data a second time", async () => {
+    const { seen, fetchImpl } = requestsOf();
+    await drive(s, body, { fetchImpl, env: { SECRET: "x" } });
+    expect(seen[0]!.body).toContain("{input}");
+    expect(seen[0]!.body).toContain("{{ trigger.h }}");
+  });
+});
+
 describe("the data an expression reads", () => {
   it("lets the reserved names win over a step that shares one (the spec refuses such a name, the engine does not trust that)", async () => {
     const s = make(

@@ -45,9 +45,13 @@ The `version` decides how references and conditions are written. Nothing else ch
 Expressions read `trigger` (what started the run), `input` (the raw input text), `vars`, and the full
 output of an earlier step by its step name (`review.findings[0].title`). `trigger` holds the webhook body's
 fields at the top level (`trigger.alerts[0].id`), the whole body as `trigger.body`, and the request headers
-as `trigger.headers` (lowercase names; `authorization` and `cookie` are never passed). A body that is not
+as `trigger.headers` (lowercase names; headers that look like credentials are never passed). A body that is not
 JSON is `trigger.body` as text. `kampong run` treats `--input` as the body, and takes `--header name=value`
-for headers and `--var name=value` for vars. A step may not be named `trigger`, `input` or `vars`. They are a pure function of that data: the clock and
+for headers and `--var name=value` for vars. A step may not be named `trigger`, `input` or `vars`.
+
+A value from the trigger goes into a URL as it arrives, so write `{{ $encodeUrlComponent(trigger.id) }}` for a
+path or query part (a spec that does not is noted). Text from the trigger is never read as a `${ENV}` or
+`{name}` reference: only what you wrote in the spec is. They are a pure function of that data: the clock and
 random built-ins (`$now`, `$millis`, `$random`, `$shuffle`) and `$eval` are refused, and so are regular
 expression literals. An expression is at most 4000 characters, and a run limits each one in time (1 second), depth, steps and the
 size of what it builds, so a runaway expression fails its step instead of hanging the run.

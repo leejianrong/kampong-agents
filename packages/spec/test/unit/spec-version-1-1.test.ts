@@ -327,6 +327,42 @@ agent:
   });
 });
 
+describe("a trigger value in a url", () => {
+  const url = (u: string) =>
+    parseSpec(`version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  tools:
+    - name: t
+      action: http_request
+      method: GET
+      url: ${JSON.stringify(u)}
+  workflow:
+    - step: go
+      type: tool
+      tool: t
+`);
+
+  it("warns when it goes in as it arrives, and not when it is encoded or is not from the trigger", () => {
+    const codes = (u: string) => specWarnings(url(u).spec!).map((w) => w.code);
+    expect(codes("https://x.test/{{ trigger.id }}")).toEqual(["unencoded_url_value"]);
+    expect(codes("https://x.test/?q={{ $string(trigger.q) }}")).toEqual(["unencoded_url_value"]);
+    expect(codes("https://x.test/{{ $encodeUrlComponent(trigger.id) }}")).toEqual([]);
+    expect(codes("{{ $encodeUrl(trigger.next) }}")).toEqual([]);
+    expect(codes("https://x.test/{{ input }}")).toEqual([]);
+    expect(codes("https://x.test/plain")).toEqual([]);
+  });
+
+  it("warns once per tool, naming the expression", () => {
+    const [w] = specWarnings(url("https://x.test/{{ trigger.a }}/{{ trigger.b }}").spec!);
+    expect(w!.message).toContain("{{ trigger.a }}");
+    expect(w!.path).toEqual(["agent", "tools", 0, "url"]);
+  });
+});
+
 describe("round trip (version 1.1)", () => {
   it("re-serializes a 1.1 spec with vars and expressions byte for byte", () => {
     const { doc, success } = parseSpec(VALID_FIXTURE_V1_1);

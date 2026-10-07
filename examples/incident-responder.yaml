@@ -24,7 +24,7 @@ agent:
     - name: lookup
       action: http_request
       method: GET
-      url: "{{ vars.api }}/alerts/{{ trigger.alerts[0].id }}"
+      url: "{{ vars.api }}/alerts/{{ $encodeUrlComponent(trigger.alerts[0].id) }}"
     - name: page
       action: http_request
       method: POST

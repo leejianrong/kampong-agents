@@ -141,6 +141,23 @@ describe("limits", () => {
     ).toBe("K0006");
   });
 
+  it("refuses to sort or de-duplicate a list too large to do inside one uninterruptible call", async () => {
+    const items = Array.from({ length: 12_000 }, (_, i) => i);
+    for (const source of [
+      "$sort(items)",
+      "$distinct(items)",
+      "$sort(items, function($a,$b){$a > $b})",
+    ]) {
+      expect((await errorOf(source, { items })).code, source).toBe("K0011");
+    }
+    // Within the limit, they work, including with a comparator that needs JSONata's own context.
+    expect(
+      await evaluateExpression("$sort(items, function($a,$b){$a < $b})[0]", { items: [3, 1, 2] }),
+    ).toBe(3);
+    expect(await evaluateExpression("$distinct(items)", { items: [1, 1, 2] })).toEqual([1, 2]);
+    expect(await evaluateExpression('$pad("x", 3, "-")', {})).toBe("x--");
+  });
+
   it("caps $pad up front, because it allocates before any hook can see the result", async () => {
     const err = await errorOf('$pad("x", 400000000)');
     expect(err.code).toBe("K0006");
@@ -240,6 +257,30 @@ describe("templates", () => {
       expect(err, text).toBeInstanceOf(ExpressionError);
       expect(err.message).toMatch(/evaluated to nothing/);
     }
+  });
+
+  it("share one time budget across a structure's spans, and fail in a fixed order", async () => {
+    const slow =
+      "{{ $count($map([1..2500], function($v){ $count($map([1..2500], function($w){$w})) })) }}";
+    const err = await resolveTemplatesDeep(
+      { a: slow, b: slow, c: slow, d: slow },
+      {},
+      { limits: { timeoutMs: 60_000 }, totalTimeoutMs: 300 },
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(ExpressionError);
+    expect(["K0012", "D1012"]).toContain(err.code);
+  });
+
+  it("escape what comes from data and not what the author wrote", async () => {
+    const escape = (t: string) => t.replaceAll("${", () => "$${");
+    const data = { s: "a${X}", list: ["${Y}", { k: "${Z}" }] };
+    expect(await resolveTemplate("${E} {{ s }}", data, { escapeData: escape })).toBe("${E} a$${X}");
+    expect(await resolveTemplate("{{ s }}", data, { escapeData: escape })).toBe("a$${X}");
+    expect(await resolveTemplate("{{ list }}", data, { escapeData: escape })).toEqual([
+      "$${Y}",
+      { k: "$${Z}" },
+    ]);
+    expect(await resolveTemplate("{{ 3 }}", data, { escapeData: escape })).toBe(3);
   });
 
   it("leave text without spans alone, and resolve every string of a structure but not its keys or skipped values", async () => {
