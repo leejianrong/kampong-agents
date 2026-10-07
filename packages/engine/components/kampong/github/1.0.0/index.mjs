@@ -48,6 +48,7 @@ export async function invoke(op, input, ctx) {
     case "create_review": {
       const payload = { event: input.event };
       if (input.body !== undefined) payload.body = input.body;
+      if (input.commit_id !== undefined) payload.commit_id = input.commit_id;
       if (input.comments !== undefined) payload.comments = input.comments.map(lineComment);
       const review = await json(ctx, "POST", `${pullPath(input)}/reviews`, payload);
       return { id: review.id, state: review.state, html_url: review.html_url };
@@ -75,8 +76,12 @@ async function getPullDiff(input, ctx) {
   }
   // Cut at the last file boundary that fits, so the model never sees half a file; if the first file alone
   // is over the limit, cut inside it rather than return nothing.
-  const boundary = text.lastIndexOf("\ndiff --git ", limit);
-  const diff = boundary > 0 ? text.slice(0, boundary + 1) : text.slice(0, limit);
+  const boundary = text.lastIndexOf("\ndiff --git ", limit - 1);
+  let cut = limit;
+  // Never end on half of a surrogate pair: it would not survive being encoded as UTF-8.
+  const last = text.charCodeAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  const diff = boundary > 0 ? text.slice(0, boundary + 1) : text.slice(0, cut);
   const total = countFiles(text);
   const included = countFiles(diff);
   return {
@@ -111,7 +116,9 @@ async function listPullFiles(input, ctx) {
         ...(input.include_patch === true && { patch: file.patch ?? null }),
       });
     }
-    const more = /<[^>]*>;\s*rel="next"/.test(response.headers.get("link") ?? "");
+    // A full page means there may be more even if the Link header is missing (a replayed response has none).
+    const more =
+      batch.length >= 100 || /<[^>]*>;\s*rel="next"/.test(response.headers.get("link") ?? "");
     if (!more) break;
     if (page === maxPages) truncated = true;
   }
@@ -198,8 +205,13 @@ async function request(ctx, method, path, body, headers = {}) {
 async function describeFailure(response) {
   let detail = "";
   try {
-    const message = JSON.parse(await response.text()).message;
-    if (typeof message === "string") detail = message.slice(0, 300);
+    const body = JSON.parse(await response.text());
+    const parts = [];
+    if (typeof body.message === "string") parts.push(body.message);
+    // A 422 puts what is wrong in `errors` ("line must be part of the diff"); without it the caller cannot fix the call.
+    if (Array.isArray(body.errors) && body.errors.length > 0)
+      parts.push(JSON.stringify(body.errors));
+    detail = parts.join(": ").slice(0, 500);
   } catch {
     // Not JSON: report the status alone.
   }
@@ -208,5 +220,10 @@ async function describeFailure(response) {
   const suffix = limited
     ? `; rate limit exhausted${reset ? `, resets at ${new Date(Number(reset) * 1000).toISOString()}` : ""}`
     : "";
-  return `GitHub returned HTTP ${response.status}${detail ? ` (${detail})` : ""}${suffix}`;
+  // A renamed or transferred repository answers 301 with its new address; redirects are not followed
+  // (they could carry the token to another host), so say where it went.
+  const location =
+    response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
+  const moved = location ? `; moved to ${location.slice(0, 200)}` : "";
+  return `GitHub returned HTTP ${response.status}${detail ? ` (${detail})` : ""}${suffix}${moved}`;
 }

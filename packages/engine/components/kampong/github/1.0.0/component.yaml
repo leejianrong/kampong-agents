@@ -143,6 +143,10 @@ ops:
         pull_number: { type: integer, title: Pull request number }
         event: { type: string, title: Verdict, enum: [COMMENT, REQUEST_CHANGES, APPROVE] }
         body: { type: string, title: Overall comment, format: multiline }
+        commit_id:
+          type: string
+          title: Commit the review is about
+          description: The head commit the diff was read at. Without it GitHub uses the latest, and line comments may land on a different line after a push.
         comments:
           type: array
           title: Line comments

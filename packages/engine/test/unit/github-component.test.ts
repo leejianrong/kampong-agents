@@ -136,6 +136,32 @@ describe("kampong/github", () => {
       expect(result.diff).toBe(file("a.ts", 400) + file("b.ts", 400));
     });
 
+    it("never returns more than max_chars, even when the next file's boundary falls exactly on it", async () => {
+      const overhead = file("a.ts", 0).length;
+      const first = file("a.ts", 1001 - overhead); // 1001 characters, so the next file's "\n" is at index 1000
+      expect(first.length).toBe(1001);
+      const text = first + file("b.ts", 50);
+      const { fetchImpl } = fakeGitHub(() => new Response(text, { status: 200 }));
+      const result = (await call("get_pull_diff", { ...PR, max_chars: 1000 }, fetchImpl)) as {
+        diff: string;
+        truncated: boolean;
+      };
+      expect(result.truncated).toBe(true);
+      expect(result.diff.length).toBeLessThanOrEqual(1000);
+    });
+
+    it("does not cut a surrogate pair in half", async () => {
+      const text = `diff --git a/e b/e\n+${"😀".repeat(2000)}\n`;
+      const { fetchImpl } = fakeGitHub(() => new Response(text, { status: 200 }));
+      for (const max_chars of [1000, 1001, 1002]) {
+        const { diff } = (await call("get_pull_diff", { ...PR, max_chars }, fetchImpl)) as {
+          diff: string;
+        };
+        expect(diff.length).toBeLessThanOrEqual(max_chars);
+        expect(() => encodeURIComponent(diff)).not.toThrow();
+      }
+    });
+
     it("cuts inside the first file rather than return nothing when it alone is too large", async () => {
       const text = file("big.ts", 5000);
       const { fetchImpl } = fakeGitHub(() => new Response(text, { status: 200 }));
@@ -198,6 +224,18 @@ describe("kampong/github", () => {
       expect(result).toMatchObject({ total: 200, truncated: true });
     });
 
+    it("keeps going after a full page even when no Link header comes back (as under replay)", async () => {
+      const { fetchImpl } = fakeGitHub((req) => {
+        const page = Number(new URL(req.url).searchParams.get("page"));
+        return jsonResponse(filesPage((page - 1) * 100, page === 1 ? 100 : 5));
+      });
+      const result = (await call("list_pull_files", PR, fetchImpl)) as {
+        total: number;
+        truncated: boolean;
+      };
+      expect(result).toEqual(expect.objectContaining({ total: 105, truncated: false }));
+    });
+
     it("includes patches only when asked", async () => {
       const { fetchImpl } = fakeGitHub(() => jsonResponse(filesPage(0, 1)));
       const result = (await call("list_pull_files", { ...PR, include_patch: true }, fetchImpl)) as {
@@ -248,6 +286,18 @@ describe("kampong/github", () => {
       comments: [{ path: "a.ts", line: 3, body: "nit", side: "RIGHT" }],
     });
     expect(seen[0]!.url).toBe("https://api.github.com/repos/acme/widgets/pulls/7/reviews");
+  });
+
+  it("create_review can pin the commit the review is about", async () => {
+    const { fetchImpl, seen } = fakeGitHub(() =>
+      jsonResponse({ id: 1, state: "COMMENTED", html_url: "u" }),
+    );
+    await call(
+      "create_review",
+      { ...PR, event: "COMMENT", body: "x", commit_id: "abc123" },
+      fetchImpl,
+    );
+    expect(JSON.parse(seen[0]!.body!).commit_id).toBe("abc123");
   });
 
   it("refuses a malformed line comment before sending anything", async () => {
@@ -307,6 +357,38 @@ describe("kampong/github", () => {
       );
       const err = (await call("get_pull_request", PR, fetchImpl).catch((e) => e)) as Error;
       expect(err.message).toContain("rate limit exhausted, resets at 2027-01-15T08:00:00.000Z");
+    });
+
+    it("includes GitHub's errors array, so a bad line comment can be corrected", async () => {
+      const { fetchImpl } = fakeGitHub(() =>
+        jsonResponse(
+          {
+            message: "Unprocessable Entity",
+            errors: ["Pull request review thread line must be part of the diff"],
+          },
+          { status: 422 },
+        ),
+      );
+      const err = (await call(
+        "create_review",
+        { ...PR, event: "COMMENT", body: "x" },
+        fetchImpl,
+      ).catch((e) => e)) as Error;
+      expect(err.message).toContain("HTTP 422");
+      expect(err.message).toContain("line must be part of the diff");
+    });
+
+    it("says where a moved repository went, without following it", async () => {
+      const { fetchImpl, seen } = fakeGitHub(
+        () =>
+          new Response(null, {
+            status: 301,
+            headers: { location: "https://api.github.com/repositories/42/pulls/7" },
+          }),
+      );
+      const err = (await call("get_pull_request", PR, fetchImpl).catch((e) => e)) as Error;
+      expect(err.message).toContain("moved to https://api.github.com/repositories/42/pulls/7");
+      expect(seen).toHaveLength(1);
     });
 
     it("does not accept a redirect to another host", async () => {
