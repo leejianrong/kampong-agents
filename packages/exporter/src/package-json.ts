@@ -85,18 +85,20 @@ export function buildPackageJson(
       dependencies[name] = version;
     }
   }
+  const scripts: Record<string, string> = {
+    start: "tsx src/index.ts",
+    serve: "tsx src/server.ts",
+    build: "tsc -p tsconfig.json",
+    typecheck: "tsc --noEmit -p tsconfig.json",
+  };
+  if (components.length > 0) scripts.verify = "tsx src/verify.ts";
   return {
     name: slugifyPackageName(spec.agent.id),
     version: "0.1.0",
     private: true,
     type: "module",
     description: `Standalone Mastra agent exported from a Kampong Agents spec ("${spec.agent.name}"). One-way export -- see README.md.`,
-    scripts: {
-      start: "tsx src/index.ts",
-      serve: "tsx src/server.ts",
-      build: "tsc -p tsconfig.json",
-      typecheck: "tsc --noEmit -p tsconfig.json",
-    },
+    scripts,
     dependencies,
     devDependencies: { ...DEV_DEPENDENCY_VERSIONS },
   };
