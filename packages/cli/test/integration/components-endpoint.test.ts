@@ -65,6 +65,7 @@ describe("GET /api/components", () => {
     expect(body.problems).toEqual([]);
     // The first-party components are always there.
     expect(body.components.map((c: { id: string }) => c.id).sort()).toEqual([
+      "kampong/github",
       "kampong/gmail",
       "kampong/slack",
     ]);

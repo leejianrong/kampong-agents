@@ -21,3 +21,7 @@ repository; `test/unit/first-party-components.test.ts` checks the layout and the
 
 - `kampong/slack`: post a message (`kind: rest`).
 - `kampong/gmail`: send a plain-text email (`kind: module`, because the API wants base64url MIME).
+- `kampong/github`: read a pull request, its diff (cut at a file boundary past a size limit, and says so)
+  and every changed file (follows pages, and says so when it stops); comment on or review a pull request
+  (`kind: module`, because a request template cannot follow pages or cut a diff). A personal access token
+  in `GITHUB_TOKEN`, sent only to `api.github.com`.

@@ -1,0 +1,160 @@
+kind: module
+id: kampong/github
+version: 1.0.0
+title: GitHub
+description: Read pull requests and their diffs, list every changed file, and comment on or review a pull request, with a personal access token.
+license: Apache-2.0
+entry: ./index.mjs
+permissions:
+  egress: [api.github.com]
+auth:
+  slots:
+    token:
+      env: GITHUB_TOKEN
+      hosts: [api.github.com]
+      probe: { op: get_user }
+ops:
+  get_user:
+    title: Check the token
+    description: Reads the authenticated user (GET /user) to confirm the token is accepted. Changes nothing.
+    effect: read
+    output:
+      type: object
+      properties:
+        login: { type: string }
+  get_pull_request:
+    title: Get a pull request
+    description: Title, description, state, branches, author and change counts of one pull request.
+    effect: read
+    input:
+      type: object
+      required: [owner, repo, pull_number]
+      properties:
+        owner:
+          {
+            type: string,
+            title: Owner,
+            description: The user or organisation that owns the repository.,
+          }
+        repo: { type: string, title: Repository }
+        pull_number: { type: integer, title: Pull request number }
+    output:
+      type: object
+      properties:
+        number: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        state: { type: string }
+        draft: { type: boolean }
+        author: { type: string }
+        base: { type: string }
+        head: { type: string }
+        changed_files: { type: integer }
+        additions: { type: integer }
+        deletions: { type: integer }
+        html_url: { type: string }
+  get_pull_diff:
+    title: Get a pull request's diff
+    description: >-
+      The unified diff as text. A diff larger than max_chars is cut at a file boundary and says so
+      (truncated, files_omitted), so a model is never handed a silently shortened diff.
+    effect: read
+    input:
+      type: object
+      required: [owner, repo, pull_number]
+      properties:
+        owner: { type: string, title: Owner }
+        repo: { type: string, title: Repository }
+        pull_number: { type: integer, title: Pull request number }
+        max_chars:
+          type: integer
+          title: Largest diff to return, in characters
+          description: Defaults to 60000. A diff over this is cut at the last whole file that fits.
+          minimum: 1000
+          maximum: 1000000
+    output:
+      type: object
+      properties:
+        diff: { type: string }
+        truncated: { type: boolean }
+        total_chars: { type: integer }
+        files_included: { type: integer }
+        files_omitted: { type: integer }
+  list_pull_files:
+    title: List the files a pull request changes
+    description: >-
+      Every changed file, following GitHub's pages (it returns 30 by default and stops there). Reads at
+      most max_pages pages of 100; if more remain it says so with truncated, never silently.
+    effect: read
+    input:
+      type: object
+      required: [owner, repo, pull_number]
+      properties:
+        owner: { type: string, title: Owner }
+        repo: { type: string, title: Repository }
+        pull_number: { type: integer, title: Pull request number }
+        max_pages:
+          {
+            type: integer,
+            title: Most pages to read,
+            description: Defaults to 10 (1000 files).,
+            minimum: 1,
+            maximum: 30,
+          }
+        include_patch:
+          type: boolean
+          title: Include each file's patch
+          description: Defaults to false; patches can be very large. Use get_pull_diff for the whole diff.
+    output:
+      type: object
+      properties:
+        files: { type: array, items: { type: object } }
+        total: { type: integer }
+        truncated: { type: boolean }
+  create_issue_comment:
+    title: Comment on a pull request or issue
+    description: Adds a comment to the conversation of a pull request or issue.
+    effect: write
+    input:
+      type: object
+      required: [owner, repo, issue_number, body]
+      properties:
+        owner: { type: string, title: Owner }
+        repo: { type: string, title: Repository }
+        issue_number: { type: integer, title: Pull request or issue number }
+        body: { type: string, title: Comment, format: multiline }
+    output:
+      type: object
+      properties:
+        id: { type: integer }
+        html_url: { type: string }
+  create_review:
+    title: Review a pull request
+    description: >-
+      Submits a review with an overall comment and, optionally, comments on lines of the diff. Event
+      APPROVE approves the pull request: have a person approve that call (requires_approval).
+    effect: write
+    input:
+      type: object
+      required: [owner, repo, pull_number, event]
+      properties:
+        owner: { type: string, title: Owner }
+        repo: { type: string, title: Repository }
+        pull_number: { type: integer, title: Pull request number }
+        event: { type: string, title: Verdict, enum: [COMMENT, REQUEST_CHANGES, APPROVE] }
+        body: { type: string, title: Overall comment, format: multiline }
+        commit_id:
+          type: string
+          title: Commit the review is about
+          description: The head commit the diff was read at. Without it GitHub uses the latest, and line comments may land on a different line after a push.
+        comments:
+          type: array
+          title: Line comments
+          description: Each is { path, line, body }, optionally side (LEFT or RIGHT, default RIGHT).
+          items: { type: object }
+    output:
+      type: object
+      properties:
+        id: { type: integer }
+        state: { type: string }
+        html_url: { type: string }
