@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { UnsupportedSpecVersionError } from "@kampong/engine";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
@@ -209,6 +210,7 @@ export function registerDeploymentRoutes(
         }
         if (
           err instanceof InvalidStoredSpecError ||
+          err instanceof UnsupportedSpecVersionError ||
           err instanceof WorkspaceApiKeyNotConfiguredError
         ) {
           // A real misconfiguration on the deploying workspace's side (a spec

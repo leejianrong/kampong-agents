@@ -4,7 +4,47 @@
   "properties": {
     "version": {
       "type": "string",
-      "minLength": 1
+      "enum": ["1.0", "1.1"]
+    },
+    "vars": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["number", "string", "list"]
+          },
+          "items": {
+            "type": "string",
+            "enum": ["string", "number"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": ["string", "number"]
+                }
+              }
+            ]
+          }
+        },
+        "required": ["type"],
+        "additionalProperties": false
+      }
     },
     "agent": {
       "type": "object",

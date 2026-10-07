@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
+  assertRunnableVersion,
   createAgentRun,
   type AgentRun,
   type ModelClient,
@@ -112,6 +113,8 @@ export class HostedRunManager {
       throw new InvalidStoredSpecError(specId);
     }
     const spec = parsed.spec as AgentSpec;
+    // Before the workspace's model key is looked up, so a spec this build cannot run is reported as that.
+    assertRunnableVersion(spec);
 
     const model = this.options.createModel
       ? await this.options.createModel(spec)

@@ -6,6 +6,7 @@ import {
   VALID_FIXTURE,
   VALID_FIXTURE_NO_TOOLS,
   VALID_FIXTURE_WITH_CONDITION,
+  VALID_FIXTURE_V1_1,
   VALID_FIXTURE_WITH_MODEL,
 } from "../fixtures.js";
 
@@ -21,6 +22,7 @@ describe("generateAgentSpecJsonSchema", () => {
     ["single tool, no conditionals", VALID_FIXTURE],
     ["two tools with a conditional step", VALID_FIXTURE_WITH_CONDITION],
     ["no tools", VALID_FIXTURE_NO_TOOLS],
+    ["version 1.1 with vars and expressions (KAN-1840)", VALID_FIXTURE_V1_1],
     ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
     [
       "openrouter model with a vendor-prefixed name",
