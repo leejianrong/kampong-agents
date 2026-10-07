@@ -265,9 +265,10 @@ describe("output_schema (KAN-1843)", () => {
             type: "condition",
             if: "triage.severity = 'high' and triage.confidence >= 0.5",
             then: "request_human_approval",
-            else: "request_human_approval",
+            else: "execute_tool(notify)",
           },
         ],
+        tools: [{ name: "notify", action: "http_request", method: "GET", url: "https://x.test/" }],
       },
     }) as AgentSpec;
 
@@ -293,6 +294,17 @@ describe("output_schema (KAN-1843)", () => {
     const done = events.find((e) => e.type === "step_completed" && e.step === "triage");
     expect(done).toMatchObject({ output: { severity: "high", confidence: 0.9 } });
     expect(events.some((e) => e.type === "awaiting_approval" && e.step === "route")).toBe(true);
+    // The other branch is taken when the typed field says so.
+    const low = await drive(
+      spec(),
+      {
+        model: scripted([{ severity: "low", confidence: 0.9 }]),
+        fetchImpl: async () => new Response("{}"),
+      },
+      "x",
+    );
+    expect(low.some((e) => e.type === "awaiting_approval" && e.step === "route")).toBe(false);
+    expect(low.at(-1)).toMatchObject({ type: "completed" });
   });
 
   it("sends the schema in the prompt", async () => {
@@ -401,6 +413,21 @@ describe("output_schema (KAN-1843)", () => {
         "x",
       );
       expect(events.find((e) => e.type === "awaiting_approval")).toMatchObject({ step: "route" });
+    });
+
+    it("a missing confidence is a schema failure, never full confidence", async () => {
+      const prompts: string[] = [];
+      const optional = spec({
+        confidence_gate: true,
+        output_schema: { ...schema, required: ["severity"] },
+      });
+      const events = await drive(
+        optional,
+        { model: scripted([{ severity: "high" }], prompts) },
+        "x",
+      );
+      expect(prompts).toHaveLength(2);
+      expect(events.at(-1)).toMatchObject({ type: "failed", step: "triage" });
     });
 
     it("treats a confidence outside 0 to 1 as a schema failure and retries", async () => {

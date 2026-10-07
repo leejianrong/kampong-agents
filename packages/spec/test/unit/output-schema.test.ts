@@ -33,6 +33,8 @@ describe("output_schema on an action step", () => {
     const result = parseSpec(source);
     expect(result.errors).toEqual([]);
     expect(toYamlString(result.doc)).toBe(source);
+    const step = result.spec!.agent.workflow[0] as { output_schema?: { required?: string[] } };
+    expect(step.output_schema?.required).toEqual(["severity", "confidence"]);
   });
 
   it("needs version 1.1", () => {
@@ -56,10 +58,17 @@ describe("output_schema on an action step", () => {
     const without =
       "      output_schema: { type: object, properties: { severity: { type: string } } }\n";
     expect(messages(gated(without))).toEqual([
-      'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1)',
+      'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1) that is required and has no default',
     ]);
     const wrongType =
       "      output_schema: { type: object, properties: { confidence: { type: string } } }\n";
     expect(messages(gated(wrongType))).toHaveLength(1);
+    // Declared but optional, or defaulted, would let a missing value pass the guardrail as full confidence.
+    const optional =
+      "      output_schema: { type: object, properties: { confidence: { type: number } } }\n";
+    expect(messages(gated(optional))).toHaveLength(1);
+    const defaulted =
+      "      output_schema: { type: object, required: [confidence], properties: { confidence: { type: number, default: 1 } } }\n";
+    expect(messages(gated(defaulted))).toHaveLength(1);
   });
 });

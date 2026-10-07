@@ -27,7 +27,7 @@ agent:
       type: condition
       if: triage.severity = "high"
       then: request_human_approval
-      else: request_human_approval
+      else: fail_branch
 `;
 
 const scripted = (answers: unknown[]): { model: ModelClient; calls: () => number } => {

@@ -359,11 +359,15 @@ export const agentSpecSchema = z
       }
       if (step.confidence_gate) {
         const confidence = step.output_schema.properties?.confidence;
-        if (confidence?.type !== "number" && confidence?.type !== "integer") {
+        if (
+          (confidence?.type !== "number" && confidence?.type !== "integer") ||
+          !step.output_schema.required?.includes("confidence") ||
+          confidence.default !== undefined
+        ) {
           ctx.addIssue({
             code: "custom",
             message:
-              'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1)',
+              'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1) that is required and has no default',
             path: [...at, "properties"],
           });
         }

@@ -459,9 +459,11 @@ async function runStructuredStep(
     problems = validateAgainstSchema(outputSchema, candidate, "output");
     if (problems.length === 0) {
       if (!step.confidence_gate) return { output: candidate };
-      const confidence = (candidate as Record<string, unknown>).confidence as number;
-      if (confidence < 0 || confidence > 1) {
-        problems = [`output.confidence must be between 0 and 1, got ${confidence}`];
+      const confidence = (candidate as Record<string, unknown>).confidence;
+      if (typeof confidence !== "number" || confidence < 0 || confidence > 1) {
+        problems = [
+          `output.confidence must be a number between 0 and 1, got ${String(confidence)}`,
+        ];
       } else {
         return { output: candidate, confidence };
       }
