@@ -6,6 +6,8 @@ import {
   DirectoryComponentRegistry,
   InProcessModuleRunner,
   LayeredComponentRegistry,
+  loadRevocations,
+  RevocationRegistry,
   isFirstPartyId,
   type ComponentDispatcher,
   type ComponentRegistry,
@@ -17,6 +19,7 @@ import {
   serializeLockfile,
   catalogEntryFromManifest,
   describePermissions,
+  findRevocation,
   diffPermissions,
   permissionsOf,
   type AgentSpec,
@@ -55,9 +58,15 @@ export function readLockfile(specPath: string): Lockfile {
 
 /** The project's components plus the first-party ones that ship with kampong. */
 export function registryFor(specPath: string): ComponentRegistry {
-  return new LayeredComponentRegistry(
-    new DirectoryComponentRegistry(componentsDirFor(specPath)),
-    createFirstPartyRegistry(),
+  // Revoked components are refused wherever they would resolve: a run, a pin, an export and the doctor
+  // (KAN-1838). The revocations are read on each resolve, so one added to .kampong/registry-index.json
+  // applies without a restart, and one that cannot be read stops the call rather than being ignored.
+  return new RevocationRegistry(
+    new LayeredComponentRegistry(
+      new DirectoryComponentRegistry(componentsDirFor(specPath)),
+      createFirstPartyRegistry(),
+    ),
+    () => loadRevocations(dirname(specPath)),
   );
 }
 
@@ -285,11 +294,18 @@ async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
   } catch (err) {
     problems.push((err as Error).message);
   }
+  let revocations: ReturnType<typeof loadRevocations> = [];
+  try {
+    revocations = loadRevocations(dirname(specPath));
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
   const entry =
     (firstPartyEntry: boolean) => (c: { manifest: ComponentManifest; digest: string }) => {
       const base = catalogEntryFromManifest(c.manifest, c.digest);
       const pin = pinStatusFor(base, firstPartyEntry, lock, permissionsOf(c.manifest));
-      return pin ? { ...base, pin } : base;
+      const revoked = findRevocation(revocations, c.manifest.id, c.manifest.version, c.digest);
+      return { ...base, ...(pin && { pin }), ...(revoked && { revoked }) };
     };
   return {
     components: [...firstParty.components.map(entry(true)), ...user.components.map(entry(false))],

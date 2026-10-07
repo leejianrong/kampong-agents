@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "id": "kampong/github",
+      "version": "1.0.0",
+      "digest": "sha256:5b1b6b79211e97bfb3982417ee612490bdf2ae0abb153aa9c6d8d5229ff94c1c",
+      "tier": 0
+    },
+    {
+      "id": "kampong/gmail",
+      "version": "1.0.0",
+      "digest": "sha256:062a07a5677bcf36d4c9cad9e15541ba68a5f11a6422f463e3f5129b461f58eb",
+      "tier": 0
+    },
+    {
+      "id": "kampong/slack",
+      "version": "1.0.0",
+      "digest": "sha256:0c6b5381b67207846d0e512edb1b30d9eb0a5eb7b3a849c9e172c16c84f18c7c",
+      "tier": 0
+    }
+  ]
+}
