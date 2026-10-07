@@ -91,7 +91,7 @@ interface FixtureFile {
 }
 
 /** JSON with object keys sorted at every depth, so key order never changes a request's identity. */
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)

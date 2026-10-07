@@ -361,12 +361,12 @@ ops:
       );
     });
 
-    it("only warns, in replay, about a module op that makes no request", async () => {
+    it("fails, in replay, for a module op with no recorded outcome (KAN-1833)", async () => {
       install(MANIFEST(), OK_CODE);
       writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
       await runCli(["lock", path("agent.yaml")], capture().io);
       const { code, text } = await doctor([path("agent.yaml"), "--tools", "replay"]);
-      expect(code).toBe(EXIT_SUCCESS);
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
       expect(text).toContain("no recorded fixture");
     });
 

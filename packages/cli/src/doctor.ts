@@ -160,7 +160,6 @@ export async function runDoctor(
     return lock;
   };
   const used = new Set<string>();
-  const moduleKinds = new Map<string, string>();
   // A component is probed only when its bytes are the ones a reviewer pinned (or it ships with kampong).
   const trusted = new Map<string, string | true>();
   const probes = new Map<
@@ -204,7 +203,6 @@ export async function runDoctor(
     if (!manifest.ops[tool.op]) {
       add("fail", "component", `${tool.use} has no op "${tool.op}" (used by tool ${tool.name})`);
     }
-    moduleKinds.set(tool.use, manifest.kind);
     if (!used.has(tool.use)) {
       used.add(tool.use);
       const permissions = permissionsOf(manifest);
@@ -323,10 +321,9 @@ export async function runDoctor(
       if (files.some((f) => f.startsWith(prefix) && f.endsWith(".json"))) {
         add("pass", "fixtures", `tool ${declared.name} has a recorded fixture`);
       } else {
-        // A module that makes no request records nothing, so its missing fixture is not an error.
-        const quiet = tool.action === "component" && moduleKinds.get(tool.use) === "module";
+        // A module op is recorded at the invoke(op) boundary (KAN-1833), so every kind of tool needs one.
         add(
-          quiet ? "warn" : "fail",
+          "fail",
           "fixtures",
           `tool ${declared.name} has no recorded fixture in ${dir}; record one with --tools record`,
         );
