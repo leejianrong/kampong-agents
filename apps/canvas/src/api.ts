@@ -106,7 +106,7 @@ export interface ApiClient {
    */
   pinComponent?(
     use: string,
-    options?: { allowWiderPermissions?: boolean },
+    options?: { allowWiderPermissions?: boolean; expectedDigest?: string },
   ): Promise<PinComponentResponse>;
   /**
    * `kampong doctor`: offline by default; `online` dials each host and `probe` sends each credential to the
@@ -208,7 +208,11 @@ export function createApiClient(baseUrl = ""): ApiClient {
     async pinComponent(use, options = {}): Promise<PinComponentResponse> {
       const res = await fetch(
         `${baseUrl}/api/components/pin`,
-        jsonInit({ use, allowWiderPermissions: options.allowWiderPermissions === true }),
+        jsonInit({
+          use,
+          allowWiderPermissions: options.allowWiderPermissions === true,
+          ...(options.expectedDigest !== undefined && { expectedDigest: options.expectedDigest }),
+        }),
       );
       // A refusal (the update widens permissions, the component is missing) is an answer with a message,
       // not a failure of the request, so the form can show it.

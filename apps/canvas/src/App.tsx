@@ -174,13 +174,19 @@ export function App({
   async function handlePinComponent(
     use: string,
     allowWiderPermissions: boolean,
+    reviewedDigest: string,
   ): Promise<PinResult> {
     if (!api.pinComponent) return { ok: false, error: "This server cannot pin components." };
     try {
-      const result = await api.pinComponent(use, { allowWiderPermissions });
+      const result = await api.pinComponent(use, {
+        allowWiderPermissions,
+        expectedDigest: reviewedDigest,
+      });
+      // On a refusal the server may send the catalog as it is now (the files changed under the review), so
+      // the form shows what is really there.
+      if (result.catalog) setCatalog(result.catalog);
       if (!result.success)
         return { ok: false, error: result.error ?? "Could not pin the component." };
-      if (result.catalog) setCatalog(result.catalog);
       return { ok: true };
     } catch (err) {
       return {

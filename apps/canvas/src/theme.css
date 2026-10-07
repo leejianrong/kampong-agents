@@ -1012,3 +1012,15 @@ select.md3-text-field {
 .md3-doctor__item--warn .md3-doctor__mark {
   color: var(--md-sys-color-tertiary);
 }
+
+.md3-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

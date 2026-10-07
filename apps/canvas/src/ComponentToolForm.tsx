@@ -25,7 +25,11 @@ export interface ComponentToolFormProps {
   /** The kind switcher rendered by ToolForm, so the shell stays in one place. */
   header: ReactNode;
   /** Pins a component (KAN-1901); omitted where the server cannot, and the form points at `kampong lock`. */
-  onPin?: (use: string, allowWiderPermissions: boolean) => Promise<PinResult>;
+  onPin?: (
+    use: string,
+    allowWiderPermissions: boolean,
+    reviewedDigest: string,
+  ) => Promise<PinResult>;
   onSubmit: (tool: Tool) => void;
   onCancel: () => void;
 }
@@ -327,7 +331,8 @@ export function ComponentToolForm({
             />
           </label>
 
-          {entry && <ComponentTrust entry={entry} onPin={onPin} />}
+          {/* Keyed on what was reviewed, so consent given for one component or version never carries to another. */}
+          {entry && <ComponentTrust key={`${use}:${entry.digest}`} entry={entry} onPin={onPin} />}
 
           <Field label="Component" hint={entry?.description}>
             {(control) => (

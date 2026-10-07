@@ -31,7 +31,11 @@ export interface ToolFormProps {
   /** References to earlier steps' declared outputs, offered inside a component form. */
   references?: OutputReferenceOption[];
   /** Pins a component from the form (KAN-1901); omitted where the server cannot. */
-  onPinComponent?: (use: string, allowWiderPermissions: boolean) => Promise<PinResult>;
+  onPinComponent?: (
+    use: string,
+    allowWiderPermissions: boolean,
+    reviewedDigest: string,
+  ) => Promise<PinResult>;
   onSubmit: (tool: Tool) => void;
   onCancel: () => void;
 }

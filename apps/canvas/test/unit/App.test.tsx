@@ -190,9 +190,11 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Pin" }));
       await waitFor(() => expect(screen.getByTestId("pin-state").textContent).toBe("Pinned"));
       const pin = calls.find((c) => c.url.endsWith("/api/components/pin"))!;
+      // It carries the digest the author was shown, so files edited since cannot be pinned unreviewed.
       expect(JSON.parse(pin.body!)).toEqual({
         use: "acme/tickets@1.0.0",
         allowWiderPermissions: false,
+        expectedDigest: `sha256:${"a".repeat(64)}`,
       });
     });
   });

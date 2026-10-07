@@ -10,7 +10,11 @@ export type PinResult = { ok: true } | { ok: false; error: string };
 export interface ComponentTrustProps {
   entry: ComponentCatalogEntry;
   /** Pins this component. Absent where the server cannot (then the form says to run `kampong lock`). */
-  onPin?: (use: string, allowWiderPermissions: boolean) => Promise<PinResult>;
+  onPin?: (
+    use: string,
+    allowWiderPermissions: boolean,
+    reviewedDigest: string,
+  ) => Promise<PinResult>;
 }
 
 const STATE_LABEL = {
@@ -35,7 +39,7 @@ export function ComponentTrust({ entry, onPin }: ComponentTrustProps) {
     if (!onPin) return;
     setBusy(true);
     setError(null);
-    const result = await onPin(ref, accepted);
+    const result = await onPin(ref, accepted, entry.digest);
     setBusy(false);
     if (result.ok) {
       setReviewing(false);
@@ -50,7 +54,12 @@ export function ComponentTrust({ entry, onPin }: ComponentTrustProps) {
       <div className="md3-trust__head">
         <span className="md3-label-large">What this component may do</span>
         {state && (
-          <span className={`md3-status-chip md3-status-chip--${state}`} data-testid="pin-state">
+          <span
+            className={`md3-status-chip md3-status-chip--${state}`}
+            data-testid="pin-state"
+            role="status"
+            aria-live="polite"
+          >
             {STATE_LABEL[state]}
           </span>
         )}

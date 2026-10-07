@@ -130,6 +130,135 @@ describe("component trust endpoints", () => {
     expect(missing.statusCode).toBe(422);
   });
 
+  it("refuses to pin something other than what the author reviewed (the files changed since)", async () => {
+    const reviewed = (await tickets()).digest;
+    await app!.close();
+    writeFileSync(manifestPath(), MANIFEST("tickets.example.test, evil.example.test"));
+    const stale = await pin({ use: "acme/tickets@1.0.0", expectedDigest: reviewed });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toContain("review it again");
+    // The fresh catalog comes back so the form shows what is really there, and nothing was pinned.
+    expect(
+      stale.json().catalog.components.find((c: { id: string }) => c.id === "acme/tickets").digest,
+    ).not.toBe(reviewed);
+    await app!.close();
+    expect((await tickets()).pin).toEqual({ state: "unpinned" });
+  });
+
+  it("pins when the digest the author reviewed is what is on disk", async () => {
+    const reviewed = (await tickets()).digest;
+    await app!.close();
+    const ok = await pin({ use: "acme/tickets@1.0.0", expectedDigest: reviewed });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it("does not pin a built-in component", async () => {
+    const res = await pin({ use: "kampong/slack@1.0.0" });
+    expect(res.statusCode).toBe(400);
+    expect(() => readFileSync(join(dir, "kampong.lock"))).toThrow();
+  });
+
+  it("asks for no consent for a component that may do nothing, even when its old pin had no record", async () => {
+    const quiet = `kind: module
+id: acme/tickets
+version: 1.0.0
+entry: ./index.mjs
+ops:
+  get: { effect: read }
+`;
+    writeFileSync(manifestPath(), quiet);
+    writeFileSync(
+      join(dir, "components/acme/tickets/1.0.0/index.mjs"),
+      "export async function invoke() {}\n",
+    );
+    // A lockfile entry from before permissions were recorded, for different bytes.
+    writeFileSync(
+      join(dir, "kampong.lock"),
+      `version: 1\ncomponents:\n  acme/tickets@1.0.0:\n    digest: sha256:${"0".repeat(64)}\n`,
+    );
+    const entry = await tickets();
+    expect(entry.permissionsSummary).toBe("no permissions");
+    expect(entry.pin).toEqual({ state: "changed" }); // no `widened`: nothing to consent to
+    await app!.close();
+    // And the server agrees with what the canvas showed.
+    expect((await pin({ use: "acme/tickets@1.0.0" })).statusCode).toBe(200);
+  });
+
+  describe("who may call these endpoints (DNS rebinding and cross-site requests)", () => {
+    const call = async (headers: Record<string, string>, method: "GET" | "POST" = "POST") =>
+      (await start()).inject({
+        method,
+        url: method === "POST" ? "/api/doctor" : "/api/components",
+        headers,
+        payload: method === "POST" ? {} : undefined,
+      });
+
+    it("refuses a Host that is not this machine, which is what a rebound page sends", async () => {
+      expect((await call({ host: "evil.example.com" })).statusCode).toBe(403);
+      await app!.close();
+      expect((await call({ host: "evil.example.com" }, "GET")).statusCode).toBe(403);
+    });
+
+    it("answers loopback names with or without a port", async () => {
+      for (const host of ["localhost:4310", "127.0.0.1:4310", "[::1]:4310", "localhost"]) {
+        expect((await call({ host }, "GET")).statusCode, host).toBe(200);
+        await app!.close();
+      }
+    });
+
+    it("refuses a write from another origin, or marked cross-site, even on a loopback host", async () => {
+      const base = { host: "localhost:4310" };
+      expect((await call({ ...base, origin: "https://evil.example.com" })).statusCode).toBe(403);
+      await app!.close();
+      expect((await call({ ...base, origin: "null" })).statusCode).toBe(403);
+      await app!.close();
+      expect((await call({ ...base, "sec-fetch-site": "cross-site" })).statusCode).toBe(403);
+      await app!.close();
+      expect((await call({ ...base, origin: "http://localhost:4310" })).statusCode).toBe(200);
+    });
+
+    it("answers a host the author bound on purpose, and any name when bound to every interface", async () => {
+      app = createDevServer({
+        specPath: join(dir, "agent.yaml"),
+        layoutPath: join(dir, "layout.json"),
+        allowedHosts: ["devbox.lan"],
+      });
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/components",
+            headers: { host: "devbox.lan:4310" },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/components",
+            headers: { host: "other.lan" },
+          })
+        ).statusCode,
+      ).toBe(403);
+      await app.close();
+      app = createDevServer({
+        specPath: join(dir, "agent.yaml"),
+        layoutPath: join(dir, "layout.json"),
+        allowedHosts: ["*"],
+      });
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/components",
+            headers: { host: "anything.lan" },
+          })
+        ).statusCode,
+      ).toBe(200);
+    });
+  });
+
   describe("POST /api/doctor", () => {
     const env = { TICKETS_TOKEN: "s3cret-token-value" };
 

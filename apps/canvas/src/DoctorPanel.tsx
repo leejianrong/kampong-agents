@@ -8,12 +8,15 @@ export interface DoctorPanelProps {
   run: (options: { online?: boolean; probe?: boolean }) => Promise<DoctorCheckDto[]>;
 }
 
+const WORD = { pass: "Passed", warn: "Warning", fail: "Failed" } as const;
 const MARK = { pass: "✓", warn: "!", fail: "✗" } as const;
 
 export function DoctorPanel({ run }: DoctorPanelProps) {
   const [checks, setChecks] = useState<DoctorCheckDto[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sending credentials is the one check that leaves the machine with a secret, so it asks first.
+  const [confirmingProbe, setConfirmingProbe] = useState(false);
 
   async function go(options: { online?: boolean; probe?: boolean }) {
     setBusy(true);
@@ -58,8 +61,8 @@ export function DoctorPanel({ run }: DoctorPanelProps) {
         <button
           type="button"
           className="md3-button md3-button-text"
-          disabled={busy}
-          onClick={() => void go({ online: true, probe: true })}
+          disabled={busy || confirmingProbe}
+          onClick={() => setConfirmingProbe(true)}
         >
           Also check credentials
         </button>
@@ -68,6 +71,38 @@ export function DoctorPanel({ run }: DoctorPanelProps) {
         Checking credentials sends one read-only request, carrying each credential, to the service
         it belongs to.
       </p>
+      {confirmingProbe && (
+        <div
+          role="alertdialog"
+          aria-label="Confirm sending credentials"
+          className="md3-trust__confirm"
+        >
+          <p className="md3-body-medium">
+            Send each credential this spec uses to the service it belongs to?
+          </p>
+          <div className="md3-trust__actions">
+            <button
+              type="button"
+              className="md3-button md3-button-filled"
+              autoFocus
+              disabled={busy}
+              onClick={() => {
+                setConfirmingProbe(false);
+                void go({ online: true, probe: true });
+              }}
+            >
+              Send and check
+            </button>
+            <button
+              type="button"
+              className="md3-button md3-button-text"
+              onClick={() => setConfirmingProbe(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="md3-banner md3-banner--error">
@@ -86,9 +121,10 @@ export function DoctorPanel({ run }: DoctorPanelProps) {
           <ul className="md3-doctor__list" data-testid="doctor-checks">
             {checks.map((check, i) => (
               <li key={i} className={`md3-doctor__item md3-doctor__item--${check.status}`}>
-                <span aria-label={check.status} className="md3-doctor__mark">
+                <span className="md3-doctor__mark" aria-hidden="true">
                   {MARK[check.status]}
                 </span>
+                <span className="md3-visually-hidden">{WORD[check.status]}: </span>
                 <span className="md3-body-medium">{check.message}</span>
               </li>
             ))}

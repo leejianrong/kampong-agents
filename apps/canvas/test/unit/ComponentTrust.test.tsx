@@ -41,7 +41,9 @@ describe("ComponentTrust", () => {
     expect(onPin).not.toHaveBeenCalled();
     expect(screen.getAllByText(/reach tickets.example.test; read TICKETS_TOKEN/)).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
-    await waitFor(() => expect(onPin).toHaveBeenCalledWith("acme/tickets@1.0.0", false));
+    await waitFor(() =>
+      expect(onPin).toHaveBeenCalledWith("acme/tickets@1.0.0", false, entry().digest),
+    );
   });
 
   it("will not pin a wider grant until the author says they accept it", async () => {
@@ -61,7 +63,9 @@ describe("ComponentTrust", () => {
     fireEvent.click(screen.getByLabelText(/accept the wider permissions/i));
     expect(pin.disabled).toBe(false);
     fireEvent.click(pin);
-    await waitFor(() => expect(onPin).toHaveBeenCalledWith("acme/tickets@1.0.0", true));
+    await waitFor(() =>
+      expect(onPin).toHaveBeenCalledWith("acme/tickets@1.0.0", true, entry().digest),
+    );
   });
 
   it("shows the server's reason when pinning is refused, and stays open", async () => {
@@ -83,6 +87,24 @@ describe("ComponentTrust", () => {
     render(<ComponentTrust entry={entry({ pin: { state: "changed" } })} onPin={vi.fn()} />);
     expect(screen.getByRole("alert").textContent).toMatch(/refuses it until you review/);
   });
+
+  it("does not carry consent from one component to another when the author switches", () => {
+    const widened = (id: string) =>
+      entry({
+        id,
+        digest: `sha256:${id.length.toString().repeat(64).slice(0, 64)}`,
+        pin: { state: "changed", widened: [`${id} may now reach more`] },
+      });
+    const { rerender } = render(
+      <ComponentTrust key="a" entry={widened("acme/a")} onPin={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /review and pin/i }));
+    fireEvent.click(screen.getByLabelText(/accept the wider permissions/i));
+    // ComponentToolForm keys the panel by component and digest.
+    rerender(<ComponentTrust key="b" entry={widened("acme/bb")} onPin={vi.fn()} />);
+    expect(screen.queryByLabelText(/accept the wider permissions/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /review and pin/i })).toBeTruthy();
+  });
 });
 
 describe("DoctorPanel", () => {
@@ -101,7 +123,7 @@ describe("DoctorPanel", () => {
       "1 failed, 1 to look at.",
     );
     expect(screen.getByText("TICKETS_TOKEN is not set")).toBeTruthy();
-    expect(screen.getByLabelText("fail")).toBeTruthy();
+    expect(screen.getByText(/^Failed:/)).toBeTruthy();
   });
 
   it("reaches hosts, or sends credentials, only through its own explicit buttons", async () => {
@@ -111,6 +133,9 @@ describe("DoctorPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /also reach each host/i }));
     await waitFor(() => expect(run).toHaveBeenLastCalledWith({ online: true }));
     fireEvent.click(screen.getByRole("button", { name: /also check credentials/i }));
+    // Nothing is sent until it is confirmed.
+    expect(run).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Send and check" }));
     await waitFor(() => expect(run).toHaveBeenLastCalledWith({ online: true, probe: true }));
     expect(screen.getByText(/carrying each credential/)).toBeTruthy();
   });

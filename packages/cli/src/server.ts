@@ -2,7 +2,7 @@ import { basename, relative } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } from "@kampong/spec";
-import type { RunEvent } from "@kampong/engine";
+import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
 import { componentCatalogFor, componentDispatcherFor, lockUses } from "./components.js";
@@ -62,6 +62,17 @@ function specFileErrorResponse(
 // package's server-focused tests can keep constructing a server without
 // needing `apps/canvas` built first.
 
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function hostAllowed(header: string | undefined, extra: string[]): boolean {
+  if (!header) return false;
+  // `[::1]:4310`, `localhost:4310` and `localhost` all name a host; keep only the host part.
+  const name = (
+    header.startsWith("[") ? header.slice(1, header.indexOf("]")) : header.split(":")[0]!
+  ).toLowerCase();
+  return LOOPBACK.has(name) || extra.some((host) => host.toLowerCase() === name);
+}
+
 export interface CreateDevServerOptions {
   specPath: string;
   layoutPath: string;
@@ -71,6 +82,12 @@ export interface CreateDevServerOptions {
   run?: RunManagerOptions;
   /** Test-only seams for the doctor routes (the environment, the dial and the probe's fetch). */
   doctor?: Partial<Pick<DoctorOptions, "env" | "connect" | "probeFetch">>;
+  /**
+   * Host names the server answers to besides loopback (`kampong dev --host`). `"*"` when it was bound to
+   * every interface on purpose. Anything else is refused, which is what stops a web page that rebinds
+   * its own name to 127.0.0.1 from calling these endpoints as if it were the canvas.
+   */
+  allowedHosts?: string[];
 }
 
 export function createDevServer({
@@ -79,6 +96,7 @@ export function createDevServer({
   staticDir,
   run: runOptions,
   doctor: doctorOptions,
+  allowedHosts = [],
 }: CreateDevServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   // Typed as the `SpecRepository` interface (KAN-1224, ADR-0014), not the
@@ -87,6 +105,29 @@ export function createDevServer({
   // place that would need to change to point `kampong dev` at a different
   // `SpecRepository` implementation later.
   const store: SpecRepository = new SpecStore(specPath, layoutPath);
+
+  // KAN-1901: these endpoints can pin a component and send credentials to a service, so a page the author
+  // happens to visit must not be able to reach them. DNS rebinding makes such a page same-origin with
+  // localhost, so the Host header is checked, and a write must come from this origin.
+  app.addHook("onRequest", async (request, reply) => {
+    if (!request.url.startsWith("/api/")) return;
+    if (!allowedHosts.includes("*") && !hostAllowed(request.headers.host, allowedHosts)) {
+      reply.code(403).send({ success: false, error: "This host name is not allowed." });
+      return;
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      const origin = request.headers.origin;
+      const site = request.headers["sec-fetch-site"];
+      const crossOrigin =
+        site === "cross-site" ||
+        (typeof origin === "string" && origin !== "null"
+          ? new URL(origin).host !== request.headers.host
+          : origin === "null");
+      if (crossOrigin) {
+        reply.code(403).send({ success: false, error: "Cross-origin requests are not allowed." });
+      }
+    }
+  });
   const watcher = new SpecFileWatcher(specPath);
   const runManager = new RunManager({
     ...runOptions,
@@ -123,25 +164,35 @@ export function createDevServer({
   // KAN-1901: pin one installed component, as `kampong lock` would. A component that changed since it was
   // pinned is re-pinned here (the author has just been shown what it may do), but one that now may do more
   // than what was reviewed is refused unless the request says the wider permissions were accepted.
-  app.post<{ Body: { use?: unknown; allowWiderPermissions?: unknown } }>(
-    "/api/components/pin",
-    async (request, reply) => {
-      const { use, allowWiderPermissions } = request.body ?? {};
-      if (typeof use !== "string" || !use.includes("@")) {
-        reply.code(400);
-        return { success: false, error: 'use must be "id@version"' };
-      }
-      const outcome = await lockUses([use], specPath, {
-        update: true,
-        allowWiderPermissions: allowWiderPermissions === true,
-      });
-      if (!outcome.ok) {
-        reply.code(422);
-        return { success: false, error: outcome.message };
-      }
-      return { success: true, catalog: await componentCatalogFor(specPath) };
-    },
-  );
+  app.post<{
+    Body: { use?: unknown; allowWiderPermissions?: unknown; expectedDigest?: unknown };
+  }>("/api/components/pin", async (request, reply) => {
+    const { use, allowWiderPermissions, expectedDigest } = request.body ?? {};
+    if (typeof use !== "string" || !use.includes("@")) {
+      reply.code(400);
+      return { success: false, error: 'use must be "id@version"' };
+    }
+    if (isFirstPartyId(use.slice(0, use.lastIndexOf("@")))) {
+      reply.code(400);
+      return { success: false, error: "A built-in component needs no pin." };
+    }
+    const outcome = await lockUses([use], specPath, {
+      update: true,
+      allowWiderPermissions: allowWiderPermissions === true,
+      ...(typeof expectedDigest === "string" && { expectedDigest }),
+    });
+    if (!outcome.ok) {
+      // What was reviewed is not what is on disk now: say so with the fresh catalog, so the author
+      // reviews again instead of pinning something they were not shown.
+      reply.code(outcome.stale ? 409 : 422);
+      return {
+        success: false,
+        error: outcome.message,
+        ...(outcome.stale && { catalog: await componentCatalogFor(specPath) }),
+      };
+    }
+    return { success: true, catalog: await componentCatalogFor(specPath) };
+  });
 
   // KAN-1901: `kampong doctor` for the canvas. Offline by default. `online` dials each host and `probe`
   // sends each credential to the service it belongs to, so both must be asked for.

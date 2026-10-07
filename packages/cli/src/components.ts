@@ -90,7 +90,28 @@ export type LockOutcome =
       /** What each newly pinned or updated component may do, for the author to read. */
       reviewed: { use: string; summary: string }[];
     }
-  | { ok: false; message: string };
+  | {
+      ok: false;
+      message: string;
+      /** The files are not the ones the caller reviewed. */ stale?: boolean;
+    };
+
+/**
+ * What a component may do now that the pin it was reviewed under did not allow. A pin that recorded
+ * what the component could do lets us tell a code change from a wider grant; with no record there is
+ * nothing to compare, so anything it may do counts as new. The lock and the canvas both use this, so
+ * they cannot disagree about whether consent is needed.
+ */
+function widenedSince(
+  before: ReturnType<typeof permissionsOf> | undefined,
+  now: ReturnType<typeof permissionsOf>,
+): string[] {
+  if (before !== undefined) return diffPermissions(before, now);
+  const summary = describePermissions(now);
+  return summary === "no permissions"
+    ? []
+    : [`no record of what it was reviewed for; it may now: ${summary}`];
+}
 
 export function componentUsesOf(spec: AgentSpec): string[] {
   const uses = new Set<string>();
@@ -117,7 +138,11 @@ export async function lockComponents(
 export async function lockUses(
   uses: string[],
   specPath: string,
-  { update, allowWiderPermissions = false }: { update: boolean; allowWiderPermissions?: boolean },
+  {
+    update,
+    allowWiderPermissions = false,
+    expectedDigest,
+  }: { update: boolean; allowWiderPermissions?: boolean; expectedDigest?: string },
 ): Promise<LockOutcome> {
   if (uses.length === 0) {
     return { ok: true, added: [], unchanged: [], updated: [], none: true, reviewed: [] };
@@ -151,6 +176,15 @@ export async function lockUses(
     } catch (err) {
       return { ok: false, message: `${use}: ${(err as Error).message}` };
     }
+    // A caller that showed an author a digest (the canvas) must pin that one: files edited in between
+    // would otherwise be pinned unreviewed.
+    if (expectedDigest !== undefined && uses.length === 1 && digest !== expectedDigest) {
+      return {
+        ok: false,
+        stale: true,
+        message: `${use} changed since you reviewed it; review it again before pinning.`,
+      };
+    }
     const current = Object.hasOwn(components, use) ? components[use]!.digest : undefined;
     if (current === undefined) {
       components[use] = { digest, permissions };
@@ -165,16 +199,7 @@ export async function lockUses(
         backfilled.push(use);
       }
     } else if (update) {
-      // A pin that recorded what the component could do lets us tell a code change from a wider grant.
-      const before = components[use]!.permissions;
-      const summary = describePermissions(permissions);
-      // With no record there is nothing to compare, so anything the component may do counts as new.
-      const wider =
-        before === undefined
-          ? summary === "no permissions"
-            ? []
-            : [`no record of what it was reviewed for; it may now: ${summary}`]
-          : diffPermissions(before, permissions);
+      const wider = widenedSince(components[use]!.permissions, permissions);
       if (wider.length > 0 && !allowWiderPermissions) {
         widened.push(`${use}: ${wider.join("; ")}`);
         continue;
@@ -241,10 +266,7 @@ function pinStatusFor(
   if (!Object.hasOwn(lock.components, ref)) return { state: "unpinned" };
   const pinned = lock.components[ref]!;
   if (pinned.digest === entry.digest) return { state: "pinned" };
-  const widened =
-    pinned.permissions === undefined
-      ? [`no record of what it was reviewed for; it may now: ${entry.permissionsSummary}`]
-      : diffPermissions(pinned.permissions, manifestPermissions);
+  const widened = widenedSince(pinned.permissions, manifestPermissions);
   return { state: "changed", ...(widened.length > 0 && { widened }) };
 }
 
