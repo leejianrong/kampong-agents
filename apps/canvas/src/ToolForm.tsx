@@ -8,6 +8,7 @@ import {
   type Tool,
 } from "@kampong/spec";
 import { ComponentToolForm } from "./ComponentToolForm.js";
+import type { PinResult } from "./ComponentTrust.js";
 
 // The "Add Tool" affordance (PLAN.md Affordances, Q12/R5): a structured
 // form, zero LLM calls. Validation/tool-building logic lives in
@@ -29,6 +30,8 @@ export interface ToolFormProps {
   componentProblems?: string[];
   /** References to earlier steps' declared outputs, offered inside a component form. */
   references?: OutputReferenceOption[];
+  /** Pins a component from the form (KAN-1901); omitted where the server cannot. */
+  onPinComponent?: (use: string, allowWiderPermissions: boolean) => Promise<PinResult>;
   onSubmit: (tool: Tool) => void;
   onCancel: () => void;
 }
@@ -37,6 +40,7 @@ export function ToolForm({
   components,
   componentProblems,
   references,
+  onPinComponent,
   onSubmit,
   onCancel,
 }: ToolFormProps) {
@@ -124,6 +128,7 @@ export function ToolForm({
         problems={componentProblems}
         references={references}
         header={kindSwitcher}
+        onPin={onPinComponent}
         onSubmit={onSubmit}
         onCancel={onCancel}
       />

@@ -85,8 +85,13 @@ describe("GET /api/components", () => {
     });
     expect(tickets[0].digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(tickets[0].ops.get.effect).toBe("read");
-    // No request templates, hosts or auth injection leave the server.
-    expect(JSON.stringify(body)).not.toContain("tickets.example.test");
+    // No request templates or auth injection leave the server. The hosts appear only in the permission
+    // summary, which is there so an author can review what the component may reach (KAN-1901).
+    expect(JSON.stringify(body)).not.toContain("https://tickets.example.test");
+    expect(tickets[0].permissionsSummary).toContain("tickets.example.test");
+    expect(JSON.stringify({ ...tickets[0], permissionsSummary: "" })).not.toContain(
+      "tickets.example.test",
+    );
     expect(JSON.stringify(body)).not.toContain("Bearer");
   });
 

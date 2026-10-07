@@ -1,5 +1,6 @@
 import { parseDocument } from "yaml";
 import type { ComponentManifest, OpEffect, SchemaNode } from "./component.js";
+import { describePermissions, permissionsOf } from "./permissions.js";
 import { toolSchema, type AgentSpec, type Tool } from "./schema.js";
 
 // KAN-1885: what the canvas needs to build a form for a component op, as pure functions so the logic
@@ -16,10 +17,25 @@ export interface ComponentCatalogOp {
   output?: SchemaNode;
 }
 
+/**
+ * Whether a run will accept this component (KAN-1834): `first-party` ships with kampong and needs no pin;
+ * `pinned` matches its pin in kampong.lock; `changed` is pinned but its files are different now (a run
+ * refuses it until it is reviewed and re-pinned); `unpinned` has never been pinned.
+ */
+export interface ComponentPinStatus {
+  state: "first-party" | "pinned" | "changed" | "unpinned";
+  /** For `changed`: what the new version may do that the pinned one could not. */
+  widened?: string[];
+}
+
 export interface ComponentCatalogEntry {
   id: string;
   version: string;
   digest: string;
+  /** What the component may do, in words, for the author to read before pinning it. */
+  permissionsSummary: string;
+  /** Set by a server that knows the project's lockfile; absent where there is none to compare with. */
+  pin?: ComponentPinStatus;
   title?: string;
   description?: string;
   /** Secret slots a spec may remap: the default environment variable each reads. */
@@ -65,6 +81,7 @@ export function catalogEntryFromManifest(
     id: manifest.id,
     version: manifest.version,
     digest,
+    permissionsSummary: describePermissions(permissionsOf(manifest)),
     ...(manifest.title !== undefined && { title: manifest.title }),
     ...(manifest.description !== undefined && { description: manifest.description }),
     slots: Object.entries(manifest.auth?.slots ?? {}).map(([name, slot]) => ({

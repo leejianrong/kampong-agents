@@ -9,6 +9,7 @@ const TICKETS: ComponentCatalogEntry = {
   id: "acme/tickets",
   version: "1.0.0",
   digest: `sha256:${"a".repeat(64)}`,
+  permissionsSummary: "reach tickets.example.test",
   title: "Tickets",
   slots: [{ name: "token", env: "TICKETS_TOKEN" }],
   config: [{ name: "region", default: "eu", description: "Data region", required: false }],

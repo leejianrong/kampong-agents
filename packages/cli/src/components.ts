@@ -21,6 +21,9 @@ import {
   permissionsOf,
   type AgentSpec,
   type ComponentCatalog,
+  type ComponentCatalogEntry,
+  type ComponentManifest,
+  type ComponentPinStatus,
   type Lockfile,
 } from "@kampong/spec";
 
@@ -105,9 +108,17 @@ export function componentUsesOf(spec: AgentSpec): string[] {
 export async function lockComponents(
   spec: AgentSpec,
   specPath: string,
+  options: { update: boolean; allowWiderPermissions?: boolean },
+): Promise<LockOutcome> {
+  return lockUses(componentUsesOf(spec), specPath, options);
+}
+
+/** `lockComponents` for an explicit list of `id@version`, which is how the canvas pins one component. */
+export async function lockUses(
+  uses: string[],
+  specPath: string,
   { update, allowWiderPermissions = false }: { update: boolean; allowWiderPermissions?: boolean },
 ): Promise<LockOutcome> {
-  const uses = componentUsesOf(spec);
   if (uses.length === 0) {
     return { ok: true, added: [], unchanged: [], updated: [], none: true, reviewed: [] };
   }
@@ -218,6 +229,25 @@ export async function componentCatalogFor(specPath: string): Promise<ComponentCa
   }
 }
 
+function pinStatusFor(
+  entry: ComponentCatalogEntry,
+  firstParty: boolean,
+  lock: Lockfile | undefined,
+  manifestPermissions: ReturnType<typeof permissionsOf>,
+): ComponentPinStatus | undefined {
+  if (firstParty) return { state: "first-party" };
+  if (!lock) return undefined;
+  const ref = `${entry.id}@${entry.version}`;
+  if (!Object.hasOwn(lock.components, ref)) return { state: "unpinned" };
+  const pinned = lock.components[ref]!;
+  if (pinned.digest === entry.digest) return { state: "pinned" };
+  const widened =
+    pinned.permissions === undefined
+      ? [`no record of what it was reviewed for; it may now: ${entry.permissionsSummary}`]
+      : diffPermissions(pinned.permissions, manifestPermissions);
+  return { state: "changed", ...(widened.length > 0 && { widened }) };
+}
+
 async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
   // One scan and one hash per component. The first-party components ship tested, so only the project's
   // own folder can report problems; it also cannot supply a kampong/* component (the registry refuses).
@@ -225,11 +255,23 @@ async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
     createFirstPartyRegistry().resolveAll(),
     new DirectoryComponentRegistry(componentsDirFor(specPath)).resolveAll(),
   ]);
+  // A lockfile that cannot be read is a problem to show, not a reason to hide the components.
+  const problems = [...firstParty.problems, ...user.problems];
+  let lock: Lockfile | undefined;
+  try {
+    lock = readLockfile(specPath);
+  } catch (err) {
+    problems.push((err as Error).message);
+  }
+  const entry =
+    (firstPartyEntry: boolean) => (c: { manifest: ComponentManifest; digest: string }) => {
+      const base = catalogEntryFromManifest(c.manifest, c.digest);
+      const pin = pinStatusFor(base, firstPartyEntry, lock, permissionsOf(c.manifest));
+      return pin ? { ...base, pin } : base;
+    };
   return {
-    components: [...firstParty.components, ...user.components].map(({ manifest, digest }) =>
-      catalogEntryFromManifest(manifest, digest),
-    ),
-    problems: [...firstParty.problems, ...user.problems],
+    components: [...firstParty.components.map(entry(true)), ...user.components.map(entry(false))],
+    problems,
   };
 }
 

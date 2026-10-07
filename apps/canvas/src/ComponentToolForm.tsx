@@ -1,4 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
+import { ComponentTrust, type PinResult } from "./ComponentTrust.js";
 import {
   buildComponentToolFromForm,
   buildOpInput,
@@ -23,6 +24,8 @@ export interface ComponentToolFormProps {
   references?: OutputReferenceOption[];
   /** The kind switcher rendered by ToolForm, so the shell stays in one place. */
   header: ReactNode;
+  /** Pins a component (KAN-1901); omitted where the server cannot, and the form points at `kampong lock`. */
+  onPin?: (use: string, allowWiderPermissions: boolean) => Promise<PinResult>;
   onSubmit: (tool: Tool) => void;
   onCancel: () => void;
 }
@@ -73,6 +76,7 @@ export function ComponentToolForm({
   problems = [],
   references = [],
   header,
+  onPin,
   onSubmit,
   onCancel,
 }: ComponentToolFormProps) {
@@ -323,12 +327,7 @@ export function ComponentToolForm({
             />
           </label>
 
-          <div role="status" className="md3-banner md3-banner--info">
-            <p>
-              After saving, run <code>kampong lock</code> to pin this component; a run refuses a
-              component that is not pinned.
-            </p>
-          </div>
+          {entry && <ComponentTrust entry={entry} onPin={onPin} />}
 
           <Field label="Component" hint={entry?.description}>
             {(control) => (

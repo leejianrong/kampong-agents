@@ -67,6 +67,19 @@ export type RunEventMessage =
 export type { PendingApproval, RunEvent, RunState };
 export type { ComponentCatalog, SpecSummary };
 
+/** One line of `kampong doctor` output, as the local server returns it (KAN-1901). */
+export interface DoctorCheckDto {
+  status: "pass" | "warn" | "fail";
+  area: "spec" | "component" | "env" | "fixtures" | "network";
+  message: string;
+}
+
+export interface PinComponentResponse {
+  success: boolean;
+  catalog?: ComponentCatalog;
+  error?: string;
+}
+
 /**
  * The editor surface both server modes implement. `App`/`RunPanel` depend on
  * exactly this and nothing mode-specific -- the local client and each hosted
@@ -87,6 +100,19 @@ export interface ApiClient {
    * server has them; the hosted client omits this and the form hides the Component kind.
    */
   listComponents?(): Promise<ComponentCatalog>;
+  /**
+   * Pins one installed component, as `kampong lock` does (KAN-1901). A re-pin that widens what the
+   * component may do is refused unless `allowWiderPermissions` is set. Local server only.
+   */
+  pinComponent?(
+    use: string,
+    options?: { allowWiderPermissions?: boolean },
+  ): Promise<PinComponentResponse>;
+  /**
+   * `kampong doctor`: offline by default; `online` dials each host and `probe` sends each credential to the
+   * service it belongs to, so a caller asks for those explicitly. Local server only.
+   */
+  runDoctor?(options?: { online?: boolean; probe?: boolean }): Promise<DoctorCheckDto[]>;
   startRun(input: string): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
@@ -177,6 +203,27 @@ export function createApiClient(baseUrl = ""): ApiClient {
         );
       }
       return (await res.json()) as ComponentCatalog;
+    },
+
+    async pinComponent(use, options = {}): Promise<PinComponentResponse> {
+      const res = await fetch(
+        `${baseUrl}/api/components/pin`,
+        jsonInit({ use, allowWiderPermissions: options.allowWiderPermissions === true }),
+      );
+      // A refusal (the update widens permissions, the component is missing) is an answer with a message,
+      // not a failure of the request, so the form can show it.
+      return (await res.json()) as PinComponentResponse;
+    },
+
+    async runDoctor(options = {}): Promise<DoctorCheckDto[]> {
+      const res = await fetch(`${baseUrl}/api/doctor`, jsonInit(options));
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Could not run the checks (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
+      return ((await res.json()) as { checks: DoctorCheckDto[] }).checks;
     },
 
     subscribeToEvents(onEvent: (event: { type: string; source: string }) => void): () => void {

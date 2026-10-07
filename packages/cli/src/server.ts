@@ -5,7 +5,8 @@ import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } fro
 import type { RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
-import { componentCatalogFor, componentDispatcherFor } from "./components.js";
+import { componentCatalogFor, componentDispatcherFor, lockUses } from "./components.js";
+import { runDoctor, type DoctorOptions } from "./doctor.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
@@ -68,6 +69,8 @@ export interface CreateDevServerOptions {
   staticDir?: string;
   /** Test-only seam, forwarded to RunManager -- see its docstring. Production callers omit this. */
   run?: RunManagerOptions;
+  /** Test-only seams for the doctor routes (the environment, the dial and the probe's fetch). */
+  doctor?: Partial<Pick<DoctorOptions, "env" | "connect" | "probeFetch">>;
 }
 
 export function createDevServer({
@@ -75,6 +78,7 @@ export function createDevServer({
   layoutPath,
   staticDir,
   run: runOptions,
+  doctor: doctorOptions,
 }: CreateDevServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   // Typed as the `SpecRepository` interface (KAN-1224, ADR-0014), not the
@@ -115,6 +119,56 @@ export function createDevServer({
 
   // KAN-1885: installed components, for the canvas's generated forms.
   app.get("/api/components", async () => componentCatalogFor(specPath));
+
+  // KAN-1901: pin one installed component, as `kampong lock` would. A component that changed since it was
+  // pinned is re-pinned here (the author has just been shown what it may do), but one that now may do more
+  // than what was reviewed is refused unless the request says the wider permissions were accepted.
+  app.post<{ Body: { use?: unknown; allowWiderPermissions?: unknown } }>(
+    "/api/components/pin",
+    async (request, reply) => {
+      const { use, allowWiderPermissions } = request.body ?? {};
+      if (typeof use !== "string" || !use.includes("@")) {
+        reply.code(400);
+        return { success: false, error: 'use must be "id@version"' };
+      }
+      const outcome = await lockUses([use], specPath, {
+        update: true,
+        allowWiderPermissions: allowWiderPermissions === true,
+      });
+      if (!outcome.ok) {
+        reply.code(422);
+        return { success: false, error: outcome.message };
+      }
+      return { success: true, catalog: await componentCatalogFor(specPath) };
+    },
+  );
+
+  // KAN-1901: `kampong doctor` for the canvas. Offline by default. `online` dials each host and `probe`
+  // sends each credential to the service it belongs to, so both must be asked for.
+  app.post<{ Body: { online?: unknown; probe?: unknown } }>(
+    "/api/doctor",
+    async (request, reply) => {
+      let loaded;
+      try {
+        loaded = await loadWithLayout(store);
+      } catch (err) {
+        const { status, body } = specFileErrorResponse(err, specPath);
+        reply.code(status);
+        return body;
+      }
+      if (!loaded.success || !loaded.spec) {
+        reply.code(422);
+        return { success: false, errors: loaded.errors };
+      }
+      const checks = await runDoctor(loaded.spec as AgentSpec, specPath, {
+        env: process.env,
+        ...doctorOptions,
+        online: request.body?.online === true,
+        probe: request.body?.probe === true,
+      });
+      return { success: true, checks };
+    },
+  );
 
   app.put<{ Body: { ops: PatchOp[] } }>("/api/spec", async (request, reply) => {
     watcher.beginMutation();

@@ -916,3 +916,99 @@ select.md3-text-field {
   flex-direction: column;
   gap: 0.75rem;
 }
+
+/* Component trust (KAN-1901): the pin state chip, the permissions review and the doctor results. State is
+   never colour alone: each chip and each result carries its own words or mark. */
+
+.md3-trust,
+.md3-doctor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+}
+
+.md3-trust__head,
+.md3-doctor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.md3-trust__summary {
+  margin: 0;
+}
+
+.md3-trust__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.md3-trust__actions,
+.md3-doctor__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.md3-trust__error {
+  margin: 0;
+  color: var(--md-sys-color-error);
+}
+
+.md3-status-chip {
+  padding: 0.125rem 0.625rem;
+  border-radius: var(--md-shape-corner-small);
+  font-size: var(--md-type-label-medium-size, 0.75rem);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.md3-status-chip--pinned,
+.md3-status-chip--first-party {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-status-chip--changed {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.md3-status-chip--unpinned {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.md3-doctor__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.md3-doctor__item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.md3-doctor__mark {
+  min-width: 1rem;
+  font-weight: 600;
+}
+
+.md3-doctor__item--fail .md3-doctor__mark {
+  color: var(--md-sys-color-error);
+}
+
+.md3-doctor__item--warn .md3-doctor__mark {
+  color: var(--md-sys-color-tertiary);
+}

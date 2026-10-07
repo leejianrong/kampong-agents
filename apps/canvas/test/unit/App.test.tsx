@@ -112,6 +112,7 @@ describe("App", () => {
           id: "acme/tickets",
           version: "1.0.0",
           digest: `sha256:${"a".repeat(64)}`,
+          permissionsSummary: "reach tickets.example.test",
           slots: [],
           config: [],
           ops: {
@@ -155,6 +156,87 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect(screen.getByText(/Could not list components: nope/)).toBeTruthy();
+    });
+
+    it("pins a component from the form and shows the new state without reopening it (KAN-1901)", async () => {
+      const unpinned = {
+        ...CATALOG,
+        components: [{ ...CATALOG.components[0]!, pin: { state: "unpinned" } }],
+      };
+      const pinned = {
+        ...CATALOG,
+        components: [{ ...CATALOG.components[0]!, pin: { state: "pinned" } }],
+      };
+      const calls: { url: string; body?: string }[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push({ url: String(url), body: init?.body as string | undefined });
+          const json = (body: unknown) =>
+            ({ ok: true, status: 200, json: async () => body }) as Response;
+          if (String(url).endsWith("/api/components/pin")) {
+            return json({ success: true, catalog: pinned });
+          }
+          if (String(url).endsWith("/api/components")) return json(unpinned);
+          return json(SPEC_RESPONSE);
+        }),
+      );
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Component" }));
+      expect((await screen.findByTestId("pin-state")).textContent).toBe("Not pinned");
+      fireEvent.click(screen.getByRole("button", { name: /review and pin/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Pin" }));
+      await waitFor(() => expect(screen.getByTestId("pin-state").textContent).toBe("Pinned"));
+      const pin = calls.find((c) => c.url.endsWith("/api/components/pin"))!;
+      expect(JSON.parse(pin.body!)).toEqual({
+        use: "acme/tickets@1.0.0",
+        allowWiderPermissions: false,
+      });
+    });
+  });
+
+  describe("checks (KAN-1901)", () => {
+    it("runs the offline checks from the toolbar and lists the results", async () => {
+      const calls: { url: string; body?: string }[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push({ url: String(url), body: init?.body as string | undefined });
+          return {
+            ok: true,
+            status: 200,
+            json: async () =>
+              String(url).endsWith("/api/doctor")
+                ? {
+                    success: true,
+                    checks: [{ status: "fail", area: "env", message: "X is not set" }],
+                  }
+                : SPEC_RESPONSE,
+          } as Response;
+        }),
+      );
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Checks" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
+      expect(await screen.findByText("X is not set")).toBeTruthy();
+      expect(JSON.parse(calls.find((c) => c.url.endsWith("/api/doctor"))!.body!)).toEqual({});
+    });
+
+    it("has no Checks button on a server that cannot run them", async () => {
+      const api = {
+        loadSpec: async () => SPEC_RESPONSE,
+        applyPatch: async () => ({ success: true }),
+        subscribeToEvents: () => () => {},
+        startRun: async () => ({ success: true }),
+        approveRun: async () => ({ success: true }),
+        subscribeToRunEvents: () => () => {},
+      };
+      render(<App api={api} />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      expect(screen.queryByRole("button", { name: "Checks" })).toBeNull();
     });
   });
 });
