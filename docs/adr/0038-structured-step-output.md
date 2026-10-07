@@ -1,0 +1,38 @@
+# ADR-0038: Structured step output (`output_schema`)
+
+Status: accepted (KAN-1843)
+
+## Context
+
+Before this, an action step's output was `{ text }`, or `{ result, confidence }` behind `confidence_gate`
+with `result` an unconstrained object. A downstream condition or template could not rely on a field being
+there, or on its type, and the confidence value lived on the event rather than in the data (ADR-0009).
+
+## Decision
+
+- An action step may declare `output_schema`: the JSON Schema subset connector ops already use (type,
+  enum, min/max, length, pattern, `items`, `properties`/`required`, per-field `description`, scalar
+  `default`). The root must be `type: object`. Version 1.1 only, because the point is that later expressions
+  can read the fields, and 1.1 is where expressions read full step outputs. Anything outside the subset is
+  a validation error, not an ignored keyword.
+- **The engine decides validity, not the provider.** The prompt carries the schema as text; the provider is
+  given a loose object schema. A value that breaks a constraint is therefore a located error we own
+  (`output.severity must be one of low, high`), not a provider exception we would have to classify.
+  Declared defaults are filled in first, then the object is validated.
+- **Retry once, on a schema failure only.** The second prompt names the problems and the rejected answer.
+  A second failure fails the step visibly (`did not match output_schema after 1 retry: …`). A model call
+  that throws (timeout, Ollama unavailable) is not retried here: ADR-0004 stands.
+- **The validated object is the step output**, so `triage.severity` is present and typed for every later
+  condition and template.
+- **Confidence is an ordinary field.** With `confidence_gate` and an `output_schema`, the schema must declare
+  a numeric `confidence`; the guardrail reads that field (a value outside 0 to 1 counts as a schema failure,
+  so it is retried like one). A gate step without a schema keeps the `{ result, confidence }` request; in a
+  1.1 spec its `confidence` is also written into the step output so `step.confidence` reads like any field.
+  A 1.0 gate step's output is unchanged.
+
+## Not done
+
+- Reads of `step.field` in expressions are not checked against the schema at load time. It is the obvious next
+  lint, and it can reuse the spike's relative-name rules.
+- The prompt is the only guidance the model gets about the shape; a provider-native structured mode (a JSON
+  Schema sent to the API) would reduce retries but needs a per-provider conversion.

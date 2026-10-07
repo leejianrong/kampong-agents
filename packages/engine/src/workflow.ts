@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AgentSpec, Tool, WorkflowStep } from "@kampong/spec";
+import type { AgentSpec, SchemaNode, Tool, WorkflowStep } from "@kampong/spec";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
 import {
@@ -17,6 +17,7 @@ import {
   resolveTemplatesDeep,
   type ExpressionLimits,
 } from "./expressions.js";
+import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
 import { resolveVars } from "./vars.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
@@ -401,17 +402,82 @@ async function runActionStep(
       : undefined;
   const prompt = buildStepPrompt(step, input, stepOutputs, query);
 
+  if (step.output_schema) {
+    return runStructuredStep(step, step.output_schema, deps, instructions, prompt);
+  }
+
   if (step.confidence_gate) {
     const structured = await deps.model.generateStructured({
       instructions,
       prompt,
       schema: structuredStepSchema,
     });
-    return { output: structured.result, confidence: structured.confidence };
+    // In a 1.1 spec the confidence is an ordinary field of the output too, so `step.confidence` reads
+    // like any other. A 1.0 step's output is unchanged.
+    const output =
+      expressions && isPlainObject(structured.result)
+        ? { ...structured.result, confidence: structured.confidence }
+        : structured.result;
+    return { output, confidence: structured.confidence };
   }
 
   const text = await deps.model.generateText({ instructions, prompt });
   return { output: { text } };
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+// The model is asked for the object the step's `output_schema` describes, and the engine -- not the
+// provider -- is what decides whether it does (ADR-0038). The provider is given a loose object schema, so
+// a value that breaks a constraint comes back to us as a located error we can show the model once. Only
+// a schema failure is retried: a model call that throws (timeout, unavailable) is not, as ADR-0004 says.
+export const OUTPUT_SCHEMA_RETRIES = 1;
+const looseObjectSchema = z.record(z.string(), z.unknown());
+
+async function runStructuredStep(
+  step: Extract<WorkflowStep, { action: string }>,
+  outputSchema: SchemaNode,
+  deps: EngineDeps,
+  instructions: string,
+  prompt: string,
+): Promise<{ output: unknown; confidence?: number }> {
+  const base = [
+    prompt,
+    "Respond with only a JSON object that matches this JSON Schema:",
+    JSON.stringify(outputSchema, null, 2),
+  ].join("\n");
+  let attemptPrompt = base;
+  let problems: string[] = [];
+  for (let attempt = 0; attempt <= OUTPUT_SCHEMA_RETRIES; attempt++) {
+    const raw = await deps.model.generateStructured({
+      instructions,
+      prompt: attemptPrompt,
+      schema: looseObjectSchema,
+    });
+    const candidate = isPlainObject(raw) ? applySchemaDefaults(outputSchema, raw) : raw;
+    problems = validateAgainstSchema(outputSchema, candidate, "output");
+    if (problems.length === 0) {
+      if (!step.confidence_gate) return { output: candidate };
+      const confidence = (candidate as Record<string, unknown>).confidence;
+      if (typeof confidence !== "number" || confidence < 0 || confidence > 1) {
+        problems = [
+          `output.confidence must be a number between 0 and 1, got ${String(confidence)}`,
+        ];
+      } else {
+        return { output: candidate, confidence };
+      }
+    }
+    attemptPrompt = [
+      base,
+      `Your previous answer was rejected: ${problems.join("; ")}.`,
+      `Previous answer: ${JSON.stringify(raw)}`,
+      "Answer again with a corrected JSON object.",
+    ].join("\n");
+  }
+  throw new Error(
+    `the model's answer did not match output_schema after ${OUTPUT_SCHEMA_RETRIES} retry: ${problems.join("; ")}`,
+  );
 }
 
 function buildStepPrompt(
@@ -426,7 +492,7 @@ function buildStepPrompt(
   if (Object.keys(stepOutputs).length > 0) {
     lines.push(`Prior step outputs: ${JSON.stringify(stepOutputs)}`);
   }
-  if (step.confidence_gate) {
+  if (step.confidence_gate && !step.output_schema) {
     lines.push(
       "Respond with a JSON object matching { result: <object with fields relevant to this step>, confidence: <number 0-1, how confident you are in this result> }.",
     );

@@ -225,6 +225,7 @@ export type WorkflowStep =
       inputs?: string[];
       query?: string;
       confidence_gate?: boolean;
+      output_schema?: SchemaNode;
     };
 
 // KAN-1431: how a workflow starts (webhook only today).
