@@ -19,9 +19,12 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
           "This project runs these components. Their files are copied, unchanged, under `components/`; " +
             "the manifests and the digests recorded at export time are baked into `src/components.generated.ts`. " +
             "Every time the project starts it re-hashes `components/` against those digests and refuses to run " +
-            "if a file was changed, added or removed. `kampong.lock` records what each component was " +
+            "if a file was changed, added or removed, or if `components/` holds anything that was not exported " +
+            "(a `node_modules`, a stray `package.json`). The check runs once, at startup: a file edited while " +
+            "a long-running server is up is not noticed until the next start. Keep `components/` out of line-ending " +
+            "conversion (the export's `.gitattributes` does). `kampong.lock` records what each component was " +
             "exported as, with the permissions it was reviewed for, and `sbom.json` is a CycloneDX bill of " +
-            "materials with every file's hash; `npm run verify` checks `components/` against `sbom.json`. " +
+            "materials with every file's hash; `npm run verify` (run it in the project checkout, not inside the image) checks `components/` against `sbom.json`. " +
             "An export cannot be revoked remotely, so this check is yours to run. It covers the component " +
             "files, not `node_modules`: dependencies are pinned in `package.json`. Review the components " +
             "like any dependency: a `kind: module` component is code that runs in this process, with " +

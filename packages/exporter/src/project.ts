@@ -102,6 +102,8 @@ export function exportProject(
     write("src/verify.ts", buildVerifyEntryPointSource());
     write("kampong.lock", buildLockfileText(components));
     write("sbom.json", buildSbom(spec, components));
+    // Components are hashed byte for byte: line-ending conversion on a clone would change the digests.
+    write(".gitattributes", "components/** -text\n");
     for (const component of components) {
       const { id, version } = component.manifest;
       // A forced re-export replaces the component outright, so a file the new version no longer has

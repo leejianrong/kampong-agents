@@ -53,6 +53,49 @@ export async function hashComponentDirectory(
   return { digest: `sha256:${hash.digest("hex")}`, files };
 }
 
+/**
+ * Anything under components/ that no digest covers but that code could be loaded from: a node_modules
+ * inside a component (a bare import resolves there first), or any entry beside the exported ones on the
+ * way down (a package.json there changes how .js entries load). An export has neither.
+ */
+async function strayEntries(
+  expected: ExpectedComponent[],
+  componentsDir: string,
+): Promise<string[]> {
+  const tree = new Map<string, Set<string>>();
+  for (const { path } of expected) {
+    const parts = path.split("/");
+    for (let i = 0; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/");
+      if (!tree.has(dir)) tree.set(dir, new Set());
+      tree.get(dir)!.add(parts[i]!);
+    }
+  }
+  const stray: string[] = [];
+  for (const [dir, known] of tree) {
+    let names: string[];
+    try {
+      names = await readdir(join(componentsDir, ...(dir === "" ? [] : dir.split("/"))));
+    } catch {
+      continue; // reported as unreadable by the component check
+    }
+    for (const name of names) {
+      if (!known.has(name))
+        stray.push(`components/${dir === "" ? "" : dir + "/"}${name} was not exported`);
+    }
+  }
+  for (const { path } of expected) {
+    try {
+      const inside = await readdir(join(componentsDir, ...path.split("/")));
+      if (inside.includes("node_modules"))
+        stray.push(`components/${path}/node_modules was not exported`);
+    } catch {
+      // reported as unreadable by the component check
+    }
+  }
+  return stray;
+}
+
 /** Throws a ComponentVerificationError naming every component, and where known every file, that differs. */
 export async function verifyComponents(
   expected: ExpectedComponent[],
@@ -84,5 +127,6 @@ export async function verifyComponents(
         (detail.length > 0 ? ` (${detail.join("; ")})` : ""),
     );
   }
+  problems.push(...(await strayEntries(expected, componentsDir)));
   if (problems.length > 0) throw new ComponentVerificationError(problems);
 }

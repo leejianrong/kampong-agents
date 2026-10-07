@@ -108,11 +108,47 @@ describe("export records and startup verification", () => {
     }
   });
 
+  it("writes a .gitattributes so line-ending conversion cannot change the hashed bytes", () => {
+    exportProject(SPEC, dir, { components: [COMPONENT] });
+    expect(read(".gitattributes")).toContain("components/** -text");
+  });
+
+  it("refuses a component file the digests would skip", () => {
+    for (const path of ["node_modules/dep/index.js", "lib/.DS_Store"]) {
+      const files = { ...FILES, [path]: Buffer.from("x") };
+      expect(() =>
+        exportProject(SPEC, dir, {
+          components: [{ ...COMPONENT, files, digest: digestOfFiles(files) }],
+          force: true,
+        }),
+      ).toThrow(/unsafe file path/);
+    }
+  });
+
+  it("sorts dependencies by code unit, not by locale", () => {
+    const yaml = YAML.replace(
+      '{ "@acme/sdk": 2.1.0, left-pad: 1.3.0 }',
+      "{ ab: 1.0.0, a-c: 1.0.0 }",
+    );
+    const files = { ...FILES, "component.yaml": Buffer.from(yaml) };
+    exportProject(SPEC, dir, {
+      components: [
+        { manifest: parseComponentManifest(yaml).manifest!, digest: digestOfFiles(files), files },
+      ],
+    });
+    expect(
+      JSON.parse(read("sbom.json"))
+        .components.slice(1)
+        .map((d: { name: string }) => d.name),
+    ).toEqual(["a-c", "ab"]);
+  });
+
   it("adds `npm run verify` and the verifying startup only when components are exported", () => {
     exportProject(SPEC, dir, { components: [COMPONENT] });
     expect(JSON.parse(read("package.json")).scripts.verify).toBe("tsx src/verify.ts");
     expect(read("src/components.generated.ts")).toContain("await verifyComponents(");
     expect(read("src/verify.ts")).toContain("sbom.json");
+    expect(read("src/verify.ts")).toContain("lists no components");
 
     const plain = mkdtempSync(join(tmpdir(), "kampong-export-verify-"));
     try {
@@ -182,12 +218,21 @@ describe("export records and startup verification", () => {
       expect(err.message).toContain("link.mjs is a symlink");
     });
 
-    it("ignores node_modules, as the registry does", async () => {
-      mkdirSync(join(componentDir(), "node_modules", "x"), { recursive: true });
-      writeFileSync(join(componentDir(), "node_modules", "x", "i.js"), "x");
-      await expect(
-        verifyComponents([expectedFor()], join(dir, "components")),
-      ).resolves.toBeUndefined();
+    it("fails on a node_modules inside a component, which a bare import would resolve from first", async () => {
+      mkdirSync(join(componentDir(), "node_modules", "dep"), { recursive: true });
+      writeFileSync(join(componentDir(), "node_modules", "dep", "index.js"), "evil");
+      const err = await verifyComponents([expectedFor()], join(dir, "components")).catch((e) => e);
+      expect(err.message).toContain("components/acme/tickets/1.0.0/node_modules was not exported");
+    });
+
+    it("fails on an entry beside the exported ones on the way down, such as a package.json", async () => {
+      writeFileSync(join(dir, "components", "package.json"), '{"type":"commonjs"}');
+      writeFileSync(join(dir, "components", "acme", "package.json"), "{}");
+      mkdirSync(join(dir, "components", "evil"));
+      const err = await verifyComponents([expectedFor()], join(dir, "components")).catch((e) => e);
+      expect(err.message).toContain("components/package.json was not exported");
+      expect(err.message).toContain("components/acme/package.json was not exported");
+      expect(err.message).toContain("components/evil was not exported");
     });
 
     it("reports every component that differs, not only the first", async () => {

@@ -55,7 +55,7 @@ export function buildSbom(spec: AgentSpec, components: ExportComponent[]): strin
         })),
       })),
       ...[...deps.values()]
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
         .map(({ name, version }) => ({
           type: "library",
           "bom-ref": purlOf(name, version),
@@ -89,9 +89,15 @@ interface SbomComponent {
   components?: { name: string; hashes?: { content: string }[] }[];
 }
 
-const sbom = JSON.parse(readFileSync(join(ROOT, "sbom.json"), "utf8")) as { components: SbomComponent[] };
+let sbom: { components?: SbomComponent[] };
+try {
+  sbom = JSON.parse(readFileSync(join(ROOT, "sbom.json"), "utf8"));
+} catch (err) {
+  console.error(\`sbom.json cannot be read: \${(err as Error).message}\`);
+  process.exit(1);
+}
 const expected: ExpectedComponent[] = [];
-for (const c of sbom.components) {
+for (const c of sbom.components ?? []) {
   const digest = c.properties?.find((p) => p.name === "kampong:digest")?.value;
   if (digest === undefined) continue; // an npm dependency, pinned by package.json
   expected.push({
@@ -102,6 +108,10 @@ for (const c of sbom.components) {
   });
 }
 
+if (expected.length === 0) {
+  console.error("sbom.json lists no components: it is not the record this project was exported with.");
+  process.exit(1);
+}
 try {
   await verifyComponents(expected, join(ROOT, "components"));
   console.log(\`Verified \${expected.length} component(s) against sbom.json.\`);

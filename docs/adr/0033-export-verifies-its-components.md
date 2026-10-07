@@ -26,12 +26,20 @@ changed component is the project itself, and the person who holds it.
 - **`npm run verify`** checks `components/` against `sbom.json`, a record independent of the digests
   baked into the code, so changing one of them is not enough to hide a change.
 
+- **Nothing unhashed can supply code.** Digests skip `node_modules`, but a bare import inside a component
+  resolves from a `node_modules` next to it first, and a `package.json` above it changes how `.js` loads.
+  The exported check therefore fails on any `node_modules` inside a component and on any entry under
+  `components/` that was not exported. The exporter refuses files at those paths.
+- **`.gitattributes`** (`components/** -text`) keeps line-ending conversion on a clone from changing the
+  hashed bytes.
+
 ## Not covered
 
 - Signing and provenance of the export itself (the tarball or image), and Sigstore: KAN-1838.
 - `node_modules`: dependencies are exact-pinned in `package.json` and installed by npm; verifying them is
   npm's lockfile integrity, not this check.
-- Time of check to time of use. Components are verified at startup; a file changed while the process
-  runs is not noticed until the next start. The owner of the machine is not the threat this addresses.
+- Time of check to time of use. Components are verified once at startup, and a module is imported on
+  its first call: a file changed while a server is up, before that call, is not noticed until the next
+  start. Preloading the entries inside the check would narrow this. The owner of the machine is not the threat this addresses.
 - Someone who can edit `src/` can remove the check. It protects against a swapped or altered component
   folder, not against an edited project.

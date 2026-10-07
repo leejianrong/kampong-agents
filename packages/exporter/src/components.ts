@@ -93,7 +93,17 @@ export class ExportMissingComponentsError extends Error {
 export function isSafeRelativePath(path: string): boolean {
   if (path === "" || path.startsWith("/") || path.includes("\\") || path.includes(":"))
     return false;
-  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+  // node_modules and .DS_Store are skipped by every digest, so a file there would be written but never verified.
+  return path
+    .split("/")
+    .every(
+      (segment) =>
+        segment !== "" &&
+        segment !== "." &&
+        segment !== ".." &&
+        segment !== "node_modules" &&
+        segment !== ".DS_Store",
+    );
 }
 
 /** Picks the components the spec needs out of what was supplied, and checks each is safe to write. */
