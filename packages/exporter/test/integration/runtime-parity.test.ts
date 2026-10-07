@@ -58,6 +58,8 @@ const VENDORED_FROM_ENGINE = [
   "component-core.ts",
   "component-dispatch.ts",
   "schema-validate.ts",
+  // KAN-1843: the provider-facing shape of a step's output_schema.
+  "output-zod.ts",
   // KAN-1841: the expression evaluator and var resolution that run a version 1.1 spec.
   "expressions.ts",
   "vars.ts",

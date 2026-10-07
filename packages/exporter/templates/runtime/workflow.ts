@@ -24,6 +24,7 @@ import {
   resolveTemplatesDeep,
   type ExpressionLimits,
 } from "./expressions.js";
+import { schemaNodeToZod } from "./output-zod.js";
 import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
 import { resolveVars } from "./vars.js";
 
@@ -436,11 +437,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 // The model is asked for the object the step's `output_schema` describes, and the engine -- not the
-// provider -- is what decides whether it does (ADR-0038). The provider is given a loose object schema, so
-// a value that breaks a constraint comes back to us as a located error we can show the model once. Only
+// provider -- is what decides whether it does (ADR-0038). The provider is given the structure (output-zod.ts), not
+// the constraints, so a value that breaks one comes back to us as a located error we can show the model once. Only
 // a schema failure is retried: a model call that throws (timeout, unavailable) is not, as ADR-0004 says.
 export const OUTPUT_SCHEMA_RETRIES = 1;
-const looseObjectSchema = z.record(z.string(), z.unknown());
 
 async function runStructuredStep(
   step: Extract<WorkflowStep, { action: string }>,
@@ -449,6 +449,7 @@ async function runStructuredStep(
   instructions: string,
   prompt: string,
 ): Promise<{ output: unknown; confidence?: number }> {
+  const providerSchema = schemaNodeToZod(outputSchema);
   const base = [
     prompt,
     "Respond with only a JSON object that matches this JSON Schema:",
@@ -460,7 +461,7 @@ async function runStructuredStep(
     const raw = await deps.model.generateStructured({
       instructions,
       prompt: attemptPrompt,
-      schema: looseObjectSchema,
+      schema: providerSchema,
     });
     const candidate = isPlainObject(raw) ? applySchemaDefaults(outputSchema, raw) : raw;
     problems = validateAgainstSchema(outputSchema, candidate, "output");

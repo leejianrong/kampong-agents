@@ -36,3 +36,18 @@ there, or on its type, and the confidence value lived on the event rather than i
   lint, and it can reuse the spike's relative-name rules.
 - The prompt is the only guidance the model gets about the shape; a provider-native structured mode (a JSON
   Schema sent to the API) would reduce retries but needs a per-provider conversion.
+
+## Found against a real model
+
+The first version gave the provider an open object (`z.record`) and relied on the prompt for the shape. A
+run against OpenAI's `gpt-4o-mini` through OpenRouter failed every time: the open object becomes
+`propertyNames` in JSON Schema, which OpenAI's strict structured output rejects with a 400. The fake models
+in the tests could not show this. The provider is now given the real structure (`output-zod.ts`: types,
+enums, descriptions, required and optional properties, no extra keys); constraints a provider may refuse
+(`minimum`, `maxLength`, `pattern`, ...) stay out of that shape and are enforced by the engine, with the one
+retry. After the fix, `gpt-4o-mini` and a free 2.6B model (`liquid/lfm-2.5-2.6b:free`) both produced valid
+output on every run (a `maxLength: 50` summary included), and an unreachable `maxLength: 25` failed visibly
+after the retry.
+
+Known, and not fixed here: the older `confidence_gate` request without an `output_schema` has the same
+open-object problem (its `result` is a `z.record`) and fails the same way on OpenAI-family models.
