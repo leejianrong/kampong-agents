@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requestOptionalFields } from "./request.js";
+import { schemaNodeSchema } from "./schema-node.js";
 
 // Trimmed single-agent AgentSpec (ADR-0001: no multi-agent/sub_agents field
 // in v1, but the shape below leaves room to add one later without breaking
@@ -234,6 +235,12 @@ export const workflowStepSchema = z.union([
     // structured { result, confidence } response and checks it against
     // `guardrails.confidence_threshold` after the step runs.
     confidence_gate: z.boolean().optional(),
+    // KAN-1843 (ADR-0038): the shape of this step's output, a JSON Schema subset (the same one a
+    // connector op declares). The engine asks the model for exactly this object, validates it, and
+    // retries once on a failure; the validated object is the step's output, so a later condition or
+    // template can rely on each field's presence and type. Version 1.1 only. With `confidence_gate`
+    // the schema must declare a numeric `confidence` field, which the guardrail reads like any other.
+    output_schema: schemaNodeSchema.optional(),
   }),
 ]);
 
@@ -336,6 +343,32 @@ export const agentSpecSchema = z
         });
       }
     }
+    spec.agent.workflow.forEach((step, i) => {
+      if (!("output_schema" in step) || step.output_schema === undefined) return;
+      const at = ["agent", "workflow", i, "output_schema"];
+      if (spec.version !== "1.1") {
+        ctx.addIssue({ code: "custom", message: 'output_schema needs version "1.1"', path: at });
+      }
+      if (step.output_schema.type !== "object") {
+        ctx.addIssue({
+          code: "custom",
+          message: 'output_schema must describe an object (type: "object")',
+          path: [...at, "type"],
+        });
+        return;
+      }
+      if (step.confidence_gate) {
+        const confidence = step.output_schema.properties?.confidence;
+        if (confidence?.type !== "number" && confidence?.type !== "integer") {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1)',
+            path: [...at, "properties"],
+          });
+        }
+      }
+    });
     if (spec.vars !== undefined && spec.version !== "1.1") {
       ctx.addIssue({
         code: "custom",

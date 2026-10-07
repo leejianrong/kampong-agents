@@ -237,3 +237,218 @@ describe("data references in an action step query (KAN-1429)", () => {
     expect(prompts.some((p) => p.includes("Reply to a refund request."))).toBe(true);
   });
 });
+
+// KAN-1843 (ADR-0038): output_schema, validate-and-retry, confidence as an ordinary field.
+describe("output_schema (KAN-1843)", () => {
+  const schema = {
+    type: "object" as const,
+    required: ["severity", "confidence"],
+    properties: {
+      severity: { type: "string" as const, enum: ["low", "high"] },
+      confidence: { type: "number" as const },
+      tags: { type: "array" as const, items: { type: "string" as const } },
+    },
+  };
+  const spec = (over: Record<string, unknown> = {}): AgentSpec =>
+    ({
+      version: "1.1",
+      agent: {
+        id: "a",
+        name: "A",
+        role: "R",
+        goal: "G",
+        guardrails: { confidence_threshold: 0.8, fallback_action: "escalate_to_human" },
+        workflow: [
+          { step: "triage", action: "classify", output_schema: schema, ...over },
+          {
+            step: "route",
+            type: "condition",
+            if: "triage.severity = 'high' and triage.confidence >= 0.5",
+            then: "request_human_approval",
+            else: "request_human_approval",
+          },
+        ],
+      },
+    }) as AgentSpec;
+
+  const scripted = (answers: unknown[], prompts: string[] = []): ModelClient => {
+    let i = 0;
+    return {
+      async generateText() {
+        return "";
+      },
+      async generateStructured<T>({ prompt }: { prompt: string }) {
+        prompts.push(prompt);
+        return answers[Math.min(i++, answers.length - 1)] as T;
+      },
+    };
+  };
+
+  it("stores the validated object as the step output, so later steps can read its fields", async () => {
+    const events = await drive(
+      spec(),
+      { model: scripted([{ severity: "high", confidence: 0.9 }]) },
+      "x",
+    );
+    const done = events.find((e) => e.type === "step_completed" && e.step === "triage");
+    expect(done).toMatchObject({ output: { severity: "high", confidence: 0.9 } });
+    expect(events.some((e) => e.type === "awaiting_approval" && e.step === "route")).toBe(true);
+  });
+
+  it("sends the schema in the prompt", async () => {
+    const prompts: string[] = [];
+    await drive(spec(), { model: scripted([{ severity: "low", confidence: 1 }], prompts) }, "x");
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('"enum"');
+    expect(prompts[0]).not.toContain("{ result:");
+  });
+
+  it("retries once with the problems named, then continues", async () => {
+    const prompts: string[] = [];
+    const events = await drive(
+      spec(),
+      {
+        model: scripted(
+          [
+            { severity: "medium", confidence: 0.9 },
+            { severity: "low", confidence: 0.9 },
+          ],
+          prompts,
+        ),
+      },
+      "x",
+    );
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("output.severity must be one of low, high");
+    expect(events.find((e) => e.type === "step_completed" && e.step === "triage")).toMatchObject({
+      output: { severity: "low" },
+    });
+  });
+
+  it("fails visibly after one retry, never a third call", async () => {
+    const prompts: string[] = [];
+    const events = await drive(
+      spec(),
+      { model: scripted([{ severity: "medium", confidence: "?" }], prompts) },
+      "x",
+    );
+    expect(prompts).toHaveLength(2);
+    const failed = events.at(-1);
+    expect(failed).toMatchObject({ type: "failed", step: "triage" });
+    expect((failed as { error: string }).error).toMatch(
+      /did not match output_schema after 1 retry/,
+    );
+    expect((failed as { error: string }).error).toContain("output.confidence must be a number");
+  });
+
+  it("does not retry a model call that throws", async () => {
+    let calls = 0;
+    const model: ModelClient = {
+      async generateText() {
+        return "";
+      },
+      async generateStructured() {
+        calls++;
+        throw new Error("model unavailable");
+      },
+    };
+    const events = await drive(spec(), { model }, "x");
+    expect(calls).toBe(1);
+    expect(events.at(-1)).toMatchObject({
+      type: "failed",
+      error: expect.stringContaining("unavailable"),
+    });
+  });
+
+  it("fills a declared default before validating", async () => {
+    const withDefault = spec({
+      output_schema: {
+        ...schema,
+        properties: { ...schema.properties, region: { type: "string", default: "eu" } },
+        required: ["severity", "confidence", "region"],
+      },
+    });
+    const events = await drive(
+      withDefault,
+      { model: scripted([{ severity: "low", confidence: 1 }]) },
+      "x",
+    );
+    expect(events.find((e) => e.type === "step_completed" && e.step === "triage")).toMatchObject({
+      output: { region: "eu" },
+    });
+  });
+
+  describe("confidence_gate reads the ordinary confidence field", () => {
+    it("escalates below the threshold, and reports the confidence on the event", async () => {
+      const events = await drive(
+        spec({ confidence_gate: true }),
+        { model: scripted([{ severity: "high", confidence: 0.2 }]) },
+        "x",
+      );
+      expect(events.find((e) => e.type === "step_completed" && e.step === "triage")).toMatchObject({
+        confidence: 0.2,
+      });
+      expect(events.find((e) => e.type === "awaiting_approval")).toMatchObject({
+        step: "triage",
+        kind: "guardrail",
+      });
+    });
+
+    it("passes at or above the threshold", async () => {
+      const events = await drive(
+        spec({ confidence_gate: true }),
+        { model: scripted([{ severity: "high", confidence: 0.8 }]) },
+        "x",
+      );
+      expect(events.find((e) => e.type === "awaiting_approval")).toMatchObject({ step: "route" });
+    });
+
+    it("treats a confidence outside 0 to 1 as a schema failure and retries", async () => {
+      const prompts: string[] = [];
+      await drive(
+        spec({ confidence_gate: true }),
+        {
+          model: scripted(
+            [
+              { severity: "high", confidence: 7 },
+              { severity: "high", confidence: 0.9 },
+            ],
+            prompts,
+          ),
+        },
+        "x",
+      );
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]).toContain("between 0 and 1");
+    });
+  });
+
+  it("a 1.1 gate step without a schema exposes confidence as a field too; 1.0 is unchanged", async () => {
+    const legacy = (version: string): AgentSpec =>
+      ({
+        version,
+        agent: {
+          id: "a",
+          name: "A",
+          role: "R",
+          goal: "G",
+          guardrails: { confidence_threshold: 0.1, fallback_action: "escalate_to_human" },
+          workflow: [{ step: "triage", action: "classify", confidence_gate: true }],
+        },
+      }) as AgentSpec;
+    const model = {
+      async generateText() {
+        return "";
+      },
+      async generateStructured<T>() {
+        return { result: { severity: "low" }, confidence: 0.9 } as T;
+      },
+    } satisfies ModelClient;
+    const out = async (v: string) =>
+      (await drive(legacy(v), { model }, "x")).find((e) => e.type === "step_completed") as {
+        output: unknown;
+      };
+    expect((await out("1.1")).output).toEqual({ severity: "low", confidence: 0.9 });
+    expect((await out("1.0")).output).toEqual({ severity: "low" });
+  });
+});
