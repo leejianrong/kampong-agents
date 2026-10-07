@@ -370,6 +370,17 @@ ops:
       expect(text).toContain("no recorded fixture");
     });
 
+    it("does not count an HTTP fixture as a module op's recording, which replay would not find", async () => {
+      install(MANIFEST(), OK_CODE);
+      writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      mkdirSync(path(".kampong/fixtures"), { recursive: true });
+      writeFileSync(path(".kampong/fixtures/acme_hello.greet.0123456789abcdef.json"), "{}");
+      const { code, text } = await doctor([path("agent.yaml"), "--tools", "replay"]);
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(text).toContain("no recorded fixture");
+    });
+
     it("dials a templated egress host once the tool's config fills it in", async () => {
       const manifest = `kind: rest
 id: acme/api

@@ -227,4 +227,120 @@ ops:
     await invokeOp(noOutput, "ping", {}, { runner: live, moduleFixtures: record() });
     expect(await invokeOp(noOutput, "ping", {}, { moduleFixtures: replay() })).toBeUndefined();
   });
+
+  it("does not record an error that says nothing about why it failed (a refused connection, a bad import)", async () => {
+    const live = runnerReturning(async () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:5432");
+    });
+    await invokeOp(
+      MANIFEST,
+      "query",
+      { sql: "s" },
+      { runner: live, moduleFixtures: record() },
+    ).catch(() => undefined);
+    expect(readdirSync(dir)).toEqual([]);
+    // ...nor one a module made out of a refusal by the pipeline.
+    const rethrows = runnerReturning(async (_m, _op, _input, ctx) => {
+      try {
+        await ctx.fetch("https://elsewhere.example.test/");
+      } catch (err) {
+        throw new Error(`wrapped: ${(err as Error).message}`, { cause: err });
+      }
+      return { rows: [] };
+    });
+    await invokeOp(
+      MANIFEST,
+      "query",
+      { sql: "s" },
+      { runner: rethrows, moduleFixtures: record() },
+    ).catch(() => undefined);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("a failure to record is not reported as the module's failure, and writes no failure fixture", async () => {
+    const live = runnerReturning(async () => ({ rows: [], big: 10n }));
+    const err = await invokeOp(
+      MANIFEST,
+      "query",
+      { sql: "s" },
+      { runner: live, moduleFixtures: record() },
+    ).catch((e) => e);
+    expect(err.message).toContain("cannot be recorded");
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("finds a fixture when a secret the module read is also in the input, because the key is made without it", async () => {
+    const live = runnerReturning(async (_m, _op, _input, ctx) => {
+      ctx.secrets.get("token");
+      return { rows: [] };
+    });
+    const input = { sql: "select 'hunter2-secret'" };
+    await invokeOp(MANIFEST, "query", input, {
+      runner: live,
+      moduleFixtures: record(),
+      env: { DB_TOKEN: "hunter2-secret" },
+    });
+    const file = readFileSync(join(dir, readdirSync(dir)[0]!), "utf8");
+    expect(file).not.toContain("hunter2-secret");
+    await expect(invokeOp(MANIFEST, "query", input, { moduleFixtures: replay() })).resolves.toEqual(
+      {
+        rows: [],
+      },
+    );
+  });
+
+  it("redacts a secret used as a key, and a declared env variable the module echoes", async () => {
+    const withEnv = parseComponentManifest(`kind: module
+id: acme/db
+version: 1.0.0
+entry: ./index.mjs
+permissions: { env: [REGION] }
+ops:
+  query: { effect: read, input: { type: object } }
+`).manifest as ModuleComponentManifest;
+    const live = runnerReturning(async (_m, _op, _input, ctx) => ({
+      "key-hunter2-secret": ctx.env.get("REGION"),
+    }));
+    await invokeOp(
+      withEnv,
+      "query",
+      {},
+      {
+        runner: live,
+        moduleFixtures: createModuleFixtures({
+          mode: "record",
+          fixturesDir: dir,
+          secrets: ["hunter2-secret"],
+        }),
+        env: { REGION: "env-token-value" },
+      },
+    );
+    const file = readFileSync(join(dir, readdirSync(dir)[0]!), "utf8");
+    expect(file).not.toContain("hunter2-secret");
+    expect(file).not.toContain("env-token-value");
+  });
+
+  it("returns from a recording run what a replay will, so both validate the same value", async () => {
+    const live = runnerReturning(async () => ({ rows: [], when: new Date(0) }));
+    const result = (await invokeOp(
+      MANIFEST,
+      "query",
+      { sql: "s" },
+      { runner: live, moduleFixtures: record() },
+    )) as { when: unknown };
+    expect(result.when).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  it("keys the same whether an input has an undefined field or leaves it out", async () => {
+    const live = runnerReturning(async () => ({ rows: [] }));
+    await invokeOp(
+      MANIFEST,
+      "query",
+      { sql: "s", params: undefined },
+      { runner: live, moduleFixtures: record() },
+    );
+    await expect(
+      invokeOp(MANIFEST, "query", { sql: "s" }, { moduleFixtures: replay() }),
+    ).resolves.toEqual({ rows: [] });
+  });
 });

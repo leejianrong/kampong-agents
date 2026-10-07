@@ -503,7 +503,7 @@ export async function invokeOp(
   const outputSchema = op.output;
   const isJson = manifest.kind !== "rest" || ((op as RestOp).response?.mode ?? "json") === "json";
   if (outputSchema && isJson) {
-    const errors = validateAgainstSchema(outputSchema, result, "output");
+    const errors = validateAgainstSchema(outputSchema, result, "http");
     if (errors.length > 0) {
       throw fail(
         `${label}: the response did not match the declared output: ${errors.slice(0, 5).join("; ")}`,
@@ -561,6 +561,7 @@ async function runModule(
   const egress = egressOf(manifest, config);
   const declaredEnv = manifest.permissions?.env ?? [];
   const used: string[] = [];
+  const envRead: string[] = [];
   const readSlotHosts: string[] = [];
   const send = options.fetchImpl ?? ((url, init) => fetch(url, init));
   const signal = options.signal ?? AbortSignal.timeout(MODULE_TIMEOUT_MS);
@@ -595,7 +596,10 @@ async function runModule(
             "permission",
           );
         }
-        return env[name];
+        const value = env[name];
+        // A declared variable is often a token; it must not end up in a fixture if the module echoes it.
+        if (value) envRead.push(value);
+        return value;
       },
     },
     fetch: async (target, init) => {
@@ -637,19 +641,17 @@ async function runModule(
     );
   });
 
+  let result: unknown;
   try {
-    const result = await Promise.race([
-      options.runner.invoke(manifest, opName, input, ctx),
-      aborted,
-    ]);
-    fixtures?.record(fixtureName, opName, input, { ok: true, data: toJsonValue(result) }, used);
-    return result;
+    result = await Promise.race([options.runner.invoke(manifest, opName, input, ctx), aborted]);
   } catch (err) {
     scrub(err, used);
     if (err instanceof ToolCallError) {
       // An outcome the module's own world produced (an HTTP status) is worth replaying; a refusal by this
       // pipeline, a timeout or a missing variable depends on where it ran, so it is never recorded.
-      if (err.status !== undefined) recordError(fixtures, fixtureName, opName, input, err, used);
+      if (err.status !== undefined) {
+        recordError(fixtures, fixtureName, opName, input, err, [...used, ...envRead]);
+      }
       throw err;
     }
     const message = err instanceof Error ? err.message : String(err);
@@ -663,14 +665,30 @@ async function runModule(
         cause: err,
       },
     );
-    recordError(fixtures, fixtureName, opName, input, wrapped, used);
+    // A plain Error says nothing about why it failed (a refused connection, a bad import and a missing
+    // table look alike), so only one that carries an HTTP-style status is recorded as an outcome.
+    if (typeof (err as { status?: unknown } | undefined)?.status === "number") {
+      recordError(fixtures, fixtureName, opName, input, wrapped, [...used, ...envRead]);
+    }
     throw wrapped;
   }
+  if (fixtures?.mode === "record") {
+    // Recording happens after the module has succeeded, so a failure to write is not mistaken for one of
+    // the module's. The result is what a replay will hand back, so the live run returns that too.
+    const data = toJsonValue(result, `${label}: the result cannot be recorded`);
+    fixtures.record(fixtureName, opName, input, { ok: true, data }, [...used, ...envRead]);
+    result = data;
+  }
+  return result;
 }
 
 /** What a result looks like on disk: JSON, so what replays is what a later step would have seen. */
-function toJsonValue(result: unknown): unknown {
-  return result === undefined ? undefined : JSON.parse(JSON.stringify(result));
+function toJsonValue(result: unknown, message: string): unknown {
+  try {
+    return result === undefined ? undefined : JSON.parse(JSON.stringify(result));
+  } catch (err) {
+    throw fail(`${message}: ${(err as Error).message}`, "http");
+  }
 }
 
 function recordError(
