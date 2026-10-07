@@ -20,6 +20,7 @@ import {
   type HttpToolCallOptions,
   type ToolFetchImpl,
 } from "./http-tool.js";
+import { realClock } from "./pacing.js";
 import { redactString } from "./redact.js";
 import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
 
@@ -138,6 +139,8 @@ export interface InvokeOpOptions {
 }
 
 const MODULE_TIMEOUT_MS = 60_000;
+const MODULE_RETRY_BASE_MS = 500;
+const MODULE_RETRY_MAX_DELAY_MS = 30_000;
 const DEFAULT_CONFIG_PATTERN = "[A-Za-z0-9._-]+";
 
 const own = (record: object | undefined, key: string): boolean =>
@@ -641,9 +644,40 @@ async function runModule(
     );
   });
 
+  const runner = options.runner;
+  const opDef = manifest.ops[opName]!;
+  const clock = options.clock ?? realClock;
+  // Retries sit inside the race with the abort, so a cancellation or the overall timeout ends them.
+  const attempts = async (): Promise<unknown> => {
+    const policy = opDef.retry;
+    const maxAttempts = 1 + (policy?.max ?? 0);
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await runner.invoke(manifest, opName, input, ctx);
+      } catch (err) {
+        if (!policy || !moduleMayRetry(err, opDef.effect)) throw err;
+        const retryAfterMs = (err as { retryAfterMs?: unknown }).retryAfterMs;
+        const wait = typeof retryAfterMs === "number" ? retryAfterMs : undefined;
+        const cap = policy.max_delay_ms ?? MODULE_RETRY_MAX_DELAY_MS;
+        if (attempt >= maxAttempts || (wait !== undefined && wait > cap)) {
+          const why =
+            attempt >= maxAttempts
+              ? `after ${attempt} attempts`
+              : `asked to wait ${Math.round(wait! / 1000)}s, longer than max_delay_ms ${cap}ms; not retrying`;
+          throw Object.assign(new Error(`${(err as Error).message} (${why})`, { cause: err }), {
+            status: (err as { status?: unknown }).status,
+          });
+        }
+        const base = policy.base_ms ?? MODULE_RETRY_BASE_MS;
+        const backoff = policy.backoff === "fixed" ? base : base * 2 ** (attempt - 1);
+        await clock.sleep(Math.min(Math.max(backoff, wait ?? 0), cap));
+      }
+    }
+  };
+
   let result: unknown;
   try {
-    result = await Promise.race([options.runner.invoke(manifest, opName, input, ctx), aborted]);
+    result = await Promise.race([attempts(), aborted]);
   } catch (err) {
     scrub(err, used);
     if (err instanceof ToolCallError) {
@@ -655,11 +689,13 @@ async function runModule(
       throw err;
     }
     const message = err instanceof Error ? err.message : String(err);
+    const status = (err as { status?: unknown } | undefined)?.status;
+    const httpStatus = typeof status === "number" ? status : undefined;
     const wrapped = new ToolCallError(
       redactString(`${label} failed: ${message}`, used),
-      "http",
-      false,
-      undefined,
+      httpStatus === 429 ? "rate_limit" : "http",
+      httpStatus !== undefined && (httpStatus === 429 || httpStatus === 408 || httpStatus >= 500),
+      httpStatus,
       undefined,
       {
         cause: err,
@@ -680,6 +716,17 @@ async function runModule(
     result = data;
   }
   return result;
+}
+
+// What a module's error says about whether the call can be repeated. A 429 means the server refused it
+// before acting, so any op may retry; a 5xx or a dropped call may have been processed, so only a read
+// does. A module that knows better (a refusal that arrives as a 403 with Retry-After) says `retryable: true`.
+function moduleMayRetry(err: unknown, effect: OpEffect): boolean {
+  if (err instanceof ToolCallError) return false;
+  const { status, retryable } = (err ?? {}) as { status?: unknown; retryable?: unknown };
+  if (retryable === true) return true;
+  if (status === 429) return true;
+  return effect === "read" && typeof status === "number" && (status === 408 || status >= 500);
 }
 
 /** What a result looks like on disk: JSON, so what replays is what a later step would have seen. */

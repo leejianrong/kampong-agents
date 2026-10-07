@@ -50,6 +50,7 @@ async function call(
   return invokeOp(manifest, op, input, {
     runner,
     fetchImpl,
+    clock: { now: () => 0, sleep: async () => {} },
     env: { GITHUB_TOKEN: "ghp_secret_token" },
   });
 }
@@ -388,6 +389,54 @@ describe("kampong/github", () => {
       );
       const err = (await call("get_pull_request", PR, fetchImpl).catch((e) => e)) as Error;
       expect(err.message).toContain("moved to https://api.github.com/repositories/42/pulls/7");
+      expect(seen).toHaveLength(1);
+    });
+
+    it("retries a secondary rate limit, even for a write, because GitHub refused before acting", async () => {
+      let n = 0;
+      const { fetchImpl, seen } = fakeGitHub(() =>
+        n++ === 0
+          ? jsonResponse(
+              { message: "secondary rate limit" },
+              { status: 403, headers: { "retry-after": "1" } },
+            )
+          : jsonResponse({ id: 1, html_url: "u" }, { status: 201 }),
+      );
+      await expect(
+        call(
+          "create_issue_comment",
+          { owner: "a", repo: "r", issue_number: 1, body: "x" },
+          fetchImpl,
+        ),
+      ).resolves.toEqual({ id: 1, html_url: "u" });
+      expect(seen).toHaveLength(2);
+    });
+
+    it("retries a 502 on a read but not on a write", async () => {
+      const bad = () => jsonResponse({ message: "Bad Gateway" }, { status: 502 });
+      let reads = 0;
+      const read = fakeGitHub(() => (reads++ === 0 ? bad() : jsonResponse({ login: "octo" })));
+      await expect(call("get_user", {}, read.fetchImpl)).resolves.toEqual({ login: "octo" });
+      const write = fakeGitHub(bad);
+      await expect(
+        call(
+          "create_issue_comment",
+          { owner: "a", repo: "r", issue_number: 1, body: "x" },
+          write.fetchImpl,
+        ),
+      ).rejects.toThrow(/HTTP 502/);
+      expect(write.seen).toHaveLength(1);
+    });
+
+    it("does not wait for a spent primary limit that resets in an hour", async () => {
+      const reset = String(Math.floor(Date.now() / 1000) + 3600);
+      const { fetchImpl, seen } = fakeGitHub(() =>
+        jsonResponse(
+          { message: "rate limit" },
+          { status: 403, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": reset } },
+        ),
+      );
+      await expect(call("get_pull_request", PR, fetchImpl)).rejects.toThrow(/not retrying/);
       expect(seen).toHaveLength(1);
     });
 
