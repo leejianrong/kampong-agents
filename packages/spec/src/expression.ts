@@ -157,6 +157,14 @@ export function expressionPaths(ast: ExpressionNode): string[][] {
       visit(n.expr, true);
       return;
     }
+    if (n.type === "transform") {
+      // `| pattern | update |` applies to each match of the pattern in the value it is given, so names
+      // inside either are relative to that value, not reads of the root.
+      visit(n.pattern, true);
+      visit(n.update, true);
+      visit(n.delete, true);
+      return;
+    }
     for (const [key, value] of Object.entries(n)) {
       if (key === "position" || key === "type") continue;
       if (value && typeof value === "object") visit(value, relative);
@@ -166,11 +174,41 @@ export function expressionPaths(ast: ExpressionNode): string[][] {
   return paths;
 }
 
-/** The `{{ … }}` spans in a template string, with where each expression starts inside the string. */
+/**
+ * The `{{ … }}` spans in a template string, with where each expression starts inside the string. The end is
+ * the first `}}` that is not inside a string literal or a brace opened by the expression, so an object
+ * constructor (`{{ {"a": {"b": 1}}.a }}`) and a string holding `}}` are read whole. An opening `{{` with no
+ * end is plain text.
+ */
 export function templateExpressions(text: string): { expression: string; offset: number }[] {
   const out: { expression: string; offset: number }[] = [];
-  for (const match of text.matchAll(/\{\{([\s\S]*?)\}\}/g)) {
-    out.push({ expression: match[1]!, offset: match.index! + 2 });
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf("{{", i);
+    if (start < 0) break;
+    let depth = 0;
+    let quote: string | undefined;
+    let end = -1;
+    for (let j = start + 2; j < text.length; j++) {
+      const c = text[j]!;
+      if (quote) {
+        if (c === "\\" && quote !== "`") j++;
+        else if (c === quote) quote = undefined;
+      } else if (c === '"' || c === "'" || c === "`") {
+        quote = c;
+      } else if (c === "{") {
+        depth++;
+      } else if (c === "}") {
+        if (depth === 0 && text[j + 1] === "}") {
+          end = j;
+          break;
+        }
+        if (depth > 0) depth--;
+      }
+    }
+    if (end < 0) break;
+    out.push({ expression: text.slice(start + 2, end), offset: start + 2 });
+    i = end + 2;
   }
   return out;
 }

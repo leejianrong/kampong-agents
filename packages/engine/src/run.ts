@@ -41,6 +41,25 @@ function initialState(): RunState {
   return { status: "running", trace: [] };
 }
 
+/** A spec whose version this build cannot run. Callers map it to a user-facing 422/400, never a 500. */
+export class UnsupportedSpecVersionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedSpecVersionError";
+  }
+}
+
+// Version 1.1 specs (expressions, vars) are valid but the evaluator that runs them is not in the engine
+// yet (KAN-1841). Running one with the 1.0 grammar would misread its conditions, so refuse it by name.
+export function assertRunnableVersion(spec: AgentSpec): void {
+  if (spec.version === "1.1") {
+    throw new UnsupportedSpecVersionError(
+      'This spec uses version "1.1" (expressions and vars), which this build cannot run yet: ' +
+        'the expression evaluator is not in the engine. Set version to "1.0" to run it with the original syntax.',
+    );
+  }
+}
+
 export class AgentRun extends EventEmitter {
   private generator: AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> | null = null;
   private state: RunState = initialState();
@@ -50,14 +69,7 @@ export class AgentRun extends EventEmitter {
     private readonly deps: EngineDeps,
   ) {
     super();
-    // Version 1.1 specs (expressions, vars) are valid but the evaluator that runs them is not in the engine
-    // yet (KAN-1841). Running one with the 1.0 grammar would misread its conditions, so refuse it by name.
-    if (spec.version === "1.1") {
-      throw new Error(
-        'This spec uses version "1.1" (expressions and vars), which this build cannot run yet: ' +
-          'the expression evaluator is not in the engine. Set version to "1.0" to run it with the original syntax.',
-      );
-    }
+    assertRunnableVersion(spec);
   }
 
   getState(): RunState {
@@ -214,6 +226,8 @@ export interface CreateAgentRunOptions {
  * and packages/cli's server tests use this to avoid any live network call).
  */
 export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions = {}): AgentRun {
+  // Before the model is resolved, so an unrunnable spec is reported as that, not as a missing API key.
+  assertRunnableVersion(spec);
   const model =
     options.model ??
     createMastraModelClient(spec, options.env ?? process.env, {

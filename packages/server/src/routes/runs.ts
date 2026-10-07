@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { RunEvent } from "@kampong/engine";
+import { UnsupportedSpecVersionError, type RunEvent } from "@kampong/engine";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
@@ -50,7 +50,7 @@ export function registerRunRoutes(
             .code(404)
             .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
         }
-        if (err instanceof InvalidStoredSpecError) {
+        if (err instanceof InvalidStoredSpecError || err instanceof UnsupportedSpecVersionError) {
           return reply.code(422).send({ success: false, error: err.message });
         }
         if (err instanceof WorkspaceApiKeyNotConfiguredError) {

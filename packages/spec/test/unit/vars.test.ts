@@ -75,6 +75,12 @@ describe("resolveVars", () => {
     expect(values.s).toBe("${X}");
   });
 
+  it("holds values with no prototype, so a var named toString or constructor is just a var", () => {
+    const { values } = resolveVars({ constructor: { type: "number", default: 1 } });
+    expect(values.constructor).toBe(1);
+    expect(Object.getPrototypeOf(values)).toBeNull();
+  });
+
   it("is empty for a spec with no vars", () => {
     expect(resolveVars(undefined)).toEqual({ values: {}, errors: [] });
   });

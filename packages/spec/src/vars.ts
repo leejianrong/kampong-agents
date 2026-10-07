@@ -11,6 +11,7 @@ export interface ResolvedVars {
   errors: { name: string; message: string }[];
 }
 
+const DECIMAL = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const ENV_PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 /**
@@ -20,8 +21,11 @@ const ENV_PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 export function parseVarText(def: SpecVar, text: string): VarValue | { error: string } {
   if (def.type === "string") return text;
   if (def.type === "number") {
+    // Decimal only: Number() would also accept "0x10" and "Infinity".
     const n = Number(text.trim());
-    return text.trim() !== "" && Number.isFinite(n) ? n : { error: `"${text}" is not a number` };
+    return DECIMAL.test(text.trim()) && Number.isFinite(n)
+      ? n
+      : { error: `"${text}" is not a number` };
   }
   const item = def.items ?? "string";
   let raw: unknown[];
@@ -43,7 +47,8 @@ export function parseVarText(def: SpecVar, text: string): VarValue | { error: st
   for (const entry of raw) {
     if (item === "number") {
       const n = typeof entry === "number" ? entry : Number(String(entry).trim());
-      if (!Number.isFinite(n) || String(entry).trim() === "") {
+      const decimal = typeof entry === "number" || DECIMAL.test(String(entry).trim());
+      if (!Number.isFinite(n) || !decimal) {
         return { error: `"${String(entry)}" in the list is not a number` };
       }
       out.push(n);
@@ -73,7 +78,8 @@ export function resolveVars(
   env: NodeJS.ProcessEnv = {},
   overrides: Record<string, unknown> = {},
 ): ResolvedVars {
-  const values: Record<string, VarValue> = {};
+  // No prototype, so a var named like an Object property cannot be mistaken for one.
+  const values = Object.create(null) as Record<string, VarValue>;
   const errors: ResolvedVars["errors"] = [];
   for (const [name, def] of Object.entries(vars ?? {})) {
     const fail = (message: string) => errors.push({ name, message: `vars.${name}: ${message}` });

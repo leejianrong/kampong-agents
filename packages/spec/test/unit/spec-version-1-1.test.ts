@@ -178,6 +178,75 @@ agent:
   });
 });
 
+describe("expressions, harder cases", () => {
+  const tool = (url: string) => `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  tools:
+    - name: t
+      action: http_request
+      method: GET
+      url: ${JSON.stringify(url)}
+  workflow:
+    - step: first
+      action: classify
+`;
+
+  it("loads a valid expression that contains }} (a nested constructor, a string)", () => {
+    expect(messages(tool("https://x.test/{{ {'a':{'b':1}}.a }}"))).toEqual([]);
+    expect(messages(tool("https://x.test/{{ 'a}}b' }}"))).toEqual([]);
+  });
+
+  it("accepts a transform, whose names are relative to the piped value", () => {
+    expect(messages(tool("https://x.test/{{ trigger ~> | items | {'x': 1} | }}"))).toEqual([]);
+  });
+
+  it("tells the author to use backticks when a step name is not a plain identifier", () => {
+    const source = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: fetch-data
+      action: fetch
+    - step: decide
+      type: condition
+      if: "fetch-data.ok = true"
+      then: "request_human_approval"
+      else: "request_human_approval"
+`;
+    expect(messages(source).join(" ")).toMatch(/must be written in backticks: `fetch-data`\.field/);
+    expect(messages(source.replace('"fetch-data.ok = true"', '"`fetch-data`.ok = true"'))).toEqual(
+      [],
+    );
+  });
+
+  it("says which line of a multi-line field the expression is on", () => {
+    const source = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: ask
+      type: approval
+      message: |
+        Line one is fine.
+        Approve {{ nonsuch.x }}?
+`;
+    const [error] = parseSpec(source).errors;
+    expect(error!.message).toContain("[line 2 of the field]");
+    // The position is where the field starts; the message says the line within it.
+    expect(error!.line).toBe(10);
+  });
+});
+
 describe("legacy syntax (version 1.0)", () => {
   it("notes the 1.0 condition grammar and single-brace placeholders, and still runs", () => {
     const parsed = parseSpec(VALID_FIXTURE_WITH_CONDITION);
@@ -188,6 +257,42 @@ describe("legacy syntax (version 1.0)", () => {
       ["legacy_placeholder_syntax", "agent.tools.0.url"],
     ]);
     expect(warnings[0]!.message).toMatch(/keeps working/);
+  });
+
+  it("gives one note per kind however many there are, naming each place", () => {
+    const source = `version: "1.0"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  tools:
+    - name: t
+      action: http_request
+      method: GET
+      url: "https://x.test/{a.b}/{c}"
+      headers: { "X-Y": "{d.e}" }
+  workflow:
+    - step: s1
+      action: x
+    - step: c1
+      type: condition
+      if: "s1.ok == true"
+      then: "request_human_approval"
+      else: "request_human_approval"
+    - step: c2
+      type: condition
+      if: "s1.n > 3"
+      then: "request_human_approval"
+      else: "request_human_approval"
+`;
+    const warnings = specWarnings(parseSpec(source).spec!);
+    expect(warnings.map((w) => w.code)).toEqual([
+      "legacy_condition_syntax",
+      "legacy_placeholder_syntax",
+    ]);
+    expect(warnings[0]!.message).toContain('Conditions "c1", "c2" use');
+    expect(warnings[1]!.message).toMatch(/agent\.tools\.0\.url/);
   });
 
   it("does not warn about {{ step.field }}, which is valid in both versions, nor about a 1.1 spec", () => {

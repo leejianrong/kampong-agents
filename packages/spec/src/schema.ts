@@ -328,7 +328,7 @@ export const agentSpecSchema = z
   })
   .superRefine((spec, ctx) => {
     for (const name of Object.keys(spec.vars ?? {})) {
-      if (!VAR_NAME.test(name)) {
+      if (!VAR_NAME.test(name) || name === "__proto__") {
         ctx.addIssue({
           code: "custom",
           message: `"${name}" is not a valid var name: use letters, digits and underscores, not starting with a digit`,

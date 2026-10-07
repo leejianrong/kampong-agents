@@ -106,6 +106,11 @@ describe("expressionPaths", () => {
     expect(paths("$sum(items.(price * qty))")).toEqual([["items"]]);
   });
 
+  it("does not take names inside a transform for reads of the root", () => {
+    expect(paths("trigger ~> | items | {'x': 1} |")).toEqual([["trigger"]]);
+    expect(paths("trigger.a ~> | nope | {}, ['gone'] |")).toEqual([["trigger", "a"]]);
+  });
+
   it("finds reads in a condition, an object constructor and function arguments alike", () => {
     expect(paths('{"n": $count(a.b), "ok": c = 1}')).toEqual([["a", "b"], ["c"]]);
   });
@@ -117,6 +122,24 @@ describe("templateExpressions", () => {
       { expression: " x.y ", offset: 4 },
       { expression: "z", offset: 16 },
     ]);
+  });
+
+  it("reads a nested object constructor and a string holding }} whole", () => {
+    expect(templateExpressions("x {{ {'a':{'b':1}}.a }} y").map((t) => t.expression)).toEqual([
+      " {'a':{'b':1}}.a ",
+    ]);
+    expect(templateExpressions("{{ 'a}}b' }} and {{ \"c}}\" }}").map((t) => t.expression)).toEqual([
+      " 'a}}b' ",
+      ' "c}}" ',
+    ]);
+    expect(templateExpressions("{{ 'it\\'s }}' }}").map((t) => t.expression)).toEqual([
+      " 'it\\'s }}' ",
+    ]);
+  });
+
+  it("treats an opening {{ with no end as plain text, and keeps reading after one that closes", () => {
+    expect(templateExpressions("a {{ b")).toEqual([]);
+    expect(templateExpressions("{{ a }} then {{ b")).toEqual([{ expression: " a ", offset: 2 }]);
   });
 
   it("finds none in text without them, or in a single-brace placeholder or a secret", () => {

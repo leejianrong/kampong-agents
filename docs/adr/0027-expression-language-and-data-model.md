@@ -145,9 +145,16 @@ guards is determinism, and the guards are cheap, testable, and fail visibly.
   parsed as the declared type (a list is a JSON array or comma-separated); an unset or empty variable, an
   unparseable value, or a var with nothing to give it is an error naming the var, never a guess.
 - **Not in this card.** Evaluation (KAN-1841) and the exporter's evaluator (KAN-1851): until they land,
-  `AgentRun` and `exportProject` refuse a 1.1 spec by name rather than misread it with the 1.0 grammar.
-  `{{ … }}` ends at the first `}}`, so an expression that itself contains `}}` (a nested object
-  constructor) cannot be written inline yet. The published JSON Schema keeps its file name
+  `createAgentRun`, `AgentRun` and `exportProject` refuse a 1.1 spec by name rather than misread it with the
+  1.0 grammar. The refusal is an `UnsupportedSpecVersionError`, raised before the model key is resolved, and
+  the hosted routes answer 422 with it.
+  `{{ … }}` ends at the first `}}` that is not inside a string literal or a brace the expression opened, so nested
+  object constructors and strings holding `}}` are read whole. Reads written through `$` (`$.vars.typo`,
+  `$lookup(vars, 'typo')`) are not checked, so a typo there still reads as empty; names inside a transform
+  (`| pattern | update |`), a filter, a lambda or a `.(…)` step are relative and not checked. A step name
+  that is not a plain identifier (`fetch-data`) must be written in backticks in an expression, and the
+  error says so. In a multi-line field the error is placed at the start of the field and the message says
+  the line within it. The published JSON Schema keeps its file name
   (`agent-spec.v1.0.schema.json`, which existing specs' pragma points at) and now describes both versions;
   the cross-field rules (vars needs 1.1, the var name pattern, default types, expressions) are code, as with
   `model.api_key`.

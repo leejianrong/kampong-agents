@@ -47,10 +47,19 @@ export function validateSpecExpressions(
       `${where}: ${e.message}${e.position !== undefined ? ` (character ${e.position}${e.line && e.line > 1 ? `, line ${e.line}` : ""})` : ""}`,
     );
 
-  const check = (path: (string | number)[], source: string, where: string) => {
+  const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  const oddStepNames = stepNames.filter((n) => !IDENT.test(n));
+  const check = (
+    path: (string | number)[],
+    source: string,
+    where: string,
+    lineInField?: number,
+  ) => {
     const parsed = parseExpression(source);
+    // In a multi-line field the error is placed at the start of the field, so say which line of it.
+    const here = lineInField && lineInField > 1 ? ` [line ${lineInField} of the field]` : "";
     if (!parsed.ok) {
-      for (const e of parsed.errors) reportExpression(path, where, e);
+      for (const e of parsed.errors) reportExpression(path, `${where}${here}`, e);
       return;
     }
     for (const names of expressionPaths(parsed.ast)) {
@@ -60,7 +69,7 @@ export function validateSpecExpressions(
         if (second !== undefined && !varNames.includes(second)) {
           report(
             path,
-            `${where}: vars.${second} is not declared in vars` +
+            `${where}${here}: vars.${second} is not declared in vars` +
               (varNames.length > 0
                 ? ` (declared: ${varNames.join(", ")})`
                 : " (there is no vars block)"),
@@ -69,8 +78,11 @@ export function validateSpecExpressions(
       } else if (!(ROOTS as readonly string[]).includes(root) && !stepNames.includes(root)) {
         report(
           path,
-          `${where}: "${root}" is not something an expression can read: use trigger, input, vars, ` +
-            `or the name of a step (${stepNames.join(", ")})`,
+          `${where}${here}: "${root}" is not something an expression can read: use trigger, input, vars, ` +
+            `or the name of a step (${stepNames.join(", ")})` +
+            (oddStepNames.length > 0
+              ? `. A step name that is not a plain identifier (${oddStepNames.join(", ")}) must be written in backticks: \`${oddStepNames[0]}\`.field`
+              : ""),
         );
       }
     }
@@ -78,8 +90,9 @@ export function validateSpecExpressions(
 
   const scan = (value: unknown, path: (string | number)[]) => {
     if (typeof value === "string") {
-      for (const { expression } of templateExpressions(value)) {
-        check(path, expression, `{{ ${expression.trim()} }}`);
+      for (const { expression, offset } of templateExpressions(value)) {
+        const lineInField = value.slice(0, offset).split("\n").length;
+        check(path, expression, `{{ ${expression.trim()} }}`, lineInField);
       }
     } else if (Array.isArray(value)) {
       value.forEach((v, i) => scan(v, [...path, i]));

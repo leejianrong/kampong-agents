@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSpec } from "@kampong/spec";
 import type { ModelClient } from "../../src/model.js";
-import { AgentRun, createAgentRun } from "../../src/run.js";
+import {
+  AgentRun,
+  assertRunnableVersion,
+  createAgentRun,
+  UnsupportedSpecVersionError,
+} from "../../src/run.js";
 
 // KAN-1840: a version "1.1" spec is valid, but the evaluator that runs it (KAN-1841) is not here yet, so
 // the engine refuses it by name instead of misreading its conditions with the 1.0 grammar.
@@ -32,6 +37,22 @@ describe("version 1.1 specs", () => {
     const message = /version "1.1" \(expressions and vars\).*cannot run yet.*Set version to "1.0"/s;
     expect(() => createAgentRun(spec("1.1"), { model })).toThrow(message);
     expect(() => new AgentRun(spec("1.1"), { model })).toThrow(message);
+  });
+
+  it("are refused with a typed error, so a server can answer 422 and not 500", () => {
+    expect(() => assertRunnableVersion(spec("1.1"))).toThrow(UnsupportedSpecVersionError);
+    expect(() => assertRunnableVersion(spec("1.0"))).not.toThrow();
+  });
+
+  it("are refused before the model is resolved, so a missing API key does not hide the reason", () => {
+    const needsKey = {
+      ...spec("1.1"),
+      agent: {
+        ...spec("1.1").agent,
+        model: { provider: "anthropic", name: "m", api_key: "${NOT_SET}" },
+      },
+    } as unknown as AgentSpec;
+    expect(() => createAgentRun(needsKey, { env: {} })).toThrow(UnsupportedSpecVersionError);
   });
 
   it("do not stop a 1.0 spec", async () => {
