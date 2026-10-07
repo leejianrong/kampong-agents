@@ -1,6 +1,7 @@
 # ADR-0027: One expression language and a real data model
 
-- Status: Accepted (language choice gated on a spike, see Decision 3)
+- Status: Accepted. The spike (KAN-1839) passed on 2026-10-07: JSONata is confirmed, with the conditions
+  in "Spike result" below.
 - Date: 2026-10-06
 - Deciders: Jian (product owner)
 
@@ -81,3 +82,45 @@ reports legacy constructs as deprecated rather than invalid. The canvas edits bo
 - This is Phase 0 of V11: it unblocks the data-dependent part of every template.
 - Evaluating user-supplied expressions in a hosted multi-tenant server needs the bounds named in
   Decision 3 (time, memory, no host access) before it is enabled there.
+
+## Spike result (KAN-1839, 2026-10-07): GO, with conditions
+
+Tested against `jsonata@2.2.2` (MIT, no dependencies, 80 KB minified, 299 KB source; `evaluate` is async).
+The scripts and how to run them are in `docs/adr/0027-spike/`. All numbers are from this machine (Node 24).
+
+| Property | Result | Evidence |
+| -------- | ------ | -------- |
+| Deterministic | **Pass, with guards** | Out of the box four built-ins are not: `$now`, `$millis`, `$random`, `$shuffle`; `$eval` runs a string as code. A walk of the parsed AST finds each one, including through aliasing (`$f := $now; $f()`) and passing as a value (`$map(a, $random)`). Shadowing them with throwing bindings is a second layer. With them removed, 11 expressions covering paths, arithmetic, sorting, dates, number formatting and object functions gave byte-identical results over 200 runs each (0 drift). `$.constructor`, `__proto__` and similar reach nothing: no host object or global is reachable. |
+| Bounded in time | **Pass, with a limit** | `jsonata(src, { timeout, stack })` is built in. An infinite recursion, a million-step `$reduce` and a 16-million-step nested `$map` all stopped at the 200 ms limit (`D1012`) instead of running for 1 s, 10 s or forever; a non-tail recursion 5 000 deep stopped with `D1011` at `stack: 400` (a tail call is optimised and does not grow the stack). **Not interruptible: a regular expression with catastrophic backtracking** (`/^(a+)+$/`) blocks the thread and was still running after 25 s; `timeout` is only checked between nodes. |
+| Bounded in memory | **Pass in the process, not as a hard limit** | Unguarded: `$pad("x", 400000000)` took 827 MB RSS, `[1..10000000]` 217 MB, a 2-million-item `$join` 384 MB. A symbol-keyed `__evaluate_exit` hook (`Symbol.for("jsonata.__evaluate_entry" / "__evaluate_exit")`; a string name does nothing) sees each node's result, and refusing a string over 1 MB or a list over 200 000 items stopped the range and the join at 46 ms and 11 ms (peak 138 MB and 79 MB). `$pad` allocates before any hook sees it, so it is wrapped to cap its width. **A hard cap needs a separate process:** a worker with `resourceLimits` did not contain the range bomb, the whole process aborted; a child process with `--max-old-space-size=64` died alone (SIGABRT) and the parent carried on. The parser overflows the stack (a `RangeError` with no position) at about 5 000 nested parentheses, so source length is capped. |
+| Canvas-editable subset | **Pass** | A subset of the AST (references with indexes, literals, `+ - * / % = != < > <= >= and or &`, unary minus, `?:`, and a short list of pure functions such as `$abs`, `$count`, `$exists`, `$lowercase`, `$max`) maps to a form model and back to text. Of 28 expressions drawn from the demos and the V11 templates, 16 fit, including every condition and reference the demos need, and all 16 re-parse to an identical AST. The 12 that do not (lambdas, predicates, `~>`, blocks, `**`, regular expressions, object constructors) are shown as text and still validate. A printer that adds parentheses changes the author's text, so the form must only rewrite an expression the author edited through it. |
+| Located errors | **Pass** | Every syntax error (`S0xxx`) and every runtime error (`T1006`, `T2001`, `T0410`, `T2009`, `D1011`, `D1012`) carries `code`, a message and `position`, a character offset that maps to a line and column, including in a multi-line expression and inside a nested call. Two caveats: errors are plain objects, not `Error` instances, so they must be normalised; and a mistyped path (`alerts[0].labl.alertname`) or a wrong index is **not an error**, it evaluates to `undefined`. |
+
+### What the evaluator must do (the contract KAN-1840 and KAN-1841 build on)
+
+1. **One entry point** that parses once, rejects at parse time (source over about 4 000 characters; a
+   variable named `now`, `millis`, `random`, `shuffle` or `eval`; a regular expression literal, until a
+   safe `RegexEngine` exists, since the option is a hook that takes a constructor), and evaluates with
+   `timeout` and `stack` set, the denied built-ins shadowed, `$pad` capped, and result-size and step limits in
+   the `__evaluate_exit` hook.
+2. **Pure**: the result depends only on the expression and the JSON input (`trigger`, `vars`, step outputs).
+   No clock, no randomness, no environment, no I/O.
+3. **Normalised errors**: `{ code, message, position, line, column }`, never a raw thrown object.
+4. **`undefined` is a value the engine must handle on purpose.** A reference that finds nothing yields
+   `undefined`, which is falsy in a condition and silently drops a key in an object. KAN-1840 should lint
+   references against what is known (`vars`, `output_schema`, declared outputs) and say so at validation
+   time, not at run time.
+5. **Pin the version exactly** and keep a conformance corpus (the one in the spike, extended) in the repo's
+   tests, so an upgrade that changes a result is caught. JSONata collapses a one-element list to its element
+   and has its own truthiness rules for `$boolean`; both need explicit tests where a condition depends on them.
+6. **Hosted mode needs a process boundary** (a child process with a heap limit, or a container) before user
+   expressions run on a shared server. A worker thread and the in-process guards are not enough for memory,
+   and `timeout` cannot interrupt a native regular expression.
+7. **Exports carry `jsonata` as a pinned dependency** (zero transitive dependencies) next to the vendored
+   engine files; evaluating a condition becomes `await` in the vendored workflow, which is already async.
+
+### Decision
+
+Go. JSONata passes all four properties, so the fallbacks (a CEL subset, a minimal grammar) are not needed.
+The conditions above are part of the decision, not follow-ups. The one property that holds only with
+guards is determinism, and the guards are cheap, testable, and fail visibly.
