@@ -114,3 +114,9 @@ export {
   type StepRecord,
   type CreateAgentRunOptions,
 } from "./run.js";
+export {
+  createModuleFixtures,
+  moduleFixtureFilePrefix,
+  type CreateModuleFixturesOptions,
+} from "./module-fixtures.js";
+export type { ModuleFixtureOutcome, ModuleFixtureSeam } from "./component.js";

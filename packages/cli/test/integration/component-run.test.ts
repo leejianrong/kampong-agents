@@ -412,4 +412,53 @@ ops:
     expect(outcome).toMatchObject({ ok: false });
     expect((outcome as { message: string }).message).toMatch(/id@version/);
   });
+
+  describe("--tools record and replay for a module that does not use HTTP (KAN-1833)", () => {
+    const install = () => {
+      mkdirSync(join(dir, "components/acme/hello/1.0.0"), { recursive: true });
+      writeFileSync(join(dir, "components/acme/hello/1.0.0/component.yaml"), MANIFEST);
+      // Talks to nothing. It counts its own calls in the result, so a replay that ran it again would show 2.
+      writeFileSync(
+        join(dir, "components/acme/hello/1.0.0/index.mjs"),
+        `let calls = 0;
+export async function invoke(op, input) {
+  calls += 1;
+  return { greeting: "hi " + input.who, call: calls };
+}
+`,
+      );
+      writeFileSync(join(dir, "agent.yaml"), SPEC());
+    };
+    const run = async (who: string, tools: "record" | "replay") => {
+      const { io, out, err } = capture();
+      const code = await runCli(
+        ["run", join(dir, "agent.yaml"), "--input", who, "--json", "--tools", tools],
+        io,
+        { model },
+      );
+      return { code, out: out.join("\n"), err: err.join("\n") };
+    };
+    it("replays the recorded result without running the module", async () => {
+      install();
+      expect(await runCli(["lock", join(dir, "agent.yaml")], capture().io)).toBe(EXIT_SUCCESS);
+      const recorded = await run("kai", "record");
+      expect(recorded.code, recorded.err).toBe(EXIT_SUCCESS);
+      expect(recorded.out).toContain('"call":1');
+      expect(readdirSync(join(dir, ".kampong", "fixtures")).length).toBeGreaterThan(0);
+
+      const replayed = await run("kai", "replay");
+      expect(replayed.code, replayed.err).toBe(EXIT_SUCCESS);
+      expect(JSON.parse(replayed.out)).toEqual(JSON.parse(recorded.out));
+      expect(replayed.out).toContain('"call":1'); // recorded, not run again
+    });
+
+    it("fails visibly, without running the module, for an input that was never recorded", async () => {
+      install();
+      expect(await runCli(["lock", join(dir, "agent.yaml")], capture().io)).toBe(EXIT_SUCCESS);
+      await run("kai", "record");
+      const missed = await run("someone else", "replay");
+      expect(missed.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(missed.out + missed.err).toContain("No recorded fixture");
+    });
+  });
 });

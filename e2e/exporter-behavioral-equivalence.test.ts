@@ -8,6 +8,8 @@ import { parseSpec } from "@kampong/spec";
 import {
   createAgentRun,
   createComponentDispatcher,
+  createFixtureFetch,
+  createModuleFixtures,
   DirectoryComponentRegistry,
   InProcessModuleRunner,
   type RunState,
@@ -291,6 +293,27 @@ ops:
 `,
     );
 
+    // KAN-1833: a module that uses no network at all, so only the invoke(op) boundary can record it.
+    put(
+      "acme/stamp/1.0.0/component.yaml",
+      `kind: module
+id: acme/stamp
+version: 1.0.0
+entry: ./index.mjs
+ops:
+  run:
+    effect: read
+    input: { type: object, required: [text], properties: { text: { type: string } } }
+`,
+    );
+    put(
+      "acme/stamp/1.0.0/index.mjs",
+      `export async function invoke(op, input) {
+  return { stamped: [...input.text].reverse().join("") };
+}
+`,
+    );
+
     const source = `version: "1.0"
 agent:
   id: e2e-component-agent
@@ -313,6 +336,11 @@ agent:
       use: acme/shout@1.0.0
       op: run
       with: { status: "{{ charge }}" }
+    - name: stamp
+      action: component
+      use: acme/stamp@1.0.0
+      op: run
+      with: { text: "{{ charge }}" }
   workflow:
     - step: parse
       action: extract_entities
@@ -322,6 +350,9 @@ agent:
     - step: loud
       type: tool
       tool: shout
+    - step: stamped
+      type: tool
+      tool: stamp
 `;
     const { success, spec, errors } = parseSpec(source);
     expect(errors).toEqual([]);
@@ -332,7 +363,11 @@ agent:
     try {
       // Reference: the engine, with the same components from a directory registry.
       const registry = new DirectoryComponentRegistry(componentsDir);
+      const fixturesDir = join(componentsDir, ".fixtures");
       const referenceRun = createAgentRun(spec!, {
+        // Record every module op at the invoke(op) boundary as it runs (KAN-1833).
+        fetchImpl: createFixtureFetch({ mode: "record", fixturesDir, secrets: ["secret-e2e"] }),
+        moduleFixtures: createModuleFixtures({ mode: "record", fixturesDir }),
         components: createComponentDispatcher({
           registry,
           runner: new InProcessModuleRunner(registry),
@@ -348,11 +383,27 @@ agent:
       const referenceRequests = tool.requests;
       expect(referenceRequests).toBe(2);
 
+      // Replaying those recordings runs no module code (there is no runner) and makes no request (the rest op replays at the HTTP level), yet
+      // gives the same outcome, the non-HTTP module included.
+      const replayRun = createAgentRun(spec!, {
+        fetchImpl: createFixtureFetch({ mode: "replay", fixturesDir }),
+        moduleFixtures: createModuleFixtures({ mode: "replay", fixturesDir }),
+        components: createComponentDispatcher({ registry }),
+      });
+      const replayState = await replayRun.start(FIXED_INPUT);
+      expect(replayState.status, JSON.stringify(replayState)).toBe("completed");
+      expect(toOutcome(replayState)).toEqual(referenceOutcome);
+      expect(tool.requests).toBe(referenceRequests);
+      expect(referenceState.finalOutput?.stamped).toEqual({
+        stamped: [...TOOL_STATUS].reverse().join(""),
+      });
+
       // Export, with the components resolved the way the CLI does it.
       const components: ExportComponent[] = [];
       for (const [id, version] of [
         ["acme/charges", "1.0.0"],
         ["acme/shout", "1.0.0"],
+        ["acme/stamp", "1.0.0"],
       ] as const) {
         const resolved = await registry.resolve(id, version);
         components.push({

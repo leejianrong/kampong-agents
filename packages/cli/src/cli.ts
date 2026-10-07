@@ -9,6 +9,7 @@ import { parseSpec, specWarnings, type AgentSpec } from "@kampong/spec";
 import {
   createAgentRun,
   createFixtureFetch,
+  createModuleFixtures,
   instantClock,
   Pacer,
   type ModelClient,
@@ -788,12 +789,24 @@ async function runRunCommand(
           secrets: collectSecrets(spec, process.env),
         });
 
+  // Module components are recorded at the invoke(op) boundary too, so one that does not speak HTTP is as
+  // deterministic as one that does (KAN-1833).
+  const moduleFixtures =
+    toolsMode === "live"
+      ? undefined
+      : createModuleFixtures({
+          mode: toolsMode,
+          fixturesDir: fixturesDir ?? defaultFixturesDir(specPath),
+          secrets: collectSecrets(spec, process.env),
+        });
+
   let run: ReturnType<typeof createAgentRun>;
   try {
     // Replaying recorded fixtures must not sit through real retry backoff or pacing delays.
     const replayClock = toolsMode === "replay" ? instantClock : undefined;
     run = createAgentRun(spec, {
       fetchImpl,
+      moduleFixtures,
       model: testOptions.model,
       components: componentDispatcherFor(specPath),
       timeoutMs,

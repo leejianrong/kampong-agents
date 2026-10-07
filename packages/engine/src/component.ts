@@ -68,6 +68,38 @@ export interface ModuleRunner {
 
 export type ModuleIsolation = "none" | "sandbox";
 
+/** What a module op did, as the fixture layer records it (KAN-1833): its result, or the error it raised. */
+export type ModuleFixtureOutcome =
+  | { ok: true; data?: unknown }
+  | {
+      ok: false;
+      error: {
+        message: string;
+        code: ToolCallError["code"];
+        retryable: boolean;
+        status?: number;
+        /** What the module itself threw, when it was not already a ToolCallError. */
+        cause?: { message: string; status?: number };
+      };
+    };
+
+/**
+ * Record and replay at the `invoke(op, input)` boundary, which an HTTP fixture cannot do for a module
+ * that speaks IMAP or SQL (ADR-0034). `replay` returns the recorded outcome (and throws when there is
+ * none); the module is not run at all. `record` is called after a real run with the secret values it read.
+ */
+export interface ModuleFixtureSeam {
+  mode: "record" | "replay";
+  replay(toolName: string, op: string, input: Record<string, unknown>): ModuleFixtureOutcome;
+  record(
+    toolName: string,
+    op: string,
+    input: Record<string, unknown>,
+    outcome: ModuleFixtureOutcome,
+    secrets: string[],
+  ): void;
+}
+
 export interface InvokeOpOptions {
   /**
    * Refuse a module op unless the runner provides at least this much isolation. A hosted server that
@@ -81,6 +113,11 @@ export interface InvokeOpOptions {
   secretEnv?: Record<string, string>;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: ToolFetchImpl;
+  /**
+   * Record or replay a module op's outcome (ADR-0034). Not used for a call that carries `toolName`: the
+   * legacy Slack and Gmail kinds keep the HTTP-level fixtures they were recorded with.
+   */
+  moduleFixtures?: ModuleFixtureSeam;
   pacer?: HttpToolCallOptions["pacer"];
   clock?: HttpToolCallOptions["clock"];
   runner?: ModuleRunner;
@@ -459,7 +496,7 @@ export async function invokeOp(
   const outputSchema = op.output;
   const isJson = manifest.kind !== "rest" || ((op as RestOp).response?.mode ?? "json") === "json";
   if (outputSchema && isJson) {
-    const errors = validateAgainstSchema(outputSchema, result, "output");
+    const errors = validateAgainstSchema(outputSchema, result, "http");
     if (errors.length > 0) {
       throw fail(
         `${label}: the response did not match the declared output: ${errors.slice(0, 5).join("; ")}`,
@@ -486,6 +523,22 @@ async function runModule(
   env: NodeJS.ProcessEnv,
   label: string,
 ): Promise<unknown> {
+  const fixtures = options.toolName === undefined ? options.moduleFixtures : undefined;
+  const fixtureName = `${manifest.id}.${opName}`;
+  if (fixtures?.mode === "replay") {
+    // Nothing runs, so there is no runner, isolation, secret or network to need.
+    const outcome = fixtures.replay(fixtureName, opName, input);
+    if (outcome.ok) return outcome.data;
+    const { message, code, retryable, status, cause } = outcome.error;
+    throw new ToolCallError(
+      message,
+      code,
+      retryable,
+      status,
+      undefined,
+      cause && { cause: Object.assign(new Error(cause.message), { status: cause.status }) },
+    );
+  }
   if (!options.runner) {
     throw fail(
       `${label}: ${manifest.id} is a module component and no module runner was provided`,
@@ -501,6 +554,7 @@ async function runModule(
   const egress = egressOf(manifest, config);
   const declaredEnv = manifest.permissions?.env ?? [];
   const used: string[] = [];
+  const envRead: string[] = [];
   const readSlotHosts: string[] = [];
   const send = options.fetchImpl ?? ((url, init) => fetch(url, init));
   const signal = options.signal ?? AbortSignal.timeout(MODULE_TIMEOUT_MS);
@@ -535,7 +589,10 @@ async function runModule(
             "permission",
           );
         }
-        return env[name];
+        const value = env[name];
+        // A declared variable is often a token; it must not end up in a fixture if the module echoes it.
+        if (value) envRead.push(value);
+        return value;
       },
     },
     fetch: async (target, init) => {
@@ -577,13 +634,21 @@ async function runModule(
     );
   });
 
+  let result: unknown;
   try {
-    return await Promise.race([options.runner.invoke(manifest, opName, input, ctx), aborted]);
+    result = await Promise.race([options.runner.invoke(manifest, opName, input, ctx), aborted]);
   } catch (err) {
     scrub(err, used);
-    if (err instanceof ToolCallError) throw err;
+    if (err instanceof ToolCallError) {
+      // An outcome the module's own world produced (an HTTP status) is worth replaying; a refusal by this
+      // pipeline, a timeout or a missing variable depends on where it ran, so it is never recorded.
+      if (err.status !== undefined) {
+        recordError(fixtures, fixtureName, opName, input, err, [...used, ...envRead]);
+      }
+      throw err;
+    }
     const message = err instanceof Error ? err.message : String(err);
-    throw new ToolCallError(
+    const wrapped = new ToolCallError(
       redactString(`${label} failed: ${message}`, used),
       "http",
       false,
@@ -593,5 +658,62 @@ async function runModule(
         cause: err,
       },
     );
+    // A plain Error says nothing about why it failed (a refused connection, a bad import and a missing
+    // table look alike), so only one that carries an HTTP-style status is recorded as an outcome.
+    if (typeof (err as { status?: unknown } | undefined)?.status === "number") {
+      recordError(fixtures, fixtureName, opName, input, wrapped, [...used, ...envRead]);
+    }
+    throw wrapped;
   }
+  if (fixtures?.mode === "record") {
+    // Recording happens after the module has succeeded, so a failure to write is not mistaken for one of
+    // the module's. The result is what a replay will hand back, so the live run returns that too.
+    const data = toJsonValue(result, `${label}: the result cannot be recorded`);
+    fixtures.record(fixtureName, opName, input, { ok: true, data }, [...used, ...envRead]);
+    result = data;
+  }
+  return result;
+}
+
+/** What a result looks like on disk: JSON, so what replays is what a later step would have seen. */
+function toJsonValue(result: unknown, message: string): unknown {
+  try {
+    return result === undefined ? undefined : JSON.parse(JSON.stringify(result));
+  } catch (err) {
+    throw fail(`${message}: ${(err as Error).message}`, "http");
+  }
+}
+
+function recordError(
+  fixtures: ModuleFixtureSeam | undefined,
+  fixtureName: string,
+  opName: string,
+  input: Record<string, unknown>,
+  err: ToolCallError,
+  used: string[],
+): void {
+  if (fixtures?.mode !== "record") return;
+  const cause = err.cause instanceof Error ? err.cause : undefined;
+  const causeStatus = (cause as { status?: unknown } | undefined)?.status;
+  fixtures.record(
+    fixtureName,
+    opName,
+    input,
+    {
+      ok: false,
+      error: {
+        message: err.message,
+        code: err.code,
+        retryable: err.retryable,
+        ...(err.status !== undefined && { status: err.status }),
+        ...(cause && {
+          cause: {
+            message: cause.message,
+            ...(typeof causeStatus === "number" && { status: causeStatus }),
+          },
+        }),
+      },
+    },
+    used,
+  );
 }

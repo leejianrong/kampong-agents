@@ -361,12 +361,23 @@ ops:
       );
     });
 
-    it("only warns, in replay, about a module op that makes no request", async () => {
+    it("fails, in replay, for a module op with no recorded outcome (KAN-1833)", async () => {
       install(MANIFEST(), OK_CODE);
       writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
       await runCli(["lock", path("agent.yaml")], capture().io);
       const { code, text } = await doctor([path("agent.yaml"), "--tools", "replay"]);
-      expect(code).toBe(EXIT_SUCCESS);
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(text).toContain("no recorded fixture");
+    });
+
+    it("does not count an HTTP fixture as a module op's recording, which replay would not find", async () => {
+      install(MANIFEST(), OK_CODE);
+      writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      mkdirSync(path(".kampong/fixtures"), { recursive: true });
+      writeFileSync(path(".kampong/fixtures/acme_hello.greet.0123456789abcdef.json"), "{}");
+      const { code, text } = await doctor([path("agent.yaml"), "--tools", "replay"]);
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
       expect(text).toContain("no recorded fixture");
     });
 

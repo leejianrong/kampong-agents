@@ -179,6 +179,8 @@ export interface CreateAgentRunOptions {
   model?: ModelClient;
   /** Overrides the fetch used for HTTP *tool* calls -- e.g. the mock/record layer's createFixtureFetch (V3 KAN-1111). */
   fetchImpl?: EngineDeps["fetchImpl"];
+  /** Records or replays module component ops (KAN-1833); the `kampong run --tools` counterpart of `fetchImpl`. */
+  moduleFixtures?: EngineDeps["moduleFixtures"];
   /** Tool pacing and retry delays (KAN-1846); the CLI passes an instant clock when replaying fixtures. */
   toolPacer?: EngineDeps["pacer"];
   toolClock?: EngineDeps["clock"];
@@ -220,6 +222,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
   return new AgentRun(spec, {
     model,
     fetchImpl: options.fetchImpl,
+    moduleFixtures: options.moduleFixtures,
     pacer: options.toolPacer,
     clock: options.toolClock,
     components: options.components,

@@ -5,6 +5,7 @@ import {
   desugarLegacyTool,
   DirectoryComponentRegistry,
   fixtureFilePrefix,
+  moduleFixtureFilePrefix,
   InProcessModuleRunner,
   invokeOp,
   isFirstPartyId,
@@ -160,9 +161,9 @@ export async function runDoctor(
     return lock;
   };
   const used = new Set<string>();
-  const moduleKinds = new Map<string, string>();
   // A component is probed only when its bytes are the ones a reviewer pinned (or it ships with kampong).
   const trusted = new Map<string, string | true>();
+  const moduleKinds = new Map<string, string>();
   const probes = new Map<
     string,
     { use: string; manifest: ComponentManifest; slot: string; envName: string; tool: ComponentTool }
@@ -319,14 +320,18 @@ export async function runDoctor(
         : tool.action === "component"
           ? `${tool.use.slice(0, tool.use.lastIndexOf("@"))}.${tool.op}`
           : tool.name;
-      const prefix = fixtureFilePrefix(name);
+      // A module op is filed under its own prefix (KAN-1833); the legacy kinds keep their HTTP fixtures.
+      const moduleOp =
+        tool.action === "component" &&
+        !desugarLegacyTool(declared) &&
+        moduleKinds.get(tool.use) === "module";
+      const prefix = moduleOp ? moduleFixtureFilePrefix(name) : fixtureFilePrefix(name);
       if (files.some((f) => f.startsWith(prefix) && f.endsWith(".json"))) {
         add("pass", "fixtures", `tool ${declared.name} has a recorded fixture`);
       } else {
-        // A module that makes no request records nothing, so its missing fixture is not an error.
-        const quiet = tool.action === "component" && moduleKinds.get(tool.use) === "module";
+        // A module op is recorded at the invoke(op) boundary (KAN-1833), so every kind of tool needs one.
         add(
-          quiet ? "warn" : "fail",
+          "fail",
           "fixtures",
           `tool ${declared.name} has no recorded fixture in ${dir}; record one with --tools record`,
         );

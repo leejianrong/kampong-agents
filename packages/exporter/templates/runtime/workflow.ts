@@ -16,6 +16,7 @@ import {
   type HttpToolCallOptions,
 } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
+import type { ModuleFixtureSeam } from "./component.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
 // 1105). Deliberately NOT built on Mastra's own `workflows` module: the
@@ -60,6 +61,8 @@ export type RunEvent =
 export interface EngineDeps {
   model: ModelClient;
   fetchImpl?: HttpToolCallOptions["fetchImpl"];
+  /** Record or replay module component ops at the `invoke(op)` boundary (KAN-1833, ADR-0034). */
+  moduleFixtures?: ModuleFixtureSeam;
   /** Resolves connector `${ENV}` tokens (KAN-1430). Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv;
   /** Tool call pacing and retry delays (KAN-1846); real timers by default, injectable for replay and tests. */
@@ -105,7 +108,10 @@ export function desugarLegacyTool(tool: Tool): ComponentTool | undefined {
 }
 
 /** What a component call needs from the engine at run time. */
-export type ComponentRuntime = Pick<EngineDeps, "env" | "fetchImpl" | "pacer" | "clock"> & {
+export type ComponentRuntime = Pick<
+  EngineDeps,
+  "env" | "fetchImpl" | "pacer" | "clock" | "moduleFixtures"
+> & {
   /** The name the record/replay layer files this call under (the legacy tool's own name). */
   toolName?: string;
 };
@@ -428,6 +434,7 @@ async function* executeTool(
       const result = await prepared.run(substituteDeep(tool.with, params), {
         env: deps.env,
         fetchImpl: deps.fetchImpl,
+        moduleFixtures: deps.moduleFixtures,
         pacer: deps.pacer,
         clock: deps.clock,
         ...(desugared !== undefined && { toolName: declared.name }),
