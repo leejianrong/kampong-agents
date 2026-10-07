@@ -7,6 +7,7 @@ import { buildReadme } from "./readme.js";
 import { buildEntryPointSource } from "./entry-point.js";
 import { buildServerEntryPointSource } from "./server-entry-point.js";
 import { buildDockerfile, buildDockerignore } from "./dockerfile.js";
+import { buildLockfileText, buildSbom, buildVerifyEntryPointSource } from "./sbom.js";
 import { buildComponentsModule, selectComponents, type ExportComponent } from "./components.js";
 import { readRuntimeFiles } from "./runtime-files.js";
 
@@ -98,6 +99,11 @@ export function exportProject(
 
   if (components.length > 0) {
     write("src/components.generated.ts", buildComponentsModule(components));
+    write("src/verify.ts", buildVerifyEntryPointSource());
+    write("kampong.lock", buildLockfileText(components));
+    write("sbom.json", buildSbom(spec, components));
+    // Components are hashed byte for byte: line-ending conversion on a clone would change the digests.
+    write(".gitattributes", "components/** -text\n");
     for (const component of components) {
       const { id, version } = component.manifest;
       // A forced re-export replaces the component outright, so a file the new version no longer has

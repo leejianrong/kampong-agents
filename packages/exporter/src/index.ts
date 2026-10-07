@@ -35,3 +35,4 @@ export {
   collectRequiredEnvVars,
 } from "./project-files.js";
 export { readRuntimeFiles, type RuntimeFile } from "./runtime-files.js";
+export { buildLockfileText, buildSbom, buildVerifyEntryPointSource } from "./sbom.js";

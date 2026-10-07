@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -383,6 +383,31 @@ agent:
       expect(tool.requests).toBe(referenceRequests * 2);
       expect(new Set(tool.authorizations)).toEqual(new Set(["Bearer secret-e2e"]));
       expect(JSON.stringify(exportedOutcome)).not.toContain("secret-e2e");
+
+      // KAN-1837: the export carries the records to check it against, and it passes untouched.
+      for (const file of ["kampong.lock", "sbom.json"]) {
+        expect(existsSync(join(exportDir, file)), file).toBe(true);
+      }
+      const clean = await runNpm(["run", "verify", "--silent"], exportDir);
+      expect(clean.code, `verify failed on a clean export:\n${clean.stdout}\n${clean.stderr}`).toBe(
+        0,
+      );
+
+      // A tampered module is caught by `npm run verify` and, before any run or request, by startup.
+      const tampered = join(exportDir, "components", "acme", "shout", "1.0.0", "index.mjs");
+      writeFileSync(tampered, `${readFileSync(tampered, "utf8")}\n// injected\n`);
+      const requestsBefore = tool.requests;
+      const verify = await runNpm(["run", "verify", "--silent"], exportDir);
+      expect(verify.code).not.toBe(0);
+      expect(verify.stderr).toContain("acme/shout@1.0.0");
+      expect(verify.stderr).toContain("index.mjs was changed");
+      const refused = await runNpm(
+        ["start", "--silent", "--", "--input", FIXED_INPUT, "--json"],
+        exportDir,
+      );
+      expect(refused.code).not.toBe(0);
+      expect(refused.stderr).toContain("do not match what was exported");
+      expect(tool.requests).toBe(requestsBefore);
     } finally {
       if (previousToken === undefined) delete process.env.E2E_COMPONENT_TOKEN;
       else process.env.E2E_COMPONENT_TOKEN = previousToken;

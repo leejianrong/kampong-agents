@@ -72,6 +72,7 @@ const HAND_VENDORED_EXEMPTIONS: Record<string, RegExp> = {
   // an already-validated literal baked in at export time), so this carries
   // only the plain-TypeScript *shape* of AgentSpec -- no Zod, no validator --
   // deliberately, not as an oversight.
+  "component-verify.ts": /Hand-vendored for `kampong export` \(KAN-1837\)/,
   "spec-types.ts": /never re-validates a spec at runtime/,
   // KAN-1435: vendored from packages/cli/src/run-manager.ts, not
   // packages/engine/src -- its value imports (AgentRun, createAgentRun) are
