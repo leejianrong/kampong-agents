@@ -11,7 +11,7 @@
     "generate:registry-index": "node scripts/generate-registry-index.mjs"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.49",
+    "@ai-sdk/anthropic": "^4.0.71",
     "@ai-sdk/openai": "^4.0.57",
     "@kampong/spec": "*",
     "@mastra/core": "^1.64.0",
