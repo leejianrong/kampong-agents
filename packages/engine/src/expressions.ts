@@ -203,8 +203,10 @@ export async function evaluateExpression(
     }
   });
 
-  const [pad, sort, distinct] = await Promise.all(
-    ["pad", "sort", "distinct"].map((name) => originalNative(name)),
+  const [pad, sort, distinct, encodeUrlComponent, encodeUrl] = await Promise.all(
+    ["pad", "sort", "distinct", "encodeUrlComponent", "encodeUrl"].map((name) =>
+      originalNative(name),
+    ),
   );
   // `$sort` and `$distinct` do their work inside one native call, which no per-node hook or timeout can
   // interrupt, and `$sort` uses memory that grows with the square of the list (60 000 numbers exhausted a
@@ -221,6 +223,23 @@ export async function evaluateExpression(
       native.signature?.definition,
     );
   };
+  // A webhook field is often a number (`customer_id: 3`), and the built-in encoders take text only, so
+  // the advice to wrap a trigger value in them failed at run time (KAM-147). A number or boolean is
+  // encoded as its text; anything else still reaches the built-in and fails its signature check.
+  for (const [name, native] of [
+    ["encodeUrlComponent", encodeUrlComponent!],
+    ["encodeUrl", encodeUrl!],
+  ] as const) {
+    expr.registerFunction(
+      name,
+      function (this: unknown, value: unknown) {
+        const text =
+          typeof value === "number" || typeof value === "boolean" ? String(value) : value;
+        return native.implementation.call(this, text);
+      },
+      "<(sbn)-:s>",
+    );
+  }
   guard("pad", pad!, (args) => {
     if (typeof args[1] === "number" && Math.abs(args[1]) > lim.stringChars) {
       throw fail(source, `$pad width ${args[1]} is larger than ${lim.stringChars}`, "K0006");
