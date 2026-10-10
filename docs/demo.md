@@ -49,6 +49,11 @@ Fill in `OPENROUTER_API_KEY`, `SLACK_BOT_TOKEN` and `SLACK_CHANNEL`. `.env` is g
 spec never holds a value, only the `${ENV_VAR}` name. Don't paste these into chat, issues or
 commits.
 
+You can also set them from the canvas: **Variables** lists every name the spec needs (including the
+Slack token, which the Slack component reads on its own), and lets you set or replace a value. Values
+are saved to `.kampong/secrets.env` on this machine and are never shown again. This applies to the canvas
+(`kampong dev`, `make up`); `kampong run` and `kampong serve` still read the process environment.
+
 The CLI reads its process environment and does not load `.env` itself, so load it into your shell
 first:
 

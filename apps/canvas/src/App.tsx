@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, createApiClient, type ApiClient } from "./api.js";
 import { Canvas } from "./Canvas.js";
 import { DoctorPanel } from "./DoctorPanel.js";
+import { SecretsPanel } from "./SecretsPanel.js";
 import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { RunPanel } from "./RunPanel.js";
@@ -41,7 +42,7 @@ export interface AppProps {
   onUnauthorized?: () => void;
 }
 
-type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks";
+type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables";
 
 export function App({
   apiBaseUrl = "",
@@ -245,6 +246,14 @@ export function App({
             Set Guardrails
           </button>
           <span className="md3-app__toolbar-spacer" />
+          {api.listSecrets && (
+            <button
+              className="md3-button md3-button-text"
+              onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
+            >
+              Variables
+            </button>
+          )}
           {api.runDoctor && (
             <button
               className="md3-button md3-button-text"
@@ -345,6 +354,15 @@ export function App({
         {openForm === "run" && (
           <div className="md3-app__run-dock">
             <RunPanel api={api} />
+          </div>
+        )}
+        {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
+          <div className="md3-app__run-dock">
+            <SecretsPanel
+              list={() => api.listSecrets!()}
+              save={(name, value) => api.setSecret!(name, value)}
+              remove={(name) => api.removeSecret!(name)}
+            />
           </div>
         )}
         {openForm === "checks" && api.runDoctor && (
