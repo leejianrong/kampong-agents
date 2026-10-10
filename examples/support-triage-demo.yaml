@@ -32,7 +32,7 @@ agent:
     - name: lookup_customer
       action: http_request
       method: GET
-      url: "{{ vars.api }}/users/{{ $encodeUrlComponent(trigger.customer_id) }}"
+      url: "{{ vars.api }}/users/{{ $encodeUrlComponent($string(trigger.customer_id)) }}"
     - name: post_reply
       action: component
       use: kampong/slack@1.0.0
@@ -65,7 +65,7 @@ agent:
       tool: lookup_customer
     - step: draft
       action: draft_reply
-      instructions: "You write short, friendly support replies in plain text. Address the customer by name, answer only what was asked, and do not promise refunds or dates."
+      instructions: "You write short, friendly support replies in plain text, under 80 words. Address the customer by name and sign off as The Support Team. Never use placeholders such as [Your Name]. Do not promise refunds, timelines or dates; say a teammate will follow up."
       temperature: 0.5
       query: "Customer: {{ lookup.name }}\nCategory: {{ classify.category }}\nSummary: {{ classify.summary }}\n\nTheir message:\n{{ trigger.body }}"
     - step: review
