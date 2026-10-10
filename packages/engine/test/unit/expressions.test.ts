@@ -69,6 +69,18 @@ describe("evaluating", () => {
   });
 });
 
+describe("url encoding", () => {
+  it("encodes a number or boolean as its text instead of failing the signature check (KAM-147)", async () => {
+    expect(await evaluateExpression("$encodeUrlComponent(id)", { id: 3 })).toBe("3");
+    expect(await evaluateExpression("$encodeUrlComponent(flag)", { flag: true })).toBe("true");
+    expect(await evaluateExpression("$encodeUrl(n)", { n: 12 })).toBe("12");
+  });
+
+  it("still encodes a string", async () => {
+    expect(await evaluateExpression("$encodeUrlComponent(q)", { q: "a b&c" })).toBe("a%20b%26c");
+  });
+});
+
 describe("what is refused", () => {
   it.each(["now", "millis", "random", "shuffle", "eval"])(
     "$%s, however it is reached",

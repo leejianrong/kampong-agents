@@ -32,7 +32,7 @@ agent:
     - name: lookup_customer
       action: http_request
       method: GET
-      url: "{{ vars.api }}/users/{{ $encodeUrlComponent($string(trigger.customer_id)) }}"
+      url: "{{ vars.api }}/users/{{ $encodeUrlComponent(trigger.customer_id) }}"
     - name: post_reply
       action: component
       use: kampong/slack@1.0.0
