@@ -17,6 +17,7 @@ nav = [
     { "Adding tools" = "tutorial/tools.md" },
     { "Workflows and conditions" = "tutorial/workflows.md" },
     { "Guardrails and approvals" = "tutorial/guardrails.md" },
+    { "Build a Slack workflow" = "tutorial/slack-workflow.md" },
     { "Running offline" = "tutorial/offline.md" },
     { "Editing specs in your IDE" = "tutorial/external-editing.md" },
     { "Ejecting to TypeScript" = "tutorial/exporting.md" },
