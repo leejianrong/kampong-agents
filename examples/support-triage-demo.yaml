@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=../packages/spec/schemas/agent-spec.v1.0.schema.json
+#
+# Support triage demo (docs/demo.md). A support message arrives on a webhook; the agent
+# classifies it into a typed object, looks the customer up over HTTP, drafts a reply with its own
+# prompt and temperature, waits for a human to approve, then posts the reply to Slack.
+#
+# Version 1.1 features on show: `vars`, `trigger.*`, expressions in {{ }}, `output_schema`
+# (validated, retried once), and per-step `instructions` / `temperature`.
+#
+# Secrets are ${ENV_VAR} names only (OPENROUTER_API_KEY, SLACK_BOT_TOKEN, SLACK_CHANNEL); the values
+# live in .env, never in this file.
+version: "1.1"
+vars:
+  api:
+    type: string
+    default: "https://jsonplaceholder.typicode.com"
+  channel:
+    type: string
+    default: ${SLACK_CHANNEL}
+agent:
+  id: support_triage
+  name: "Support Triage"
+  role: "Support engineer"
+  goal: "Triage an incoming support message, and send the customer a short, accurate reply once a human approves it."
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-v3.2
+    api_key: ${OPENROUTER_API_KEY}
+  trigger:
+    type: webhook
+  tools:
+    - name: lookup_customer
+      action: http_request
+      method: GET
+      url: "{{ vars.api }}/users/{{ $encodeUrlComponent($string(trigger.customer_id)) }}"
+    - name: post_reply
+      action: component
+      use: kampong/slack@1.0.0
+      op: post_message
+      with:
+        channel: "{{ vars.channel }}"
+        text: "{{ classify.urgency = 'high' ? ':rotating_light: ' : '' }}*{{ classify.category }}* for {{ lookup.name }} ({{ lookup.email }})\n>{{ trigger.subject }}\n\nApproved reply:\n{{ draft.text }}"
+  workflow:
+    - step: classify
+      action: classify
+      instructions: "You triage customer support messages. Be conservative: use urgency high only for outages, data loss or security issues."
+      temperature: 0
+      query: "Subject: {{ trigger.subject }}\n\n{{ trigger.body }}"
+      output_schema:
+        type: object
+        required: [category, urgency, summary]
+        properties:
+          category:
+            type: string
+            enum: [billing, bug, how_to, other]
+            description: What the message is about
+          urgency:
+            type: string
+            enum: [low, normal, high]
+          summary:
+            type: string
+            description: One sentence
+    - step: lookup
+      type: tool
+      tool: lookup_customer
+    - step: draft
+      action: draft_reply
+      instructions: "You write short, friendly support replies in plain text, under 80 words. Address the customer by name and sign off as The Support Team. Never use placeholders such as [Your Name]. Do not promise refunds, timelines or dates; say a teammate will follow up."
+      temperature: 0.5
+      query: "Customer: {{ lookup.name }}\nCategory: {{ classify.category }}\nSummary: {{ classify.summary }}\n\nTheir message:\n{{ trigger.body }}"
+    - step: review
+      type: approval
+      message: "Send this reply to {{ lookup.name }}? ({{ classify.category }}, urgency {{ classify.urgency }})\n\n{{ draft.text }}"
+    - step: send
+      type: tool
+      tool: post_reply
