@@ -343,6 +343,21 @@ export const agentSpecSchema = z
         });
       }
     }
+    // KAN-1844: a component's config may read `${ENV}`, but config is not secret (it lands in the request
+    // and in fixtures as written), so a variable named like a credential is sent to an auth slot instead.
+    (spec.agent.tools ?? []).forEach((tool, i) => {
+      if (tool.action !== "component") return;
+      for (const [key, value] of Object.entries(tool.config ?? {})) {
+        const name = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)?.[1];
+        if (name !== undefined && /KEY|TOKEN|SECRET|PASSW|CREDENTIAL|PRIVATE/i.test(name)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `config.${key} reads ${name}, which looks like a secret; config is not secret, so bind it to an auth slot under secrets instead`,
+            path: ["agent", "tools", i, "config", key],
+          });
+        }
+      }
+    });
     spec.agent.workflow.forEach((step, i) => {
       if (!("output_schema" in step) || step.output_schema === undefined) return;
       const at = ["agent", "workflow", i, "output_schema"];

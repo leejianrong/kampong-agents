@@ -258,9 +258,19 @@ export async function runDoctor(
         }
       }
     }
+    // A config value may be `${ENV}` (KAN-1844): it must be set, and the host is probed as it resolves.
+    const config: Record<string, string> = {};
+    for (const [key, value] of Object.entries(tool.config ?? {})) {
+      const name = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)?.[1];
+      if (name === undefined) config[key] = value;
+      else {
+        checkEnv(name, `config.${key} of ${tool.use}`);
+        if (isSet(env, name)) config[key] = env[name]!;
+      }
+    }
     for (const host of manifest.permissions?.egress ?? []) {
       const resolved = host.replace(/\{\{\s*config\.([A-Za-z0-9_]+)\s*\}\}/g, (m, key: string) =>
-        tool.config && Object.hasOwn(tool.config, key) ? tool.config[key]! : m,
+        Object.hasOwn(config, key) ? config[key]! : m,
       );
       const target = dialTarget(resolved);
       if (target) addHost(target);
