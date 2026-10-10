@@ -570,6 +570,19 @@
                         "$ref": "#/definitions/__schema0"
                       }
                     ]
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "temperature": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2
                   }
                 },
                 "required": ["step", "action"],

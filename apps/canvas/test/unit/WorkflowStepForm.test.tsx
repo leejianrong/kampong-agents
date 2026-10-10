@@ -40,6 +40,26 @@ describe("WorkflowStepForm", () => {
     });
   });
 
+  it("sets per-step instructions, model and temperature when filled in (KAN-1842)", () => {
+    const onSubmit = vi.fn();
+    render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "draft" } });
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "write" } });
+    fireEvent.change(screen.getByLabelText(/^Instructions/), { target: { value: "Be brief." } });
+    fireEvent.change(screen.getByLabelText(/^Model/), { target: { value: "small-one" } });
+    fireEvent.change(screen.getByLabelText(/^Temperature/), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      step: "draft",
+      action: "write",
+      instructions: "Be brief.",
+      model: "small-one",
+      temperature: 0,
+    });
+  });
+
   it("switches to the conditional-branch kind and builds a type: 'condition' step", () => {
     const onSubmit = vi.fn();
     render(<WorkflowStepForm onSubmit={onSubmit} onCancel={vi.fn()} />);

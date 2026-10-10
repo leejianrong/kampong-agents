@@ -496,3 +496,60 @@ describe("output_schema (KAN-1843)", () => {
     expect((await out("1.0")).output).toEqual({ severity: "low" });
   });
 });
+
+// KAN-1842: per-step instructions, model and temperature.
+describe("per-step model overrides (KAN-1842)", () => {
+  const spec = (step: Record<string, unknown>): AgentSpec =>
+    ({
+      version: "1.1",
+      agent: {
+        id: "a",
+        name: "A",
+        role: "R",
+        goal: "G",
+        workflow: [{ step: "draft", action: "write", ...step }],
+      },
+    }) as AgentSpec;
+
+  const capture = () => {
+    const calls: Record<string, unknown>[] = [];
+    const model: ModelClient = {
+      async generateText(input) {
+        calls.push(input as unknown as Record<string, unknown>);
+        return "ok";
+      },
+      async generateStructured<T>() {
+        return {} as T;
+      },
+    };
+    return { calls, model };
+  };
+
+  it("passes the step's instructions, model and temperature to the model call", async () => {
+    const { calls, model } = capture();
+    await drive(
+      spec({ instructions: "Be brief.", model: "small-one", temperature: 0.1 }),
+      { model },
+      "x",
+    );
+    expect(calls[0]).toMatchObject({
+      instructions: "Be brief.",
+      model: "small-one",
+      temperature: 0.1,
+    });
+  });
+
+  it("leaves the agent's role and goal, model and temperature in force when unset", async () => {
+    const { calls, model } = capture();
+    await drive(spec({}), { model }, "x");
+    expect(calls[0]!.instructions).toBe("Role: R\nGoal: G");
+    expect(calls[0]).not.toHaveProperty("model");
+    expect(calls[0]).not.toHaveProperty("temperature");
+  });
+
+  it("keeps a temperature of 0", async () => {
+    const { calls, model } = capture();
+    await drive(spec({ temperature: 0 }), { model }, "x");
+    expect(calls[0]!.temperature).toBe(0);
+  });
+});
