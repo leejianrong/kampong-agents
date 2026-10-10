@@ -28,6 +28,10 @@ export interface WorkflowActionStepFormInput {
   // only meaningful alongside a spec-level `guardrails.confidence_threshold`,
   // which is configured separately via buildGuardrailsFromForm below.
   confidenceGate?: boolean;
+  // KAN-1842: per-step overrides (version 1.1 specs). Blank means "use the agent's own".
+  instructions?: string;
+  model?: string;
+  temperature?: number;
 }
 
 export interface WorkflowConditionStepFormInput {
@@ -93,6 +97,9 @@ export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): Workflo
           .filter(Boolean),
       }),
       ...(input.confidenceGate && { confidence_gate: true }),
+      ...(input.instructions && { instructions: input.instructions }),
+      ...(input.model && { model: input.model }),
+      ...(input.temperature !== undefined && { temperature: input.temperature }),
     };
   }
 
