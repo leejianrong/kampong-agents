@@ -157,6 +157,39 @@ export function opRequiresApproval(
 
 // ---- Config, hosts, permissions ------------------------------------------------------------------
 
+const CONFIG_ENV_REF = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/**
+ * Config values may be a whole-value `${ENV}` reference (a Supabase project ref, a region), read from
+ * the environment at call time so one spec works across deployments. It is still config, not a secret:
+ * the value goes into the request and the fixtures as written, and the spec lint refuses a variable
+ * whose name looks like a credential (that belongs in an auth slot).
+ */
+export function resolveConfigEnv(
+  given: Record<string, string> | undefined,
+  env: NodeJS.ProcessEnv,
+  label: string,
+): Record<string, string> | undefined {
+  if (given === undefined) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(given)) {
+    const name = CONFIG_ENV_REF.exec(value)?.[1];
+    if (name === undefined) {
+      out[key] = value;
+      continue;
+    }
+    const resolved = env[name];
+    if (!resolved) {
+      throw fail(
+        `${label}: config.${key} reads environment variable "${name}", which is not set`,
+        "input",
+      );
+    }
+    out[key] = resolved;
+  }
+  return out;
+}
+
 function resolveConfig(
   manifest: ComponentManifest,
   given: Record<string, string> | undefined,
@@ -476,8 +509,8 @@ export async function invokeOp(
   }
   const op = manifest.ops[opName]!;
   const prepared = prepareInput(op, input, label);
-  const config = resolveConfig(manifest, options.config, label);
   const env = options.env ?? process.env;
+  const config = resolveConfig(manifest, resolveConfigEnv(options.config, env, label), label);
 
   let result: unknown;
   if (manifest.kind === "rest") {

@@ -39,6 +39,7 @@ export {
 export {
   invokeOp,
   opRequiresApproval,
+  resolveConfigEnv,
   type InvokeOpOptions,
   type ModuleContext,
   type ModuleIsolation,

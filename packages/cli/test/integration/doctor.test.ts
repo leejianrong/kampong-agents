@@ -413,6 +413,43 @@ ops:
       });
       expect(seen).toContain("team1.example.com:443");
     });
+
+    // KAN-1844: a config value may read the environment.
+    it("reads a config ${ENV}: dials the host it resolves to, and fails when it is not set", async () => {
+      const manifest = `kind: rest
+id: acme/api
+version: 1.0.0
+permissions: { egress: ["{{ config.sub }}.example.com"] }
+config:
+  sub: { type: string }
+ops:
+  ping:
+    effect: read
+    request: { method: GET, url: "https://{{ config.sub }}.example.com/ping" }
+`;
+      mkdirSync(path("components/acme/api/1.0.0"), { recursive: true });
+      writeFileSync(path("components/acme/api/1.0.0/component.yaml"), manifest);
+      const tool = `    - name: greet
+      action: component
+      use: acme/api@1.0.0
+      op: ping
+      config: { sub: "\${ACME_SUB}" }`;
+      writeFileSync(path("agent.yaml"), agent(tool));
+      await runCli(["lock", path("agent.yaml")], capture().io);
+      const seen: string[] = [];
+      await runCli(["doctor", path("agent.yaml"), "--online"], capture().io, {
+        env: { ANTHROPIC_API_KEY: SECRET, ACME_SUB: "team2" },
+        connect: async (host, port) => {
+          seen.push(`${host}:${port}`);
+          return undefined;
+        },
+      });
+      expect(seen).toContain("team2.example.com:443");
+
+      const unset = await doctor([path("agent.yaml")]);
+      expect(unset.code).not.toBe(0);
+      expect(unset.text).toContain("ACME_SUB is not set");
+    });
   });
 
   describe("--probe", () => {

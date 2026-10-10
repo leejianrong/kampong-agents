@@ -47,6 +47,10 @@ change per connector.
 8. **Hosts that depend on configuration:** an op may take non-secret `config` params, and `egress`
    and `url` may reference them (`{{ config.project }}.supabase.co`). The permission check runs on the
    resolved host. Non-HTTP transports use `host:port` entries, enforced through the module `ctx`.
+   A spec may set a config value to a whole-value `${ENV}` reference (KAN-1844) so one spec works across
+   deployments; the resolved value is checked against the param's pattern like a literal. Config is not
+   secret, so the spec lint refuses a variable named like a credential; a multi-part credential (IMAP
+   user and password) is several auth slots, each bound to its hosts.
 9. **Versions:** a spec names an exact `id@version`; the digest is recorded in `kampong.lock`
    (ADR-0025). No ranges.
 10. **One error shape:** `{ code, op, message, retryable, status? }` with codes `input`,
