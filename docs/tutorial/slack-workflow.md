@@ -25,8 +25,9 @@ OPENROUTER_API_KEY=...
 SLACK_BOT_TOKEN=xoxb-...
 ```
 
-A spec never contains a secret, only the name of the variable. The canvas won't ask you for the
-token and never shows it.
+A spec never contains a secret, only the name of the variable. You can also set the values from the
+canvas instead of editing `.env`: click **Variables**, then **Set** next to `SLACK_BOT_TOKEN` and
+paste the token. It is saved on your machine, takes effect immediately, and is never shown again.
 
 !!! note "After editing `.env`, recreate the container"
     The Docker stack reads `.env` when the container starts. Run `make restart` after you change

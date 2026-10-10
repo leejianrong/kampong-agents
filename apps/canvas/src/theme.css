@@ -1024,3 +1024,35 @@ select.md3-text-field {
   white-space: nowrap;
   border: 0;
 }
+
+/* Variables panel: one row per name, never a value. */
+.md3-secrets__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.md3-secrets__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.125rem 0.5rem;
+}
+
+.md3-secrets__name {
+  font-family: var(--md-font-mono, monospace);
+  word-break: break-all;
+  grid-column: 1;
+}
+
+.md3-secrets__row .md3-status-chip {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.md3-secrets__actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  gap: 0.25rem;
+}
