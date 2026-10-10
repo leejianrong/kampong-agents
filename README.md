@@ -1,5 +1,9 @@
 # Kampong Agents
 
+
+https://github.com/user-attachments/assets/319eee49-3011-483b-8494-850d78a9a550
+
+
 A dev-first agent-workflow builder where the visual canvas and the underlying YAML spec are
 the same thing, not two things kept in sync by convention. Design an agent on the canvas, or
 hand-write the YAML in Cursor or Claude Code: either way you get one file, always safe to
