@@ -112,6 +112,12 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     "npm start                          # runs with a default input",
     'npm start -- --input "some text"   # runs with a specific input',
     "npm start -- --approve-all         # auto-approves any human-approval pause (non-interactive)",
+    ...(spec.version === "1.1"
+      ? [
+          "npm start -- --var name=value      # a value for one of the spec's `vars` (version 1.1)",
+          "npm start -- --header name=value   # a request header a webhook would carry, read as `trigger.headers`",
+        ]
+      : []),
     "npm start -- --json                # prints one JSON result object instead of a human summary",
     "```",
     "",

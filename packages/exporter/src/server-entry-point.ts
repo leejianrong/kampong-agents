@@ -77,13 +77,29 @@ const runManager = new RunManager({ notifyApprovalsViaSlack: true${options.compo
 // Fastify's built-in object parsing.
 app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(null, body));
 
+// Request headers a version 1.1 expression reads as \`trigger.headers\`: lowercase names, text values. A header
+// that looks like a credential is not passed, so it cannot end up in a message, a query or a run trace.
+const CREDENTIAL_HEADER =
+  /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
+
+function triggerHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined || CREDENTIAL_HEADER.test(name)) continue;
+    out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
+  }
+  return out;
+}
+
 // POST /webhook -- the trigger. The request body becomes the run input (raw
 // string as-is; a JSON body is passed through as its JSON text). Returns the
 // run id immediately (on-demand execution); the caller polls /runs/:id or
 // streams /runs/:id/events and resolves approvals via /runs/:id/approve.
 app.post("/webhook", async (request, reply) => {
   const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
-  const { id, state } = await runManager.start(SPEC, input);
+  const { id, state } = await runManager.start(SPEC, input, { headers: triggerHeaders(request.headers) });
   return reply.code(201).send({ success: true, id, state });
 });
 

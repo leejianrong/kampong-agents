@@ -338,14 +338,20 @@ describe("collectRequiredEnvVars with a component tool", () => {
     expect(collectRequiredEnvVars(spec)).toContain("ACME_TOKEN");
   });
 
-  it("refuses a version 1.1 spec by name, and writes nothing (KAN-1840)", () => {
+  it("exports a version 1.1 spec, and its entry points pass the vars and the webhook trigger to the evaluator (KAM-111)", () => {
     const dir = mkdtempSync(join(tmpdir(), "kampong-export-1-1-"));
     try {
       const out = join(dir, "out");
-      expect(() => exportProject({ ...FULL_SPEC, version: "1.1" }, out)).toThrow(
-        /version "1.1".*cannot be exported yet.*Set version to "1.0"/s,
-      );
-      expect(() => readFileSync(join(out, "package.json"))).toThrow();
+      const spec = { ...FULL_SPEC, version: "1.1", vars: { who: { type: "string" } } } as AgentSpec;
+      exportProject(spec, out);
+      const entry = readFileSync(join(out, "src/index.ts"), "utf8");
+      expect(entry).toContain('"--var"');
+      expect(entry).toContain("trigger: { headers }");
+      expect(entry).toMatch(/is not declared in the spec's vars/);
+      const server = readFileSync(join(out, "src/server.ts"), "utf8");
+      expect(server).toContain("triggerHeaders(request.headers)");
+      // a header that looks like a credential never reaches an expression or a run trace
+      expect(server).toContain("authorization|cookie|token|secret");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -191,10 +191,10 @@ A version 1.1 spec runs in `kampong run`, `kampong dev` and `kampong serve`.
 - **Run inputs.** `kampong run` takes `--var name=value` (an undeclared name is a usage error) and
   `--header name=value`; `kampong serve` passes the webhook's headers and JSON body.
 - **Not yet.** The hosted server refuses a 1.1 spec (422, by name): expressions on a shared server need the
-  process boundary the spike found memory limits require. `kampong export` refuses one too: the exported
-  runtime now carries the evaluator (and pins `jsonata`), but its entry points do not yet pass vars or the
-  webhook payload to it (KAN-1851). Structured output (`output_schema`, KAN-1843) and the canvas editor
-  (KAN-1850) are separate cards.
+  process boundary the spike found memory limits require. `kampong export` handles one (KAM-111): the exported
+  runtime carries the evaluator (and pins `jsonata`), `npm start` takes `--var` and `--header` like `kampong
+  run`, and the exported webhook server passes the request headers (credential-looking ones dropped) and
+  JSON body. The editor in the canvas (KAN-1850) is a separate card.
 - **Data is data.** A tool's strings are resolved by the evaluator and then handed to `callHttpTool`, which reads
   `${ENV}` references and `{name}` placeholders in the text it is given. Without care a webhook body containing
   `${SECRET}` would have been expanded there, so in a 1.1 tool every string that comes from data (an evaluated
