@@ -29,6 +29,9 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   const [ifCondition, setIfCondition] = useState("");
   const [thenTarget, setThenTarget] = useState("");
   const [elseTarget, setElseTarget] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [stepModel, setStepModel] = useState("");
+  const [temperature, setTemperature] = useState("");
   const [tool, setTool] = useState("");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
@@ -53,7 +56,15 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
         ...(message && { message }),
       });
     } else {
-      result = buildWorkflowStepFromForm({ step, action, inputs, confidenceGate });
+      result = buildWorkflowStepFromForm({
+        step,
+        action,
+        inputs,
+        confidenceGate,
+        instructions: instructions.trim(),
+        model: stepModel.trim(),
+        ...(temperature.trim() !== "" && { temperature: Number(temperature) }),
+      });
     }
     if (!result.success || !result.step) {
       setErrors(result.errors ?? ["Invalid workflow step"]);
@@ -125,6 +136,36 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               onChange={(e) => setConfidenceGate(e.target.checked)}
             />
             <span className="md3-label-large">Requires confidence gate</span>
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Instructions (optional, replaces role and goal for this step)
+            </span>
+            <textarea
+              className="md3-text-field"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Model (optional)</span>
+            <input
+              className="md3-text-field"
+              value={stepModel}
+              onChange={(e) => setStepModel(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Temperature (optional, 0 to 2)</span>
+            <input
+              className="md3-text-field"
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={temperature}
+              onChange={(e) => setTemperature(e.target.value)}
+            />
           </label>
         </>
       )}

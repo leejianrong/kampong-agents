@@ -50,6 +50,8 @@ export interface DoctorOptions {
   probe?: boolean;
   /** Test seam for the probe's HTTP calls; the real `fetch` otherwise. */
   probeFetch?: ToolFetchImpl;
+  /** Told each environment variable name the spec needs, however it is reached (a `${NAME}` or a component's secret slot). */
+  onEnvName?: (name: string) => void;
 }
 
 const ENV_REF = /\$\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
@@ -73,7 +75,8 @@ export const tcpConnect: ConnectFn = (host, port) =>
     });
   });
 
-function envNamesIn(value: unknown, into: Set<string>): void {
+/** Every `${NAME}` an arbitrary value reads, escapes (`$${NAME}`) excluded. */
+export function envNamesIn(value: unknown, into: Set<string>): void {
   if (typeof value === "string") {
     for (const match of value.matchAll(ENV_REF)) if (match[1] !== undefined) into.add(match[1]);
   } else if (Array.isArray(value)) {
@@ -121,6 +124,7 @@ export async function runDoctor(
     const key = `${name}|${what}`;
     if (envChecked.has(key)) return;
     envChecked.add(key);
+    options.onEnvName?.(name);
     if (isSet(env, name)) add("pass", "env", `${name} is set (${what})`);
     else add(level, "env", `${name} is not set (${what})`);
   };
@@ -258,9 +262,19 @@ export async function runDoctor(
         }
       }
     }
+    // A config value may be `${ENV}` (KAN-1844): it must be set, and the host is probed as it resolves.
+    const config: Record<string, string> = {};
+    for (const [key, value] of Object.entries(tool.config ?? {})) {
+      const name = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)?.[1];
+      if (name === undefined) config[key] = value;
+      else {
+        checkEnv(name, `config.${key} of ${tool.use}`);
+        if (isSet(env, name)) config[key] = env[name]!;
+      }
+    }
     for (const host of manifest.permissions?.egress ?? []) {
       const resolved = host.replace(/\{\{\s*config\.([A-Za-z0-9_]+)\s*\}\}/g, (m, key: string) =>
-        tool.config && Object.hasOwn(tool.config, key) ? tool.config[key]! : m,
+        Object.hasOwn(config, key) ? config[key]! : m,
       );
       const target = dialTarget(resolved);
       if (target) addHost(target);
