@@ -515,6 +515,9 @@ export function createMastraModelClient(
         baseUrl: options.baseUrlOverride ?? modelConfig.base_url,
         fetchImpl: timeoutFetch,
       }),
+      // Mastra adds a default error processor that retries a failed call twice with a 3s delay. A failed
+      // model call must surface at once and is never retried (ADR-0004), so the defaults are off.
+      errorProcessorDefaults: false,
     });
   // One agent per model name, built on first use, so a step's `model` override costs nothing when unused.
   const agents = new Map<string, Agent>([[modelConfig.name, buildAgent(modelConfig.name)]]);
@@ -527,8 +530,11 @@ export function createMastraModelClient(
     }
     return agent;
   };
-  const settings = (temperature: number | undefined) =>
-    temperature === undefined ? {} : { modelSettings: { temperature } };
+  // A failed model call surfaces at once (ADR-0004): Mastra otherwise retries a retryable error twice with
+  // backoff, which would hold a refused Ollama connection open instead of reporting it.
+  const settings = (temperature: number | undefined) => ({
+    modelSettings: { maxRetries: 0, ...(temperature === undefined ? {} : { temperature }) },
+  });
 
   return {
     async generateText({ instructions, prompt, model, temperature }) {

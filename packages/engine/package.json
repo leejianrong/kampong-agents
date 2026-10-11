@@ -11,12 +11,12 @@
     "generate:registry-index": "node scripts/generate-registry-index.mjs"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.49",
-    "@ai-sdk/openai": "^4.0.57",
+    "@ai-sdk/anthropic": "^4.0.78",
+    "@ai-sdk/openai": "^4.0.91",
     "@kampong/spec": "*",
-    "@mastra/core": "^1.64.0",
-    "ai": "^7.0.91",
+    "@mastra/core": "^1.75.0",
+    "ai": "^7.0.137",
     "jsonata": "2.2.2",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   }
 }
