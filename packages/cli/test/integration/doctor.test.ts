@@ -284,6 +284,41 @@ ops:
     expect(down.text).toContain("connection refused");
   });
 
+  it("dials the host of a knowledge_base url that is injected, and no other knowledge source (KAM-107)", async () => {
+    writeFileSync(
+      path("agent.yaml"),
+      `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  knowledge_base:
+    - type: url
+      source: "https://docs.example.org/faq"
+      mode: inject
+    - type: url
+      source: "https://declared-only.example.org/x"
+    - type: text
+      source: "inline"
+      mode: inject
+  workflow:
+    - step: go
+      action: x
+`,
+    );
+    const seen: string[] = [];
+    const { io } = capture();
+    await runCli(["doctor", path("agent.yaml"), "--online"], io, {
+      env: {},
+      connect: async (host, port) => {
+        seen.push(`${host}:${port}`);
+        return undefined;
+      },
+    });
+    expect(seen).toEqual(["docs.example.org:443"]);
+  });
+
   it("exits with the validation code on an invalid spec and the usage code on bad arguments", async () => {
     writeFileSync(path("agent.yaml"), "version: nope");
     expect((await doctor([path("agent.yaml")])).code).toBe(EXIT_VALIDATION_FAILURE);

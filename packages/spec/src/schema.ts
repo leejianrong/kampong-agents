@@ -19,9 +19,13 @@ export const SCHEMA_VERSION = "1.0";
 export const SPEC_VERSIONS = ["1.0", "1.1"] as const;
 export type SpecVersion = (typeof SPEC_VERSIONS)[number];
 
+// `mode: inject` (KAM-107) puts the source's text in the system prompt of every action step, capped in size,
+// so the model answers with it in front of it. A source with no mode is only declared: nothing reads it, and
+// the spec says so in a warning. Retrieval (`mode: retrieve`) is a later stage.
 export const knowledgeItemSchema = z.object({
   type: z.enum(["pdf", "url", "text"]),
   source: z.string().min(1),
+  mode: z.enum(["inject"]).optional(),
 });
 
 export const httpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -436,6 +440,25 @@ export const agentSpecSchema = z
             path: [...at, "properties"],
           });
         }
+      }
+    });
+    (spec.agent.knowledge_base ?? []).forEach((item, i) => {
+      if (item.mode === undefined) return;
+      const at = ["agent", "knowledge_base", i];
+      if (spec.version !== "1.1") {
+        ctx.addIssue({
+          code: "custom",
+          message: 'mode needs version "1.1"',
+          path: [...at, "mode"],
+        });
+      }
+      if (item.type === "pdf") {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            'a pdf source cannot be injected yet: use type "text" or "url" with mode "inject"',
+          path: [...at, "type"],
+        });
       }
     });
     const trigger = spec.agent.trigger;

@@ -319,17 +319,41 @@ knowledge_base:
     source: "https://docs.example.com/policy"
 ```
 
-| Field    | Type                     | Required | Notes                       |
-| -------- | ------------------------ | -------- | --------------------------- |
-| `type`   | `pdf` \| `url` \| `text` | yes      | Kind of source.             |
-| `source` | string                   | yes      | Path, URL, or literal text. |
+| Field    | Type                     | Required | Notes                                                              |
+| -------- | ------------------------ | -------- | ------------------------------------------------------------------ |
+| `type`   | `pdf` \| `url` \| `text` | yes      | Kind of source.                                                    |
+| `source` | string                   | yes      | Path, URL, or literal text.                                        |
+| `mode`   | `inject`                 | no       | Put this source in the prompt of every action step. Version 1.1.   |
 
-!!! note "Declared, not yet executed"
-    `knowledge_base` is part of the spec schema so specs can express it forward-compatibly, but
-    the v1 execution engine does not retrieve or inject these sources into a run yet. Include it
-    to document intent; don't expect it to change behavior today. `kampong run`, `serve` and
-    `export` print a warning on stderr when it is declared, and the canvas shows a banner, so it
-    is never ignored silently.
+## Using a source: `mode: inject`
+
+```yaml
+version: "1.1"
+agent:
+  knowledge_base:
+    - type: text
+      mode: inject
+      source: "A duplicate charge is reviewed by billing within 3 business days."
+    - type: url
+      mode: inject
+      source: "https://docs.example.com/policy"
+```
+
+An `inject` source is loaded once at the start of a run and added to the system prompt of every action
+step, after that step's `instructions` (or the agent's role and goal). The model is told the material is data
+and to ignore any instructions inside it.
+
+- `text` is used as written. `url` is fetched with a GET (http or https only), and a web page is reduced to its
+  text. Both go through the same fetch as tools, so `--tools record` and `--tools replay` cover a `url`.
+- Size is capped: 20,000 characters from one source and 60,000 across all of them. A cut is marked in the text
+  the model sees, and sources past the total are named as left out. Put the most important source first.
+- A source that cannot be loaded (a 404, a timeout, an empty page) fails the run before the first step,
+  naming the source. The model never answers without material it was meant to have.
+- `pdf` cannot be injected yet: `mode: inject` on a `pdf` source is a validation error.
+- `kampong doctor --online` reaches the host of an injected `url`.
+
+A source with no `mode` is only declared: nothing reads it. `kampong run`, `serve` and `export` print a
+warning on stderr when one is declared, and the canvas shows a banner, so it is never ignored silently.
 
 ## Secrets rule
 

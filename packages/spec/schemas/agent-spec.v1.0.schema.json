@@ -144,6 +144,10 @@
               "source": {
                 "type": "string",
                 "minLength": 1
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["inject"]
               }
             },
             "required": ["type", "source"],

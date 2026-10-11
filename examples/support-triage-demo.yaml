@@ -5,7 +5,8 @@
 # prompt and temperature, waits for a human to approve, then posts the reply to Slack.
 #
 # Version 1.1 features on show: `vars`, `trigger.*`, expressions in {{ }}, `output_schema`
-# (validated, retried once), and per-step `instructions` / `temperature`.
+# (validated, retried once), per-step `instructions` / `temperature`, and `knowledge_base` with
+# `mode: inject`.
 #
 # Secrets are ${ENV_VAR} names only (OPENROUTER_API_KEY, SLACK_BOT_TOKEN, SLACK_CHANNEL); the values
 # live in .env, never in this file.
@@ -28,6 +29,16 @@ agent:
     api_key: ${OPENROUTER_API_KEY}
   trigger:
     type: webhook
+  # Put in every action step's prompt (mode: inject), so the classifier and the draft answer with the policy
+  # in front of them instead of guessing at it.
+  knowledge_base:
+    - type: text
+      mode: inject
+      source: |
+        Support policy. Answer only from this and the customer's message.
+        - A duplicate charge is reviewed by billing within 3 business days. Do not promise an amount or a date.
+        - An outage is posted at status.example.com. Urgency is high only for outages, data loss or security.
+        - A password reset is under Settings, then Security, then Reset password.
   tools:
     - name: lookup_customer
       action: http_request

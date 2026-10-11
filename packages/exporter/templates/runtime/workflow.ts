@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { AgentSpec, SchemaNode, Tool, WorkflowStep } from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
+import { injectedKnowledge, loadKnowledge, withKnowledge } from "./knowledge.js";
 import {
   callHttpTool,
   extractField,
@@ -200,6 +201,21 @@ export async function* runWorkflow(
   }
   const expressionContext = scope && { scope, limits: deps.expressionLimits };
 
+  // `knowledge_base` sources with `mode: inject`, loaded once and added to every action step's instructions.
+  // An item that cannot be loaded fails the run here, before any step, rather than answering without it.
+  let knowledge = "";
+  if (injectedKnowledge(spec).length > 0) {
+    try {
+      knowledge = await loadKnowledge(
+        spec,
+        deps.fetchImpl ?? ((input, init) => fetch(input, init)),
+      );
+    } catch (err) {
+      yield { type: "failed", error: (err as Error).message };
+      return;
+    }
+  }
+
   for (const step of spec.agent.workflow) {
     yield { type: "step_started", step: step.step };
 
@@ -338,7 +354,15 @@ export async function* runWorkflow(
 
     let stepResult: { output: unknown; confidence?: number };
     try {
-      stepResult = await runActionStep(step, spec, deps, stepOutputs, input, expressionContext);
+      stepResult = await runActionStep(
+        step,
+        spec,
+        deps,
+        stepOutputs,
+        input,
+        expressionContext,
+        knowledge,
+      );
     } catch (err) {
       yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
       return;
@@ -402,8 +426,12 @@ async function runActionStep(
   stepOutputs: Record<string, unknown>,
   input: string,
   expressions: ExpressionContext | undefined,
+  knowledge: string,
 ): Promise<{ output: unknown; confidence?: number }> {
-  const instructions = step.instructions ?? `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`;
+  const instructions = withKnowledge(
+    step.instructions ?? `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`,
+    knowledge,
+  );
   // KAN-1842: only the overrides the step sets are passed on; an absent one leaves the agent's own in force.
   const overrides = {
     ...(step.model !== undefined && { model: step.model }),

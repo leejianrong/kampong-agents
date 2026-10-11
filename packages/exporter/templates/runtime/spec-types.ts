@@ -21,6 +21,8 @@ export interface Model {
 export interface KnowledgeItem {
   type: "pdf" | "url" | "text";
   source: string;
+  /** `inject` puts the source's text in every action step's system prompt (version 1.1). */
+  mode?: "inject";
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
