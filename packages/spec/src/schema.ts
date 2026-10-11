@@ -241,6 +241,13 @@ export const workflowStepSchema = z.union([
     // template can rely on each field's presence and type. Version 1.1 only. With `confidence_gate`
     // the schema must declare a numeric `confidence` field, which the guardrail reads like any other.
     output_schema: schemaNodeSchema.optional(),
+    // KAN-1842: per-step overrides of the agent-level model call. `instructions` replaces the
+    // Role+Goal system prompt for this step only, `model` names a different model of the same provider
+    // (same credentials), `temperature` sets the sampling temperature. Each is optional and an absent
+    // one leaves the agent's own setting in force. Version 1.1 only.
+    instructions: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    temperature: z.number().min(0).max(2).optional(),
   }),
 ]);
 
@@ -343,7 +350,35 @@ export const agentSpecSchema = z
         });
       }
     }
+    // KAN-1844: a component's config may read `${ENV}`, but config is not secret (it lands in the request
+    // and in fixtures as written), so a variable named like a credential is sent to an auth slot instead.
+    (spec.agent.tools ?? []).forEach((tool, i) => {
+      if (tool.action !== "component") return;
+      for (const [key, value] of Object.entries(tool.config ?? {})) {
+        const name = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)?.[1];
+        if (name !== undefined && /KEY|TOKEN|SECRET|PASSW|CREDENTIAL|PRIVATE/i.test(name)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `config.${key} reads ${name}, which looks like a secret; config is not secret, so bind it to an auth slot under secrets instead`,
+            path: ["agent", "tools", i, "config", key],
+          });
+        }
+      }
+    });
     spec.agent.workflow.forEach((step, i) => {
+      for (const field of ["instructions", "model", "temperature"] as const) {
+        if (
+          field in step &&
+          (step as Record<string, unknown>)[field] !== undefined &&
+          spec.version !== "1.1"
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} needs version "1.1"`,
+            path: ["agent", "workflow", i, field],
+          });
+        }
+      }
       if (!("output_schema" in step) || step.output_schema === undefined) return;
       const at = ["agent", "workflow", i, "output_schema"];
       if (spec.version !== "1.1") {

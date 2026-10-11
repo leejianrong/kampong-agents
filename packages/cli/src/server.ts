@@ -1,4 +1,4 @@
-import { basename, relative } from "node:path";
+import { basename, dirname, relative } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } from "@kampong/spec";
@@ -6,7 +6,8 @@ import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
 import { componentCatalogFor, componentDispatcherFor, lockUses } from "./components.js";
-import { runDoctor, type DoctorOptions } from "./doctor.js";
+import { envNamesIn, runDoctor, type DoctorOptions } from "./doctor.js";
+import { SecretStore, validateSecret } from "./secrets.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
@@ -135,6 +136,12 @@ export function createDevServer({
   });
   watcher.start();
 
+  // The Variables panel's store. Applied to this process's environment, which runs and checks already read.
+  const secrets = new SecretStore(dirname(layoutPath), doctorOptions?.env ?? process.env);
+  app.addHook("onReady", async () => {
+    await secrets.load();
+  });
+
   app.addHook("onClose", (_instance, done) => {
     watcher.stop();
     done();
@@ -192,6 +199,55 @@ export function createDevServer({
       };
     }
     return { success: true, catalog: await componentCatalogFor(specPath) };
+  });
+
+  // Variables: names and whether each is set, never a value. A value goes in with PUT and cannot come back out.
+  async function referencedNames(): Promise<Set<string>> {
+    const names = new Set<string>();
+    try {
+      const loaded = await loadWithLayout(store);
+      if (loaded.spec) {
+        envNamesIn(loaded.spec, names);
+        // A component's credential is read through a slot that never appears as `${NAME}` in the spec, so
+        // the offline checks, which already resolve slots and remaps, say which names are needed.
+        await runDoctor(loaded.spec as AgentSpec, specPath, {
+          env: process.env,
+          ...doctorOptions,
+          online: false,
+          probe: false,
+          onEnvName: (name) => names.add(name),
+        });
+      }
+    } catch {
+      // an unreadable spec just means no names are suggested
+    }
+    return names;
+  }
+
+  app.get("/api/secrets", async () => ({
+    success: true,
+    secrets: secrets.list(await referencedNames()),
+  }));
+
+  app.put<{ Params: { name: string }; Body: { value?: unknown } }>(
+    "/api/secrets/:name",
+    async (request, reply) => {
+      const checked = validateSecret(request.params.name, request.body?.value);
+      if (!checked.ok) {
+        reply.code(400);
+        return { success: false, error: checked.error };
+      }
+      await secrets.set(request.params.name, checked.value);
+      return { success: true, secrets: secrets.list(await referencedNames()) };
+    },
+  );
+
+  app.delete<{ Params: { name: string } }>("/api/secrets/:name", async (request, reply) => {
+    if (!(await secrets.remove(request.params.name))) {
+      reply.code(404);
+      return { success: false, error: "No saved value with that name." };
+    }
+    return { success: true, secrets: secrets.list(await referencedNames()) };
   });
 
   // KAN-1901: `kampong doctor` for the canvas. Offline by default. `online` dials each host and `probe`

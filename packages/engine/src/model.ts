@@ -386,12 +386,18 @@ function asStructuredOutputError(err: unknown): StructuredOutputError | undefine
   return new StructuredOutputError(message, lines.length > 0 ? lines : [message], raw);
 }
 
-export interface GenerateTextInput {
+// KAN-1842: a step may override the model name (same provider and credentials) and the temperature.
+export interface StepModelOverrides {
+  model?: string;
+  temperature?: number;
+}
+
+export interface GenerateTextInput extends StepModelOverrides {
   instructions: string;
   prompt: string;
 }
 
-export interface GenerateStructuredInput<T> {
+export interface GenerateStructuredInput<T> extends StepModelOverrides {
   instructions: string;
   prompt: string;
   schema: z.ZodType<T>;
@@ -499,31 +505,56 @@ export function createMastraModelClient(
   const timeoutMs = options.timeoutMs ?? modelConfig.timeout_ms ?? DEFAULT_MODEL_TIMEOUT_MS;
   const timeoutFetch = createTimeoutFetch(options.fetchImpl, timeoutMs, modelConfig.provider);
 
-  const model = factory(modelConfig.name, {
-    apiKey,
-    baseUrl: options.baseUrlOverride ?? modelConfig.base_url,
-    fetchImpl: timeoutFetch,
-  });
-
-  const agent = new Agent({
-    id: spec.agent.id,
-    name: spec.agent.name,
-    instructions: `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`,
-    model,
-  });
+  const buildAgent = (modelName: string) =>
+    new Agent({
+      id: spec.agent.id,
+      name: spec.agent.name,
+      instructions: `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`,
+      model: factory(modelName, {
+        apiKey,
+        baseUrl: options.baseUrlOverride ?? modelConfig.base_url,
+        fetchImpl: timeoutFetch,
+      }),
+    });
+  // One agent per model name, built on first use, so a step's `model` override costs nothing when unused.
+  const agents = new Map<string, Agent>([[modelConfig.name, buildAgent(modelConfig.name)]]);
+  const agentFor = (modelName: string | undefined): Agent => {
+    const name = modelName ?? modelConfig.name;
+    let agent = agents.get(name);
+    if (!agent) {
+      agent = buildAgent(name);
+      agents.set(name, agent);
+    }
+    return agent;
+  };
+  const settings = (temperature: number | undefined) =>
+    temperature === undefined ? {} : { modelSettings: { temperature } };
 
   return {
-    async generateText({ instructions, prompt }) {
+    async generateText({ instructions, prompt, model, temperature }) {
       try {
-        const result = await agent.generate(prompt, { instructions });
+        const result = await agentFor(model).generate(prompt, {
+          instructions,
+          ...settings(temperature),
+        });
         return result.text;
       } catch (err) {
         rethrowModelCallError(err, modelConfig);
       }
     },
-    async generateStructured<T>({ instructions, prompt, schema }: GenerateStructuredInput<T>) {
+    async generateStructured<T>({
+      instructions,
+      prompt,
+      schema,
+      model,
+      temperature,
+    }: GenerateStructuredInput<T>) {
       try {
-        const result = await agent.generate(prompt, { instructions, structuredOutput: { schema } });
+        const result = await agentFor(model).generate(prompt, {
+          instructions,
+          structuredOutput: { schema },
+          ...settings(temperature),
+        });
         return result.object as T;
       } catch (err) {
         const wrong = asStructuredOutputError(err);
