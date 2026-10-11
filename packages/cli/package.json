@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@fastify/static": "^10.1.3",
+    "@fastify/static": "^10.1.5",
     "@kampong/canvas-app": "*",
     "@kampong/engine": "*",
     "@kampong/exporter": "*",
