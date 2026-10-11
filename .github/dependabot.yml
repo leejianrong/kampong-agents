@@ -5,8 +5,32 @@ updates:
     schedule:
       interval: "weekly"
     groups:
+      # The model stack moves together: a provider package's types must match @mastra/core, and the exporter
+      # pins these exact versions (ENGINE_DEPENDENCY_VERSIONS), so one PR per upgrade, not one per package.
+      model-stack:
+        patterns:
+          - "ai"
+          - "zod"
+          - "@ai-sdk/*"
+          - "@mastra/*"
+      # React refuses to run when react and react-dom differ.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       dev-dependencies:
         dependency-type: "development"
+        exclude-patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+    ignore:
+      # typescript-eslint does not accept TypeScript 7 yet; lift this when it does.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 10
 
   - package-ecosystem: "github-actions"
