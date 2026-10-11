@@ -15,7 +15,7 @@ import {
   substitutePlaceholders,
   type HttpToolCallOptions,
 } from "./http-tool.js";
-import { StructuredOutputError, type ModelClient } from "./model.js";
+import { StructuredOutputError, type ModelClient, type StepModelOverrides } from "./model.js";
 import type { ModuleFixtureSeam } from "./component.js";
 import {
   evaluateCondition as evaluateExpressionCondition,
@@ -403,7 +403,12 @@ async function runActionStep(
   input: string,
   expressions: ExpressionContext | undefined,
 ): Promise<{ output: unknown; confidence?: number }> {
-  const instructions = `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`;
+  const instructions = step.instructions ?? `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`;
+  // KAN-1842: only the overrides the step sets are passed on; an absent one leaves the agent's own in force.
+  const overrides = {
+    ...(step.model !== undefined && { model: step.model }),
+    ...(step.temperature !== undefined && { temperature: step.temperature }),
+  };
   const query =
     step.query !== undefined
       ? await renderText(step.query, stepOutputs, input, expressions)
@@ -411,7 +416,7 @@ async function runActionStep(
   const prompt = buildStepPrompt(step, input, stepOutputs, query);
 
   if (step.output_schema) {
-    return runStructuredStep(step, step.output_schema, deps, instructions, prompt);
+    return runStructuredStep(step, step.output_schema, deps, instructions, prompt, overrides);
   }
 
   if (step.confidence_gate) {
@@ -419,6 +424,7 @@ async function runActionStep(
       instructions,
       prompt,
       schema: structuredStepSchema,
+      ...overrides,
     });
     // In a 1.1 spec the confidence is an ordinary field of the output too, so `step.confidence` reads
     // like any other. A 1.0 step's output is unchanged.
@@ -429,7 +435,7 @@ async function runActionStep(
     return { output, confidence: structured.confidence };
   }
 
-  const text = await deps.model.generateText({ instructions, prompt });
+  const text = await deps.model.generateText({ instructions, prompt, ...overrides });
   return { output: { text } };
 }
 
@@ -448,6 +454,7 @@ async function runStructuredStep(
   deps: EngineDeps,
   instructions: string,
   prompt: string,
+  overrides: StepModelOverrides,
 ): Promise<{ output: unknown; confidence?: number }> {
   const providerSchema = schemaNodeToZod(outputSchema);
   const base = [
@@ -464,6 +471,7 @@ async function runStructuredStep(
         instructions,
         prompt: attemptPrompt,
         schema: providerSchema,
+        ...overrides,
       });
     } catch (err) {
       // The model answered, but not in the shape: ask once more, naming what was wrong.

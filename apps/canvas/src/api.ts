@@ -74,6 +74,14 @@ export interface DoctorCheckDto {
   message: string;
 }
 
+/** One variable the Variables panel shows: a name and where it comes from, never a value. */
+export interface SecretStatusDto {
+  name: string;
+  source: "saved" | "environment" | "unset";
+  /** The open spec reads it through `${NAME}`. */
+  referenced: boolean;
+}
+
 export interface PinComponentResponse {
   success: boolean;
   catalog?: ComponentCatalog;
@@ -113,6 +121,13 @@ export interface ApiClient {
    * service it belongs to, so a caller asks for those explicitly. Local server only.
    */
   runDoctor?(options?: { online?: boolean; probe?: boolean }): Promise<DoctorCheckDto[]>;
+  /**
+   * Variables: set a credential by name; runs and checks use it at once. Write-only: no call returns a
+   * value, only each name and whether it is set. Local server only.
+   */
+  listSecrets?(): Promise<SecretStatusDto[]>;
+  setSecret?(name: string, value: string): Promise<SecretStatusDto[]>;
+  removeSecret?(name: string): Promise<SecretStatusDto[]>;
   startRun(input: string): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
@@ -154,6 +169,13 @@ async function errorMessageFor(res: Response, fallback: string): Promise<string>
 // session lives in an httpOnly cookie the browser only attaches when asked.
 function withCredentials(init: RequestInit = {}): RequestInit {
   return { credentials: "include", ...init };
+}
+
+async function secretsFrom(res: Response, fallback: string): Promise<SecretStatusDto[]> {
+  if (!res.ok) {
+    throw new ApiError(await errorMessageFor(res, `${fallback} (HTTP ${res.status}).`), res.status);
+  }
+  return ((await res.json()) as { secrets: SecretStatusDto[] }).secrets;
 }
 
 function jsonInit(body: unknown, init: RequestInit = {}): RequestInit {
@@ -228,6 +250,27 @@ export function createApiClient(baseUrl = ""): ApiClient {
         );
       }
       return ((await res.json()) as { checks: DoctorCheckDto[] }).checks;
+    },
+
+    async listSecrets(): Promise<SecretStatusDto[]> {
+      const res = await fetch(`${baseUrl}/api/secrets`, withCredentials());
+      return secretsFrom(res, "Could not load the variables");
+    },
+
+    async setSecret(name, value): Promise<SecretStatusDto[]> {
+      const res = await fetch(
+        `${baseUrl}/api/secrets/${encodeURIComponent(name)}`,
+        jsonInit({ value }, { method: "PUT" }),
+      );
+      return secretsFrom(res, "Could not save the variable");
+    },
+
+    async removeSecret(name): Promise<SecretStatusDto[]> {
+      const res = await fetch(
+        `${baseUrl}/api/secrets/${encodeURIComponent(name)}`,
+        withCredentials({ method: "DELETE" }),
+      );
+      return secretsFrom(res, "Could not remove the variable");
     },
 
     subscribeToEvents(onEvent: (event: { type: string; source: string }) => void): () => void {

@@ -398,6 +398,53 @@ describe("invokeOp -- config and URL safety", () => {
     expect(seen[0]?.url).toBe(`https://${PROJECT}.supabase.co/rest/v1/items?apikey=sb-key-1`);
   });
 
+  // KAN-1844: a config value may read the environment, so one spec works across deployments.
+  it("reads a config value from ${ENV} and still checks it against the pattern", async () => {
+    const { fetchImpl, seen } = recorder(() => json([]));
+    await invokeOp(
+      supabase,
+      "select",
+      { table: "items" },
+      {
+        fetchImpl,
+        env: { ...ENV, SUPABASE_PROJECT: PROJECT },
+        config: { project: "${SUPABASE_PROJECT}" },
+      },
+    );
+    expect(seen[0]?.url).toContain(`https://${PROJECT}.supabase.co/`);
+
+    // An environment value is not trusted more than a literal: it cannot steer the request elsewhere.
+    const bad = await codeOf(
+      invokeOp(
+        supabase,
+        "select",
+        { table: "t" },
+        {
+          fetchImpl,
+          env: { ...ENV, SUPABASE_PROJECT: "evil.test/x" },
+          config: { project: "${SUPABASE_PROJECT}" },
+        },
+      ),
+    );
+    expect(bad.code).toBe("input");
+    expect(bad.message).toMatch(/config\.project must match/);
+  });
+
+  it("names the variable when a config ${ENV} is not set, and makes no request", async () => {
+    const { fetchImpl } = recorder(() => json([]));
+    const error = await codeOf(
+      invokeOp(
+        supabase,
+        "select",
+        { table: "t" },
+        { fetchImpl, env: ENV, config: { project: "${SUPABASE_PROJECT}" } },
+      ),
+    );
+    expect(error.code).toBe("input");
+    expect(error.message).toMatch(/config\.project reads environment variable "SUPABASE_PROJECT"/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("URL-encodes an input placed in the path, so it cannot add segments or a query", async () => {
     const { fetchImpl, seen } = recorder(() => json([]));
 

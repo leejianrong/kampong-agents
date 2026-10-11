@@ -199,6 +199,66 @@ describe("App", () => {
     });
   });
 
+  describe("variables", () => {
+    function stub(rows: { name: string; source: string; referenced: boolean }[]) {
+      const calls: { url: string; method?: string; body?: string }[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          calls.push({ url: String(url), method: init?.method, body: init?.body as string });
+          if (String(url).includes("/api/secrets/") && init?.method === "PUT") {
+            rows = rows.map((r) => (r.name === "SLACK_BOT_TOKEN" ? { ...r, source: "saved" } : r));
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () =>
+              String(url).includes("/api/secrets")
+                ? { success: true, secrets: rows }
+                : SPEC_RESPONSE,
+          } as Response;
+        }),
+      );
+      return calls;
+    }
+
+    it("lists names with where each comes from, and sets one without ever showing it", async () => {
+      const calls = stub([{ name: "SLACK_BOT_TOKEN", source: "unset", referenced: true }]);
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Variables" }));
+      expect(await screen.findByText("SLACK_BOT_TOKEN")).toBeTruthy();
+      expect(screen.getByText("Needed, not set")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Set SLACK_BOT_TOKEN" }));
+      const input = screen.getByLabelText("New value for SLACK_BOT_TOKEN") as HTMLInputElement;
+      expect(input.type).toBe("password");
+      fireEvent.change(input, { target: { value: "xoxb-abc" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText("Saved here")).toBeTruthy();
+      const put = calls.find((c) => c.method === "PUT")!;
+      expect(put.url).toContain("/api/secrets/SLACK_BOT_TOKEN");
+      expect(JSON.parse(put.body!)).toEqual({ value: "xoxb-abc" });
+      // the value is gone from the page once saved
+      expect(document.body.innerHTML).not.toContain("xoxb-abc");
+      expect(screen.queryByLabelText("New value for SLACK_BOT_TOKEN")).toBeNull();
+    });
+
+    it("refuses a name that is not a variable name", async () => {
+      stub([]);
+      render(<App />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Variables" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Add variable" }));
+      fireEvent.change(screen.getByLabelText("Name"), { target: { value: "not valid" } });
+      fireEvent.change(screen.getByLabelText("Value"), { target: { value: "v" } });
+      expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+  });
+
   describe("checks (KAN-1901)", () => {
     it("runs the offline checks from the toolbar and lists the results", async () => {
       const calls: { url: string; body?: string }[] = [];
