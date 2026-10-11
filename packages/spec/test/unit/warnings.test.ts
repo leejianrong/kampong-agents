@@ -48,4 +48,19 @@ describe("specWarnings", () => {
 
     expect(specWarnings(specFrom(source))).toEqual([]);
   });
+
+  it("does not warn for a source that opts in with mode: inject, but still warns for one that does not (KAM-107)", () => {
+    const inject = BASE.replace('version: "1.0"', 'version: "1.1"').replace(
+      "  workflow:",
+      '  knowledge_base:\n    - type: text\n      source: "Refunds take 5 days."\n      mode: inject\n  workflow:',
+    );
+    expect(specWarnings(specFrom(inject))).toEqual([]);
+    const mixed = inject.replace(
+      "      mode: inject\n",
+      '      mode: inject\n    - type: url\n      source: "https://docs.example.com/policy"\n',
+    );
+    expect(specWarnings(specFrom(mixed)).map((w) => w.code)).toEqual([
+      "knowledge_base_not_executed",
+    ]);
+  });
 });

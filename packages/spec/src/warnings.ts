@@ -24,13 +24,16 @@ export interface SpecWarning {
 export function specWarnings(spec: AgentSpec): SpecWarning[] {
   const warnings: SpecWarning[] = [];
 
-  if ((spec.agent.knowledge_base?.length ?? 0) > 0) {
+  // Only a source that did not opt in is declared and unread; `mode: inject` is executed (KAM-107).
+  const unread = (spec.agent.knowledge_base ?? []).filter((item) => item.mode === undefined);
+  if (unread.length > 0) {
     warnings.push({
       code: "knowledge_base_not_executed",
       path: ["agent", "knowledge_base"],
       message:
-        "agent.knowledge_base is declared but not yet executed: its sources are not retrieved or " +
-        "injected into any step, so it documents intent only.",
+        "agent.knowledge_base is declared but not yet executed: a source with no mode is not retrieved or " +
+        'injected into any step, so it documents intent only. Set mode: "inject" (version 1.1) to put it in ' +
+        "the prompt.",
     });
   }
 

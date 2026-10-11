@@ -173,6 +173,14 @@ export async function runDoctor(
     { use: string; manifest: ComponentManifest; slot: string; envName: string; tool: ComponentTool }
   >();
   const unprobed = new Set<string>();
+  // A knowledge_base url with `mode: inject` is fetched at the start of every run (KAM-107), so its host is
+  // one the run needs to reach.
+  for (const item of spec.agent.knowledge_base ?? []) {
+    if (item.type !== "url" || item.mode !== "inject") continue;
+    const target = urlTarget(item.source);
+    if (target) addHost(target);
+    else add("fail", "spec", `knowledge_base url ${item.source} is not a valid URL`);
+  }
   for (const declared of tools) {
     const legacy = desugarLegacyTool(declared);
     const tool = legacy ?? declared;

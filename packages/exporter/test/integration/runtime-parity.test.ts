@@ -63,6 +63,8 @@ const VENDORED_FROM_ENGINE = [
   // KAN-1841: the expression evaluator and var resolution that run a version 1.1 spec.
   "expressions.ts",
   "vars.ts",
+  // KAM-107: `knowledge_base` sources with `mode: inject`, loaded into every action step's instructions.
+  "knowledge.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src
