@@ -69,6 +69,37 @@ export interface RunManagerOptions {
   slackFetchImpl?: typeof fetch;
 }
 
+/** How long a `respond: sync` webhook waits for the run before answering with its id (KAM-109). */
+export const DEFAULT_SYNC_TIMEOUT_MS = 30_000;
+
+export interface SyncAnswer {
+  code: number;
+  body: Record<string, unknown>;
+}
+
+/**
+ * What a `respond: sync` webhook answers once the run has settled or its timeout passed: the final output
+ * when it completed (200), the error when it failed (500) or was rejected (409), and otherwise (202) the run
+ * id to poll, because a run waiting for approval or still running cannot answer yet. The run carries on.
+ */
+export function syncAnswer(id: string, state: RunState): SyncAnswer {
+  switch (state.status) {
+    case "completed":
+      return { code: 200, body: { success: true, id, output: state.finalOutput, state } };
+    case "failed":
+      return { code: 500, body: { success: false, id, error: state.error, state } };
+    case "rejected":
+      return {
+        code: 409,
+        body: { success: false, id, error: state.error ?? "The run was rejected.", state },
+      };
+    case "awaiting_approval":
+      return { code: 202, body: { success: true, id, pending: "approval", state } };
+    default:
+      return { code: 202, body: { success: true, id, pending: "timeout", state } };
+  }
+}
+
 export class RunManager {
   private readonly runs = new Map<string, AgentRun>();
   private readonly evictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -133,6 +164,28 @@ export class RunManager {
       console.error(`Run ${id} failed unexpectedly:`, err);
     });
     return { id, state: run.getState() };
+  }
+
+  /**
+   * Resolves with the run's state once it is no longer `running` (completed, failed, rejected, or paused for
+   * approval) or after `timeoutMs`, whichever comes first. Never stops the run.
+   */
+  async settle(id: string, timeoutMs: number): Promise<RunState | undefined> {
+    const run = this.runs.get(id);
+    if (!run) return undefined;
+    if (run.getState().status !== "running") return run.getState();
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        run.off("event", check);
+        resolve(run.getState());
+      };
+      const check = () => {
+        if (run.getState().status !== "running") finish();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      run.on("event", check);
+    });
   }
 
   get(id: string): AgentRun | undefined {

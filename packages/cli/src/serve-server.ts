@@ -10,7 +10,12 @@ import {
   type RunEvent,
 } from "@kampong/engine";
 import { componentDispatcherFor } from "./components.js";
-import { RunManager, type RunManagerOptions } from "./run-manager.js";
+import {
+  DEFAULT_SYNC_TIMEOUT_MS,
+  RunManager,
+  syncAnswer,
+  type RunManagerOptions,
+} from "./run-manager.js";
 
 // KAN-1431 (ADR-0021/ADR-0022): the server behind `kampong serve <spec>` -- the
 // laptop/self-host path for a *live*, triggerable workflow. Unlike `kampong
@@ -99,6 +104,15 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
     const { id, state } = await runManager.start(spec, input, {
       headers: triggerHeaders(request.headers),
     });
+    // `respond: sync` holds the request until the run settles or the timeout passes (KAM-109).
+    if (spec.agent.trigger?.respond === "sync") {
+      const settled = await runManager.settle(
+        id,
+        spec.agent.trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS,
+      );
+      const answer = syncAnswer(id, settled ?? state);
+      return reply.code(answer.code).send(answer.body);
+    }
     return reply.code(201).send({ success: true, id, state });
   });
 

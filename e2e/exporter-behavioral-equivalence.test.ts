@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -178,6 +179,18 @@ function runNpm(
   });
 }
 
+async function freePort(): Promise<number> {
+  return new Promise((resolvePromise, reject) => {
+    const probe = createNetServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      probe.close(() => resolvePromise(port));
+    });
+  });
+}
+
 describe("exported project behavioral equivalence (SLICES.md V4, KAN-1117, R4)", () => {
   let ollama: FakeServer;
   let tool: FakeServer;
@@ -265,6 +278,9 @@ agent:
   name: "E2E 1.1 Agent"
   role: "Support"
   goal: "Triage and look up a charge."
+  trigger:
+    type: webhook
+    respond: sync
   model:
     provider: ollama
     name: llama3.1
@@ -337,6 +353,37 @@ agent:
     expect(JSON.parse(jsonLine!) as RunOutcome).toEqual(toOutcome(reference));
     // The exported project reached the tool server with the same two URLs the engine did.
     expect(tool.urls).toEqual([...expectedUrls, ...expectedUrls]);
+
+    // The exported webhook server answers a `respond: sync` trigger with the final output, and passes the
+    // request's headers to the evaluator (vars have no --var here, so the label is its default).
+    const port = await freePort();
+    const server = spawn("npm", ["run", "serve", "--silent"], {
+      cwd: exportDir,
+      env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" },
+      shell: process.platform === "win32",
+    });
+    try {
+      let reply: Response | undefined;
+      for (let i = 0; i < 100 && !reply; i++) {
+        try {
+          reply = await fetch(`http://127.0.0.1:${port}/webhook`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-source": "e2e" },
+            body: INPUT,
+          });
+        } catch {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+      expect(reply, "the exported server never accepted a connection").toBeDefined();
+      expect(reply!.status).toBe(200);
+      const body = (await reply!.json()) as { success: boolean; output: unknown };
+      expect(body.success).toBe(true);
+      expect(body.output).toEqual(reference.finalOutput);
+      expect(tool.urls?.slice(4)).toEqual(["/charges/42", "/tag/default-label/e2e/billing"]);
+    } finally {
+      server.kill();
+    }
   }
 
   it("an export that uses a rest and a module component runs them, secrets included, exactly as the engine does", async () => {

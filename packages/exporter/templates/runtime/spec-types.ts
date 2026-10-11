@@ -236,6 +236,10 @@ export type WorkflowStep =
 // KAN-1431: how a workflow starts (webhook only today).
 export interface Trigger {
   type: "webhook";
+  /** `sync` answers the webhook POST with the final output instead of a run id. */
+  respond?: "async" | "sync";
+  /** How long a `sync` webhook waits before it falls back to the run id. */
+  timeout_ms?: number;
 }
 
 // KAN-1432: where a headless deployment sends the Approve/Reject Slack
