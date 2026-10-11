@@ -71,6 +71,15 @@
             "type": {
               "type": "string",
               "const": "webhook"
+            },
+            "respond": {
+              "type": "string",
+              "enum": ["async", "sync"]
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 300000
             }
           },
           "required": ["type"],

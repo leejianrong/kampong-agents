@@ -47,7 +47,7 @@ export function buildServerEntryPointSource(
 // always-on per-workflow worker.
 
 import Fastify from "fastify";
-import { RunManager } from "./runtime/run-manager.js";${options.components ? '\nimport { components } from "./components.generated.js";' : ""}
+import { DEFAULT_SYNC_TIMEOUT_MS, RunManager, syncAnswer } from "./runtime/run-manager.js";${options.components ? '\nimport { components } from "./components.generated.js";' : ""}
 import {
   isApproveAction,
   isRejectAction,
@@ -100,6 +100,12 @@ function triggerHeaders(
 app.post("/webhook", async (request, reply) => {
   const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
   const { id, state } = await runManager.start(SPEC, input, { headers: triggerHeaders(request.headers) });
+  // \`respond: sync\` holds the request until the run settles or the timeout passes.
+  if (SPEC.agent.trigger?.respond === "sync") {
+    const settled = await runManager.settle(id, SPEC.agent.trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS);
+    const answer = syncAnswer(id, settled ?? state);
+    return reply.code(answer.code).send(answer.body);
+  }
   return reply.code(201).send({ success: true, id, state });
 });
 

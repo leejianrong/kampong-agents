@@ -35,10 +35,9 @@ The `version` decides how references and conditions are written. Nothing else ch
 
 !!! note "Where a 1.1 spec runs"
 
-    `kampong run`, `kampong dev` (the canvas test run) and `kampong serve` run a 1.1 spec. The hosted
-    server does not yet (expressions on a shared server need isolation first), and `kampong export` does
-    not yet (the exported entry points do not pass the webhook payload or vars to the evaluator); both
-    refuse it by name. See `examples/incident-responder.yaml`.
+    `kampong run`, `kampong dev` (the canvas test run), `kampong serve` and `kampong export` run a 1.1 spec.
+    The hosted server does not yet (expressions on a shared server need isolation first) and refuses it by
+    name. See `examples/incident-responder.yaml`.
 
 ### Expressions
 
@@ -104,6 +103,33 @@ Var names are letters, digits and underscores.
 | `guardrails`     | object | no       | Confidence threshold and fallback.                                            |
 | `knowledge_base` | array  | no       | Declared knowledge sources (see the note below).                              |
 | `workflow`       | array  | yes      | Ordered steps. At least one.                                                  |
+| `trigger`        | object | no       | How a deployed run starts: `type: webhook` (see below).                       |
+
+## `agent.trigger`
+
+`type: webhook` is the only kind. A POST to `/webhook` on `kampong serve` (or an exported project's
+`npm run serve`) starts a run, and its body becomes the input.
+
+| Field        | Type    | Notes                                                                                              |
+| ------------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `respond`    | string  | `async` (the default) or `sync`. Version 1.1 only.                                                  |
+| `timeout_ms` | integer | With `respond: sync`, how long to wait, 1000 to 300000. Default 30000. Version 1.1 only.            |
+
+With `respond: async` the POST answers `201` at once with a run id, and the caller polls
+`GET /runs/<id>`. With `respond: sync` the POST is held open and answers with the result, for a caller that
+wants an answer (a question-and-answer endpoint):
+
+| The run...                                   | Status | Body                                                         |
+| -------------------------------------------- | ------ | ------------------------------------------------------------ |
+| completes                                    | `200`  | `{ success: true, id, output, state }`                        |
+| fails                                        | `500`  | `{ success: false, id, error, state }`                        |
+| is rejected                                  | `409`  | `{ success: false, id, error, state }`                        |
+| pauses for approval                          | `202`  | `{ success: true, id, pending: "approval", state }`           |
+| is still running when `timeout_ms` passes    | `202`  | `{ success: true, id, pending: "timeout", state }`            |
+
+A `202` is not a failure: the run carries on, and `GET /runs/<id>` (and `POST /runs/<id>/approve`) work as
+usual. A spec that needs a human to approve should expect `202` and tell its caller to poll.
+
 
 ## `agent.model`
 

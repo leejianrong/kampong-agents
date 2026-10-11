@@ -257,8 +257,14 @@ export const workflowStepSchema = z.union([
 // object with a `type` discriminant so `schedule` / other triggers slot in
 // later without breaking existing specs. Optional -- a spec with no trigger is
 // still runnable via `kampong run` / the canvas test-run.
+//
+// `respond` (KAM-109): `async` (the default) answers a webhook POST with a run id to poll. `sync` holds the
+// request open and answers with the final output, for callers that want an answer (a Q&A endpoint).
+// `timeout_ms` is how long it waits before falling back to the run id; the run carries on either way.
 export const triggerSchema = z.object({
   type: z.literal("webhook"),
+  respond: z.enum(["async", "sync"]).optional(),
+  timeout_ms: z.number().int().min(1000).max(300000).optional(),
 });
 
 // KAN-1432 (ADR-0021 Slice D): where a *headless* deployment (`kampong
@@ -432,6 +438,25 @@ export const agentSpecSchema = z
         }
       }
     });
+    const trigger = spec.agent.trigger;
+    if (trigger) {
+      for (const field of ["respond", "timeout_ms"] as const) {
+        if (trigger[field] !== undefined && spec.version !== "1.1") {
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} needs version "1.1"`,
+            path: ["agent", "trigger", field],
+          });
+        }
+      }
+      if (trigger.timeout_ms !== undefined && trigger.respond !== "sync") {
+        ctx.addIssue({
+          code: "custom",
+          message: 'timeout_ms only applies with respond: "sync"',
+          path: ["agent", "trigger", "timeout_ms"],
+        });
+      }
+    }
     if (spec.vars !== undefined && spec.version !== "1.1") {
       ctx.addIssue({
         code: "custom",
