@@ -76,6 +76,8 @@ export interface ComponentAuthSlot {
   env: string;
   hosts: string[];
   inject?: { header?: string; query?: string; template: string };
+  /** Read only by `kampong doctor --probe`; an exported project carries it so a first-party manifest type-checks. */
+  probe?: { op: string; with?: Record<string, unknown>; refused_when?: string[] };
 }
 
 export interface ComponentConfigParam {

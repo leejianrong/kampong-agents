@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -116,12 +116,12 @@ describe("kampong with a version 1.1 spec", () => {
     expect(json.errors[0].message).toContain('condition "decide"');
   });
 
-  it("export refuses it by name and writes nothing, until the exported entry points pass the trigger and vars", async () => {
+  it("export writes a project for it (KAM-111)", async () => {
     writeFileSync(path(), SPEC("trigger.score > vars.n"));
-    const { io, err } = capture();
+    const { io } = capture();
     const code = await runCli(["export", path(), join(dir, "out")], io);
-    expect(code).not.toBe(EXIT_SUCCESS);
-    expect(err.join("\n")).toContain("cannot be exported yet");
+    expect(code).toBe(EXIT_SUCCESS);
+    expect(existsSync(join(dir, "out", "src", "index.ts"))).toBe(true);
   });
 
   it("doctor validates it", async () => {

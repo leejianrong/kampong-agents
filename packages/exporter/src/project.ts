@@ -70,13 +70,6 @@ export function exportProject(
   outputDir: string,
   options: ExportProjectOptions = {},
 ): ExportResult {
-  if (spec.version === "1.1") {
-    throw new Error(
-      'This spec uses version "1.1" (expressions and vars), which cannot be exported yet: the exported ' +
-        "project carries the evaluator, but its entry points do not yet pass the webhook payload or vars " +
-        'to it (KAN-1851). Set version to "1.0" to export it.',
-    );
-  }
   // Checked first so nothing is written: a project that fails on its first tool call is worse than a
   // refused export.
   const components = selectComponents(spec, options.components);

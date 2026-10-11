@@ -41,6 +41,8 @@ interface FakeServer {
   requests: number;
   /** The Authorization header of each request the fake tool server received. */
   authorizations?: string[];
+  /** The path and query of each request the fake tool server received. */
+  urls?: string[];
   close: () => Promise<void>;
 }
 
@@ -84,9 +86,11 @@ function startFakeOllamaServer(replyText: string): Promise<FakeServer> {
 function startFakeToolServer(status: string): Promise<FakeServer> {
   let requests = 0;
   const authorizations: string[] = [];
+  const urls: string[] = [];
   const server: Server = createServer((req, res) => {
     requests++;
     authorizations.push(String(req.headers.authorization ?? ""));
+    urls.push(req.url ?? "");
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ status }));
   });
@@ -97,6 +101,7 @@ function startFakeToolServer(status: string): Promise<FakeServer> {
       resolvePromise({
         port,
         authorizations,
+        urls,
         get requests() {
           return requests;
         },
@@ -236,6 +241,104 @@ describe("exported project behavioral equivalence (SLICES.md V4, KAN-1117, R4)",
     expect(tool.requests).toBe(2);
   });
 
+  it("a version 1.1 spec exports and runs with its vars, trigger, expressions and structured output, exactly as the engine does (KAM-111)", async () => {
+    // The classify step needs a JSON reply, so this test has its own fake model.
+    const jsonModel = await startFakeOllamaServer('{"category":"billing"}');
+    try {
+      await versionOneDotOne(jsonModel);
+    } finally {
+      await jsonModel.close();
+    }
+  }, 180_000);
+
+  async function versionOneDotOne(jsonModel: FakeServer) {
+    const source = `version: "1.1"
+vars:
+  base:
+    type: string
+    default: "http://127.0.0.1:${tool.port}"
+  label:
+    type: string
+    default: "default-label"
+agent:
+  id: e2e-v11-agent
+  name: "E2E 1.1 Agent"
+  role: "Support"
+  goal: "Triage and look up a charge."
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${jsonModel.port}"
+  tools:
+    - name: check_charge
+      action: http_request
+      method: GET
+      url: "{{ vars.base }}/charges/{{ $encodeUrlComponent(trigger.id) }}"
+      extract: "status"
+    - name: tag
+      action: http_request
+      method: GET
+      url: '{{ vars.base }}/tag/{{ vars.label }}/{{ trigger.headers."x-source" }}/{{ classify.category }}'
+      extract: "status"
+  workflow:
+    - step: classify
+      action: classify
+      instructions: "You triage support messages."
+      temperature: 0
+      query: "{{ trigger.subject }}"
+      output_schema:
+        type: object
+        required: [category]
+        properties:
+          category: { type: string, enum: [billing, bug] }
+    - step: lookup
+      type: tool
+      tool: check_charge
+    - step: mark
+      type: tool
+      tool: tag
+`;
+    const { success, spec, errors } = parseSpec(source);
+    expect(success, JSON.stringify(errors)).toBe(true);
+    const INPUT = JSON.stringify({ id: 42, subject: "Charged twice" });
+    const referenceRun = createAgentRun(spec!, {
+      vars: { label: "from-flag" },
+      trigger: { headers: { "x-source": "e2e" } },
+    });
+    const reference = await referenceRun.start(INPUT);
+    expect(reference.status, reference.error).toBe("completed");
+    const expectedUrls = ["/charges/42", "/tag/from-flag/e2e/billing"];
+    expect(tool.urls).toEqual(expectedUrls);
+
+    exportProject(spec!, exportDir);
+    const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+    expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+    const start = await runNpm(
+      [
+        "start",
+        "--silent",
+        "--",
+        "--input",
+        INPUT,
+        "--var",
+        "label=from-flag",
+        "--header",
+        "X-Source=e2e",
+        "--json",
+      ],
+      exportDir,
+    );
+    expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
+    const jsonLine = start.stdout
+      .trim()
+      .split("\n")
+      .find((line) => line.trim().startsWith("{"));
+    expect(jsonLine, `expected one JSON line on stdout, got:\n${start.stdout}`).toBeDefined();
+    expect(JSON.parse(jsonLine!) as RunOutcome).toEqual(toOutcome(reference));
+    // The exported project reached the tool server with the same two URLs the engine did.
+    expect(tool.urls).toEqual([...expectedUrls, ...expectedUrls]);
+  }
+
   it("an export that uses a rest and a module component runs them, secrets included, exactly as the engine does", async () => {
     const componentsDir = join(exportDir, "..", `${exportDir.split("/").pop()}-components`);
     const put = (rel: string, content: string) => {
@@ -257,6 +360,7 @@ auth:
   slots:
 ${slot}
       inject: { header: Authorization, template: "Bearer {{ secret }}" }
+      probe: { op: get, with: { id: "probe" } }
 ops:
   get:
     effect: read
@@ -416,6 +520,10 @@ agent:
 
       const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
       expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      // The generated project must type-check: a manifest field the vendored types lack (a slot's `probe`
+      // did once) only shows up here, not at run time.
+      const typecheck = await runNpm(["run", "typecheck"], exportDir);
+      expect(typecheck.code, `typecheck failed:\n${typecheck.stdout}\n${typecheck.stderr}`).toBe(0);
       const start = await runNpm(
         ["start", "--silent", "--", "--input", FIXED_INPUT, "--json"],
         exportDir,

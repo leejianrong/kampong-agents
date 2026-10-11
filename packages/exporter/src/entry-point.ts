@@ -68,6 +68,10 @@ interface CliArgs {
   input: string;
   approveAll: boolean;
   json: boolean;
+  /** \`--var name=value\`: values for the spec's \`vars\` (version 1.1), winning over their defaults. */
+  vars: Record<string, string>;
+  /** \`--header name=value\`: request headers a webhook would have carried, read as \`trigger.headers\`. */
+  headers: Record<string, string>;
 }
 
 const DEFAULT_INPUT = "Run this agent.";
@@ -76,6 +80,8 @@ function parseArgs(argv: string[]): CliArgs {
   let input = DEFAULT_INPUT;
   let approveAll = false;
   let json = false;
+  const vars: Record<string, string> = Object.create(null) as Record<string, string>;
+  const headers: Record<string, string> = Object.create(null) as Record<string, string>;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--input") {
@@ -84,9 +90,18 @@ function parseArgs(argv: string[]): CliArgs {
       approveAll = true;
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--var" || arg === "--header") {
+      const pair = argv[++i] ?? "";
+      const at = pair.indexOf("=");
+      if (at < 1) {
+        console.error(\`\${arg} needs name=value, got "\${pair}".\`);
+        process.exit(2);
+      }
+      const name = pair.slice(0, at);
+      (arg === "--var" ? vars : headers)[arg === "--var" ? name : name.toLowerCase()] = pair.slice(at + 1);
     }
   }
-  return { input, approveAll, json };
+  return { input, approveAll, json, vars: { ...vars }, headers: { ...headers } };
 }
 
 /**
@@ -185,11 +200,25 @@ function reportFailure(err: unknown, json: boolean): void {
 }
 
 async function main(): Promise<void> {
-  const { input, approveAll, json } = parseArgs(process.argv.slice(2));
+  const { input, approveAll, json, vars, headers } = parseArgs(process.argv.slice(2));
+
+  const declared = Object.keys(SPEC.vars ?? {});
+  const unknownVars = Object.keys(vars).filter((name) => !declared.includes(name));
+  if (unknownVars.length > 0) {
+    console.error(
+      \`--var \${unknownVars.join(", ")} is not declared in the spec's vars\` +
+        (declared.length > 0 ? \` (declared: \${declared.join(", ")}).\` : " (it has no vars)."),
+    );
+    process.exitCode = 2;
+    return;
+  }
 
   let run: ReturnType<typeof createAgentRun>;
   try {
-    run = createAgentRun(SPEC${options.components ? ", { components }" : ""});
+    run = createAgentRun(SPEC, {${options.components ? "\n      components," : ""}
+      vars,
+      ...(Object.keys(headers).length > 0 ? { trigger: { headers } } : {}),
+    });
   } catch (err) {
     reportFailure(err, json);
     process.exitCode = 2;

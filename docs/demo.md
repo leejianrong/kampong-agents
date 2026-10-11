@@ -134,8 +134,9 @@ Reject prompt to Slack.
 
 ## Known limits
 
-- **Export is not available for this spec yet.** `kampong export` refuses version 1.1 specs until
-  the exporter passes the webhook payload and vars to the evaluator (KAN-1851).
+- **Export works, with a limit.** `kampong export` produces a standalone project for this spec. Run it with
+  `npm start -- --input '{"customer_id":3,...}' --var channel=C0123456789`, or `npm run serve` for the
+  webhook. The hosted server still refuses version 1.1 specs.
 - **The canvas shows and runs 1.1 specs but has no forms for the new fields yet.** Edit `vars`,
   expressions and `output_schema` in the YAML panel for now (KAN-1850).
 - The customer lookup uses the public `jsonplaceholder.typicode.com` API (users 1 to 10), so use a
