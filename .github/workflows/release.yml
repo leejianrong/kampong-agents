@@ -67,7 +67,7 @@ jobs:
           npm sbom --sbom-format cyclonedx --omit dev > out/sbom.cdx.json
           (cd out && sha256sum "kampong-${VERSION}.tgz" registry-index.json sbom.cdx.json > SHA256SUMS)
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             out/kampong-*.tgz
