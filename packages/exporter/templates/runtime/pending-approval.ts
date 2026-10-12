@@ -1,6 +1,6 @@
 // Vendored from packages/engine/src/pending-approval.ts as part of a `kampong export`
 // -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
-// only change from the source file is the type import, which now comes from
+// only change from the source file is any type import of the spec, which now comes from
 // the local ./spec-types.js rather than "@kampong/spec" (this project has no
 // dependency on that package -- ADR-0002). From here on this file is yours: it
 // will not be touched again by a future export.
@@ -55,7 +55,7 @@ export interface PersistedApproval {
   /** The run's raw input. */
   input: string;
   /** What started the run, with credential-looking headers removed. */
-  trigger?: { headers?: Record<string, string>; body?: unknown };
+  trigger?: { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> };
   /** Epoch milliseconds. */
   createdAt: number;
   /** Epoch milliseconds the record expires at. */
@@ -83,7 +83,9 @@ const CREDENTIAL_HEADER =
   /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
 
 export function storableTrigger(
-  trigger: { headers?: Record<string, string>; body?: unknown } | undefined,
+  trigger:
+    | { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> }
+    | undefined,
 ): PersistedApproval["trigger"] {
   if (!trigger) return undefined;
   const headers = trigger.headers
@@ -94,6 +96,7 @@ export function storableTrigger(
   return {
     ...(headers && { headers }),
     ...(trigger.body !== undefined && { body: trigger.body }),
+    ...(trigger.fields !== undefined && { fields: trigger.fields }),
   };
 }
 

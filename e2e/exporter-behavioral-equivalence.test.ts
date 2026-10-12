@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -457,6 +458,95 @@ agent:
       expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
       const line = start.stdout.split("\n").find((l) => l.trim().startsWith("{"));
       expect(JSON.parse(line!) as RunOutcome, `run ${i + 1}`).toEqual(expected[i]);
+    }
+  }, 180_000);
+
+  it("an exported webhook server verifies a GitHub-signed body, ignores a filtered event and maps trigger.*, as the engine does (KAN-1848)", async () => {
+    const source = `version: "1.1"
+agent:
+  id: e2e-webhook-auth
+  name: "E2E Webhook Auth"
+  role: "Handler"
+  goal: "Handle a push."
+  trigger:
+    type: webhook
+    respond: sync
+    preset: github
+    auth:
+      secret_env: E2E_GH_SECRET
+    when: trigger.headers.\`x-github-event\` = "push"
+    map:
+      repo: trigger.repository.full_name
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${ollama.port}"
+  workflow:
+    - step: handle
+      action: answer_question
+      query: "{{ trigger.repo }}"
+`;
+    const { success, spec, errors } = parseSpec(source);
+    expect(success, JSON.stringify(errors)).toBe(true);
+    const BODY = JSON.stringify({ repository: { full_name: "acme/widgets" } });
+    const reference = await createAgentRun(spec!, {
+      trigger: { headers: {}, fields: { repo: "acme/widgets" } },
+    }).start(BODY);
+    expect(reference.status, reference.error).toBe("completed");
+
+    exportProject(spec!, exportDir);
+    const readme = readFileSync(join(exportDir, "README.md"), "utf8");
+    expect(readme).toContain("E2E_GH_SECRET");
+    expect(readFileSync(join(exportDir, ".env.example"), "utf8")).toContain("E2E_GH_SECRET=");
+    const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+    expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+
+    const port = await freePort();
+    const server = spawn("npm", ["run", "serve", "--silent"], {
+      cwd: exportDir,
+      env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", E2E_GH_SECRET: "s3cret" },
+      shell: process.platform === "win32",
+    });
+    const sign = (body: string) =>
+      "sha256=" + createHmac("sha256", "s3cret").update(body).digest("hex");
+    const post = async (body: string, headers: Record<string, string>) => {
+      for (let i = 0; i < 100; i++) {
+        try {
+          return await fetch(`http://127.0.0.1:${port}/webhook`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...headers },
+            body,
+          });
+        } catch {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+      throw new Error("the exported server never accepted a connection");
+    };
+    try {
+      const ok = await post(BODY, {
+        "x-hub-signature-256": sign(BODY),
+        "x-github-event": "push",
+      });
+      expect(ok.status).toBe(200);
+      const answer = (await ok.json()) as { output: unknown };
+      expect(answer.output).toEqual(reference.finalOutput);
+
+      const bad = await post(BODY, {
+        "x-hub-signature-256": sign(BODY + " "),
+        "x-github-event": "push",
+      });
+      expect(bad.status).toBe(401);
+      expect(await bad.json()).toEqual({ success: false, error: "Unauthorized" });
+
+      const ignored = await post(BODY, {
+        "x-hub-signature-256": sign(BODY),
+        "x-github-event": "ping",
+      });
+      expect(ignored.status).toBe(200);
+      expect(await ignored.json()).toMatchObject({ ignored: true });
+    } finally {
+      server.kill();
     }
   }, 180_000);
 

@@ -178,3 +178,14 @@ export {
   type ScheduleSpec,
 } from "./schedule.js";
 export { createSchedulePacer, type OverlapPolicy, type SchedulePacer } from "./schedule-runner.js";
+
+// KAN-1848 (ADR-0047): webhook auth presets, the `when` filter and `map`.
+export {
+  handleWebhookRequest,
+  triggerHeaders,
+  type WebhookDecision,
+  type WebhookOptions,
+  type WebhookRequest,
+  type WebhookTriggerConfig,
+} from "./webhook-trigger.js";
+export { resolveWebhookAuth, secretEnvName, type ResolvedWebhookAuth } from "./webhook-auth.js";

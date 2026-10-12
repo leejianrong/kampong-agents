@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { buildSchedule, parseEvery } from "./schedule.js";
+import { resolveWebhookAuth, type WebhookPreset } from "./webhook-auth.js";
 import { requestOptionalFields } from "./request.js";
 import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 
@@ -406,10 +407,34 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.union([
 // `respond` (KAM-109): `async` (the default) answers a webhook POST with a run id to poll. `sync` holds the
 // request open and answers with the final output, for callers that want an answer (a Q&A endpoint).
 // `timeout_ms` is how long it waits before falling back to the run id; the run carries on either way.
+//
+// KAN-1848 (ADR-0047, version 1.1): `auth` says how the caller proves itself (none, a bearer token, or an HMAC
+// signature of the raw body), `preset` expands a known sender (github, slack, alertmanager, generic) into it,
+// `when` is a predicate over the request (`trigger.headers`, the body's fields) that drops a request that
+// should not start a run, and `map` builds the clean `trigger.*` the workflow reads. Cross-field rules
+// (what a type needs, no literal secrets, expressions) run in the spec's superRefine so each error has a line.
+export const webhookAuthSchema = z
+  .object({
+    type: z.enum(["none", "bearer", "hmac"]).optional(),
+    secret_env: z.string().optional(),
+    header: z.string().optional(),
+    algo: z.enum(["sha256", "sha1"]).optional(),
+    prefix: z.string().optional(),
+    encoding: z.enum(["hex", "base64"]).optional(),
+    timestamp_header: z.string().optional(),
+    window_s: z.number().int().min(1).max(86400).optional(),
+    payload: z.string().optional(),
+  })
+  .strict();
+
 export const webhookTriggerSchema = z.object({
   type: z.literal("webhook"),
   respond: z.enum(["async", "sync"]).optional(),
   timeout_ms: z.number().int().min(1000).max(300000).optional(),
+  preset: z.enum(["github", "slack", "alertmanager", "generic"]).optional(),
+  auth: z.union([z.literal("none"), webhookAuthSchema]).optional(),
+  when: z.string().optional(),
+  map: z.record(z.string(), z.string()).optional(),
 });
 
 // KAN-1856: `schedule` starts a run on a clock while `kampong serve` is up. Exactly one of `cron` (five
@@ -912,6 +937,39 @@ export const agentSpecSchema = z
             code: "custom",
             message: `${field} needs version "1.1"`,
             path: ["agent", "trigger", field],
+          });
+        }
+      }
+      for (const field of ["preset", "auth", "when", "map"] as const) {
+        if (trigger[field] !== undefined && spec.version !== "1.1") {
+          ctx.addIssue({
+            code: "custom",
+            message: `${field} needs version "1.1"`,
+            path: ["agent", "trigger", field],
+          });
+        }
+      }
+      if (trigger.preset !== undefined || trigger.auth !== undefined) {
+        const resolved = resolveWebhookAuth(
+          trigger.preset as WebhookPreset | undefined,
+          trigger.auth,
+        );
+        if (!resolved.ok) {
+          for (const found of resolved.issues) {
+            ctx.addIssue({
+              code: "custom",
+              message: found.message,
+              path: ["agent", "trigger", ...found.path],
+            });
+          }
+        }
+      }
+      for (const name of Object.keys(trigger.map ?? {})) {
+        if (name === "headers" || name === "body") {
+          ctx.addIssue({
+            code: "custom",
+            message: `map cannot set "${name}": trigger.${name} is always the request's own`,
+            path: ["agent", "trigger", "map", name],
           });
         }
       }

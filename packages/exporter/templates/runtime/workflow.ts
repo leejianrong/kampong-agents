@@ -1,6 +1,6 @@
 // Vendored from packages/engine/src/workflow.ts as part of a `kampong export`
 // -- see docs/adr/0010-exported-runtime-is-vendored-not-retemplated.md. The
-// only change from the source file is the type import, which now comes from
+// only change from the source file is any type import of the spec, which now comes from
 // the local ./spec-types.js rather than "@kampong/spec" (this project has no
 // dependency on that package -- ADR-0002). From here on this file is yours: it
 // will not be touched again by a future export.
@@ -111,6 +111,11 @@ export type RunEvent =
 export interface RunTrigger {
   headers?: Record<string, string>;
   body?: unknown;
+  /**
+   * The fields `trigger.*` exposes at the top level instead of the body's own: what the webhook's `map` built
+   * (KAN-1848). `trigger.headers` and `trigger.body` stay the request's.
+   */
+  fields?: Record<string, unknown>;
 }
 
 export interface EngineDeps {
@@ -1643,9 +1648,10 @@ function buildTrigger(input: string, trigger: RunTrigger | undefined): Record<st
     }
   }
   const fields =
-    body !== null && typeof body === "object" && !Array.isArray(body)
+    trigger?.fields ??
+    (body !== null && typeof body === "object" && !Array.isArray(body)
       ? (body as Record<string, unknown>)
-      : {};
+      : {});
   return { ...fields, headers: trigger?.headers ?? {}, body };
 }
 

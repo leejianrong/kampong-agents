@@ -12,6 +12,7 @@ export * from "./permissions.js";
 export * from "./lockfile.js";
 export * from "./registry-index.js";
 export * from "./schema.js";
+export * from "./webhook-auth.js";
 export * from "./parse.js";
 export * from "./mutate.js";
 export * from "./layout.js";

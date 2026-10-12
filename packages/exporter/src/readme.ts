@@ -1,4 +1,4 @@
-import type { AgentSpec } from "@kampong/spec";
+import { resolveWebhookAuth, type AgentSpec } from "@kampong/spec";
 import { collectRequiredEnvVars } from "./project-files.js";
 import type { ExportComponent } from "./components.js";
 
@@ -85,6 +85,48 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
           "vendored in `src/runtime/` (`schedule.ts`, `schedule-runner.ts`, `runner.ts`) if you want to",
           "wire them up yourself, or use an external cron that POSTs to `/webhook`.",
           "",
+        ]
+      : [];
+
+  // KAN-1848: how `src/server.ts` authenticates POST /webhook, and what `when` / `map` do.
+  const webhook = spec.agent.trigger?.type === "webhook" ? spec.agent.trigger : undefined;
+  const resolvedAuth =
+    webhook && (webhook.preset || webhook.auth)
+      ? resolveWebhookAuth(webhook.preset, webhook.auth)
+      : undefined;
+  const webhookSection =
+    webhook && (resolvedAuth || webhook.when !== undefined || webhook.map !== undefined)
+      ? [
+          "## Webhook authentication and filtering",
+          "",
+          ...(resolvedAuth?.ok && resolvedAuth.auth.type !== "none"
+            ? [
+                resolvedAuth.auth.type === "bearer"
+                  ? `\`POST /webhook\` requires \`Authorization: Bearer <token>\`, compared in constant time with the value of \`${resolvedAuth.auth.secretEnv}\`.`
+                  : `\`POST /webhook\` requires the HMAC-${resolvedAuth.auth.algo.toUpperCase()} signature in the \`${resolvedAuth.auth.header}\` header, computed over the exact bytes of the request body with the value of \`${resolvedAuth.auth.secretEnv}\` (compared in constant time${resolvedAuth.auth.windowS !== undefined ? `; a request more than ${resolvedAuth.auth.windowS}s from the \`${resolvedAuth.auth.timestampHeader}\` time is refused` : ""}).`,
+                "A missing or wrong credential is answered with a bare `401`, before any `when`, `map` or",
+                "`respond: sync` handling; so is a request when that variable is not set.",
+                "",
+              ]
+            : []),
+          ...(webhook.preset === "slack"
+            ? ["Slack's `url_verification` handshake is answered with its challenge.", ""]
+            : []),
+          ...(webhook.when !== undefined
+            ? [
+                "The trigger's `when` predicate decides whether a request starts a run: when it is false the",
+                "request is answered `200` with `ignored: true` and no run starts. `GET /triggers/ignored` lists",
+                "the latest ones.",
+                "",
+              ]
+            : []),
+          ...(webhook.map !== undefined
+            ? [
+                "The trigger's `map` builds the `trigger.*` the workflow reads; `trigger.headers` and",
+                "`trigger.body` stay the request's own.",
+                "",
+              ]
+            : []),
         ]
       : [];
 
@@ -219,6 +261,7 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     "",
     ...envSection,
     ...scheduleSection,
+    ...webhookSection,
     ...dedupeSection,
     ...approvalSection,
     "## Tool calls",

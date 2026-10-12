@@ -104,6 +104,11 @@ export type RunEvent =
 export interface RunTrigger {
   headers?: Record<string, string>;
   body?: unknown;
+  /**
+   * The fields `trigger.*` exposes at the top level instead of the body's own: what the webhook's `map` built
+   * (KAN-1848). `trigger.headers` and `trigger.body` stay the request's.
+   */
+  fields?: Record<string, unknown>;
 }
 
 export interface EngineDeps {
@@ -1636,9 +1641,10 @@ function buildTrigger(input: string, trigger: RunTrigger | undefined): Record<st
     }
   }
   const fields =
-    body !== null && typeof body === "object" && !Array.isArray(body)
+    trigger?.fields ??
+    (body !== null && typeof body === "object" && !Array.isArray(body)
       ? (body as Record<string, unknown>)
-      : {};
+      : {});
   return { ...fields, headers: trigger?.headers ?? {}, body };
 }
 

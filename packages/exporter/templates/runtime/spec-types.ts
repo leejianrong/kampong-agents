@@ -313,6 +313,26 @@ export type Trigger =
       respond?: "async" | "sync";
       /** How long a `sync` webhook waits before it falls back to the run id. */
       timeout_ms?: number;
+      /** KAN-1848: a known sender whose signing scheme `auth` fills in. */
+      preset?: "github" | "slack" | "alertmanager" | "generic";
+      /** How the caller proves itself; `"none"` (or no `auth`) takes any request. */
+      auth?:
+        | "none"
+        | {
+            type?: "none" | "bearer" | "hmac";
+            secret_env?: string;
+            header?: string;
+            algo?: "sha256" | "sha1";
+            prefix?: string;
+            encoding?: "hex" | "base64";
+            timestamp_header?: string;
+            window_s?: number;
+            payload?: string;
+          };
+      /** A predicate over `trigger`; false accepts the request but starts no run. */
+      when?: string;
+      /** Expressions that build the clean `trigger.*` a workflow reads. */
+      map?: Record<string, string>;
     }
   // KAN-1856: runs on a clock under `kampong serve`: exactly one of `cron` or `every`.
   | {
