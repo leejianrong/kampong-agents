@@ -69,6 +69,9 @@ const VENDORED_FROM_ENGINE = [
   // interface it locks through. The runner is generic; an export wires its jobs into it.
   "runner.ts",
   "state-store.ts",
+  // KAN-1856: schedule trigger parsing/next-tick computation and its overlap pacing.
+  "schedule.ts",
+  "schedule-runner.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

@@ -150,3 +150,18 @@ export {
   type RunnerStopReason,
   type BackoffOptions,
 } from "./runner.js";
+
+// Schedule trigger: cron/every parsing, next-tick computation and overlap pacing (KAN-1856).
+export {
+  buildSchedule,
+  isValidTimeZone,
+  nextCronRun,
+  nextTick,
+  parseCron,
+  parseEvery,
+  MIN_EVERY_MS,
+  type CronFields,
+  type Schedule,
+  type ScheduleSpec,
+} from "./schedule.js";
+export { createSchedulePacer, type OverlapPolicy, type SchedulePacer } from "./schedule-runner.js";

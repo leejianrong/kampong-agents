@@ -46,6 +46,13 @@ export interface RunnerOptions {
   /** The unit of work. Receives the runner's abort signal so it can cut short on shutdown. */
   job: (signal: AbortSignal) => Promise<void>;
   intervalMs: number;
+  /**
+   * Overrides the fixed `intervalMs` cadence (KAN-1856: a cron schedule has no fixed interval). Called with
+   * the current time once before the first run (`first: true`, the runner then waits that long before
+   * running) and again after every iteration, whether it ran, was skipped or failed. Returns the ms until
+   * the next iteration; no jitter is applied, and a failed run still waits its backoff instead.
+   */
+  nextDelayMs?: (now: number, first: boolean) => number;
   store: StateStore;
   /** Lock TTL; defaults to max(intervalMs * 5, 60s). Must exceed the longest run. */
   lockTtlMs?: number;
@@ -128,8 +135,10 @@ export async function runUnattended(options: RunnerOptions): Promise<RunnerResul
   };
 
   onEvent({ type: "started", name });
+  if (options.nextDelayMs) await wait(Math.max(0, options.nextDelayMs(clock.now(), true)));
   while (!signal.aborted) {
     let delayMs = jittered(intervalMs);
+    let failed = false;
     const acquired = await store.putIfAbsent(lockKey, { holder }, { ttlMs: lockTtlMs });
     if (!acquired) {
       result.skipped++;
@@ -143,6 +152,7 @@ export async function runUnattended(options: RunnerOptions): Promise<RunnerResul
         result.consecutiveFailures = 0;
         onEvent({ type: "run_succeeded", name, run, durationMs: clock.now() - startedAt });
       } catch (error) {
+        failed = true;
         result.consecutiveFailures++;
         result.lastError = error;
         const exhausted = result.consecutiveFailures >= maxFailures;
@@ -174,6 +184,10 @@ export async function runUnattended(options: RunnerOptions): Promise<RunnerResul
       } finally {
         await release().catch(() => {});
       }
+    }
+    if (options.nextDelayMs) {
+      const scheduled = Math.max(0, options.nextDelayMs(clock.now(), false));
+      if (!failed) delayMs = scheduled;
     }
     await wait(delayMs);
   }
