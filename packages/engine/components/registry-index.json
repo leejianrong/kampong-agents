@@ -2,6 +2,12 @@
   "version": 1,
   "components": [
     {
+      "id": "kampong/alpha-vantage",
+      "version": "1.0.0",
+      "digest": "sha256:929936fdedec873dba3f8e8dd59e71d33d1fde52406d1e2d40bc3829e5cdf4e2",
+      "tier": 0
+    },
+    {
       "id": "kampong/github",
       "version": "1.0.0",
       "digest": "sha256:5b1b6b79211e97bfb3982417ee612490bdf2ae0abb153aa9c6d8d5229ff94c1c",
@@ -17,6 +23,12 @@
       "id": "kampong/slack",
       "version": "1.0.0",
       "digest": "sha256:0c6b5381b67207846d0e512edb1b30d9eb0a5eb7b3a849c9e172c16c84f18c7c",
+      "tier": 0
+    },
+    {
+      "id": "kampong/supabase",
+      "version": "1.0.0",
+      "digest": "sha256:5d2d47bfa270f835326cdb7317abe292152c4632ca0538dc9c1affc7f3f55b3b",
       "tier": 0
     }
   ]

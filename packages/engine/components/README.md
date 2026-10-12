@@ -25,3 +25,10 @@ repository; `test/unit/first-party-components.test.ts` checks the layout and the
   and every changed file (follows pages, and says so when it stops); comment on or review a pull request
   (`kind: module`, because a request template cannot follow pages or cut a diff). A personal access token
   in `GITHUB_TOKEN`, sent only to `api.github.com`.
+- `kampong/supabase`: insert, upsert (`on_conflict`), select (with filters) and call a function (`rpc`) on a
+  project's PostgREST API, with PostgREST error bodies reported in full (`kind: module`, because a template
+  cannot send an array body, build a filter query string or read an error body; ADR-0044). The project URL
+  in `SUPABASE_URL` and the key in `SUPABASE_KEY`, sent only to `*.supabase.co`.
+- `kampong/alpha-vantage`: daily prices (`kind: rest`). Alpha Vantage reports a rate limit, a bad symbol
+  and a bad key as HTTP 200, so `failure_when` turns each into a failure; requests are paced at one per
+  second. The key in `ALPHAVANTAGE_API_KEY`, sent only to `www.alphavantage.co`.
