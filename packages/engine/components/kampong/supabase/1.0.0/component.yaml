@@ -1,0 +1,135 @@
+kind: module
+id: kampong/supabase
+version: 1.0.0
+title: Supabase
+description: Insert, upsert, select and call functions on a Supabase project's tables over its PostgREST API.
+license: Apache-2.0
+entry: ./index.mjs
+permissions:
+  egress: ["*.supabase.co"]
+auth:
+  slots:
+    url:
+      env: SUPABASE_URL
+      hosts: ["*.supabase.co"]
+    key:
+      env: SUPABASE_KEY
+      hosts: ["*.supabase.co"]
+      # A refused key answers 401 from the auth gateway; the PostgREST routes are not used so the check
+      # works for any key role, whatever the tables' policies are.
+      probe: { op: check_key }
+ops:
+  check_key:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
+    title: Check the key
+    description: Reads the project's auth settings (GET /auth/v1/settings) to confirm the key is accepted. Changes nothing.
+    effect: read
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+  insert:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
+    title: Insert rows
+    description: >-
+      Inserts one or more rows. A row that breaks a unique constraint fails the call (use upsert to
+      update instead). By default nothing is returned but the count (Prefer return=minimal).
+    effect: write
+    input:
+      type: object
+      required: [table, rows]
+      properties:
+        table: { type: string, title: Table }
+        rows:
+          type: array
+          title: Rows
+          description: Each row is an object of column values.
+          items: { type: object }
+        returning:
+          type: string
+          title: Return
+          description: minimal (the default) returns only the count; representation returns the stored rows.
+          enum: [minimal, representation]
+        schema:
+          { type: string, title: Schema, description: Defaults to the project's public schema. }
+    output:
+      type: object
+      properties:
+        count: { type: integer }
+        rows: { type: array, items: { type: object } }
+  upsert:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
+    title: Upsert rows
+    description: >-
+      Inserts rows, and for a row whose on_conflict columns already exist updates that row (Prefer
+      resolution=merge-duplicates) or, with on_duplicate ignore, leaves it alone. The on_conflict columns
+      must have a unique constraint.
+    effect: write
+    input:
+      type: object
+      required: [table, rows, on_conflict]
+      properties:
+        table: { type: string, title: Table }
+        rows: { type: array, title: Rows, items: { type: object } }
+        on_conflict:
+          type: string
+          title: Conflict columns
+          description: The unique column, or comma-separated columns, such as id or org_id,email.
+        on_duplicate:
+          type: string
+          title: When the row exists
+          description: merge (the default) updates it; ignore keeps the existing row.
+          enum: [merge, ignore]
+        returning:
+          type: string
+          title: Return
+          enum: [minimal, representation]
+        schema: { type: string, title: Schema }
+    output:
+      type: object
+      properties:
+        count: { type: integer }
+        rows: { type: array, items: { type: object } }
+  select:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
+    title: Select rows
+    description: >-
+      Reads rows. Each filter is a column and a PostgREST expression such as eq.open or gte.5 (a bare number
+      or boolean means equals). Returns at most limit rows (default 100) and says when it stopped at the limit.
+    effect: read
+    input:
+      type: object
+      required: [table]
+      properties:
+        table: { type: string, title: Table }
+        columns: { type: string, title: Columns, description: Defaults to *. }
+        filter:
+          type: object
+          title: Filter
+          description: 'Column to expression, for example { status: "eq.open", priority: "gte.2" }.'
+        order: { type: string, title: Order, description: "For example created_at.desc." }
+        limit: { type: integer, title: Most rows, minimum: 1, maximum: 10000 }
+        offset: { type: integer, title: Skip, minimum: 0 }
+        schema: { type: string, title: Schema }
+    output:
+      type: object
+      properties:
+        rows: { type: array, items: { type: object } }
+        count: { type: integer }
+        truncated: { type: boolean }
+  rpc:
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 30000 }
+    title: Call a function
+    description: >-
+      Calls a Postgres function exposed by PostgREST with named arguments. It may change data, so it is
+      treated as a write.
+    effect: write
+    input:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, title: Function }
+        args: { type: object, title: Arguments, description: Named arguments of the function. }
+        schema: { type: string, title: Schema }
+    # result is whatever the function returns (a value, a row, an array, or null), so it is not typed here.
+    output: { type: object }

@@ -515,7 +515,12 @@ ops:
       },
     ) => {
       writeFileSync(path("agent.yaml"), spec(tool));
-      const calls: { url: string; method: string | undefined; auth: string | undefined }[] = [];
+      const calls: {
+        url: string;
+        method: string | undefined;
+        auth: string | undefined;
+        apikey?: string;
+      }[] = [];
       const { io, out, err } = capture();
       const code = await runCli(["doctor", path("agent.yaml"), ...args], io, {
         env,
@@ -526,6 +531,7 @@ ops:
             url,
             method: init?.method,
             auth: headers.get("authorization") ?? undefined,
+            apikey: headers.get("apikey") ?? undefined,
           });
           return respond(url, headers.get("authorization") ?? undefined);
         },
@@ -627,6 +633,83 @@ ops:
         env,
       );
       expect(scoped.code).toBe(EXIT_SUCCESS);
+    });
+
+    it("probes the first-party Supabase component with the auth settings route, and fails a 401 but not a 503 (KAN-1861)", async () => {
+      const SUPABASE = `    - name: rows
+      action: component
+      use: kampong/supabase@1.0.0
+      op: select
+      with: { table: tickets }`;
+      const env = {
+        ANTHROPIC_API_KEY: SECRET,
+        SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+        SUPABASE_KEY: "sb_secret_s3cret",
+      };
+      const ok = await probe(SUPABASE, () => json({}), ["--probe"], env);
+      expect(ok.code).toBe(EXIT_SUCCESS);
+      expect(ok.calls).toEqual([
+        {
+          url: "https://abcdefghijklmnopqrst.supabase.co/auth/v1/settings",
+          method: "GET",
+          apikey: "sb_secret_s3cret",
+        },
+      ]);
+      const refused = await probe(
+        SUPABASE,
+        () => json({ message: "Invalid API key" }, 401),
+        ["--probe"],
+        env,
+      );
+      expect(refused.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(refused.text).not.toContain("sb_secret_s3cret");
+      const down = await probe(SUPABASE, () => json({}, 503), ["--probe"], env);
+      expect(down.code).toBe(EXIT_SUCCESS);
+      expect(down.text).toMatch(/could not be confirmed/);
+      const unset = await probe(SUPABASE, () => json({}), ["--probe"], {
+        ANTHROPIC_API_KEY: SECRET,
+      });
+      expect(unset.calls).toEqual([]);
+      expect(unset.text).toContain("SUPABASE_URL");
+      expect(unset.text).toContain("SUPABASE_KEY");
+    });
+
+    it("probes the first-party Alpha Vantage component, failing only a refused key and not the 200-OK rate limit (KAN-1861)", async () => {
+      const AV = `    - name: px
+      action: component
+      use: kampong/alpha-vantage@1.0.0
+      op: time_series_daily
+      with: { symbol: MSFT }`;
+      const env = { ANTHROPIC_API_KEY: SECRET, ALPHAVANTAGE_API_KEY: "av-s3cret" };
+      const ok = await probe(
+        AV,
+        () => json({ "Time Series (Daily)": { "2026-10-09": {} } }),
+        ["--probe"],
+        env,
+      );
+      expect(ok.code).toBe(EXIT_SUCCESS);
+      expect(ok.calls).toHaveLength(1);
+      const url = new URL(ok.calls[0]!.url);
+      expect(url.origin + url.pathname).toBe("https://www.alphavantage.co/query");
+      expect(url.searchParams.get("symbol")).toBe("IBM");
+      expect(url.searchParams.get("apikey")).toBe("av-s3cret");
+      const refused = await probe(
+        AV,
+        () => json({ "Error Message": "the parameter apikey is invalid or missing." }),
+        ["--probe"],
+        env,
+      );
+      expect(refused.code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(refused.text).not.toContain("av-s3cret");
+      // A spent quota answers 200 too, and says nothing about whether the key is valid.
+      const limited = await probe(
+        AV,
+        () => json({ Information: "Our standard API rate limit is 25 requests per day." }),
+        ["--probe"],
+        env,
+      );
+      expect(limited.code).toBe(EXIT_SUCCESS);
+      expect(limited.text).toMatch(/could not be confirmed/);
     });
 
     it("does not probe a credential that is not set; the missing variable is the failure", async () => {

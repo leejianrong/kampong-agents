@@ -1,0 +1,73 @@
+kind: rest
+id: kampong/alpha-vantage
+version: 1.0.0
+title: Alpha Vantage
+description: Daily stock prices from Alpha Vantage. Treats the rate-limit and error answers it sends with HTTP 200 as failures, and keeps to one request per second.
+license: Apache-2.0
+permissions:
+  egress: [www.alphavantage.co]
+auth:
+  slots:
+    key:
+      env: ALPHAVANTAGE_API_KEY
+      hosts: [www.alphavantage.co]
+      inject: { query: apikey, template: "{{ secret }}" }
+      probe:
+        op: time_series_daily
+        with: { symbol: IBM }
+        # Only a refused key is a bad credential. A spent quota or a busy minute answers the same 200 with
+        # an "Information" or "Note" body and says nothing about the key.
+        refused_when: ["apikey is invalid", "invalid or missing"]
+ops:
+  time_series_daily:
+    title: Daily prices
+    description: >-
+      Open, high, low, close and volume for each day (TIME_SERIES_DAILY). Alpha Vantage answers a spent
+      quota, a bad symbol and a bad key with HTTP 200 and a body that has no prices; each of those is a
+      failure here, never an empty success. Requests are held to one per second.
+    effect: read
+    input:
+      type: object
+      required: [symbol]
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+          description: The ticker, such as IBM.
+        outputsize:
+          type: string
+          title: Output size
+          description: compact (the latest 100 days, the default) or full (the whole history, which Alpha Vantage may restrict to premium keys).
+          enum: [compact, full]
+          default: compact
+    request:
+      method: GET
+      url: https://www.alphavantage.co/query
+      query:
+        function: TIME_SERIES_DAILY
+        symbol: "{{ input.symbol }}"
+        outputsize: "{{ input.outputsize }}"
+        datatype: json
+    pace: { rps: 1 }
+    retry: { max: 2, backoff: exponential, base_ms: 2000, max_delay_ms: 30000 }
+    # The first rule that fires is the one reported, so the burst limit (worth a short retry) comes before
+    # the daily or premium limit that says the same key in the same field (not worth one).
+    failure_when:
+      - path: Information
+        matches: "[Bb]urst|per second"
+        message_path: Information
+        retryable: true
+      - path: Information
+        exists: true
+        message_path: Information
+      - path: Note
+        exists: true
+        message_path: Note
+      - path: '["Error Message"]'
+        exists: true
+        message_path: '["Error Message"]'
+      # Anything else 200 without prices is still not a success.
+      - path: '["Time Series (Daily)"]'
+        exists: false
+    # The body is keyed by names with spaces ("Meta Data"), which an output schema cannot describe.
+    output: { type: object }

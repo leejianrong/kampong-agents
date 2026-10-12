@@ -301,6 +301,33 @@ ops:
     expect(err.join("\n")).toMatch(/pinned digest/);
   });
 
+  it("vendors kampong/supabase and kampong/alpha-vantage with their digests in the lock and SBOM, without a pin (KAN-1861)", async () => {
+    writeFileSync(
+      join(dir, "agent.yaml"),
+      `version: "1.0"\nagent:\n  id: s\n  name: S\n  role: R\n  goal: G\n  tools:\n    - { name: db, action: component, use: kampong/supabase@1.0.0, op: select, with: { table: t } }\n    - { name: px, action: component, use: kampong/alpha-vantage@1.0.0, op: time_series_daily, with: { symbol: IBM } }\n  workflow:\n    - { step: a, type: tool, tool: db }\n    - { step: b, type: tool, tool: px }\n`,
+    );
+    const { io } = capture();
+    expect(await runCli(["export", join(dir, "agent.yaml"), outputDir], io)).toBe(EXIT_SUCCESS);
+    for (const file of [
+      "components/kampong/supabase/1.0.0/component.yaml",
+      "components/kampong/supabase/1.0.0/index.mjs",
+      "components/kampong/alpha-vantage/1.0.0/component.yaml",
+    ]) {
+      expect(existsSync(join(outputDir, file)), file).toBe(true);
+    }
+    const lock = readFileSync(join(outputDir, "kampong.lock"), "utf8");
+    const sbom = JSON.parse(readFileSync(join(outputDir, "sbom.json"), "utf8")) as {
+      components: { name: string }[];
+    };
+    const { createFirstPartyRegistry } = await import("@kampong/engine");
+    for (const id of ["kampong/supabase", "kampong/alpha-vantage"]) {
+      const { digest } = await createFirstPartyRegistry().resolve(id, "1.0.0");
+      expect(lock).toContain(`${id}@1.0.0`);
+      expect(lock).toContain(digest);
+      expect(JSON.stringify(sbom)).toContain(id);
+    }
+  });
+
   it("exports the first-party components behind a legacy Slack tool without a pin", async () => {
     writeFileSync(
       join(dir, "agent.yaml"),
