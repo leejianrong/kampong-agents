@@ -338,6 +338,38 @@ describe("collectRequiredEnvVars with a component tool", () => {
     expect(collectRequiredEnvVars(spec)).toContain("ACME_TOKEN");
   });
 
+  it("exports transform, validate and dedupe steps with the vendored store and a README note (KAN-1860)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-data-steps-"));
+    try {
+      const out = join(dir, "out");
+      const spec = {
+        ...FULL_SPEC,
+        version: "1.1",
+        agent: {
+          ...FULL_SPEC.agent,
+          workflow: [
+            { step: "seen", type: "dedupe", once: { key: "trigger.id", ttl: "1h" } },
+            { step: "check", type: "validate", assert: "true", on_fail: "skip" },
+            { step: "shape", type: "transform", set: { a: "1" } },
+          ],
+        },
+      } as unknown as AgentSpec;
+      exportProject(spec, out);
+      expect(readFileSync(join(out, "src/runtime/sqlite-state-store.ts"), "utf8")).toContain(
+        "SqliteStateStore",
+      );
+      expect(readFileSync(join(out, "src/index.ts"), "utf8")).toContain("state.skipped");
+      const readme = readFileSync(join(out, "README.md"), "utf8");
+      expect(readme).toContain(".kampong/state.db");
+      // A spec without a dedupe step says nothing about state.
+      const plain = join(dir, "plain");
+      exportProject(FULL_SPEC, plain);
+      expect(readFileSync(join(plain, "README.md"), "utf8")).not.toContain("Dedupe state");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("exports a version 1.1 spec, and its entry points pass the vars and the webhook trigger to the evaluator (KAM-111)", () => {
     const dir = mkdtempSync(join(tmpdir(), "kampong-export-1-1-"));
     try {

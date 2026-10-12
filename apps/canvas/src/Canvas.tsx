@@ -85,6 +85,9 @@ function nodeLabel(node: SpecNode): string {
     const step = String(node.data.step ?? node.id);
     if (node.data.type === "tool") return `Tool step: ${step}`;
     if (node.data.type === "approval") return `Approval: ${step}`;
+    if (node.data.type === "transform") return `Transform: ${step}`;
+    if (node.data.type === "validate") return `Validate: ${step}`;
+    if (node.data.type === "dedupe") return `Dedupe: ${step}`;
     return `Workflow: ${step}`;
   }
   const kind = KIND_LABEL[node.kind];

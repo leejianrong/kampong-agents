@@ -224,6 +224,24 @@ export type WorkflowStep =
       message?: string;
     }
   | {
+      // KAN-1860 (version 1.1): data steps over JSONata expressions.
+      step: string;
+      type: "transform";
+      set: Record<string, string>;
+    }
+  | {
+      step: string;
+      type: "validate";
+      assert: string;
+      on_fail?: "fail" | "skip" | "branch";
+      message?: string;
+    }
+  | {
+      step: string;
+      type: "dedupe";
+      once: { key: string; ttl: string };
+    }
+  | {
       step: string;
       action: string;
       inputs?: string[];

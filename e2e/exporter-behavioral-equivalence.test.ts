@@ -148,6 +148,7 @@ interface RunOutcome {
   success: boolean;
   status: string;
   output?: Record<string, unknown>;
+  skipped?: { step: string; reason: string };
   trace: unknown[];
 }
 
@@ -156,6 +157,7 @@ function toOutcome(state: RunState): RunOutcome {
     success: state.status === "completed",
     status: state.status,
     output: state.finalOutput,
+    ...(state.skipped && { skipped: state.skipped }),
     trace: state.trace,
   };
 }
@@ -385,6 +387,73 @@ agent:
       server.kill();
     }
   }
+
+  it("transform, validate and dedupe run in an exported project, and the dedupe key survives its restart, exactly as in the engine (KAN-1860)", async () => {
+    const source = `version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 5
+agent:
+  id: e2e-data-steps
+  name: "E2E Data Steps"
+  role: "Analyst"
+  goal: "Report a price move once."
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${ollama.port}"
+  workflow:
+    - step: seen
+      type: dedupe
+      once:
+        key: "trigger.symbol & '-' & trigger.day"
+        ttl: 24h
+    - step: check
+      type: validate
+      assert: "trigger.open > 0"
+      on_fail: skip
+      message: "open price of {{ trigger.symbol }} must be positive"
+    - step: shape
+      type: transform
+      set:
+        change: "$round((trigger.close - trigger.open) / trigger.open * 100, 2)"
+        big: "$abs((trigger.close - trigger.open) / trigger.open * 100) >= vars.threshold"
+`;
+    const { success, spec, errors } = parseSpec(source);
+    expect(success, JSON.stringify(errors)).toBe(true);
+
+    const statePath = join(exportDir, "..", `${exportDir.split("/").pop()}-reference-state.db`);
+    const reference = async (input: string) =>
+      toOutcome(await createAgentRun(spec!, { statePath }).start(input));
+    const move = JSON.stringify({ symbol: "AAPL", day: "2026-10-12", open: 80, close: 100 });
+    const badOpen = JSON.stringify({ symbol: "MSFT", day: "2026-10-12", open: 0, close: 1 });
+    const expected = [await reference(move), await reference(move), await reference(badOpen)];
+    rmSync(statePath, { force: true });
+    rmSync(`${statePath}-wal`, { force: true });
+    rmSync(`${statePath}-shm`, { force: true });
+    expect(expected[0]!.output?.shape).toEqual({ change: 25, big: true });
+    expect(expected[0]!.skipped).toBeUndefined();
+    expect(expected[1]!.skipped?.step).toBe("seen");
+    expect(expected[2]!.skipped).toEqual({
+      step: "check",
+      reason: "open price of MSFT must be positive",
+    });
+
+    exportProject(spec!, exportDir);
+    const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+    expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+    // Three separate processes: the second only knows the first's key through the file on disk.
+    for (const [i, input] of [move, move, badOpen].entries()) {
+      const start = await runNpm(
+        ["start", "--silent", "--", "--input", input, "--json"],
+        exportDir,
+      );
+      expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
+      const line = start.stdout.split("\n").find((l) => l.trim().startsWith("{"));
+      expect(JSON.parse(line!) as RunOutcome, `run ${i + 1}`).toEqual(expected[i]);
+    }
+  }, 180_000);
 
   it("an export that uses a rest and a module component runs them, secrets included, exactly as the engine does", async () => {
     const componentsDir = join(exportDir, "..", `${exportDir.split("/").pop()}-components`);

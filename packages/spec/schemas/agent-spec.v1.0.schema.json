@@ -589,6 +589,88 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "type": {
+                    "type": "string",
+                    "const": "transform"
+                  },
+                  "set": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": ["step", "type", "set"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "validate"
+                  },
+                  "assert": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "on_fail": {
+                    "type": "string",
+                    "enum": ["fail", "skip", "branch"]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["step", "type", "assert"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "dedupe"
+                  },
+                  "once": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "ttl": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["key", "ttl"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["step", "type", "once"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "action": {
                     "type": "string",
                     "minLength": 1

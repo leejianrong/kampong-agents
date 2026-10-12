@@ -20,6 +20,7 @@ import { StructuredOutputError, type ModelClient, type StepModelOverrides } from
 import type { ModuleFixtureSeam } from "./component.js";
 import {
   evaluateCondition as evaluateExpressionCondition,
+  evaluateExpression,
   ExpressionError,
   resolveTemplate,
   resolveTemplatesDeep,
@@ -28,6 +29,8 @@ import {
 import { schemaNodeToZod } from "./output-zod.js";
 import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
 import { resolveVars } from "./vars.js";
+import { parseEvery } from "./schedule.js";
+import type { StateStore } from "./state-store.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
 // 1105). Deliberately NOT built on Mastra's own `workflows` module: the
@@ -65,7 +68,13 @@ export type RunEvent =
       reason: string;
       toolName?: string;
     }
-  | { type: "completed"; output: Record<string, unknown> }
+  | {
+      type: "completed";
+      output: Record<string, unknown>;
+      // Set when a `validate` step with `on_fail: skip` or a `dedupe` step ended the run early (KAN-1860):
+      // the run is a success, but the rest of the workflow did not run.
+      skipped?: { step: string; reason: string };
+    }
   | { type: "rejected"; step: string; reason: string }
   | { type: "failed"; step?: string; error: string };
 
@@ -98,6 +107,16 @@ export interface EngineDeps {
   clock?: HttpToolCallOptions["clock"];
   /** Runs `action: component` tools (KAN-1884); without one, a component tool fails visibly. */
   components?: ComponentDispatcher;
+  /**
+   * The durable store a `dedupe` step remembers keys in (KAN-1860, ADR-0028). The caller owns it and
+   * closes it. A run with a dedupe step and neither this nor `openState` fails at that step.
+   */
+  state?: StateStore;
+  /**
+   * Opens the store when the first `dedupe` step is reached, so a workflow without one never touches it.
+   * The run closes a store it opened itself, when it ends. Ignored when `state` is set.
+   */
+  openState?: () => Promise<StateStore>;
 }
 
 export type ComponentTool = Extract<Tool, { action: "component" }>;
@@ -182,6 +201,26 @@ export async function* runWorkflow(
   spec: AgentSpec,
   deps: EngineDeps,
   input: string,
+): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
+  // A store the run opened itself (`openState`) is closed when the run ends, however it ends.
+  const state: StateHandle = { store: deps.state, owned: false };
+  try {
+    yield* runSteps(spec, deps, input, state);
+  } finally {
+    if (state.owned && state.store) await state.store.close();
+  }
+}
+
+interface StateHandle {
+  store: StateStore | undefined;
+  owned: boolean;
+}
+
+async function* runSteps(
+  spec: AgentSpec,
+  deps: EngineDeps,
+  input: string,
+  state: StateHandle,
 ): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
   const stepOutputs: Record<string, unknown> = {};
   const guardrails = spec.agent.guardrails;
@@ -352,6 +391,33 @@ export async function* runWorkflow(
       continue;
     }
 
+    // KAN-1860: transform, validate and dedupe compute over the same scope as a condition (version 1.1).
+    if (isDataStep(step)) {
+      try {
+        if (!scope) throw new Error(`${step.type} needs version "1.1"`);
+        const outcome = await runDataStep(step, spec, scope(), deps, state);
+        stepOutputs[step.step] = outcome.output;
+        yield { type: "step_completed", step: step.step, output: outcome.output };
+        if (outcome.skip) {
+          yield {
+            type: "completed",
+            output: stepOutputs,
+            skipped: { step: step.step, reason: outcome.skip },
+          };
+          return;
+        }
+      } catch (err) {
+        // Our own messages (a missing value, a failed assertion) name the step as an expression failure does.
+        const error =
+          err instanceof ExpressionError
+            ? describeFailure(step.step, err)
+            : `Step "${step.step}": ${(err as Error).message}`;
+        yield { type: "failed", step: step.step, error };
+        return;
+      }
+      continue;
+    }
+
     let stepResult: { output: unknown; confidence?: number };
     try {
       stepResult = await runActionStep(
@@ -417,6 +483,96 @@ function isToolStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "
 
 function isApprovalStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "approval" }> {
   return "type" in step && step.type === "approval";
+}
+
+type DataStep = Extract<WorkflowStep, { type: "transform" | "validate" | "dedupe" }>;
+
+function isDataStep(step: WorkflowStep): step is DataStep {
+  return (
+    "type" in step &&
+    (step.type === "transform" || step.type === "validate" || step.type === "dedupe")
+  );
+}
+
+// What a dedupe key may be: a scalar, kept as text. A list or an object has no one obvious key.
+function keyText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  throw new Error(
+    value === undefined
+      ? "dedupe key evaluated to nothing: a name it reads is missing from the data"
+      : `dedupe key must be a string, number or boolean, not ${Array.isArray(value) ? "a list" : typeof value}`,
+  );
+}
+
+async function runDataStep(
+  step: DataStep,
+  spec: AgentSpec,
+  data: Record<string, unknown>,
+  deps: EngineDeps,
+  state: StateHandle,
+): Promise<{ output: unknown; skip?: string }> {
+  const limits = deps.expressionLimits;
+  if (step.type === "transform") {
+    // Every value reads the data as it was before this step, never another value of the same step.
+    const out: Record<string, unknown> = {};
+    for (const [name, source] of Object.entries(step.set)) {
+      const value = await evaluateExpression(source, data, limits);
+      if (value === undefined) {
+        throw new Error(
+          `set.${name} evaluated to nothing: a name it reads is missing from the data [${source.trim().slice(0, 120)}]`,
+        );
+      }
+      out[name] = value;
+    }
+    return { output: out };
+  }
+
+  if (step.type === "validate") {
+    if ((step.on_fail as string | undefined) === "branch") {
+      throw new Error(
+        "on_fail: branch is not yet supported (it needs conditional branching, KAN-1859)",
+      );
+    }
+    if (await evaluateExpressionCondition(step.assert, data, limits)) {
+      return { output: { passed: true } };
+    }
+    const reason = step.message
+      ? String(await resolveTemplate(step.message, data, limits))
+      : `assertion failed: ${step.assert.trim().slice(0, 120)}`;
+    if (step.on_fail === "skip") {
+      return { output: { passed: false, skipped: true }, skip: reason };
+    }
+    throw new Error(reason);
+  }
+
+  // dedupe: the first run to claim a key within its ttl goes on; every other one ends here.
+  const key = keyText(await evaluateExpression(step.once.key, data, limits));
+  const ttl = parseEvery(step.once.ttl);
+  if (!ttl.ok) throw new Error(`ttl: ${ttl.error}`);
+  if (!state.store) {
+    if (!deps.openState) {
+      throw new Error(
+        "a dedupe step needs a state store (ADR-0028), but none was provided to this run",
+      );
+    }
+    state.store = await deps.openState();
+    state.owned = true;
+  }
+  // Scoped to the workflow and the step, so two workflows (or two dedupe steps) sharing a store do not
+  // swallow each other's keys. Renaming the step or the agent id starts a fresh set of keys.
+  const first = await state.store.putIfAbsent(
+    `dedupe:${spec.agent.id}:${step.step}:${key}`,
+    { at: Date.now() },
+    { ttlMs: ttl.value },
+  );
+  return first
+    ? { output: { duplicate: false, key } }
+    : {
+        output: { duplicate: true, key },
+        skip: `duplicate key "${key}" seen within ${step.once.ttl}`,
+      };
 }
 
 async function runActionStep(

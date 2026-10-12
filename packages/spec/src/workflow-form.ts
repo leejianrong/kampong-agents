@@ -56,11 +56,58 @@ export interface WorkflowApprovalStepFormInput {
   message?: string;
 }
 
+// KAN-1860 (version 1.1): the data steps. `set` is the text of a multi-line field, one `name: expression`
+// per line (split on the first colon, so an expression may hold more); blank lines are skipped.
+export interface WorkflowTransformStepFormInput {
+  kind: "transform";
+  step: string;
+  set: string;
+}
+
+export interface WorkflowValidateStepFormInput {
+  kind: "validate";
+  step: string;
+  assert: string;
+  onFail?: "fail" | "skip";
+  message?: string;
+}
+
+export interface WorkflowDedupeStepFormInput {
+  kind: "dedupe";
+  step: string;
+  key: string;
+  ttl: string;
+}
+
 export type WorkflowStepFormInput =
   | WorkflowActionStepFormInput
   | WorkflowConditionStepFormInput
   | WorkflowToolStepFormInput
-  | WorkflowApprovalStepFormInput;
+  | WorkflowApprovalStepFormInput
+  | WorkflowTransformStepFormInput
+  | WorkflowValidateStepFormInput
+  | WorkflowDedupeStepFormInput;
+
+function parseSetLines(text: string): { set: Record<string, string>; errors: string[] } {
+  const set: Record<string, string> = {};
+  const errors: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const colon = line.indexOf(":");
+    const name = colon === -1 ? "" : line.slice(0, colon).trim();
+    const expression = colon === -1 ? "" : line.slice(colon + 1).trim();
+    if (name === "" || expression === "") {
+      errors.push(`"${line}" is not "name: expression"`);
+    } else {
+      set[name] = expression;
+    }
+  }
+  if (errors.length === 0 && Object.keys(set).length === 0) {
+    errors.push("Add at least one value as name: expression");
+  }
+  return { set, errors };
+}
 
 export interface WorkflowStepFormResult {
   success: boolean;
@@ -70,7 +117,25 @@ export interface WorkflowStepFormResult {
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
   let candidate: unknown;
-  if (input.kind === "condition") {
+  if (input.kind === "transform") {
+    const { set, errors } = parseSetLines(input.set);
+    if (errors.length > 0) return { success: false, errors };
+    candidate = { step: input.step, type: "transform" as const, set };
+  } else if (input.kind === "validate") {
+    candidate = {
+      step: input.step,
+      type: "validate" as const,
+      assert: input.assert,
+      ...(input.onFail && { on_fail: input.onFail }),
+      ...(input.message && { message: input.message }),
+    };
+  } else if (input.kind === "dedupe") {
+    candidate = {
+      step: input.step,
+      type: "dedupe" as const,
+      once: { key: input.key, ttl: input.ttl },
+    };
+  } else if (input.kind === "condition") {
     candidate = {
       step: input.step,
       type: "condition" as const,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { buildSchedule } from "./schedule.js";
+import { buildSchedule, parseEvery } from "./schedule.js";
 import { requestOptionalFields } from "./request.js";
 import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 
@@ -229,6 +229,28 @@ export const workflowStepSchema = z.union([
     // resolved from prior step outputs at run time.
     message: z.string().optional(),
   }),
+  // KAN-1860 (ADR-0041): data steps, version 1.1 only. Each computes with JSONata expressions over the same
+  // data an `if` reads. `transform` makes an object of named values; `validate` stops a bad record
+  // (`fail` ends the run, `skip` ends it quietly; `branch` waits on conditional branching, KAN-1859);
+  // `dedupe` runs the rest of the workflow once per key within `ttl`, remembered in the state store.
+  z.object({
+    step: z.string().min(1),
+    type: z.literal("transform"),
+    set: z.record(z.string(), z.string().min(1)),
+  }),
+  z.object({
+    step: z.string().min(1),
+    type: z.literal("validate"),
+    assert: z.string().min(1),
+    // `branch` is accepted by the shape only so the cross-field check can say it is not supported yet.
+    on_fail: z.enum(["fail", "skip", "branch"]).optional(),
+    message: z.string().min(1).optional(),
+  }),
+  z.object({
+    step: z.string().min(1),
+    type: z.literal("dedupe"),
+    once: z.object({ key: z.string().min(1), ttl: z.string().min(1) }),
+  }),
   z.object({
     step: z.string().min(1),
     action: z.string().min(1),
@@ -398,6 +420,55 @@ export const agentSpecSchema = z
       }
     });
     spec.agent.workflow.forEach((step, i) => {
+      if (
+        "type" in step &&
+        (step.type === "transform" || step.type === "validate" || step.type === "dedupe")
+      ) {
+        const at = ["agent", "workflow", i];
+        if (spec.version !== "1.1") {
+          ctx.addIssue({
+            code: "custom",
+            message: `${step.type} needs version "1.1"`,
+            path: [...at, "type"],
+          });
+        }
+        if (step.type === "transform") {
+          if (Object.keys(step.set).length === 0) {
+            ctx.addIssue({
+              code: "custom",
+              message: "set needs at least one name: expression",
+              path: [...at, "set"],
+            });
+          }
+          for (const name of Object.keys(step.set)) {
+            if (!VAR_NAME.test(name) || name === "__proto__") {
+              ctx.addIssue({
+                code: "custom",
+                message: `"${name}" is not a valid name for a transform value: use letters, digits and underscores, not starting with a digit`,
+                path: [...at, "set", name],
+              });
+            }
+          }
+        } else if (step.type === "validate") {
+          if (step.on_fail === "branch") {
+            ctx.addIssue({
+              code: "custom",
+              message:
+                "on_fail: branch is not yet supported (it needs conditional branching, KAN-1859): use fail or skip",
+              path: [...at, "on_fail"],
+            });
+          }
+        } else {
+          const ttl = parseEvery(step.once.ttl);
+          if (!ttl.ok) {
+            ctx.addIssue({
+              code: "custom",
+              message: `ttl: ${ttl.error}`,
+              path: [...at, "once", "ttl"],
+            });
+          }
+        }
+      }
       for (const field of ["instructions", "model", "temperature"] as const) {
         if (
           field in step &&
