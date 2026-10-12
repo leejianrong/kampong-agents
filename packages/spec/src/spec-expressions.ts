@@ -2,6 +2,7 @@ import { isMap, isScalar, type Document, type LineCounter } from "yaml";
 import {
   expressionPaths,
   parseExpression,
+  type ExpressionNode,
   templateExpressions,
   type ExpressionError,
 } from "./expression.js";
@@ -15,6 +16,75 @@ import type { AgentSpec, BodyStep, BranchStep, WorkflowStep } from "./schema.js"
 // condition on nothing is silently false (ADR-0027, spike result).
 
 const ROOTS = ["trigger", "input", "vars"] as const;
+
+/** What an expression may read at one point: see `readIssues`. */
+export interface ReadScope {
+  /** The declared var names, or undefined when the spec has no `vars` block. */
+  vars: readonly string[] | undefined;
+  /** Every step name in the workflow (a branch arm's included). */
+  steps: readonly string[];
+  /** A foreach body adds the loop variable and the body steps that ran before. */
+  local: readonly string[];
+  /** Maps a step in a sibling branch arm to its branch, which an expression may not read. */
+  hidden?: ReadonlyMap<string, string>;
+}
+
+const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * What is wrong with the names a parsed expression reads, as messages with no location prefix. The one
+ * implementation behind both the spec validator and the canvas's live expression check, so the editor
+ * never accepts what the validator refuses.
+ */
+export function readIssues(ast: ExpressionNode, scope: ReadScope): string[] {
+  const out: string[] = [];
+  const varNames = scope.vars ?? [];
+  const oddStepNames = scope.steps.filter((n) => !IDENT.test(n));
+  for (const names of expressionPaths(ast)) {
+    const [root, second] = names;
+    if (root === undefined) continue;
+    const sibling = scope.hidden?.get(root);
+    if (sibling !== undefined) {
+      out.push(
+        `"${root}" is a step in another arm of branch "${sibling}", which may not run: ` +
+          `its output is not available here (read it after the branch, where it is present only if that arm ran)`,
+      );
+    } else if (root === "vars") {
+      if (second !== undefined && !varNames.includes(second)) {
+        out.push(
+          `vars.${second} is not declared in vars` +
+            (varNames.length > 0
+              ? ` (declared: ${varNames.join(", ")})`
+              : " (there is no vars block)"),
+        );
+      }
+    } else if (
+      !(ROOTS as readonly string[]).includes(root) &&
+      !scope.steps.includes(root) &&
+      !scope.local.includes(root)
+    ) {
+      out.push(
+        `"${root}" is not something an expression can read: use trigger, input, vars, ` +
+          `or the name of a step (${[...scope.steps, ...scope.local].join(", ")})` +
+          (oddStepNames.length > 0
+            ? `. A step name that is not a plain identifier (${oddStepNames.join(", ")}) must be written in backticks: \`${oddStepNames[0]}\`.field`
+            : ""),
+      );
+    }
+  }
+  return out;
+}
+
+/** What is wrong with a webhook `when` / `map` expression: it runs on arrival and reads only `trigger`. */
+export function ingressReadIssues(ast: ExpressionNode): string[] {
+  return expressionPaths(ast).flatMap(([root]) =>
+    root !== undefined && root !== "trigger"
+      ? [
+          `"${root}" is not available when a request arrives: it can read only trigger (trigger.headers, trigger.body, and the body's fields)`,
+        ]
+      : [],
+  );
+}
 
 // What an expression in one step may read besides the root names and the workflow's steps: `local` is what a
 // foreach body adds (the loop variable and the body steps that ran before), and `hidden` maps the name of a step
@@ -79,8 +149,6 @@ export function validateSpecExpressions(
       `${where}: ${e.message}${e.position !== undefined ? ` (character ${e.position}${e.line && e.line > 1 ? `, line ${e.line}` : ""})` : ""}`,
     );
 
-  const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
-  const oddStepNames = stepNames.filter((n) => !IDENT.test(n));
   const check = (
     path: (string | number)[],
     source: string,
@@ -96,40 +164,13 @@ export function validateSpecExpressions(
       for (const e of parsed.errors) reportExpression(path, `${where}${here}`, e);
       return;
     }
-    for (const names of expressionPaths(parsed.ast)) {
-      const [root, second] = names;
-      if (root === undefined) continue;
-      const sibling = view.hidden.get(root);
-      if (sibling !== undefined) {
-        report(
-          path,
-          `${where}${here}: "${root}" is a step in another arm of branch "${sibling}", which may not run: ` +
-            `its output is not available here (read it after the branch, where it is present only if that arm ran)`,
-        );
-      } else if (root === "vars") {
-        if (second !== undefined && !varNames.includes(second)) {
-          report(
-            path,
-            `${where}${here}: vars.${second} is not declared in vars` +
-              (varNames.length > 0
-                ? ` (declared: ${varNames.join(", ")})`
-                : " (there is no vars block)"),
-          );
-        }
-      } else if (
-        !(ROOTS as readonly string[]).includes(root) &&
-        !stepNames.includes(root) &&
-        !local.includes(root)
-      ) {
-        report(
-          path,
-          `${where}${here}: "${root}" is not something an expression can read: use trigger, input, vars, ` +
-            `or the name of a step (${[...stepNames, ...local].join(", ")})` +
-            (oddStepNames.length > 0
-              ? `. A step name that is not a plain identifier (${oddStepNames.join(", ")}) must be written in backticks: \`${oddStepNames[0]}\`.field`
-              : ""),
-        );
-      }
+    for (const message of readIssues(parsed.ast, {
+      vars: spec.vars === undefined ? undefined : varNames,
+      steps: stepNames,
+      local,
+      hidden: view.hidden,
+    })) {
+      report(path, `${where}${here}: ${message}`);
     }
   };
 
@@ -282,14 +323,7 @@ export function validateSpecExpressions(
         for (const e of parsed.errors) reportExpression(path, where, e);
         return;
       }
-      for (const [root] of expressionPaths(parsed.ast)) {
-        if (root !== undefined && root !== "trigger") {
-          report(
-            path,
-            `${where}: "${root}" is not available when a request arrives: it can read only trigger (trigger.headers, trigger.body, and the body's fields)`,
-          );
-        }
-      }
+      for (const message of ingressReadIssues(parsed.ast)) report(path, `${where}: ${message}`);
     };
     if (trigger.when !== undefined)
       checkIngress(["agent", "trigger", "when"], trigger.when, "when");

@@ -1,3 +1,7 @@
+import type { PatchOp } from "./mutate.js";
+import { diffFieldOps } from "./output-schema-form.js";
+import type { SchemaNode } from "./schema-node.js";
+import { ensureVersion11Ops } from "./var-form.js";
 import {
   guardrailsSchema,
   workflowStepSchema,
@@ -32,6 +36,8 @@ export interface WorkflowActionStepFormInput {
   instructions?: string;
   model?: string;
   temperature?: number;
+  // KAN-1850: the shape of the step's output (ADR-0038), as built by `buildOutputSchemaFromFields`.
+  outputSchema?: SchemaNode;
 }
 
 export interface WorkflowConditionStepFormInput {
@@ -260,6 +266,7 @@ export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): Workflo
       ...(input.instructions && { instructions: input.instructions }),
       ...(input.model && { model: input.model }),
       ...(input.temperature !== undefined && { temperature: input.temperature }),
+      ...(input.outputSchema !== undefined && { output_schema: input.outputSchema }),
     };
   }
 
@@ -294,4 +301,54 @@ export function buildGuardrailsFromForm(input: GuardrailsFormInput): GuardrailsF
     return { success: false, errors: result.error.issues.map((issue) => issue.message) };
   }
   return { success: true, guardrails: result.data };
+}
+
+// Keys of an action step that the form owns. `query` and anything else on the step are carried over as written.
+const ACTION_FORM_KEYS = [
+  "action",
+  "inputs",
+  "confidence_gate",
+  "instructions",
+  "model",
+  "temperature",
+  "output_schema",
+] as const;
+
+export interface ActionStepEditResult {
+  success: boolean;
+  step?: WorkflowStep;
+  /** The ops that turn the step at `agent.workflow[index]` into `step`, changed keys only. */
+  ops?: PatchOp[];
+  errors?: string[];
+}
+
+/**
+ * Edits an action step in place (KAN-1850): rebuilds it from the form, then patches only the keys that
+ * changed, so a comment on the step or on any field that was not touched is kept. The step id is not
+ * editable here (other steps and expressions read it). The per-step fields and `output_schema` need version
+ * "1.1", so a "1.0" spec is raised to it.
+ */
+export function buildActionStepEdit(
+  spec: { version: string },
+  index: number,
+  before: Record<string, unknown>,
+  input: Omit<WorkflowActionStepFormInput, "step" | "kind">,
+): ActionStepEditResult {
+  const built = buildWorkflowStepFromForm({ ...input, step: String(before["step"]) });
+  if (!built.success || !built.step) return { success: false, errors: built.errors };
+  const kept = Object.fromEntries(
+    Object.entries(before).filter(([k]) => !(ACTION_FORM_KEYS as readonly string[]).includes(k)),
+  );
+  const next = { ...kept, ...(built.step as Record<string, unknown>) };
+  const needs11 = ["instructions", "model", "temperature", "output_schema"].some(
+    (k) => next[k] !== undefined,
+  );
+  return {
+    success: true,
+    step: next as WorkflowStep,
+    ops: [
+      ...(needs11 ? ensureVersion11Ops({ version: spec.version as "1.0" | "1.1" }) : []),
+      ...diffFieldOps(["agent", "workflow", index], before, next),
+    ],
+  };
 }
