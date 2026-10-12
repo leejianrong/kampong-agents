@@ -329,7 +329,7 @@ describe("foreach: on_error", () => {
 
   it("goto is refused if it reaches the engine unvalidated", async () => {
     const events = await drive(make({ on_error: "goto" }), SYMBOLS);
-    expect(failedMessage(events)).toMatch(/goto is not yet supported/);
+    expect(failedMessage(events)).toMatch(/goto is not supported/);
   });
 });
 

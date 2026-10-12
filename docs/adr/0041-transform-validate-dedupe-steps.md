@@ -53,5 +53,5 @@ version "1.1"`, at the line of `type`. Every field that holds an expression is a
   fails, so a failed run can be retried). The step claims the key when it runs. Consequence: if a later step fails,
   the key stays claimed until its ttl and a retry is skipped as a duplicate. Choose a ttl with that in mind, or put
   the dedupe step last. The lifecycle needs a run-end hook to release on failure; it is follow-up work.
-- **`on_fail: branch`**, until conditional branching exists (KAN-1859).
+- **`on_fail: branch`**: still rejected after KAN-1859; a `branch` step with a `stop` does the same job (ADR-0045).
 - The hosted server still refuses 1.1 specs (ADR-0027), so these steps run locally and in exports only.

@@ -29,8 +29,15 @@ export interface PersistedApproval {
   specHash: string;
   /** `agent.id` of the spec, for listing without loading it. */
   agentId: string;
-  /** Index into `agent.workflow` of the paused step. */
+  /** Index into `agent.workflow` of the paused step, or of the branch that holds it (see `stepPath`). */
   stepIndex: number;
+  /**
+   * Where the paused step is when it sits inside a branch (KAN-1859, ADR-0045): its index, then for each branch
+   * the name of the arm taken ("then", "else", "case:<value>", "default") and the step's index in that arm.
+   * `[2, "then", 0]` is the first step of the `then` arm of the third workflow step. Absent in a record written
+   * before branches existed, where `[stepIndex]` is the path.
+   */
+  stepPath?: (number | string)[];
   step: string;
   phase: ApprovalPhase;
   kind: "tool" | "guardrail" | "approval";

@@ -9,6 +9,7 @@ import {
   VALID_FIXTURE_V1_1,
   VALID_FIXTURE_WITH_MODEL,
 } from "../fixtures.js";
+import { VALID_FIXTURE_BRANCH } from "../fixtures-branch.js";
 
 // The published JSON Schema (S7) is what external editors and agentic
 // coding tools validate against, not our Zod validator directly — it needs
@@ -23,6 +24,7 @@ describe("generateAgentSpecJsonSchema", () => {
     ["two tools with a conditional step", VALID_FIXTURE_WITH_CONDITION],
     ["no tools", VALID_FIXTURE_NO_TOOLS],
     ["version 1.1 with vars and expressions (KAN-1840)", VALID_FIXTURE_V1_1],
+    ["version 1.1 with branch, switch and stop (KAN-1859)", VALID_FIXTURE_BRANCH],
     ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
     [
       "openrouter model with a vendor-prefixed name",

@@ -253,7 +253,31 @@ export type BodyStep =
       temperature?: number;
     }
   // KAN-1858 (ADR-0043): a nested foreach is accepted by the shape only and refused by validation.
-  | { step: string; foreach: unknown };
+  | { step: string; foreach: unknown }
+  | BranchStep
+  | StopStep;
+
+// KAN-1859 (ADR-0045): runs one of several nested step lists (version 1.1).
+export interface BranchIf {
+  if: string;
+  then: WorkflowStep[];
+  else?: WorkflowStep[];
+}
+export interface BranchSwitch {
+  switch: string;
+  cases: Record<string, WorkflowStep[]>;
+  default?: WorkflowStep[];
+}
+export interface BranchStep {
+  step: string;
+  branch: BranchIf | BranchSwitch;
+}
+
+// KAN-1859 (ADR-0045): ends the run early (or, in a foreach body, the item).
+export interface StopStep {
+  step: string;
+  stop: { reason?: string; status?: "completed" | "skipped" };
+}
 
 /** What `on_error` says a failing item of a foreach does (version 1.1). */
 export type ForEachOnError =

@@ -165,7 +165,7 @@ describe("validate", () => {
       "{}",
     );
     const failed = last(events) as Extract<RunEvent, { type: "failed" }>;
-    expect(failed.error).toMatch(/branch is not yet supported/);
+    expect(failed.error).toMatch(/on_fail: branch is not supported/);
   });
 });
 

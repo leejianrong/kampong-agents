@@ -231,7 +231,7 @@ const baseWorkflowSteps = [
   }),
   // KAN-1860 (ADR-0041): data steps, version 1.1 only. Each computes with JSONata expressions over the same
   // data an `if` reads. `transform` makes an object of named values; `validate` stops a bad record
-  // (`fail` ends the run, `skip` ends it quietly; `branch` waits on conditional branching, KAN-1859);
+  // (`fail` ends the run, `skip` ends it quietly; `branch` is refused, ADR-0045);
   // `dedupe` runs the rest of the workflow once per key within `ttl`, remembered in the state store.
   z.object({
     step: z.string().min(1),
@@ -279,10 +279,10 @@ const baseWorkflowSteps = [
 ] as const;
 
 // KAN-1858 (ADR-0043): `foreach` runs a nested list of steps once per item of a list, version 1.1 only.
-// `on_error` says what a failing item does: `fail` (the default) ends the run, `continue` records the item in
-// `errors` and moves on, `retry` re-runs the failed step with backoff and then applies `then`. `goto` is
-// accepted by the shape only so the cross-field check can say it is not supported yet (it needs conditional
-// branching, KAN-1859).
+// `on_error` says what a failing item does: `fail` (the default) ends the run, `continue` records the item in `errors` and moves on,
+// `retry` re-runs the failed step with backoff and then applies
+// `then`. `goto` is accepted by the shape only so the cross-field check can say it is not supported (a branch
+// step in the body is what chooses between paths, ADR-0045).
 export const forEachRetrySchema = z
   .object({
     n: z.number().int().min(1).max(10),
@@ -301,13 +301,82 @@ export const forEachOnErrorSchema = z.union([
 
 export const FOREACH_MAX_CONCURRENCY = 32;
 
-// A step list nested in a foreach: any step but another foreach. A nested foreach is accepted by the shape only
+// KAN-1859 (ADR-0045): `branch` runs one of several nested step lists, and `stop` ends the run early. Both are
+// version 1.1 only, and both nest: an arm is a list of any steps, branches and loops included. The types are
+// written by hand because the schema is recursive. The shape only says what an arm may hold; the cross-field
+// check in the spec's superRefine says what it must (not empty, no unreachable step, unique names, ...).
+export type BaseStep = z.infer<(typeof baseWorkflowSteps)[number]>;
+type ForEachOnErrorValue = z.infer<typeof forEachOnErrorSchema>;
+
+export interface StopStep {
+  step: string;
+  stop: { reason?: string; status?: "completed" | "skipped" };
+}
+export interface BranchIf {
+  if: string;
+  then: WorkflowStep[];
+  else?: WorkflowStep[];
+}
+export interface BranchSwitch {
+  switch: string;
+  cases: Record<string, WorkflowStep[]>;
+  default?: WorkflowStep[];
+}
+export interface BranchStep {
+  step: string;
+  branch: BranchIf | BranchSwitch;
+}
+export interface ForEachStep {
+  step: string;
+  foreach: {
+    items: string;
+    as: string;
+    concurrency?: number;
+    on_error?: ForEachOnErrorValue;
+    steps: BodyStep[];
+  };
+}
+// A step in a foreach body: any step but another foreach. A nested foreach is accepted by the shape only
 // (as `{ step, foreach }`) so the cross-field check can say it is not supported yet, at its own line.
+export type BodyStep = BaseStep | { step: string; foreach: unknown } | BranchStep | StopStep;
+export type WorkflowStep = BaseStep | ForEachStep | BranchStep | StopStep;
+
 const nestedForEachShape = z.object({ step: z.string().min(1), foreach: z.unknown() });
 
-export const bodyStepSchema = z.union([...baseWorkflowSteps, nestedForEachShape]);
+const stepList = z.array(z.lazy((): z.ZodType<WorkflowStep> => workflowStepSchema));
 
-export const forEachStepSchema = z.object({
+export const stopStepSchema: z.ZodType<StopStep> = z.object({
+  step: z.string().min(1),
+  stop: z
+    .object({
+      reason: z.string().min(1).optional(),
+      status: z.enum(["completed", "skipped"]).optional(),
+    })
+    .strict(),
+});
+
+export const branchStepSchema: z.ZodType<BranchStep> = z.object({
+  step: z.string().min(1),
+  branch: z.union([
+    z.object({ if: z.string().min(1), then: stepList, else: stepList.optional() }).strict(),
+    z
+      .object({
+        switch: z.string().min(1),
+        cases: z.record(z.string(), stepList),
+        default: stepList.optional(),
+      })
+      .strict(),
+  ]),
+});
+
+export const bodyStepSchema: z.ZodType<BodyStep> = z.union([
+  ...baseWorkflowSteps,
+  nestedForEachShape,
+  branchStepSchema,
+  stopStepSchema,
+]);
+
+export const forEachStepSchema: z.ZodType<ForEachStep> = z.object({
   step: z.string().min(1),
   foreach: z
     .object({
@@ -320,7 +389,12 @@ export const forEachStepSchema = z.object({
     .strict(),
 });
 
-export const workflowStepSchema = z.union([...baseWorkflowSteps, forEachStepSchema]);
+export const workflowStepSchema: z.ZodType<WorkflowStep> = z.union([
+  ...baseWorkflowSteps,
+  forEachStepSchema,
+  branchStepSchema,
+  stopStepSchema,
+]);
 
 // KAN-1431 (ADR-0021/ADR-0022): how a workflow starts. `webhook` is the only
 // kind today (an HTTP POST starts a run, its body becomes the input, driven by
@@ -465,18 +539,94 @@ export const agentSpecSchema = z
     });
     const toolNeedsApproval = (name: string) =>
       (spec.agent.tools ?? []).some((t) => t.name === name && t.requires_approval === true);
-    const checkForEach = (
-      step: Extract<WorkflowStep, { foreach: unknown }>,
+    const bad = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: "custom", message, path });
+    type AnyStep = WorkflowStep | BodyStep;
+    interface LoopCtx {
+      as: string;
+    }
+    // The arms of a branch, each with its path under the branch step and its step list.
+    const armsOf = (step: BranchStep): { path: (string | number)[]; list: WorkflowStep[] }[] => {
+      const b = step.branch;
+      if ("if" in b) {
+        return [
+          { path: ["branch", "then"], list: b.then },
+          ...(b.else !== undefined ? [{ path: ["branch", "else"], list: b.else }] : []),
+        ];
+      }
+      return [
+        ...Object.entries(b.cases).map(([key, list]) => ({
+          path: ["branch", "cases", key] as (string | number)[],
+          list,
+        })),
+        ...(b.default !== undefined ? [{ path: ["branch", "default"], list: b.default }] : []),
+      ];
+    };
+    // Every step name in a list, arms included (a foreach body has its own scope and is not entered).
+    const collectNames = (
+      list: readonly AnyStep[],
       at: (string | number)[],
+      nested: boolean,
+      out: { name: string; path: (string | number)[]; nested: boolean }[],
     ): void => {
+      list.forEach((s, i) => {
+        const p = [...at, i];
+        out.push({ name: s.step, path: [...p, "step"], nested });
+        if ("branch" in s) {
+          for (const arm of armsOf(s)) collectNames(arm.list, [...p, ...arm.path], true, out);
+        }
+      });
+    };
+    const workflowNames = new Set<string>();
+    {
+      const all: { name: string; path: (string | number)[]; nested: boolean }[] = [];
+      collectNames(spec.agent.workflow, ["agent", "workflow"], false, all);
+      const first = new Map<string, boolean>();
+      for (const n of all) {
+        workflowNames.add(n.name);
+        // A repeated top-level name is left to the run; one that involves a branch is an error, since the
+        // names of the steps in the arm that ran are visible to everything after the branch.
+        if (first.has(n.name) && (n.nested || first.get(n.name))) {
+          bad(
+            `duplicate step name "${n.name}": a step name is used once per workflow, including the steps inside branches (a later step reads a step's output by its name)`,
+            n.path,
+          );
+        }
+        first.set(n.name, (first.get(n.name) ?? false) || n.nested);
+      }
+    }
+    // Does running this step always end the run (or, in a foreach body, the item)? A stop does, and so does a
+    // branch in which every arm does (it needs a final else / default to cover the rest).
+    const endsRun = (step: AnyStep): boolean => {
+      if ("stop" in step) return true;
+      if (!("branch" in step)) return false;
+      const b = step.branch;
+      const covered = "if" in b ? b.else !== undefined : b.default !== undefined;
+      return covered && armsOf(step).every((arm) => arm.list.some(endsRun));
+    };
+    const checkBranch = (step: BranchStep, at: (string | number)[], loop: LoopCtx | undefined) => {
+      if (spec.version !== "1.1") bad('branch needs version "1.1"', [...at, "branch"]);
+      const b = step.branch;
+      if ("switch" in b && Object.keys(b.cases).length === 0) {
+        bad("cases needs at least one case", [...at, "branch", "cases"]);
+      }
+      for (const arm of armsOf(step)) {
+        if (arm.list.length === 0) {
+          bad(
+            `an empty branch: "${String(arm.path[arm.path.length - 1])}" needs at least one step (leave out else / default for nothing to do)`,
+            [...at, ...arm.path],
+          );
+        }
+        checkList(arm.list, [...at, ...arm.path], loop);
+      }
+    };
+    const checkForEach = (step: ForEachStep, at: (string | number)[]): void => {
       const loop = step.foreach;
-      const bad = (message: string, path: (string | number)[]) =>
-        ctx.addIssue({ code: "custom", message, path });
       if (spec.version !== "1.1") bad('foreach needs version "1.1"', [...at, "foreach"]);
       const policy = loop.on_error;
       if (policy === "goto" || (typeof policy === "object" && "goto" in policy)) {
         bad(
-          "on_error: goto is not yet supported (it needs conditional branching, KAN-1859): use fail, continue or retry",
+          "on_error: goto is not supported (a branch step inside the body can choose what to do instead): use fail, continue or retry",
           [...at, "foreach", "on_error"],
         );
       }
@@ -485,77 +635,107 @@ export const agentSpecSchema = z
           `"${loop.as}" is not a valid name for the loop variable: use letters, digits and underscores, not starting with a digit`,
           [...at, "foreach", "as"],
         );
-      } else if (
-        ["trigger", "input", "vars"].includes(loop.as) ||
-        spec.agent.workflow.some((s) => s.step === loop.as)
-      ) {
+      } else if (["trigger", "input", "vars"].includes(loop.as) || workflowNames.has(loop.as)) {
         bad(
           `"${loop.as}" cannot be used as the loop variable: it is a reserved name or the name of a workflow step, and would hide it`,
           [...at, "foreach", "as"],
         );
       }
+      const bodyNames: { name: string; path: (string | number)[]; nested: boolean }[] = [];
+      collectNames(loop.steps, [...at, "foreach", "steps"], false, bodyNames);
       const seen = new Set<string>();
-      loop.steps.forEach((inner, j) => {
-        const innerAt = [...at, "foreach", "steps", j];
-        if (seen.has(inner.step)) {
-          bad(`duplicate step name "${inner.step}" in this foreach`, [...innerAt, "step"]);
-        }
-        seen.add(inner.step);
+      for (const n of bodyNames) {
+        if (seen.has(n.name)) bad(`duplicate step name "${n.name}" in this foreach`, n.path);
+        seen.add(n.name);
         if (
-          inner.step === loop.as ||
-          ["trigger", "input", "vars"].includes(inner.step) ||
-          spec.agent.workflow.some((s) => s.step === inner.step)
+          n.name === loop.as ||
+          ["trigger", "input", "vars"].includes(n.name) ||
+          workflowNames.has(n.name)
         ) {
           bad(
-            `"${inner.step}" cannot be used as a step name inside a foreach: it is the loop variable, a reserved name or a step of the workflow`,
+            `"${n.name}" cannot be used as a step name inside a foreach: it is the loop variable, a reserved name or a step of the workflow`,
+            n.path,
+          );
+        }
+      }
+      checkList(loop.steps, [...at, "foreach", "steps"], { as: loop.as });
+    };
+    // One step list (the workflow, an arm, or a foreach body). `loop` is set inside a foreach body.
+    const checkList = (
+      list: readonly AnyStep[],
+      listAt: (string | number)[],
+      loop: LoopCtx | undefined,
+    ): void => {
+      let endedBy: string | undefined;
+      list.forEach((inner, j) => {
+        const innerAt = [...listAt, j];
+        if (endedBy !== undefined) {
+          bad(
+            `unreachable step "${inner.step}": the run always ends at "${endedBy}" before it${loop ? " (for that item)" : ""}`,
             [...innerAt, "step"],
           );
+        } else if (endsRun(inner)) {
+          endedBy = inner.step;
         }
-        if ("foreach" in inner) {
-          bad("a foreach inside a foreach is not supported yet", [...innerAt, "foreach"]);
+        if ("stop" in inner) {
+          if (spec.version !== "1.1") bad('stop needs version "1.1"', [...innerAt, "stop"]);
           return;
         }
-        if ("type" in inner && inner.type === "approval") {
-          bad(
-            "an approval step is not supported inside a foreach body yet (a loop cannot pause for a person; ADR-0043)",
-            [...innerAt, "type"],
-          );
-        } else if ("type" in inner && inner.type === "tool" && toolNeedsApproval(inner.tool)) {
-          bad(
-            `tool "${inner.tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
-            [...innerAt, "tool"],
-          );
-        } else if ("type" in inner && inner.type === "condition") {
-          for (const field of ["then", "else"] as const) {
-            const branch = inner[field];
-            const tool = /^execute_tool\(([A-Za-z0-9_]+)\)$/.exec(branch)?.[1];
-            if (branch === "request_human_approval") {
-              bad(
-                "approval (request_human_approval) is not supported inside a foreach body yet (ADR-0043)",
-                [...innerAt, field],
-              );
-            } else if (tool !== undefined && toolNeedsApproval(tool)) {
-              bad(
-                `tool "${tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
-                [...innerAt, field],
-              );
-            }
+        if ("branch" in inner) {
+          checkBranch(inner, innerAt, loop);
+          return;
+        }
+        if ("foreach" in inner) {
+          if (loop) {
+            bad("a foreach inside a foreach is not supported yet", [...innerAt, "foreach"]);
+          } else {
+            checkForEach(inner as ForEachStep, innerAt);
           }
-        } else if (
-          "confidence_gate" in inner &&
-          inner.confidence_gate &&
-          spec.agent.guardrails?.confidence_threshold !== undefined
-        ) {
-          bad(
-            "a confidence_gate step is not supported inside a foreach body while guardrails.confidence_threshold is set (a breach pauses for a person; ADR-0043)",
-            [...innerAt, "confidence_gate"],
-          );
+          return;
+        }
+        if (loop) {
+          if ("type" in inner && inner.type === "approval") {
+            bad(
+              "an approval step is not supported inside a foreach body yet (a loop cannot pause for a person; ADR-0043)",
+              [...innerAt, "type"],
+            );
+          } else if ("type" in inner && inner.type === "tool" && toolNeedsApproval(inner.tool)) {
+            bad(
+              `tool "${inner.tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
+              [...innerAt, "tool"],
+            );
+          } else if ("type" in inner && inner.type === "condition") {
+            for (const field of ["then", "else"] as const) {
+              const branch = inner[field];
+              const tool = /^execute_tool\(([A-Za-z0-9_]+)\)$/.exec(branch)?.[1];
+              if (branch === "request_human_approval") {
+                bad(
+                  "approval (request_human_approval) is not supported inside a foreach body yet (ADR-0043)",
+                  [...innerAt, field],
+                );
+              } else if (tool !== undefined && toolNeedsApproval(tool)) {
+                bad(
+                  `tool "${tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
+                  [...innerAt, field],
+                );
+              }
+            }
+          } else if (
+            "confidence_gate" in inner &&
+            inner.confidence_gate &&
+            spec.agent.guardrails?.confidence_threshold !== undefined
+          ) {
+            bad(
+              "a confidence_gate step is not supported inside a foreach body while guardrails.confidence_threshold is set (a breach pauses for a person; ADR-0043)",
+              [...innerAt, "confidence_gate"],
+            );
+          }
         }
         checkStep(inner, innerAt);
       });
     };
-    const checkStep = (step: BodyStep, stepAt: (string | number)[]): void => {
-      if ("foreach" in step) return;
+    const checkStep = (step: BodyStep | WorkflowStep, stepAt: (string | number)[]): void => {
+      if ("foreach" in step || "branch" in step || "stop" in step) return;
       if (
         "type" in step &&
         (step.type === "transform" || step.type === "validate" || step.type === "dedupe")
@@ -590,7 +770,7 @@ export const agentSpecSchema = z
             ctx.addIssue({
               code: "custom",
               message:
-                "on_fail: branch is not yet supported (it needs conditional branching, KAN-1859): use fail or skip",
+                "on_fail: branch is not supported (use a branch step with the negated assertion and a stop instead, ADR-0045): use fail or skip",
               path: [...at, "on_fail"],
             });
           }
@@ -671,14 +851,7 @@ export const agentSpecSchema = z
         }
       }
     };
-    spec.agent.workflow.forEach((step, i) => {
-      const at = ["agent", "workflow", i];
-      if (!("foreach" in step)) {
-        checkStep(step, at);
-        return;
-      }
-      checkForEach(step, at);
-    });
+    checkList(spec.agent.workflow, ["agent", "workflow"], undefined);
     (spec.agent.knowledge_base ?? []).forEach((item, i) => {
       if (item.mode === undefined) return;
       const at = ["agent", "knowledge_base", i];
@@ -767,9 +940,6 @@ export type WebhookTrigger = z.infer<typeof webhookTriggerSchema>;
 export type ScheduleTrigger = z.infer<typeof scheduleTriggerSchema>;
 export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
 export type Tool = z.infer<typeof toolSchema>;
-export type WorkflowStep = z.infer<typeof workflowStepSchema>;
-export type BodyStep = z.infer<typeof bodyStepSchema>;
-export type ForEachStep = Extract<WorkflowStep, { foreach: unknown }>;
 export type ForEachOnError = z.infer<typeof forEachOnErrorSchema>;
 export type Guardrails = z.infer<typeof guardrailsSchema>;
 export type FallbackAction = z.infer<typeof fallbackActionSchema>;

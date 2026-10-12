@@ -104,7 +104,7 @@ way to repeat some of them for each element of a list.
 
 ## Not in this card
 
-- `goto` (KAN-1859), a foreach in a foreach, and approvals inside a body.
+- `goto` (not built: a `branch` inside the body covers it, ADR-0045), a foreach in a foreach, and approvals inside a body.
 - Nested steps as their own canvas nodes with in-place editing, and a canvas form for non-tool body steps.
 - A loop index variable (`<as>_index`); an expression can use `$count` and the position in a list it already has.
 - The hosted server still refuses 1.1 specs (ADR-0027), so loops run locally and in exports only.

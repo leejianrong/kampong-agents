@@ -93,7 +93,27 @@ export interface WorkflowForEachStepFormInput {
   body: string;
 }
 
+// KAN-1859 (version 1.1): an if/else branch whose arms are lists of tool steps, one per line as `step: tool` (or
+// just `tool`), and an early stop. Switch branches and every other kind of nested step are written in the YAML.
+export interface WorkflowBranchStepFormInput {
+  kind: "branch";
+  step: string;
+  if: string;
+  then: string;
+  /** Optional: blank means nothing happens when the condition is false. */
+  else?: string;
+}
+
+export interface WorkflowStopStepFormInput {
+  kind: "stop";
+  step: string;
+  reason?: string;
+  status?: "completed" | "skipped";
+}
+
 export type WorkflowStepFormInput =
+  | WorkflowBranchStepFormInput
+  | WorkflowStopStepFormInput
   | WorkflowForEachStepFormInput
   | WorkflowActionStepFormInput
   | WorkflowConditionStepFormInput
@@ -148,7 +168,32 @@ export interface WorkflowStepFormResult {
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
   let candidate: unknown;
-  if (input.kind === "foreach") {
+  if (input.kind === "branch") {
+    const then = parseBodyLines(input.then);
+    if (then.errors.length > 0) {
+      return {
+        success: false,
+        errors: then.errors.map((e) => e.replace("body step", "then step")),
+      };
+    }
+    const other = input.else?.trim() ? parseBodyLines(input.else) : undefined;
+    candidate = {
+      step: input.step,
+      branch: {
+        if: input.if,
+        then: then.steps,
+        ...(other && { else: other.steps }),
+      },
+    };
+  } else if (input.kind === "stop") {
+    candidate = {
+      step: input.step,
+      stop: {
+        ...(input.reason && { reason: input.reason }),
+        ...(input.status && { status: input.status }),
+      },
+    };
+  } else if (input.kind === "foreach") {
     const { steps, errors } = parseBodyLines(input.body);
     if (errors.length > 0) return { success: false, errors };
     const onError =

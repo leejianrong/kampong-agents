@@ -136,8 +136,8 @@ describe("validate", () => {
       ),
     );
     expect(errors).toHaveLength(1);
-    expect(errors[0]!.message).toMatch(/on_fail: branch is not yet supported/);
-    expect(errors[0]!.message).toMatch(/KAN-1859/);
+    expect(errors[0]!.message).toMatch(/on_fail: branch is not supported/);
+    expect(errors[0]!.message).toMatch(/ADR-0045/);
     expect(errors[0]!.line).toBe(13);
   });
 

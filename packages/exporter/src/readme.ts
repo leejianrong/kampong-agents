@@ -89,8 +89,8 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
       : [];
 
   // KAN-1860: a `dedupe` step remembers its keys in a SQLite file, so say where and that it must persist.
-  // (A dedupe step may also sit inside a foreach body, KAN-1858.)
-  const allSteps = spec.agent.workflow.flatMap((s) => ("foreach" in s ? s.foreach.steps : [s]));
+  // (A dedupe step may also sit inside a foreach body, KAN-1858, or a branch arm, KAN-1859.)
+  const allSteps = flattenSteps(spec.agent.workflow);
   const dedupeSection = allSteps.some((s) => "type" in s && s.type === "dedupe")
     ? [
         "## Dedupe state",
@@ -105,7 +105,7 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
 
   // KAN-1854: the webhook server keeps a paused run's record in the same SQLite file, so say so.
   const hasApprovalGate =
-    spec.agent.workflow.some(
+    allSteps.some(
       (s) =>
         ("type" in s && s.type === "approval") ||
         ("type" in s &&
@@ -228,4 +228,20 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     "a standalone run).",
     "",
   ].join("\n");
+}
+
+type AnyStep = AgentSpec["agent"]["workflow"][number];
+
+/** Every step of a workflow, the ones inside foreach bodies and branch arms included (KAN-1858, KAN-1859). */
+function flattenSteps(steps: readonly AnyStep[]): AnyStep[] {
+  return steps.flatMap((s): AnyStep[] => {
+    if ("foreach" in s) return [s, ...flattenSteps(s.foreach.steps as AnyStep[])];
+    if ("branch" in s) {
+      const b = s.branch;
+      const arms =
+        "if" in b ? [b.then, b.else ?? []] : [...Object.values(b.cases), b.default ?? []];
+      return [s, ...arms.flatMap((arm) => flattenSteps(arm))];
+    }
+    return [s];
+  });
 }
