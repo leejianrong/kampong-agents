@@ -34,6 +34,7 @@ import {
 import { runDoctor, type ConnectFn } from "./doctor.js";
 import { createDevServer } from "./server.js";
 import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
+import { collectServeJobs, startServeRunners } from "./serve-runner.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
 // 1110). `packages/cli/src/index.ts` stays a pure library barrel (imported
@@ -513,22 +514,35 @@ async function runServeCommand(
   const served = parseSpec(readFileSync(resolvedSpecPath, "utf8"));
   if (served.spec) reportSpecWarnings(served.spec, "serve", io);
 
+  // Recurring jobs (schedule/poll triggers, KAN-1856/1857) run under the unattended runner. There are
+  // none yet, so this is a no-op; once there are, repeated failures stop the service with a non-zero exit.
+  const runners = startServeRunners(served.spec ? collectServeJobs(served.spec) : [], {
+    log: (line) => io.stderr(line),
+  });
+
   io.stdout(`kampong serve running at http://${host}:${port}`);
   io.stdout(`  spec:    ${resolvedSpecPath}`);
   io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
   io.stdout("Press Ctrl+C to stop.");
 
   return new Promise<number>((resolvePromise) => {
-    const shutdown = (): void => {
-      app
-        .close()
+    const shutdown = (code: number): void => {
+      void runners
+        .stop()
         .catch(() => {
           /* best-effort shutdown */
         })
-        .finally(() => resolvePromise(EXIT_SUCCESS));
+        .then(() => app.close())
+        .catch(() => {
+          /* best-effort shutdown */
+        })
+        .finally(() => resolvePromise(code));
     };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", () => shutdown(EXIT_SUCCESS));
+    process.once("SIGTERM", () => shutdown(EXIT_SUCCESS));
+    void runners.done.then(({ failed }) => {
+      if (failed) shutdown(EXIT_EXECUTION_FAILURE);
+    });
   });
 }
 
