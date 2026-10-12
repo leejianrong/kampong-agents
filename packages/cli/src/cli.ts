@@ -870,6 +870,8 @@ async function runRunCommand(
       fetchImpl,
       moduleFixtures,
       model: testOptions.model,
+      // A `dedupe` step remembers its keys next to the spec, so a second `kampong run` sees the first.
+      statePath: join(dirname(specPath), ".kampong", "state.db"),
       components: componentDispatcherFor(specPath),
       timeoutMs,
       vars,
@@ -917,11 +919,16 @@ async function runRunCommand(
           success: true,
           status: state.status,
           output: state.finalOutput,
+          ...(state.skipped && { skipped: state.skipped }),
           trace: state.trace,
         }),
       );
     } else {
-      io.stdout("Run completed.");
+      io.stdout(
+        state.skipped
+          ? `Run completed early: step "${state.skipped.step}" skipped the rest (${state.skipped.reason}).`
+          : "Run completed.",
+      );
       io.stdout(JSON.stringify(state.finalOutput, null, 2));
     }
     return EXIT_SUCCESS;

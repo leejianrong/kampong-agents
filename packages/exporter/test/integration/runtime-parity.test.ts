@@ -72,6 +72,8 @@ const VENDORED_FROM_ENGINE = [
   // KAN-1856: schedule trigger parsing/next-tick computation and its overlap pacing.
   "schedule.ts",
   "schedule-runner.ts",
+  // KAN-1860: the default store a `dedupe` step opens lazily (node:sqlite, no dependency to pin).
+  "sqlite-state-store.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

@@ -13,7 +13,9 @@ import { buildWorkflowStepFromForm, type WorkflowStep } from "@kampong/spec";
 // steps today (no edit-in-place affordance anywhere on the canvas), so this
 // stays create-only to match that scope.
 
-type StepKind = "action" | "tool" | "approval" | "condition";
+// transform, validate and dedupe (KAN-1860) are version 1.1 steps: the spec's own check, not this form, says
+// so if the spec is still 1.0. Their expression fields are plain text, as the condition's `if` is.
+type StepKind = "action" | "tool" | "approval" | "condition" | "transform" | "validate" | "dedupe";
 
 export interface WorkflowStepFormProps {
   onSubmit: (step: WorkflowStep) => void;
@@ -34,12 +36,30 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   const [temperature, setTemperature] = useState("");
   const [tool, setTool] = useState("");
   const [message, setMessage] = useState("");
+  const [setLines, setSetLines] = useState("");
+  const [assertion, setAssertion] = useState("");
+  const [onFail, setOnFail] = useState<"fail" | "skip">("fail");
+  const [failMessage, setFailMessage] = useState("");
+  const [dedupeKey, setDedupeKey] = useState("");
+  const [dedupeTtl, setDedupeTtl] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     let result;
-    if (kind === "condition") {
+    if (kind === "transform") {
+      result = buildWorkflowStepFromForm({ kind: "transform", step, set: setLines });
+    } else if (kind === "validate") {
+      result = buildWorkflowStepFromForm({
+        kind: "validate",
+        step,
+        assert: assertion,
+        onFail,
+        message: failMessage.trim(),
+      });
+    } else if (kind === "dedupe") {
+      result = buildWorkflowStepFromForm({ kind: "dedupe", step, key: dedupeKey, ttl: dedupeTtl });
+    } else if (kind === "condition") {
       result = buildWorkflowStepFromForm({
         kind: "condition",
         step,
@@ -86,6 +106,9 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               ["tool", "Tool"],
               ["approval", "Approval"],
               ["condition", "Condition"],
+              ["transform", "Transform"],
+              ["validate", "Validate"],
+              ["dedupe", "Dedupe"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -216,6 +239,74 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               className="md3-text-field"
               value={elseTarget}
               onChange={(e) => setElseTarget(e.target.value)}
+            />
+          </label>
+        </>
+      )}
+
+      {kind === "transform" && (
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">
+            Values (one per line, name: expression)
+          </span>
+          <textarea
+            className="md3-text-field"
+            value={setLines}
+            onChange={(e) => setSetLines(e.target.value)}
+          />
+        </label>
+      )}
+
+      {kind === "validate" && (
+        <>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Assert (expression that must be true)
+            </span>
+            <input
+              className="md3-text-field"
+              value={assertion}
+              onChange={(e) => setAssertion(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">On fail</span>
+            <select
+              className="md3-text-field"
+              value={onFail}
+              onChange={(e) => setOnFail(e.target.value as "fail" | "skip")}
+            >
+              <option value="fail">fail</option>
+              <option value="skip">skip</option>
+            </select>
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Message (optional)</span>
+            <input
+              className="md3-text-field"
+              value={failMessage}
+              onChange={(e) => setFailMessage(e.target.value)}
+            />
+          </label>
+        </>
+      )}
+
+      {kind === "dedupe" && (
+        <>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Key (expression)</span>
+            <input
+              className="md3-text-field"
+              value={dedupeKey}
+              onChange={(e) => setDedupeKey(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Remember for (e.g. 24h, 7d)</span>
+            <input
+              className="md3-text-field"
+              value={dedupeTtl}
+              onChange={(e) => setDedupeTtl(e.target.value)}
             />
           </label>
         </>

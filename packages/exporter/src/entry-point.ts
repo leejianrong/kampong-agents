@@ -241,8 +241,19 @@ async function main(): Promise<void> {
   if (state.status === "completed") {
     emitResult(
       json,
-      { success: true, status: state.status, output: state.finalOutput, trace: state.trace },
-      ["Run completed.", JSON.stringify(state.finalOutput, null, 2)],
+      {
+        success: true,
+        status: state.status,
+        output: state.finalOutput,
+        ...(state.skipped && { skipped: state.skipped }),
+        trace: state.trace,
+      },
+      [
+        state.skipped
+          ? \`Run completed early: step "\${state.skipped.step}" skipped the rest (\${state.skipped.reason}).\`
+          : "Run completed.",
+        JSON.stringify(state.finalOutput, null, 2),
+      ],
       "stdout",
     );
     return;

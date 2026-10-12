@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentSpec } from "@kampong/spec";
 import { createMastraModelClient, type ModelClient } from "./model.js";
+import type { StateStore } from "./state-store.js";
 import { runWorkflow, type ApprovalDecision, type EngineDeps, type RunEvent } from "./workflow.js";
 
 // The front-end-agnostic run controller (PLAN.md Shape S3, SLICES.md V2
@@ -34,6 +35,8 @@ export interface RunState {
   trace: StepRecord[];
   pendingApproval?: PendingApproval;
   finalOutput?: Record<string, unknown>;
+  /** Set on a completed run that a `validate` (on_fail: skip) or `dedupe` step ended early (KAN-1860). */
+  skipped?: { step: string; reason: string };
   error?: string;
 }
 
@@ -137,6 +140,7 @@ export class AgentRun extends EventEmitter {
           ...this.state,
           status: "completed",
           finalOutput: event.output,
+          ...(event.skipped && { skipped: event.skipped }),
           pendingApproval: undefined,
         };
         break;
@@ -202,6 +206,13 @@ export interface CreateAgentRunOptions {
   vars?: EngineDeps["vars"];
   /** Overrides the expression evaluator's limits. */
   expressionLimits?: EngineDeps["expressionLimits"];
+  /** The store `dedupe` steps use (KAN-1860). The caller owns it. Wins over `statePath`. */
+  state?: EngineDeps["state"];
+  /**
+   * Where the default SQLite store lives, when the spec has a `dedupe` step and no `state` is given.
+   * Defaults to `.kampong/state.db` in the working directory. The file is not created for a spec without one.
+   */
+  statePath?: string;
 }
 
 /**
@@ -228,9 +239,24 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     trigger: options.trigger,
     vars: options.vars,
     expressionLimits: options.expressionLimits,
+    ...(options.state
+      ? { state: options.state }
+      : hasDedupeStep(spec)
+        ? { openState: () => openDefaultStateStore(options.statePath) }
+        : {}),
     // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
     // key does (process.env by default), so an exported/deployed app just sets
     // e.g. SLACK_BOT_TOKEN in its environment.
     env: options.env ?? process.env,
   });
+}
+
+const hasDedupeStep = (spec: AgentSpec): boolean =>
+  spec.agent.workflow.some((step) => "type" in step && step.type === "dedupe");
+
+// A dynamic import, so the SQLite module (node:sqlite) is loaded only by a run that has a dedupe step, not
+// by everything that imports the engine.
+async function openDefaultStateStore(path: string | undefined): Promise<StateStore> {
+  const { SqliteStateStore } = await import("./sqlite-state-store.js");
+  return new SqliteStateStore(path === undefined ? {} : { path });
 }

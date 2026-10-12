@@ -3,6 +3,7 @@ import { applyPatch } from "../../src/mutate.js";
 import { parseSpec, toYamlString } from "../../src/parse.js";
 import {
   VALID_FIXTURE,
+  VALID_FIXTURE_DATA_STEPS,
   VALID_FIXTURE_NO_TOOLS,
   VALID_FIXTURE_WITH_CONDITION,
   VALID_FIXTURE_WITH_MODEL,
@@ -22,6 +23,7 @@ describe("AgentSpec round-trip duality", () => {
     ["no tools", VALID_FIXTURE_NO_TOOLS],
     ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
     ["model + explicit timeout_ms (KAN-1185)", VALID_FIXTURE_WITH_TIMEOUT],
+    ["transform, validate and dedupe steps (KAN-1860)", VALID_FIXTURE_DATA_STEPS],
   ])("re-serializes %s byte-for-byte with zero mutations", (_name, source) => {
     const { doc, success } = parseSpec(source);
     expect(success).toBe(true);

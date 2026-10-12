@@ -111,7 +111,22 @@ export function validateSpecExpressions(
       );
     }
     if ("if" in step) check(["agent", "workflow", i, "if"], step.if, `condition "${step.step}"`);
-    scan(step, ["agent", "workflow", i]);
+    // The data steps (KAN-1860) hold whole expressions, not `{{ }}` text, so they are checked as they are.
+    const at = ["agent", "workflow", i];
+    if ("type" in step && step.type === "transform") {
+      for (const [name, source] of Object.entries(step.set)) {
+        check([...at, "set", name], source, `transform "${step.step}" set.${name}`);
+      }
+    } else if ("type" in step && step.type === "validate") {
+      check([...at, "assert"], step.assert, `validate "${step.step}" assert`);
+      if (step.message !== undefined) scan(step.message, [...at, "message"]);
+      return;
+    } else if ("type" in step && step.type === "dedupe") {
+      check([...at, "once", "key"], step.once.key, `dedupe "${step.step}" once.key`);
+      return;
+    }
+    if ("type" in step && step.type === "transform") return;
+    scan(step, at);
   });
   scan(spec.agent.tools, ["agent", "tools"]);
   return errors;

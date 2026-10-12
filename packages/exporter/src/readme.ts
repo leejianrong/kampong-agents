@@ -88,6 +88,19 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
         ]
       : [];
 
+  // KAN-1860: a `dedupe` step remembers its keys in a SQLite file, so say where and that it must persist.
+  const dedupeSection = spec.agent.workflow.some((s) => "type" in s && s.type === "dedupe")
+    ? [
+        "## Dedupe state",
+        "",
+        "The spec has a `dedupe` step. It remembers the keys it has seen in `.kampong/state.db`, created",
+        "in the working directory on first use (Node's built-in `node:sqlite`, no extra dependency).",
+        "Keep that file between runs, and mount `/app/.kampong` as a volume when you run the container,",
+        "or every restart starts with an empty memory and lets duplicates through.",
+        "",
+      ]
+    : [];
+
   return [
     `# ${spec.agent.name}`,
     "",
@@ -179,6 +192,7 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     "",
     ...envSection,
     ...scheduleSection,
+    ...dedupeSection,
     "## Tool calls",
     "",
     "This project always makes live HTTP calls for its tools -- there is no mock/record layer",

@@ -45,7 +45,8 @@ const SPEC: AgentSpec = {
   },
 };
 
-const NODE_BUILTINS = new Set(builtinModules);
+// `node:sqlite` is only importable with the `node:` prefix, so `builtinModules` does not list it (KAN-1860).
+const NODE_BUILTINS = new Set([...builtinModules, "sqlite"]);
 
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];

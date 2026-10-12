@@ -154,3 +154,37 @@ agent:
       then: "execute_tool(lookup)"
       else: "request_human_approval"
 `;
+
+// KAN-1860: transform, validate and dedupe steps (version 1.1).
+export const VALID_FIXTURE_DATA_STEPS = `# Nightly price move report (version 1.1: data steps)
+version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 5
+agent:
+  id: price-report
+  name: "Price Report"
+  role: "Market analyst"
+  goal: "Report large price moves once."
+  workflow:
+    - step: fetch
+      action: fetch_prices
+    - step: seen
+      type: dedupe
+      once:
+        key: "trigger.symbol & '-' & fetch.day"
+        ttl: 24h
+    - step: check
+      type: validate
+      assert: "fetch.open > 0"
+      on_fail: skip
+      message: "open price must be positive"
+    - step: shape
+      type: transform
+      set:
+        change: "(fetch.close - fetch.open) / fetch.open * 100"
+        big: "$abs((fetch.close - fetch.open) / fetch.open * 100) >= vars.threshold"
+        top: "$sort(fetch.items, function($a, $b) { $a.n < $b.n })[[0..1]]"
+        label: "$join(fetch.tags, ', ')"
+`;
