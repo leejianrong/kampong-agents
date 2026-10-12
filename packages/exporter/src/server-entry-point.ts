@@ -46,7 +46,8 @@ export function buildServerEntryPointSource(
 // webhook event drives one run on this shared process, there is no
 // always-on per-workflow worker.
 
-import Fastify from "fastify";
+import Fastify, { type FastifyReply } from "fastify";
+import type { RunState } from "./runtime/run.js";
 import { DEFAULT_SYNC_TIMEOUT_MS, RunManager, syncAnswer } from "./runtime/run-manager.js";${options.components ? '\nimport { components } from "./components.generated.js";' : ""}
 import {
   isApproveAction,
@@ -70,7 +71,13 @@ const app = Fastify({ logger: false });
 // KAN-1432 (ADR-0021 Slice D): headless -- no canvas is ever attached to
 // this server -- so every approval pause here should try to notify Slack
 // when the spec configures a target.
-const runManager = new RunManager({ notifyApprovalsViaSlack: true${options.components ? ", components" : ""} });
+// KAN-1854 (ADR-0042): a pending approval is kept in .kampong/state.db (mount /app/.kampong as a volume in a
+// container), so it can still be resolved by its key after a restart.
+const runManager = new RunManager({
+  notifyApprovalsViaSlack: true,
+  persistApprovals: true,
+  spec: SPEC${options.components ? ",\n  components" : ""},
+});
 
 // Accept any non-JSON content type as a raw string body, so \`curl -d "..."\`
 // (which defaults to urlencoded) and text/plain both work; JSON bodies keep
@@ -79,6 +86,18 @@ app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(
 
 // Request headers a version 1.1 expression reads as \`trigger.headers\`: lowercase names, text values. A header
 // that looks like a credential is not passed, so it cannot end up in a message, a query or a run trace.
+// The answer to resolving an approval: a key with no record is 404, a spec that changed or a record another
+// caller already claimed is 409 (the run did not resume), anything else is the resumed run's state.
+function approvalReply(reply: FastifyReply, id: string, state: RunState) {
+  if (state.errorCode === "approval_not_found") {
+    return reply.code(404).send({ success: false, error: state.error, state });
+  }
+  if (state.errorCode === "spec_changed" || state.errorCode === "already_resolved") {
+    return reply.code(409).send({ success: false, error: state.error, state });
+  }
+  return { success: true, id, state };
+}
+
 const CREDENTIAL_HEADER =
   /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
 
@@ -127,13 +146,43 @@ app.post<{ Params: { id: string }; Body: { approved?: boolean; reason?: string }
       return reply.code(400).send({ success: false, error: "\`approved\` (a boolean) is required." });
     }
     try {
-      const state = await runManager.approve(request.params.id, approved, reason);
-      if (state === undefined) {
+      // The id of a run this process owns, or a persisted approval's key.
+      const resolved = await runManager.resolveApproval(request.params.id, approved, reason);
+      if (resolved === undefined) {
         return reply
           .code(404)
           .send({ success: false, error: \`Unknown run id "\${request.params.id}".\` });
       }
-      return { success: true, state };
+      return approvalReply(reply, resolved.id, resolved.state);
+    } catch (err) {
+      return reply.code(409).send({ success: false, error: (err as Error).message });
+    }
+  },
+);
+
+// GET /approvals -- the approvals waiting in the store, including ones paused by an earlier process.
+app.get("/approvals", async () => ({
+  success: true,
+  approvals: await runManager.listPendingApprovals(),
+}));
+
+// POST /approvals/:key/approve -- resolve a persisted approval by its key (works after a restart).
+// 404: no such key. 409: the spec changed since the pause, or another caller already resolved it.
+app.post<{ Params: { key: string }; Body: { approved?: boolean; reason?: string } }>(
+  "/approvals/:key/approve",
+  async (request, reply) => {
+    const { approved, reason } = request.body ?? {};
+    if (typeof approved !== "boolean") {
+      return reply.code(400).send({ success: false, error: "\`approved\` (a boolean) is required." });
+    }
+    try {
+      const resolved = await runManager.resolveApproval(request.params.key, approved, reason);
+      if (resolved === undefined) {
+        return reply
+          .code(404)
+          .send({ success: false, error: \`No pending approval with key "\${request.params.key}".\` });
+      }
+      return approvalReply(reply, resolved.id, resolved.state);
     } catch (err) {
       return reply.code(409).send({ success: false, error: (err as Error).message });
     }
@@ -201,9 +250,12 @@ app.post("/slack/interactions", async (request, reply) => {
 
   let outcomeText: string;
   try {
-    const state = await runManager.approve(interaction.runId, approved);
+    // \`runId\` is the persisted approval's key, so the button still works after a restart.
+    const resolved = await runManager.resolveApproval(interaction.runId, approved);
+    const failure = resolved?.state.errorCode ? resolved.state.error : undefined;
+    if (failure) throw new Error(failure);
     outcomeText =
-      state === undefined
+      resolved === undefined
         ? \`Run "\${interaction.runId}" not found (it may have already finished).\`
         : approved
           ? \`Approved\${interaction.userName ? \` by \${interaction.userName}\` : ""}.\`

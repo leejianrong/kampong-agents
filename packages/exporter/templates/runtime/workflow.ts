@@ -5,6 +5,7 @@
 // dependency on that package -- ADR-0002). From here on this file is yours: it
 // will not be touched again by a future export.
 //
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { AgentSpec, SchemaNode, Tool, WorkflowStep } from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
@@ -31,6 +32,14 @@ import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js
 import { resolveVars } from "./vars.js";
 import { parseEvery } from "./schedule.js";
 import type { StateStore } from "./state-store.js";
+import {
+  approvalStateKey,
+  DEFAULT_APPROVAL_TTL_MS,
+  specHash,
+  storableTrigger,
+  type ApprovalPhase,
+  type PersistedApproval,
+} from "./pending-approval.js";
 
 // The workflow step-sequencer (PLAN.md Shape S3, SLICES.md V2 KAN-1103/1104/
 // 1105). Deliberately NOT built on Mastra's own `workflows` module: the
@@ -50,6 +59,9 @@ import type { StateStore } from "./state-store.js";
 // for its front end (a browser modal here; CLI stdin, out of scope until
 // V3, would drive the exact same generator).
 
+/** Why resolving a persisted approval by key failed, so a server can answer 404 or 409 without reading prose. */
+export type ApprovalFailureCode = "approval_not_found" | "spec_changed" | "already_resolved";
+
 export interface ApprovalDecision {
   approved: boolean;
   reason?: string;
@@ -67,6 +79,8 @@ export type RunEvent =
       kind: "tool" | "guardrail" | "approval";
       reason: string;
       toolName?: string;
+      // The correlation key of the persisted record (KAN-1854); set only when the run persists approvals.
+      key?: string;
     }
   | {
       type: "completed";
@@ -76,7 +90,7 @@ export type RunEvent =
       skipped?: { step: string; reason: string };
     }
   | { type: "rejected"; step: string; reason: string }
-  | { type: "failed"; step?: string; error: string };
+  | { type: "failed"; step?: string; error: string; code?: ApprovalFailureCode };
 
 /**
  * What started the run, as a webhook delivers it. Expressions in a version 1.1 spec read it as `trigger`
@@ -117,6 +131,22 @@ export interface EngineDeps {
    * The run closes a store it opened itself, when it ends. Ignored when `state` is set.
    */
   openState?: () => Promise<StateStore>;
+  /**
+   * Write a record to the store whenever the run pauses for approval (KAN-1854, ADR-0042), so any process
+   * with the same store can resolve it by key. Needs `state` or `openState`; without one the pause fails
+   * the run visibly rather than pausing in memory only. Off by default.
+   */
+  persistApprovals?: boolean;
+  /** How long a persisted approval stays resolvable. Default 7 days. */
+  approvalTtlMs?: number;
+  /** Clock for the record's timestamps; defaults to Date.now. */
+  now?: () => number;
+}
+
+/** Resolve a persisted pending approval by its key, in whatever process holds the store. */
+export interface ResumeRequest {
+  key: string;
+  decision: ApprovalDecision;
 }
 
 export type ComponentTool = Extract<Tool, { action: "component" }>;
@@ -201,11 +231,22 @@ export async function* runWorkflow(
   spec: AgentSpec,
   deps: EngineDeps,
   input: string,
+  resume?: ResumeRequest,
 ): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
   // A store the run opened itself (`openState`) is closed when the run ends, however it ends.
   const state: StateHandle = { store: deps.state, owned: false };
   try {
-    yield* runSteps(spec, deps, input, state);
+    if (resume) {
+      const record = yield* claimPersistedApproval(spec, deps, state, resume);
+      if (!record) return;
+      yield* runSteps(spec, { ...deps, trigger: record.trigger }, record.input, state, {
+        record,
+        decision: resume.decision,
+        used: false,
+      });
+    } else {
+      yield* runSteps(spec, deps, input, state);
+    }
   } finally {
     if (state.owned && state.store) await state.store.close();
   }
@@ -216,13 +257,194 @@ interface StateHandle {
   owned: boolean;
 }
 
+type PauseFn = (
+  event: Omit<Extract<RunEvent, { type: "awaiting_approval" }>, "type" | "key">,
+  phase: ApprovalPhase,
+) => AsyncGenerator<RunEvent, ApprovalDecision | undefined | null, ApprovalDecision | undefined>;
+
+interface ResumeContext {
+  record: PersistedApproval;
+  decision: ApprovalDecision;
+  /** Set once the paused step's gate has taken the stored decision; later gates ask a human again. */
+  used: boolean;
+}
+
+// Runs `fn` against the store. A store the run already holds (a caller's, or one a dedupe step opened) is
+// used as is; otherwise one is opened for just this call and closed after, so a run paused for days does not
+// hold a database handle.
+async function withStore<T>(
+  deps: EngineDeps,
+  state: StateHandle,
+  fn: (store: StateStore) => Promise<T>,
+): Promise<T> {
+  if (state.store) return fn(state.store);
+  if (!deps.openState) {
+    throw new Error(
+      "persisting approvals needs a state store (ADR-0028), but none was provided to this run",
+    );
+  }
+  const store = await deps.openState();
+  try {
+    return await fn(store);
+  } finally {
+    await store.close();
+  }
+}
+
+// Loads the record for `resume.key`, checks it against this spec and claims it. The claim is a delete,
+// which succeeds for exactly one of any number of callers in any process, so a double approve resumes once.
+// A rejection claims the record too and ends the run as rejected without running anything. A spec that
+// differs from the one that paused is refused before the claim, so the record survives for a later retry.
+// Returns the record to continue from, or undefined after yielding the terminal event.
+async function* claimPersistedApproval(
+  spec: AgentSpec,
+  deps: EngineDeps,
+  state: StateHandle,
+  resume: ResumeRequest,
+): AsyncGenerator<RunEvent, PersistedApproval | undefined, ApprovalDecision | undefined> {
+  const storeKey = approvalStateKey(resume.key);
+  const approved = resume.decision.approved;
+  let record: PersistedApproval | undefined;
+  let claimed = false;
+  const currentHash = specHash(spec);
+  try {
+    record = await withStore(deps, state, (store) => store.get<PersistedApproval>(storeKey));
+    if (record && (!approved || record.specHash === currentHash)) {
+      claimed = await withStore(deps, state, (store) => store.delete(storeKey));
+    }
+  } catch (err) {
+    yield {
+      type: "failed",
+      error: `Could not resume approval "${resume.key}": ${(err as Error).message}`,
+    };
+    return undefined;
+  }
+  if (!record) {
+    yield {
+      type: "failed",
+      error: `No pending approval with key "${resume.key}": it was already resolved, or it expired.`,
+      code: "approval_not_found",
+    };
+    return undefined;
+  }
+  if (approved && record.specHash !== currentHash) {
+    yield {
+      type: "failed",
+      step: record.step,
+      error:
+        `The spec changed since approval "${resume.key}" was requested (paused at step "${record.step}" under ` +
+        `spec ${record.specHash.slice(0, 12)}, this spec is ${currentHash.slice(0, 12)}). It was not resumed. ` +
+        `Restore that spec to approve it, or reject it.`,
+      code: "spec_changed",
+    };
+    return undefined;
+  }
+  if (!claimed) {
+    yield {
+      type: "failed",
+      error: `Approval "${resume.key}" was already resolved by another caller.`,
+      code: "already_resolved",
+    };
+    return undefined;
+  }
+  if (!approved) {
+    yield {
+      type: "rejected",
+      step: record.step,
+      reason: resume.decision.reason ?? "Approval was rejected.",
+    };
+    return undefined;
+  }
+  return record;
+}
+
 async function* runSteps(
   spec: AgentSpec,
   deps: EngineDeps,
   input: string,
   state: StateHandle,
+  resume?: ResumeContext,
 ): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
   const stepOutputs: Record<string, unknown> = {};
+  let stepIndex = 0;
+
+  // The one place a run waits for a human. On a resumed run the paused step's gate returns the stored
+  // decision instead of asking again. Otherwise, when the run persists approvals, it writes the record
+  // first, then yields; once the decision is back it claims the record by deleting it, and if that finds
+  // nothing, another process resolved the approval already and this run stops rather than act twice.
+  // Returns null after yielding `failed`.
+  async function* pause(
+    event: Omit<Extract<RunEvent, { type: "awaiting_approval" }>, "type" | "key">,
+    phase: ApprovalPhase,
+  ): AsyncGenerator<RunEvent, ApprovalDecision | undefined | null, ApprovalDecision | undefined> {
+    if (
+      resume &&
+      !resume.used &&
+      resume.record.stepIndex === stepIndex &&
+      resume.record.phase === phase
+    ) {
+      resume.used = true;
+      return resume.decision;
+    }
+    let key: string | undefined;
+    if (deps.persistApprovals) {
+      key = randomUUID();
+      const now = (deps.now ?? Date.now)();
+      const ttlMs = deps.approvalTtlMs ?? DEFAULT_APPROVAL_TTL_MS;
+      const record: PersistedApproval = {
+        key,
+        specHash: specHash(spec),
+        agentId: spec.agent.id,
+        stepIndex,
+        step: event.step,
+        phase,
+        kind: event.kind,
+        reason: event.reason,
+        ...(event.toolName !== undefined && { toolName: event.toolName }),
+        outputs: stepOutputs,
+        input,
+        ...(deps.trigger && { trigger: storableTrigger(deps.trigger) }),
+        createdAt: now,
+        expiresAt: now + ttlMs,
+      };
+      try {
+        await withStore(deps, state, (store) =>
+          store.put(approvalStateKey(record.key), record, { ttlMs }),
+        );
+      } catch (err) {
+        yield {
+          type: "failed",
+          step: event.step,
+          error: `Could not persist the pending approval: ${(err as Error).message}`,
+        };
+        return null;
+      }
+    }
+    const decision = yield { type: "awaiting_approval", ...event, ...(key && { key }) };
+    if (key) {
+      let claimed: boolean;
+      try {
+        claimed = await withStore(deps, state, (store) => store.delete(approvalStateKey(key)));
+      } catch (err) {
+        yield {
+          type: "failed",
+          step: event.step,
+          error: `Could not claim approval "${key}": ${(err as Error).message}`,
+        };
+        return null;
+      }
+      if (!claimed) {
+        yield {
+          type: "failed",
+          step: event.step,
+          error: `Approval "${key}" was already resolved by another caller, or it expired.`,
+          code: "already_resolved",
+        };
+        return null;
+      }
+    }
+    return decision;
+  }
   const guardrails = spec.agent.guardrails;
 
   // Version 1.1 computes values with expressions over this scope: every earlier step's full output by its
@@ -255,7 +477,30 @@ async function* runSteps(
     }
   }
 
-  for (const step of spec.agent.workflow) {
+  // A resumed run starts with what the paused run had finished, reported as completed steps so a watcher
+  // sees the whole trace, and carries on at the paused step.
+  if (resume) {
+    for (const [name, output] of Object.entries(resume.record.outputs)) {
+      stepOutputs[name] = output;
+      yield { type: "step_completed", step: name, output };
+    }
+  }
+
+  const steps = spec.agent.workflow;
+  for (stepIndex = resume?.record.stepIndex ?? 0; stepIndex < steps.length; stepIndex++) {
+    const step = steps[stepIndex]!;
+
+    // The paused step already ran and its guardrail was approved: do not run it again.
+    if (
+      resume &&
+      !resume.used &&
+      resume.record.stepIndex === stepIndex &&
+      resume.record.phase === "after"
+    ) {
+      resume.used = true;
+      continue;
+    }
+
     yield { type: "step_started", step: step.step };
 
     if (isConditionStep(step)) {
@@ -271,12 +516,15 @@ async function* runSteps(
       }
 
       if (branch === REQUEST_HUMAN_APPROVAL) {
-        const decision = yield {
-          type: "awaiting_approval",
-          step: step.step,
-          kind: "guardrail",
-          reason: `Step "${step.step}" requested human approval.`,
-        };
+        const decision = yield* pause(
+          {
+            step: step.step,
+            kind: "guardrail",
+            reason: `Step "${step.step}" requested human approval.`,
+          },
+          "before",
+        );
+        if (decision === null) return;
         if (!decision?.approved) {
           yield {
             type: "rejected",
@@ -310,6 +558,7 @@ async function* runSteps(
           input,
           deps,
           expressionContext,
+          pause,
         );
         if (!result) return;
         stepOutputs[step.step] = result.output;
@@ -350,6 +599,7 @@ async function* runSteps(
         input,
         deps,
         expressionContext,
+        pause,
       );
       if (!result) return;
       stepOutputs[step.step] = result.output;
@@ -369,12 +619,8 @@ async function* runSteps(
         yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
         return;
       }
-      const decision = yield {
-        type: "awaiting_approval",
-        step: step.step,
-        kind: "approval",
-        reason,
-      };
+      const decision = yield* pause({ step: step.step, kind: "approval", reason }, "before");
+      if (decision === null) return;
       if (!decision?.approved) {
         yield {
           type: "rejected",
@@ -452,12 +698,15 @@ async function* runSteps(
           };
           return;
         }
-        const decision = yield {
-          type: "awaiting_approval",
-          step: step.step,
-          kind: "guardrail",
-          reason: `Confidence ${confidence} at step "${step.step}" is below the guardrail threshold ${guardrails.confidence_threshold}.`,
-        };
+        const decision = yield* pause(
+          {
+            step: step.step,
+            kind: "guardrail",
+            reason: `Confidence ${confidence} at step "${step.step}" is below the guardrail threshold ${guardrails.confidence_threshold}.`,
+          },
+          "after",
+        );
+        if (decision === null) return;
         if (!decision?.approved) {
           yield {
             type: "rejected",
@@ -723,6 +972,7 @@ async function* executeTool(
   input: string,
   deps: EngineDeps,
   expressions: ExpressionContext | undefined,
+  pause: PauseFn,
 ): AsyncGenerator<RunEvent, { output: unknown } | undefined, ApprovalDecision | undefined> {
   const params = buildToolParams(stepOutputs, input);
   // With a component dispatcher configured, the legacy Slack and Gmail kinds run as their first-party
@@ -777,13 +1027,16 @@ async function* executeTool(
   }
 
   if (needsApproval) {
-    const decision = yield {
-      type: "awaiting_approval",
-      step: stepName,
-      kind: "tool",
-      toolName: tool.name,
-      reason: `Tool "${tool.name}" requires approval before it runs.`,
-    };
+    const decision = yield* pause(
+      {
+        step: stepName,
+        kind: "tool",
+        toolName: tool.name,
+        reason: `Tool "${tool.name}" requires approval before it runs.`,
+      },
+      "before",
+    );
+    if (decision === null) return undefined;
     if (!decision?.approved) {
       yield {
         type: "rejected",

@@ -101,6 +101,31 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
       ]
     : [];
 
+  // KAN-1854: the webhook server keeps a paused run's record in the same SQLite file, so say so.
+  const hasApprovalGate =
+    spec.agent.workflow.some(
+      (s) =>
+        ("type" in s && s.type === "approval") ||
+        ("type" in s &&
+          s.type === "condition" &&
+          [s.then, s.else].includes("request_human_approval")),
+    ) ||
+    (spec.agent.tools ?? []).some((t) => t.requires_approval) ||
+    spec.agent.guardrails?.fallback_action === "escalate_to_human";
+  const approvalSection = hasApprovalGate
+    ? [
+        "## Pending approvals",
+        "",
+        "The webhook server writes a record to `.kampong/state.db` whenever a run pauses for approval, so a",
+        "restart does not lose it. `GET /approvals` lists what is waiting; `POST /approvals/<key>/approve` with",
+        '`{ "approved": true }` (or `false`) resumes the run from the paused step, from any process that shares',
+        "that file. A second approve of the same key does nothing (409 or 404). If you change the spec while an",
+        "approval is pending, approving it fails with 409 until you restore the spec. A pending approval",
+        "expires after 7 days. Mount `/app/.kampong` as a volume when you run the container.",
+        "",
+      ]
+    : [];
+
   return [
     `# ${spec.agent.name}`,
     "",
@@ -193,6 +218,7 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     ...envSection,
     ...scheduleSection,
     ...dedupeSection,
+    ...approvalSection,
     "## Tool calls",
     "",
     "This project always makes live HTTP calls for its tools -- there is no mock/record layer",

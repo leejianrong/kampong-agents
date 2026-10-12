@@ -370,6 +370,44 @@ describe("collectRequiredEnvVars with a component tool", () => {
     }
   });
 
+  it("exports persisted pending approvals: vendored record module, key routes, README note (KAN-1854)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-approvals-"));
+    try {
+      const withGate = {
+        ...FULL_SPEC,
+        agent: {
+          ...FULL_SPEC.agent,
+          workflow: [{ step: "review", type: "approval" }],
+        },
+      } as unknown as AgentSpec;
+      const out = join(dir, "out");
+      exportProject(withGate, out);
+      expect(readFileSync(join(out, "src/runtime/pending-approval.ts"), "utf8")).toContain(
+        "specHash",
+      );
+      const server = readFileSync(join(out, "src/server.ts"), "utf8");
+      expect(server).toContain("persistApprovals: true");
+      expect(server).toContain("/approvals/:key/approve");
+      expect(readFileSync(join(out, "README.md"), "utf8")).toContain("## Pending approvals");
+      const plain = join(dir, "plain");
+      exportProject(
+        {
+          ...FULL_SPEC,
+          agent: {
+            ...FULL_SPEC.agent,
+            tools: [],
+            guardrails: undefined,
+            workflow: [{ step: "go", action: "do" }],
+          },
+        } as unknown as AgentSpec,
+        plain,
+      );
+      expect(readFileSync(join(plain, "README.md"), "utf8")).not.toContain("Pending approvals");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("exports a version 1.1 spec, and its entry points pass the vars and the webhook trigger to the evaluator (KAM-111)", () => {
     const dir = mkdtempSync(join(tmpdir(), "kampong-export-1-1-"));
     try {
