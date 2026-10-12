@@ -89,7 +89,9 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
       : [];
 
   // KAN-1860: a `dedupe` step remembers its keys in a SQLite file, so say where and that it must persist.
-  const dedupeSection = spec.agent.workflow.some((s) => "type" in s && s.type === "dedupe")
+  // (A dedupe step may also sit inside a foreach body, KAN-1858.)
+  const allSteps = spec.agent.workflow.flatMap((s) => ("foreach" in s ? s.foreach.steps : [s]));
+  const dedupeSection = allSteps.some((s) => "type" in s && s.type === "dedupe")
     ? [
         "## Dedupe state",
         "",

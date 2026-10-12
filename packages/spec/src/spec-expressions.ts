@@ -6,7 +6,7 @@ import {
   type ExpressionError,
 } from "./expression.js";
 import type { SpecError } from "./parse.js";
-import type { AgentSpec } from "./schema.js";
+import type { AgentSpec, BodyStep } from "./schema.js";
 
 // Checks every expression in a version "1.1" spec when it is parsed (KAN-1840): a condition's `if`, and
 // each `{{ … }}` in a tool or a step. A bad expression is a validation error with the line it is on and
@@ -54,6 +54,7 @@ export function validateSpecExpressions(
     source: string,
     where: string,
     lineInField?: number,
+    local: readonly string[] = [],
   ) => {
     const parsed = parseExpression(source);
     // In a multi-line field the error is placed at the start of the field, so say which line of it.
@@ -75,11 +76,15 @@ export function validateSpecExpressions(
                 : " (there is no vars block)"),
           );
         }
-      } else if (!(ROOTS as readonly string[]).includes(root) && !stepNames.includes(root)) {
+      } else if (
+        !(ROOTS as readonly string[]).includes(root) &&
+        !stepNames.includes(root) &&
+        !local.includes(root)
+      ) {
         report(
           path,
           `${where}${here}: "${root}" is not something an expression can read: use trigger, input, vars, ` +
-            `or the name of a step (${stepNames.join(", ")})` +
+            `or the name of a step (${[...stepNames, ...local].join(", ")})` +
             (oddStepNames.length > 0
               ? `. A step name that is not a plain identifier (${oddStepNames.join(", ")}) must be written in backticks: \`${oddStepNames[0]}\`.field`
               : ""),
@@ -88,46 +93,79 @@ export function validateSpecExpressions(
     }
   };
 
-  const scan = (value: unknown, path: (string | number)[]) => {
+  const scan = (value: unknown, path: (string | number)[], local: readonly string[] = []) => {
     if (typeof value === "string") {
       for (const { expression, offset } of templateExpressions(value)) {
         const lineInField = value.slice(0, offset).split("\n").length;
-        check(path, expression, `{{ ${expression.trim()} }}`, lineInField);
+        check(path, expression, `{{ ${expression.trim()} }}`, lineInField, local);
       }
     } else if (Array.isArray(value)) {
-      value.forEach((v, i) => scan(v, [...path, i]));
+      value.forEach((v, i) => scan(v, [...path, i], local));
     } else if (value && typeof value === "object") {
-      for (const [k, v] of Object.entries(value)) scan(v, [...path, k]);
+      for (const [k, v] of Object.entries(value)) scan(v, [...path, k], local);
     }
   };
 
+  // One step's expressions. `local` is what a foreach body adds to the data: the loop variable and the
+  // body steps that ran before this one (ADR-0043).
+  const checkStep = (step: BodyStep, at: (string | number)[], local: readonly string[] = []) => {
+    if ("foreach" in step) return; // checked by the loop below (or refused as nested)
+    if ("if" in step) check([...at, "if"], step.if, `condition "${step.step}"`, undefined, local);
+    // The data steps (KAN-1860) hold whole expressions, not `{{ }}` text, so they are checked as they are.
+    if ("type" in step && step.type === "transform") {
+      for (const [name, source] of Object.entries(step.set)) {
+        check(
+          [...at, "set", name],
+          source,
+          `transform "${step.step}" set.${name}`,
+          undefined,
+          local,
+        );
+      }
+      return;
+    } else if ("type" in step && step.type === "validate") {
+      check([...at, "assert"], step.assert, `validate "${step.step}" assert`, undefined, local);
+      if (step.message !== undefined) scan(step.message, [...at, "message"], local);
+      return;
+    } else if ("type" in step && step.type === "dedupe") {
+      check(
+        [...at, "once", "key"],
+        step.once.key,
+        `dedupe "${step.step}" once.key`,
+        undefined,
+        local,
+      );
+      return;
+    }
+    scan(step, at, local);
+  };
+
+  // A tool is declared once and may be called from a loop body, where it reads the loop variable and the
+  // body's step outputs, so a tool's templates may name any of them.
+  const loopNames: string[] = [];
   spec.agent.workflow.forEach((step, i) => {
+    const at = ["agent", "workflow", i];
     // An expression reads `trigger`, `input` and `vars` from the root; a step with one of those names would
     // be hidden by it (the engine gives the reserved name precedence).
     if ((ROOTS as readonly string[]).includes(step.step)) {
       report(
-        ["agent", "workflow", i, "step"],
+        [...at, "step"],
         `"${step.step}" is a reserved name in a version "1.1" spec (an expression reads ${ROOTS.join(", ")} from the root): rename the step`,
       );
     }
-    if ("if" in step) check(["agent", "workflow", i, "if"], step.if, `condition "${step.step}"`);
-    // The data steps (KAN-1860) hold whole expressions, not `{{ }}` text, so they are checked as they are.
-    const at = ["agent", "workflow", i];
-    if ("type" in step && step.type === "transform") {
-      for (const [name, source] of Object.entries(step.set)) {
-        check([...at, "set", name], source, `transform "${step.step}" set.${name}`);
-      }
-    } else if ("type" in step && step.type === "validate") {
-      check([...at, "assert"], step.assert, `validate "${step.step}" assert`);
-      if (step.message !== undefined) scan(step.message, [...at, "message"]);
-      return;
-    } else if ("type" in step && step.type === "dedupe") {
-      check([...at, "once", "key"], step.once.key, `dedupe "${step.step}" once.key`);
+    if ("foreach" in step) {
+      // `items` is read where the loop starts, so it cannot see the loop variable or the body's steps.
+      check([...at, "foreach", "items"], step.foreach.items, `foreach "${step.step}" items`);
+      const local: string[] = [step.foreach.as];
+      step.foreach.steps.forEach((inner, j) => {
+        checkStep(inner, [...at, "foreach", "steps", j], local);
+        local.push(inner.step);
+      });
+      loopNames.push(...local);
       return;
     }
-    if ("type" in step && step.type === "transform") return;
-    scan(step, at);
+    checkStep(step, at);
   });
-  scan(spec.agent.tools, ["agent", "tools"]);
+  scan(spec.agent.tools, ["agent", "tools"], loopNames);
   return errors;
 }

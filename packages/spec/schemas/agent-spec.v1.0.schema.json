@@ -710,6 +710,306 @@
                 },
                 "required": ["step", "action"],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "foreach": {
+                    "type": "object",
+                    "properties": {
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "as": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "concurrency": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 32
+                      },
+                      "on_error": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": ["fail", "continue", "goto"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "retry": {
+                                "type": "object",
+                                "properties": {
+                                  "n": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10
+                                  },
+                                  "backoff": {
+                                    "type": "string",
+                                    "enum": ["fixed", "exponential"]
+                                  },
+                                  "base_ms": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "max_delay_ms": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "then": {
+                                    "type": "string",
+                                    "enum": ["fail", "continue"]
+                                  }
+                                },
+                                "required": ["n"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["retry"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "goto": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": ["goto"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "steps": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "condition"
+                                },
+                                "if": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "then": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "else": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["step", "type", "if", "then", "else"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "tool"
+                                },
+                                "tool": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["step", "type", "tool"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "approval"
+                                },
+                                "message": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["step", "type"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "transform"
+                                },
+                                "set": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
+                                }
+                              },
+                              "required": ["step", "type", "set"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "validate"
+                                },
+                                "assert": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "on_fail": {
+                                  "type": "string",
+                                  "enum": ["fail", "skip", "branch"]
+                                },
+                                "message": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": ["step", "type", "assert"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "dedupe"
+                                },
+                                "once": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "ttl": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "required": ["key", "ttl"],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": ["step", "type", "once"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "action": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "inputs": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "query": {
+                                  "type": "string"
+                                },
+                                "confidence_gate": {
+                                  "type": "boolean"
+                                },
+                                "output_schema": {
+                                  "allOf": [
+                                    {
+                                      "$ref": "#/definitions/__schema0"
+                                    }
+                                  ]
+                                },
+                                "instructions": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "temperature": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 2
+                                }
+                              },
+                              "required": ["step", "action"],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "step": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "foreach": {}
+                              },
+                              "required": ["step", "foreach"],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": ["items", "as", "steps"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["step", "foreach"],
+                "additionalProperties": false
               }
             ]
           }

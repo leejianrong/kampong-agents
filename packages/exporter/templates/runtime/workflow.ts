@@ -7,7 +7,14 @@
 //
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { AgentSpec, SchemaNode, Tool, WorkflowStep } from "./spec-types.js";
+import type {
+  AgentSpec,
+  BodyStep,
+  ForEachStep,
+  SchemaNode,
+  Tool,
+  WorkflowStep,
+} from "./spec-types.js";
 import { evaluateCondition } from "./condition.js";
 import { isBelowConfidenceThreshold } from "./guardrail.js";
 import { injectedKnowledge, loadKnowledge, withKnowledge } from "./knowledge.js";
@@ -29,6 +36,7 @@ import {
 } from "./expressions.js";
 import { schemaNodeToZod } from "./output-zod.js";
 import { applySchemaDefaults, validateAgainstSchema } from "./schema-validate.js";
+import { realClock } from "./pacing.js";
 import { resolveVars } from "./vars.js";
 import { parseEvery } from "./schedule.js";
 import type { StateStore } from "./state-store.js";
@@ -664,6 +672,24 @@ async function* runSteps(
       continue;
     }
 
+    // KAN-1858 (ADR-0043): a foreach step runs its nested steps once per item.
+    if (isForEachStep(step)) {
+      const looped = yield* runForEach(step, {
+        spec,
+        deps,
+        state,
+        stepOutputs,
+        input,
+        scope,
+        knowledge,
+        guardrails,
+      });
+      if (!looped) return;
+      stepOutputs[step.step] = looped;
+      yield { type: "step_completed", step: step.step, output: looped };
+      continue;
+    }
+
     let stepResult: { output: unknown; confidence?: number };
     try {
       stepResult = await runActionStep(
@@ -734,6 +760,10 @@ function isApprovalStep(step: WorkflowStep): step is Extract<WorkflowStep, { typ
   return "type" in step && step.type === "approval";
 }
 
+function isForEachStep(step: WorkflowStep): step is ForEachStep {
+  return "foreach" in step;
+}
+
 type DataStep = Extract<WorkflowStep, { type: "transform" | "validate" | "dedupe" }>;
 
 function isDataStep(step: WorkflowStep): step is DataStep {
@@ -753,6 +783,20 @@ function keyText(value: unknown): string {
       ? "dedupe key evaluated to nothing: a name it reads is missing from the data"
       : `dedupe key must be a string, number or boolean, not ${Array.isArray(value) ? "a list" : typeof value}`,
   );
+}
+
+// Opens the store a dedupe step needs, once, and hands the run ownership of it so it is closed at the end.
+async function ensureDedupeStore(deps: EngineDeps, state: StateHandle): Promise<StateStore> {
+  if (!state.store) {
+    if (!deps.openState) {
+      throw new Error(
+        "a dedupe step needs a state store (ADR-0028), but none was provided to this run",
+      );
+    }
+    state.store = await deps.openState();
+    state.owned = true;
+  }
+  return state.store;
 }
 
 async function runDataStep(
@@ -800,18 +844,10 @@ async function runDataStep(
   const key = keyText(await evaluateExpression(step.once.key, data, limits));
   const ttl = parseEvery(step.once.ttl);
   if (!ttl.ok) throw new Error(`ttl: ${ttl.error}`);
-  if (!state.store) {
-    if (!deps.openState) {
-      throw new Error(
-        "a dedupe step needs a state store (ADR-0028), but none was provided to this run",
-      );
-    }
-    state.store = await deps.openState();
-    state.owned = true;
-  }
+  const store = await ensureDedupeStore(deps, state);
   // Scoped to the workflow and the step, so two workflows (or two dedupe steps) sharing a store do not
   // swallow each other's keys. Renaming the step or the agent id starts a fresh set of keys.
-  const first = await state.store.putIfAbsent(
+  const first = await store.putIfAbsent(
     `dedupe:${spec.agent.id}:${step.step}:${key}`,
     { at: Date.now() },
     { ttlMs: ttl.value },
@@ -822,6 +858,291 @@ async function runDataStep(
         output: { duplicate: true, key },
         skip: `duplicate key "${key}" seen within ${step.once.ttl}`,
       };
+}
+
+// ---- foreach (KAN-1858, ADR-0043) ----------------------------------------------------------------------
+
+interface ForEachEnv {
+  spec: AgentSpec;
+  deps: EngineDeps;
+  state: StateHandle;
+  stepOutputs: Record<string, unknown>;
+  input: string;
+  scope: (() => Record<string, unknown>) | undefined;
+  knowledge: string;
+  guardrails: AgentSpec["agent"]["guardrails"];
+}
+
+export interface ForEachOutput {
+  /** One object of body step outputs per item that completed, in item order. */
+  results: Record<string, unknown>[];
+  /** One entry per item that failed and was isolated by `on_error`. */
+  errors: { index: number; item: unknown; step: string; message: string }[];
+  /** One entry per item a `validate` (on_fail: skip) or `dedupe` step ended early. */
+  skipped: { index: number; item: unknown; step: string; reason: string }[];
+  /** How many items the list had. */
+  count: number;
+}
+
+type ItemOutcome =
+  | { kind: "done"; outputs: Record<string, unknown> }
+  | { kind: "skipped"; step: string; reason: string }
+  | { kind: "failed"; step: string; message: string };
+
+const APPROVAL_IN_LOOP =
+  "approval is not supported inside a foreach body yet (a loop cannot pause for a person)";
+
+// Used in place of the run's pause: a body step that wants a human fails its item instead.
+async function* refusePause(
+  event: Omit<Extract<RunEvent, { type: "awaiting_approval" }>, "type" | "key">,
+): AsyncGenerator<RunEvent, null, ApprovalDecision | undefined> {
+  yield { type: "failed", step: event.step, error: APPROVAL_IN_LOOP };
+  return null;
+}
+
+const DEFAULT_RETRY_BASE_MS = 500;
+const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
+
+const describeValue = (value: unknown): string =>
+  value === null
+    ? "null"
+    : Array.isArray(value)
+      ? "a list"
+      : typeof value === "object"
+        ? "an object"
+        : `a ${typeof value}`;
+
+async function* runForEach(
+  step: ForEachStep,
+  env: ForEachEnv,
+): AsyncGenerator<RunEvent, ForEachOutput | undefined, ApprovalDecision | undefined> {
+  const { spec, deps, state, stepOutputs, input, scope, guardrails } = env;
+  const loop = step.foreach;
+  const fail = (error: string): RunEvent => ({ type: "failed", step: step.step, error });
+
+  if (!scope) {
+    yield fail(`Step "${step.step}": foreach needs version "1.1"`);
+    return undefined;
+  }
+  const policy = loop.on_error ?? "fail";
+  if (policy === "goto" || (typeof policy === "object" && "goto" in policy)) {
+    yield fail(
+      `Step "${step.step}": on_error: goto is not yet supported (it needs conditional branching, KAN-1859)`,
+    );
+    return undefined;
+  }
+
+  // The list is evaluated once, before any item runs.
+  let items: unknown[];
+  try {
+    const value = await evaluateExpression(loop.items, scope(), deps.expressionLimits);
+    const source = `[${loop.items.trim().slice(0, 120)}]`;
+    if (value === undefined) {
+      throw new Error(
+        `foreach items evaluated to nothing: a name it reads is missing from the data ${source}`,
+      );
+    }
+    if (!Array.isArray(value)) {
+      throw new Error(
+        `foreach items must evaluate to a list, but it evaluated to ${describeValue(value)}; ` +
+          `to loop over one value, write it as a list ${source}`,
+      );
+    }
+    items = value;
+  } catch (err) {
+    yield fail(
+      err instanceof ExpressionError
+        ? describeFailure(step.step, err)
+        : `Step "${step.step}": ${(err as Error).message}`,
+    );
+    return undefined;
+  }
+
+  // Concurrent items must not race to open the store a dedupe step uses.
+  if (loop.steps.some((s) => "type" in s && s.type === "dedupe")) {
+    try {
+      await ensureDedupeStore(deps, state);
+    } catch (err) {
+      yield fail(`Step "${step.step}": ${(err as Error).message}`);
+      return undefined;
+    }
+  }
+
+  const retry = typeof policy === "object" && "retry" in policy ? policy.retry : undefined;
+  const clock = deps.clock ?? realClock;
+  const outcomes: (ItemOutcome | undefined)[] = new Array<ItemOutcome | undefined>(items.length);
+
+  // Workers push events here; this generator yields them, so events keep one ordered stream.
+  const queue: RunEvent[] = [];
+  let wake: (() => void) | undefined;
+  const emit = (event: RunEvent) => {
+    queue.push(event);
+    wake?.();
+    wake = undefined;
+  };
+
+  const runBodyStep = async (
+    inner: BodyStep,
+    index: number,
+    item: unknown,
+    local: Record<string, unknown>,
+  ): Promise<{ output: unknown; skip?: string }> => {
+    const data = () => ({ ...scope(), [loop.as]: item, ...local });
+    const view = () => ({ ...stepOutputs, [loop.as]: item, ...local });
+    const expressions: ExpressionContext = { scope: data, limits: deps.expressionLimits };
+    if ("foreach" in inner) throw new Error("a foreach inside a foreach is not supported yet");
+    if (isConditionStep(inner)) {
+      const truth = await evaluateExpressionCondition(inner.if, data(), deps.expressionLimits);
+      const branch = truth ? inner.then : inner.else;
+      const toolName = EXECUTE_TOOL_PATTERN.exec(branch)?.[1];
+      if (branch === REQUEST_HUMAN_APPROVAL) throw new Error(APPROVAL_IN_LOOP);
+      if (toolName === undefined) {
+        throw new Error(
+          `condition resolved to an unsupported branch action "${branch}" (expected "execute_tool(<tool_name>)")`,
+        );
+      }
+      return { output: await runLoopTool(toolName, inner.step, view(), expressions) };
+    }
+    if (isToolStep(inner)) {
+      return { output: await runLoopTool(inner.tool, inner.step, view(), expressions) };
+    }
+    if (isApprovalStep(inner)) throw new Error(APPROVAL_IN_LOOP);
+    if (isDataStep(inner)) {
+      const outcome = await runDataStep(inner, spec, data(), deps, state);
+      return { output: outcome.output, ...(outcome.skip !== undefined && { skip: outcome.skip }) };
+    }
+    const result = await runActionStep(
+      inner,
+      spec,
+      deps,
+      view(),
+      input,
+      expressions,
+      env.knowledge,
+    );
+    if (
+      inner.confidence_gate &&
+      guardrails?.confidence_threshold !== undefined &&
+      isBelowConfidenceThreshold(result.confidence ?? 1, guardrails.confidence_threshold)
+    ) {
+      throw new Error(
+        `guardrail breach (confidence ${result.confidence ?? 1} < threshold ${guardrails.confidence_threshold}), and ${APPROVAL_IN_LOOP}`,
+      );
+    }
+    return { output: result.output };
+  };
+
+  const runLoopTool = async (
+    toolName: string,
+    stepName: string,
+    view: Record<string, unknown>,
+    expressions: ExpressionContext,
+  ): Promise<unknown> => {
+    const tool = spec.agent.tools?.find((t) => t.name === toolName);
+    if (!tool) throw new Error(`references unknown tool "${toolName}"`);
+    const gen = executeTool(tool, stepName, view, input, deps, expressions, refusePause);
+    let failure: string | undefined;
+    let next = await gen.next(undefined);
+    while (!next.done) {
+      if (next.value.type === "failed") failure = next.value.error;
+      else if (next.value.type === "rejected") failure = next.value.reason;
+      next = await gen.next(undefined);
+    }
+    if (!next.value) throw new Error(failure ?? `tool "${toolName}" failed`);
+    return next.value.output;
+  };
+
+  // What a retry may repeat: a call that leaves the process. A failed assertion or expression would fail the
+  // same way again.
+  const mayRetry = (inner: BodyStep): boolean =>
+    !("foreach" in inner) && !isDataStep(inner) && !isApprovalStep(inner);
+
+  const runItem = async (index: number): Promise<ItemOutcome> => {
+    const item = items[index];
+    const local: Record<string, unknown> = {};
+    for (const inner of loop.steps) {
+      const name = `${step.step}[${index}].${inner.step}`;
+      emit({ type: "step_started", step: name });
+      let attempt = 0;
+      for (;;) {
+        try {
+          const result = await runBodyStep(inner, index, item, local);
+          local[inner.step] = result.output;
+          emit({ type: "step_completed", step: name, output: result.output });
+          if (result.skip !== undefined) {
+            return { kind: "skipped", step: inner.step, reason: result.skip };
+          }
+          break;
+        } catch (err) {
+          let message =
+            err instanceof ExpressionError
+              ? describeFailure(inner.step, err)
+              : (err as Error).message;
+          if (retry && mayRetry(inner) && attempt < retry.n) {
+            attempt++;
+            const base = retry.base_ms ?? DEFAULT_RETRY_BASE_MS;
+            const delay = retry.backoff === "fixed" ? base : base * 2 ** (attempt - 1);
+            await clock.sleep(Math.min(delay, retry.max_delay_ms ?? DEFAULT_RETRY_MAX_DELAY_MS));
+            continue;
+          }
+          if (retry && attempt > 0) message += ` (after ${attempt} retries)`;
+          return { kind: "failed", step: inner.step, message };
+        }
+      }
+    }
+    return { kind: "done", outputs: local };
+  };
+
+  // After a failure the item is isolated (`continue`, or `retry` with then: continue) or the loop stops.
+  const isolates = policy === "continue" || (retry !== undefined && retry.then === "continue");
+  let aborted = false;
+  let next = 0;
+  const concurrency = Math.min(loop.concurrency ?? 1, Math.max(items.length, 1));
+  let running = concurrency;
+  const worker = async () => {
+    try {
+      while (!aborted) {
+        const index = next++;
+        if (index >= items.length) return;
+        const outcome = await runItem(index).catch((err): ItemOutcome => ({
+          kind: "failed",
+          step: step.step,
+          message: (err as Error).message,
+        }));
+        outcomes[index] = outcome;
+        if (outcome.kind === "failed" && !isolates) aborted = true;
+      }
+    } finally {
+      running--;
+      wake?.();
+      wake = undefined;
+    }
+  };
+  for (let w = 0; w < concurrency; w++) void worker();
+  for (;;) {
+    while (queue.length > 0) yield queue.shift()!;
+    if (running === 0) break;
+    await new Promise<void>((resolve) => (wake = resolve));
+  }
+
+  const out: ForEachOutput = { results: [], errors: [], skipped: [], count: items.length };
+  let firstFailure: { index: number; step: string; message: string } | undefined;
+  outcomes.forEach((outcome, index) => {
+    if (!outcome) return;
+    if (outcome.kind === "done") out.results.push(outcome.outputs);
+    else if (outcome.kind === "skipped") {
+      out.skipped.push({ index, item: items[index], step: outcome.step, reason: outcome.reason });
+    } else if (isolates) {
+      out.errors.push({ index, item: items[index], step: outcome.step, message: outcome.message });
+    } else firstFailure ??= { index, step: outcome.step, message: outcome.message };
+  });
+  if (firstFailure) {
+    yield fail(
+      `Step "${step.step}": item ${firstFailure.index} failed at step "${firstFailure.step}": ${firstFailure.message}`,
+    );
+    return undefined;
+  }
+  return out;
 }
 
 async function runActionStep(
