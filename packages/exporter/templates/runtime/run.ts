@@ -9,7 +9,13 @@ import { EventEmitter } from "node:events";
 import type { AgentSpec } from "./spec-types.js";
 import { createMastraModelClient, type ModelClient } from "./model.js";
 import type { StateStore } from "./state-store.js";
-import { runWorkflow, type ApprovalDecision, type EngineDeps, type RunEvent } from "./workflow.js";
+import {
+  runWorkflow,
+  type ApprovalDecision,
+  type ApprovalFailureCode,
+  type EngineDeps,
+  type RunEvent,
+} from "./workflow.js";
 
 // The front-end-agnostic run controller (PLAN.md Shape S3, SLICES.md V2
 // KAN-1104/1107): wraps the workflow generator behind a `start`/`resume`
@@ -27,6 +33,8 @@ export interface PendingApproval {
   kind: "tool" | "guardrail" | "approval";
   reason: string;
   toolName?: string;
+  /** Correlation key of the persisted record (KAN-1854): resolve it from any process with `resumeApproval`. Set only when the run persists approvals. */
+  key?: string;
 }
 
 export interface StepRecord {
@@ -45,6 +53,8 @@ export interface RunState {
   /** Set on a completed run that a `validate` (on_fail: skip) or `dedupe` step ended early (KAN-1860). */
   skipped?: { step: string; reason: string };
   error?: string;
+  /** Set when resolving a persisted approval by key failed for a known reason (KAN-1854). */
+  errorCode?: ApprovalFailureCode;
 }
 
 function initialState(): RunState {
@@ -89,6 +99,23 @@ export class AgentRun extends EventEmitter {
     // whatever the *next* yield point turns out to be.
     this.state = { ...this.state, status: "running" };
     return this.advance({ approved, reason });
+  }
+
+  /**
+   * Resolves a persisted pending approval by its key, in this process or any other that shares the store
+   * and the spec (KAN-1854, ADR-0042). Use it on a fresh AgentRun instead of `start`. It claims the
+   * record, so a second caller for the same key gets a failed run ("already resolved"), then resumes at
+   * the paused step with the stored outputs and input; a rejection ends the run as rejected. A spec that
+   * changed since the pause fails the run and leaves the record. Resolves at the next pause point.
+   */
+  async resumeByKey(key: string, approved: boolean, reason?: string): Promise<RunState> {
+    if (this.generator) {
+      throw new Error(
+        "This AgentRun has already been started; create a new AgentRun to resume an approval.",
+      );
+    }
+    this.generator = runWorkflow(this.spec, this.deps, "", { key, decision: { approved, reason } });
+    return this.advance(undefined);
   }
 
   private async advance(input: ApprovalDecision | undefined): Promise<RunState> {
@@ -139,6 +166,7 @@ export class AgentRun extends EventEmitter {
             kind: event.kind,
             reason: event.reason,
             toolName: event.toolName,
+            ...(event.key !== undefined && { key: event.key }),
           },
         };
         break;
@@ -168,6 +196,7 @@ export class AgentRun extends EventEmitter {
           ...this.state,
           status: "failed",
           error: event.error,
+          ...(event.code && { errorCode: event.code }),
           pendingApproval: undefined,
           trace: event.step
             ? [...this.state.trace, { step: event.step, status: "failed", error: event.error }]
@@ -220,6 +249,12 @@ export interface CreateAgentRunOptions {
    * Defaults to `.kampong/state.db` in the working directory. The file is not created for a spec without one.
    */
   statePath?: string;
+  /** Persist a record whenever the run pauses for approval, so it can be resolved by key from any process (KAN-1854, ADR-0042). Uses `state`, else the SQLite store at `statePath`. Off by default. */
+  persistApprovals?: boolean;
+  /** How long a persisted approval stays resolvable; default 7 days. */
+  approvalTtlMs?: number;
+  /** Clock for persisted-record timestamps (tests). */
+  now?: EngineDeps["now"];
 }
 
 /**
@@ -246,11 +281,14 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     trigger: options.trigger,
     vars: options.vars,
     expressionLimits: options.expressionLimits,
+    // The opener is lazy: the file is created only when a dedupe step is reached or an approval is
+    // persisted or resumed, never for a run that does neither.
     ...(options.state
       ? { state: options.state }
-      : hasDedupeStep(spec)
-        ? { openState: () => openDefaultStateStore(options.statePath) }
-        : {}),
+      : { openState: () => openDefaultStateStore(options.statePath) }),
+    ...(options.persistApprovals && { persistApprovals: true }),
+    ...(options.approvalTtlMs !== undefined && { approvalTtlMs: options.approvalTtlMs }),
+    ...(options.now && { now: options.now }),
     // KAN-1430: connector `${ENV}` tokens resolve from the same env the model
     // key does (process.env by default), so an exported/deployed app just sets
     // e.g. SLACK_BOT_TOKEN in its environment.
@@ -258,10 +296,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
   });
 }
 
-const hasDedupeStep = (spec: AgentSpec): boolean =>
-  spec.agent.workflow.some((step) => "type" in step && step.type === "dedupe");
-
-// A dynamic import, so the SQLite module (node:sqlite) is loaded only by a run that has a dedupe step, not
+// A dynamic import, so the SQLite module (node:sqlite) is loaded only by a run that opens a store, not
 // by everything that imports the engine.
 async function openDefaultStateStore(path: string | undefined): Promise<StateStore> {
   const { SqliteStateStore } = await import("./sqlite-state-store.js");

@@ -74,6 +74,8 @@ const VENDORED_FROM_ENGINE = [
   "schedule-runner.ts",
   // KAN-1860: the default store a `dedupe` step opens lazily (node:sqlite, no dependency to pin).
   "sqlite-state-store.ts",
+  // KAN-1854: pending-approval records (spec hash, correlation key, listing) the paused run persists.
+  "pending-approval.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

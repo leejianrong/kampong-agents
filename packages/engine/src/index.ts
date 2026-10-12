@@ -100,6 +100,7 @@ export {
   desugarLegacyTool,
   type RunEvent,
   type ApprovalDecision,
+  type ApprovalFailureCode,
   type EngineDeps,
   type ComponentDispatcher,
   type ComponentTool,
@@ -130,6 +131,18 @@ export {
   RevokedComponentError,
   shippedRegistryIndexPath,
 } from "./revocation.js";
+
+// Persisted pending approvals, resumable by key from any process (KAN-1854, ADR-0042).
+export {
+  APPROVAL_KEY_PREFIX,
+  DEFAULT_APPROVAL_TTL_MS,
+  approvalStateKey,
+  listPendingApprovals,
+  specHash,
+  type ApprovalPhase,
+  type PersistedApproval,
+} from "./pending-approval.js";
+export type { ResumeRequest } from "./workflow.js";
 
 // Durable keyed runtime state (ADR-0028, KAM-112).
 export type { StateStore, StateValue, PutOptions, StateClock } from "./state-store.js";

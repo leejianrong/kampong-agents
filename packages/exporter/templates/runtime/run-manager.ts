@@ -14,7 +14,10 @@
 // yours: it will not be touched again by a future export.
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { AgentRun, createAgentRun, type RunState } from "./run.js";
+import { listPendingApprovals, type PersistedApproval } from "./pending-approval.js";
+import type { StateStore } from "./state-store.js";
 import { postApprovalRequest, SlackApiError } from "./slack-approval.js";
 import { resolveEnvValue } from "./http-tool.js";
 import type { ModelClient } from "./model.js";
@@ -67,6 +70,20 @@ export interface RunManagerOptions {
   notifyApprovalsViaSlack?: boolean;
   /** Test-only seam: overrides the fetch used for the outbound Slack API calls above (distinct from `fetchImpl`, which is for tool calls). Defaults to the real `fetch`. */
   slackFetchImpl?: typeof fetch;
+  /**
+   * KAN-1854 (ADR-0042): a run that pauses for approval writes a record to `.kampong/state.db`, so it can be
+   * resolved by its key after a restart. Needs `spec` to resume a record no run in this process owns. In a
+   * container, mount `/app/.kampong` as a volume, or the record dies with the container.
+   */
+  persistApprovals?: boolean;
+  /** The spec that records are resumed under when no in-memory run owns the key. */
+  spec?: AgentSpec;
+  /** The store to persist to. Defaults to the SQLite file at `statePath`. The caller owns it. */
+  state?: StateStore;
+  /** Where the default SQLite store lives (default `.kampong/state.db` in the working directory). */
+  statePath?: string;
+  /** How long a persisted approval stays resolvable (default 7 days). */
+  approvalTtlMs?: number;
 }
 
 /** How long a `respond: sync` webhook waits for the run before answering with its id (KAM-109). */
@@ -120,14 +137,43 @@ export class RunManager {
     input: string,
     trigger?: { headers?: Record<string, string> },
   ): Promise<StartRunResult> {
-    const id = randomUUID();
-    const run = createAgentRun(spec, {
+    const run = this.createRun(spec, trigger);
+    const id = this.register(spec, run);
+    // Fire-and-forget: the workflow engine already catches every real
+    // failure mode itself and yields a "failed" RunEvent instead of
+    // throwing, so a rejection here means something broke unexpectedly
+    // upstream of that. Logging (rather than silently swallowing it) keeps
+    // that visible without turning it into an unhandled rejection that
+    // could crash the server process.
+    run.start(input).catch((err: unknown) => {
+      console.error(`Run ${id} failed unexpectedly:`, err);
+    });
+    return { id, state: run.getState() };
+  }
+
+  private createRun(spec: AgentSpec, trigger?: { headers?: Record<string, string> }): AgentRun {
+    return createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
       components: this.options.components,
       model: this.options.createModel?.(spec),
       ...(trigger ? { trigger } : {}),
+      ...(this.options.persistApprovals
+        ? {
+            persistApprovals: true,
+            ...(this.options.state ? { state: this.options.state } : {}),
+            ...(this.options.statePath ? { statePath: this.options.statePath } : {}),
+            ...(this.options.approvalTtlMs !== undefined
+              ? { approvalTtlMs: this.options.approvalTtlMs }
+              : {}),
+          }
+        : {}),
     });
+  }
+
+  /** Adds a run to the map under a fresh id and wires its eviction and Slack notification hooks. */
+  private register(spec: AgentSpec, run: AgentRun): string {
+    const id = randomUUID();
     run.on("event", (event: RunEvent) => {
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
     });
@@ -143,7 +189,7 @@ export class RunManager {
           .then(() => resolveEnvValue(notifier.token, env))
           .then((token) =>
             postApprovalRequest(
-              { token, channel: notifier.channel, runId: id, text: event.reason },
+              { token, channel: notifier.channel, runId: event.key ?? id, text: event.reason },
               this.options.slackFetchImpl,
             ),
           )
@@ -154,16 +200,7 @@ export class RunManager {
       });
     }
     this.runs.set(id, run);
-    // Fire-and-forget: the workflow engine already catches every real
-    // failure mode itself and yields a "failed" RunEvent instead of
-    // throwing, so a rejection here means something broke unexpectedly
-    // upstream of that. Logging (rather than silently swallowing it) keeps
-    // that visible without turning it into an unhandled rejection that
-    // could crash the server process.
-    run.start(input).catch((err: unknown) => {
-      console.error(`Run ${id} failed unexpectedly:`, err);
-    });
-    return { id, state: run.getState() };
+    return id;
   }
 
   /**
@@ -197,6 +234,45 @@ export class RunManager {
     const run = this.runs.get(id);
     if (!run) return undefined;
     return run.resume(approved, reason);
+  }
+
+  /**
+   * Resolves a pending approval by run id or by its persisted correlation key (KAN-1854, ADR-0042). A run
+   * this process owns resumes in place; otherwise, with persistence on, the key is loaded from the store and
+   * the run continues in a new run registered under a fresh id, which is how an approval survives a restart.
+   * An unknown key resolves to a failed state with `errorCode: "approval_not_found"`.
+   */
+  async resolveApproval(
+    idOrKey: string,
+    approved: boolean,
+    reason?: string,
+  ): Promise<{ id: string; state: RunState } | undefined> {
+    const owned = this.runs.has(idOrKey)
+      ? idOrKey
+      : [...this.runs].find(([, r]) => r.getState().pendingApproval?.key === idOrKey)?.[0];
+    if (owned)
+      return { id: owned, state: (await this.approve(owned, approved, reason)) as RunState };
+    const { spec } = this.options;
+    if (!this.options.persistApprovals || !spec) return undefined;
+    const run = this.createRun(spec);
+    const id = this.register(spec, run);
+    const state = await run.resumeByKey(idOrKey, approved, reason);
+    return { id, state };
+  }
+
+  /** The approvals waiting in the store, oldest first. Empty when persistence is off or the store file does not exist yet. */
+  async listPendingApprovals(): Promise<PersistedApproval[]> {
+    if (!this.options.persistApprovals) return [];
+    if (this.options.state) return listPendingApprovals(this.options.state);
+    const path = this.options.statePath ?? ".kampong/state.db";
+    if (!existsSync(path)) return [];
+    const { SqliteStateStore } = await import("./sqlite-state-store.js");
+    const store = new SqliteStateStore({ path });
+    try {
+      return await listPendingApprovals(store);
+    } finally {
+      await store.close();
+    }
   }
 
   private scheduleEviction(id: string): void {

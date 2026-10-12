@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import Fastify, { type FastifyInstance } from "fastify";
+import { dirname, join } from "node:path";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { parseSpec, type AgentSpec, type SpecError } from "@kampong/spec";
 import {
   isApproveAction,
@@ -8,6 +9,7 @@ import {
   postInteractionUpdate,
   verifySlackSignature,
   type RunEvent,
+  type RunState,
 } from "@kampong/engine";
 import { componentDispatcherFor } from "./components.js";
 import { SCHEDULE_JOB_NAME, type ServeRunnersHandle } from "./serve-runner.js";
@@ -75,6 +77,18 @@ function triggerHeaders(
   return out;
 }
 
+// The answer to resolving an approval: a key with no record is 404, a spec that changed or a record another
+// caller already claimed is 409 (the run did not resume), anything else is the resumed run's state.
+function approvalReply(reply: FastifyReply, id: string, state: RunState) {
+  if (state.errorCode === "approval_not_found") {
+    return reply.code(404).send({ success: false, error: state.error, state });
+  }
+  if (state.errorCode === "spec_changed" || state.errorCode === "already_resolved") {
+    return reply.code(409).send({ success: false, error: state.error, state });
+  }
+  return { success: true, id, state };
+}
+
 export function createServeServer(options: CreateServeServerOptions): FastifyInstance {
   return createServeRuntime(options).app;
 }
@@ -102,7 +116,12 @@ export function createServeRuntime({
   // `kampong serve` -- so every approval pause here should try to notify
   // Slack when the spec configures a target, unlike `kampong dev`'s canvas
   // server (server.ts), which never sets this.
+  // KAN-1854 (ADR-0042): approvals are persisted to `.kampong/state.db` next to the spec (as `kampong run`
+  // puts its store), so a restarted `kampong serve` can still resolve one by key.
   const runManager = new RunManager({
+    persistApprovals: true,
+    spec,
+    statePath: join(dirname(specPath), ".kampong", "state.db"),
     ...run,
     components: run?.components ?? componentDispatcherFor(specPath),
     notifyApprovalsViaSlack: true,
@@ -183,13 +202,47 @@ export function createServeRuntime({
           .send({ success: false, error: "`approved` (a boolean) is required." });
       }
       try {
-        const state = await runManager.approve(request.params.id, approved, reason);
-        if (state === undefined) {
+        // The id of a run this process owns, or (KAN-1854) a persisted approval's key.
+        const resolved = await runManager.resolveApproval(request.params.id, approved, reason);
+        if (resolved === undefined) {
           return reply
             .code(404)
             .send({ success: false, error: `Unknown run id "${request.params.id}".` });
         }
-        return { success: true, state };
+        return approvalReply(reply, resolved.id, resolved.state);
+      } catch (err) {
+        return reply.code(409).send({ success: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  // GET /approvals -- the approvals waiting in the store, including ones paused by an earlier process.
+  app.get("/approvals", async () => ({
+    success: true,
+    approvals: await runManager.listPendingApprovals(),
+  }));
+
+  // POST /approvals/:key/approve -- resolve a persisted approval by its correlation key (KAN-1854). Works
+  // after a restart: the run continues from the paused step. 404: no such key (resolved, expired or never
+  // existed). 409: the spec changed since the pause, or another caller already resolved it.
+  app.post<{ Params: { key: string }; Body: { approved?: boolean; reason?: string } }>(
+    "/approvals/:key/approve",
+    async (request, reply) => {
+      const { approved, reason } = request.body ?? {};
+      if (typeof approved !== "boolean") {
+        return reply
+          .code(400)
+          .send({ success: false, error: "`approved` (a boolean) is required." });
+      }
+      try {
+        const resolved = await runManager.resolveApproval(request.params.key, approved, reason);
+        if (resolved === undefined) {
+          return reply.code(404).send({
+            success: false,
+            error: `No pending approval with key "${request.params.key}".`,
+          });
+        }
+        return approvalReply(reply, resolved.id, resolved.state);
       } catch (err) {
         return reply.code(409).send({ success: false, error: (err as Error).message });
       }
@@ -257,9 +310,13 @@ export function createServeRuntime({
 
     let outcomeText: string;
     try {
-      const state = await runManager.approve(interaction.runId, approved);
+      // `runId` is the persisted approval's key when the run persists approvals (so the button still works
+      // after a restart), else the run id.
+      const resolved = await runManager.resolveApproval(interaction.runId, approved);
+      const failure = resolved?.state.errorCode ? resolved.state.error : undefined;
+      if (failure) throw new Error(failure);
       outcomeText =
-        state === undefined
+        resolved === undefined
           ? `Run "${interaction.runId}" not found (it may have already finished).`
           : approved
             ? `Approved${interaction.userName ? ` by ${interaction.userName}` : ""}.`
