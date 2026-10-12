@@ -9,6 +9,7 @@ import {
   VALID_FIXTURE_WITH_MODEL,
   VALID_FIXTURE_WITH_TIMEOUT,
 } from "../fixtures.js";
+import { VALID_FIXTURE_FOREACH } from "../fixtures-foreach.js";
 
 // The highest-leverage test in the whole plan (PLAN.md "Testing approach",
 // SLICES.md V1 / KAN-1102): parse -> render -> mutate -> serialize ->
@@ -24,6 +25,7 @@ describe("AgentSpec round-trip duality", () => {
     ["model + BYOK api_key placeholder + confidence_gate", VALID_FIXTURE_WITH_MODEL],
     ["model + explicit timeout_ms (KAN-1185)", VALID_FIXTURE_WITH_TIMEOUT],
     ["transform, validate and dedupe steps (KAN-1860)", VALID_FIXTURE_DATA_STEPS],
+    ["foreach with a nested step list and an on_error policy (KAN-1858)", VALID_FIXTURE_FOREACH],
   ])("re-serializes %s byte-for-byte with zero mutations", (_name, source) => {
     const { doc, success } = parseSpec(source);
     expect(success).toBe(true);

@@ -79,7 +79,22 @@ export interface WorkflowDedupeStepFormInput {
   ttl: string;
 }
 
+// KAN-1858 (version 1.1): a foreach whose body is a list of tool steps, one per line of `body` as `step: tool`
+// (or just `tool`, which names the step after the tool). Every other kind of nested step is written in the YAML.
+export interface WorkflowForEachStepFormInput {
+  kind: "foreach";
+  step: string;
+  items: string;
+  as: string;
+  concurrency?: number;
+  onError?: "fail" | "continue" | "retry";
+  /** The `n` of `on_error: { retry: { n } }`; used only when `onError` is "retry". */
+  retryCount?: number;
+  body: string;
+}
+
 export type WorkflowStepFormInput =
+  | WorkflowForEachStepFormInput
   | WorkflowActionStepFormInput
   | WorkflowConditionStepFormInput
   | WorkflowToolStepFormInput
@@ -109,6 +124,22 @@ function parseSetLines(text: string): { set: Record<string, string>; errors: str
   return { set, errors };
 }
 
+function parseBodyLines(text: string): { steps: unknown[]; errors: string[] } {
+  const steps: unknown[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const colon = line.indexOf(":");
+    const name = colon === -1 ? line : line.slice(0, colon).trim();
+    const tool = colon === -1 ? line : line.slice(colon + 1).trim();
+    steps.push({ step: name, type: "tool", tool });
+  }
+  return {
+    steps,
+    errors: steps.length === 0 ? ["Add at least one body step as a tool name (or step: tool)"] : [],
+  };
+}
+
 export interface WorkflowStepFormResult {
   success: boolean;
   step?: WorkflowStep;
@@ -117,7 +148,26 @@ export interface WorkflowStepFormResult {
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
   let candidate: unknown;
-  if (input.kind === "transform") {
+  if (input.kind === "foreach") {
+    const { steps, errors } = parseBodyLines(input.body);
+    if (errors.length > 0) return { success: false, errors };
+    const onError =
+      input.onError === "retry"
+        ? { retry: { n: input.retryCount ?? 3 } }
+        : input.onError === "continue" || input.onError === "fail"
+          ? input.onError
+          : undefined;
+    candidate = {
+      step: input.step,
+      foreach: {
+        items: input.items,
+        as: input.as,
+        ...(input.concurrency !== undefined && { concurrency: input.concurrency }),
+        ...(onError !== undefined && { on_error: onError }),
+        steps,
+      },
+    };
+  } else if (input.kind === "transform") {
     const { set, errors } = parseSetLines(input.set);
     if (errors.length > 0) return { success: false, errors };
     candidate = { step: input.step, type: "transform" as const, set };

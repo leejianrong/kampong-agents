@@ -15,7 +15,8 @@ import { buildWorkflowStepFromForm, type WorkflowStep } from "@kampong/spec";
 
 // transform, validate and dedupe (KAN-1860) are version 1.1 steps: the spec's own check, not this form, says
 // so if the spec is still 1.0. Their expression fields are plain text, as the condition's `if` is.
-type StepKind = "action" | "tool" | "approval" | "condition" | "transform" | "validate" | "dedupe";
+type StepKind =
+  "action" | "tool" | "approval" | "condition" | "transform" | "validate" | "dedupe" | "foreach";
 
 export interface WorkflowStepFormProps {
   onSubmit: (step: WorkflowStep) => void;
@@ -42,12 +43,30 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   const [failMessage, setFailMessage] = useState("");
   const [dedupeKey, setDedupeKey] = useState("");
   const [dedupeTtl, setDedupeTtl] = useState("");
+  // foreach (KAN-1858): the loop's list, variable, concurrency, error policy and a body of tool steps.
+  const [loopItems, setLoopItems] = useState("");
+  const [loopAs, setLoopAs] = useState("");
+  const [loopConcurrency, setLoopConcurrency] = useState("");
+  const [loopOnError, setLoopOnError] = useState<"fail" | "continue" | "retry">("fail");
+  const [loopRetries, setLoopRetries] = useState("3");
+  const [loopBody, setLoopBody] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     let result;
-    if (kind === "transform") {
+    if (kind === "foreach") {
+      result = buildWorkflowStepFromForm({
+        kind: "foreach",
+        step,
+        items: loopItems,
+        as: loopAs,
+        ...(loopConcurrency.trim() !== "" && { concurrency: Number(loopConcurrency) }),
+        onError: loopOnError,
+        ...(loopOnError === "retry" && { retryCount: Number(loopRetries) }),
+        body: loopBody,
+      });
+    } else if (kind === "transform") {
       result = buildWorkflowStepFromForm({ kind: "transform", step, set: setLines });
     } else if (kind === "validate") {
       result = buildWorkflowStepFromForm({
@@ -109,6 +128,7 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               ["transform", "Transform"],
               ["validate", "Validate"],
               ["dedupe", "Dedupe"],
+              ["foreach", "Foreach"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -307,6 +327,74 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               className="md3-text-field"
               value={dedupeTtl}
               onChange={(e) => setDedupeTtl(e.target.value)}
+            />
+          </label>
+        </>
+      )}
+
+      {kind === "foreach" && (
+        <>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Items (expression that gives a list)
+            </span>
+            <input
+              className="md3-text-field"
+              value={loopItems}
+              onChange={(e) => setLoopItems(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Loop variable</span>
+            <input
+              className="md3-text-field"
+              value={loopAs}
+              onChange={(e) => setLoopAs(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Concurrency</span>
+            <input
+              className="md3-text-field"
+              type="number"
+              min="1"
+              placeholder="1"
+              value={loopConcurrency}
+              onChange={(e) => setLoopConcurrency(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">On error</span>
+            <select
+              className="md3-text-field"
+              value={loopOnError}
+              onChange={(e) => setLoopOnError(e.target.value as "fail" | "continue" | "retry")}
+            >
+              <option value="fail">fail</option>
+              <option value="continue">continue</option>
+              <option value="retry">retry</option>
+            </select>
+          </label>
+          {loopOnError === "retry" && (
+            <label className="md3-field">
+              <span className="md3-field__label md3-label-large">Retries</span>
+              <input
+                className="md3-text-field"
+                type="number"
+                min="1"
+                value={loopRetries}
+                onChange={(e) => setLoopRetries(e.target.value)}
+              />
+            </label>
+          )}
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Body (one tool per line, step: tool)
+            </span>
+            <textarea
+              className="md3-text-field"
+              value={loopBody}
+              onChange={(e) => setLoopBody(e.target.value)}
             />
           </label>
         </>

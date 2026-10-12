@@ -370,6 +370,37 @@ describe("collectRequiredEnvVars with a component tool", () => {
     }
   });
 
+  it("exports a foreach step: the vendored runtime runs it, and a dedupe in its body gets the state note (KAN-1858)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-foreach-"));
+    try {
+      const out = join(dir, "out");
+      const spec = {
+        ...FULL_SPEC,
+        version: "1.1",
+        agent: {
+          ...FULL_SPEC.agent,
+          workflow: [
+            {
+              step: "each",
+              foreach: {
+                items: "trigger.ids",
+                as: "id",
+                on_error: "continue",
+                steps: [{ step: "seen", type: "dedupe", once: { key: "id", ttl: "1h" } }],
+              },
+            },
+          ],
+        },
+      } as unknown as AgentSpec;
+      exportProject(spec, out);
+      expect(readFileSync(join(out, "src/runtime/workflow.ts"), "utf8")).toContain("runForEach");
+      expect(readFileSync(join(out, "src/runtime/spec-types.ts"), "utf8")).toContain("ForEachStep");
+      expect(readFileSync(join(out, "README.md"), "utf8")).toContain(".kampong/state.db");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("exports persisted pending approvals: vendored record module, key routes, README note (KAN-1854)", () => {
     const dir = mkdtempSync(join(tmpdir(), "kampong-export-approvals-"));
     try {

@@ -200,7 +200,7 @@ export const modelSchema = z
 // addition to the generated artifact, or a switch to a JSON-Schema
 // generator that supports refinements.
 
-export const workflowStepSchema = z.union([
+const baseWorkflowSteps = [
   z.object({
     step: z.string().min(1),
     type: z.literal("condition"),
@@ -276,7 +276,51 @@ export const workflowStepSchema = z.union([
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
   }),
+] as const;
+
+// KAN-1858 (ADR-0043): `foreach` runs a nested list of steps once per item of a list, version 1.1 only.
+// `on_error` says what a failing item does: `fail` (the default) ends the run, `continue` records the item in
+// `errors` and moves on, `retry` re-runs the failed step with backoff and then applies `then`. `goto` is
+// accepted by the shape only so the cross-field check can say it is not supported yet (it needs conditional
+// branching, KAN-1859).
+export const forEachRetrySchema = z
+  .object({
+    n: z.number().int().min(1).max(10),
+    backoff: z.enum(["fixed", "exponential"]).optional(),
+    base_ms: z.number().int().min(0).optional(),
+    max_delay_ms: z.number().int().min(0).optional(),
+    then: z.enum(["fail", "continue"]).optional(),
+  })
+  .strict();
+
+export const forEachOnErrorSchema = z.union([
+  z.enum(["fail", "continue", "goto"]),
+  z.object({ retry: forEachRetrySchema }).strict(),
+  z.object({ goto: z.string().min(1) }).strict(),
 ]);
+
+export const FOREACH_MAX_CONCURRENCY = 32;
+
+// A step list nested in a foreach: any step but another foreach. A nested foreach is accepted by the shape only
+// (as `{ step, foreach }`) so the cross-field check can say it is not supported yet, at its own line.
+const nestedForEachShape = z.object({ step: z.string().min(1), foreach: z.unknown() });
+
+export const bodyStepSchema = z.union([...baseWorkflowSteps, nestedForEachShape]);
+
+export const forEachStepSchema = z.object({
+  step: z.string().min(1),
+  foreach: z
+    .object({
+      items: z.string().min(1),
+      as: z.string().min(1),
+      concurrency: z.number().int().min(1).max(FOREACH_MAX_CONCURRENCY).optional(),
+      on_error: forEachOnErrorSchema.optional(),
+      steps: z.array(bodyStepSchema).min(1),
+    })
+    .strict(),
+});
+
+export const workflowStepSchema = z.union([...baseWorkflowSteps, forEachStepSchema]);
 
 // KAN-1431 (ADR-0021/ADR-0022): how a workflow starts. `webhook` is the only
 // kind today (an HTTP POST starts a run, its body becomes the input, driven by
@@ -419,12 +463,104 @@ export const agentSpecSchema = z
         }
       }
     });
-    spec.agent.workflow.forEach((step, i) => {
+    const toolNeedsApproval = (name: string) =>
+      (spec.agent.tools ?? []).some((t) => t.name === name && t.requires_approval === true);
+    const checkForEach = (
+      step: Extract<WorkflowStep, { foreach: unknown }>,
+      at: (string | number)[],
+    ): void => {
+      const loop = step.foreach;
+      const bad = (message: string, path: (string | number)[]) =>
+        ctx.addIssue({ code: "custom", message, path });
+      if (spec.version !== "1.1") bad('foreach needs version "1.1"', [...at, "foreach"]);
+      const policy = loop.on_error;
+      if (policy === "goto" || (typeof policy === "object" && "goto" in policy)) {
+        bad(
+          "on_error: goto is not yet supported (it needs conditional branching, KAN-1859): use fail, continue or retry",
+          [...at, "foreach", "on_error"],
+        );
+      }
+      if (!VAR_NAME.test(loop.as) || loop.as === "__proto__") {
+        bad(
+          `"${loop.as}" is not a valid name for the loop variable: use letters, digits and underscores, not starting with a digit`,
+          [...at, "foreach", "as"],
+        );
+      } else if (
+        ["trigger", "input", "vars"].includes(loop.as) ||
+        spec.agent.workflow.some((s) => s.step === loop.as)
+      ) {
+        bad(
+          `"${loop.as}" cannot be used as the loop variable: it is a reserved name or the name of a workflow step, and would hide it`,
+          [...at, "foreach", "as"],
+        );
+      }
+      const seen = new Set<string>();
+      loop.steps.forEach((inner, j) => {
+        const innerAt = [...at, "foreach", "steps", j];
+        if (seen.has(inner.step)) {
+          bad(`duplicate step name "${inner.step}" in this foreach`, [...innerAt, "step"]);
+        }
+        seen.add(inner.step);
+        if (
+          inner.step === loop.as ||
+          ["trigger", "input", "vars"].includes(inner.step) ||
+          spec.agent.workflow.some((s) => s.step === inner.step)
+        ) {
+          bad(
+            `"${inner.step}" cannot be used as a step name inside a foreach: it is the loop variable, a reserved name or a step of the workflow`,
+            [...innerAt, "step"],
+          );
+        }
+        if ("foreach" in inner) {
+          bad("a foreach inside a foreach is not supported yet", [...innerAt, "foreach"]);
+          return;
+        }
+        if ("type" in inner && inner.type === "approval") {
+          bad(
+            "an approval step is not supported inside a foreach body yet (a loop cannot pause for a person; ADR-0043)",
+            [...innerAt, "type"],
+          );
+        } else if ("type" in inner && inner.type === "tool" && toolNeedsApproval(inner.tool)) {
+          bad(
+            `tool "${inner.tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
+            [...innerAt, "tool"],
+          );
+        } else if ("type" in inner && inner.type === "condition") {
+          for (const field of ["then", "else"] as const) {
+            const branch = inner[field];
+            const tool = /^execute_tool\(([A-Za-z0-9_]+)\)$/.exec(branch)?.[1];
+            if (branch === "request_human_approval") {
+              bad(
+                "approval (request_human_approval) is not supported inside a foreach body yet (ADR-0043)",
+                [...innerAt, field],
+              );
+            } else if (tool !== undefined && toolNeedsApproval(tool)) {
+              bad(
+                `tool "${tool}" requires approval, which is not supported inside a foreach body yet (ADR-0043)`,
+                [...innerAt, field],
+              );
+            }
+          }
+        } else if (
+          "confidence_gate" in inner &&
+          inner.confidence_gate &&
+          spec.agent.guardrails?.confidence_threshold !== undefined
+        ) {
+          bad(
+            "a confidence_gate step is not supported inside a foreach body while guardrails.confidence_threshold is set (a breach pauses for a person; ADR-0043)",
+            [...innerAt, "confidence_gate"],
+          );
+        }
+        checkStep(inner, innerAt);
+      });
+    };
+    const checkStep = (step: BodyStep, stepAt: (string | number)[]): void => {
+      if ("foreach" in step) return;
       if (
         "type" in step &&
         (step.type === "transform" || step.type === "validate" || step.type === "dedupe")
       ) {
-        const at = ["agent", "workflow", i];
+        const at = stepAt;
         if (spec.version !== "1.1") {
           ctx.addIssue({
             code: "custom",
@@ -478,12 +614,12 @@ export const agentSpecSchema = z
           ctx.addIssue({
             code: "custom",
             message: `${field} needs version "1.1"`,
-            path: ["agent", "workflow", i, field],
+            path: [...stepAt, field],
           });
         }
       }
       if (!("output_schema" in step) || step.output_schema === undefined) return;
-      const at = ["agent", "workflow", i, "output_schema"];
+      const at = [...stepAt, "output_schema"];
       if (spec.version !== "1.1") {
         ctx.addIssue({ code: "custom", message: 'output_schema needs version "1.1"', path: at });
       }
@@ -534,6 +670,14 @@ export const agentSpecSchema = z
           });
         }
       }
+    };
+    spec.agent.workflow.forEach((step, i) => {
+      const at = ["agent", "workflow", i];
+      if (!("foreach" in step)) {
+        checkStep(step, at);
+        return;
+      }
+      checkForEach(step, at);
     });
     (spec.agent.knowledge_base ?? []).forEach((item, i) => {
       if (item.mode === undefined) return;
@@ -624,6 +768,9 @@ export type ScheduleTrigger = z.infer<typeof scheduleTriggerSchema>;
 export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
+export type BodyStep = z.infer<typeof bodyStepSchema>;
+export type ForEachStep = Extract<WorkflowStep, { foreach: unknown }>;
+export type ForEachOnError = z.infer<typeof forEachOnErrorSchema>;
 export type Guardrails = z.infer<typeof guardrailsSchema>;
 export type FallbackAction = z.infer<typeof fallbackActionSchema>;
 export type Model = z.infer<typeof modelSchema>;

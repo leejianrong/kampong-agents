@@ -84,7 +84,7 @@ function startFakeOllamaServer(replyText: string): Promise<FakeServer> {
   });
 }
 
-function startFakeToolServer(status: string): Promise<FakeServer> {
+function startFakeToolServer(status: string, rateLimitedPath?: string): Promise<FakeServer> {
   let requests = 0;
   const authorizations: string[] = [];
   const urls: string[] = [];
@@ -92,6 +92,11 @@ function startFakeToolServer(status: string): Promise<FakeServer> {
     requests++;
     authorizations.push(String(req.headers.authorization ?? ""));
     urls.push(req.url ?? "");
+    if (rateLimitedPath !== undefined && req.url?.includes(rateLimitedPath)) {
+      res.writeHead(429, { "content-type": "text/plain" });
+      res.end("slow down");
+      return;
+    }
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ status }));
   });
@@ -452,6 +457,80 @@ agent:
       expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
       const line = start.stdout.split("\n").find((l) => l.trim().startsWith("{"));
       expect(JSON.parse(line!) as RunOutcome, `run ${i + 1}`).toEqual(expected[i]);
+    }
+  }, 180_000);
+
+  it("a foreach step isolates a rate-limited item in an exported project exactly as the engine does (KAN-1858)", async () => {
+    const limited = await startFakeToolServer("ok", "/BBB");
+    try {
+      const source = `version: "1.1"
+agent:
+  id: e2e-foreach
+  name: "E2E Foreach"
+  role: "Analyst"
+  goal: "Fetch and store a row per symbol."
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${ollama.port}"
+  tools:
+    - name: fetch_price
+      action: http_request
+      method: GET
+      url: "http://127.0.0.1:${limited.port}/price/{{ symbol }}"
+    - name: store_row
+      action: http_request
+      method: POST
+      url: "http://127.0.0.1:${limited.port}/rows/{{ symbol }}"
+  workflow:
+    - step: each
+      foreach:
+        items: "trigger.symbols"
+        as: symbol
+        on_error: continue
+        steps:
+          - step: fetch
+            type: tool
+            tool: fetch_price
+          - step: shape
+            type: transform
+            set:
+              label: "symbol & '=' & fetch.status"
+          - step: write
+            type: tool
+            tool: store_row
+    - step: summary
+      type: transform
+      set:
+        failed: "$count(each.errors)"
+        stored: "$count(each.results)"
+`;
+      const { success, spec, errors } = parseSpec(source);
+      expect(success, JSON.stringify(errors)).toBe(true);
+      const input = JSON.stringify({ symbols: ["AAA", "BBB", "CCC"] });
+      const reference = toOutcome(await createAgentRun(spec!).start(input));
+      expect(reference.success).toBe(true);
+      expect(reference.output?.summary).toEqual({ failed: 1, stored: 2 });
+      const referenceUrls = [...(limited.urls ?? [])];
+      // The write after the failing fetch never ran for BBB: no partial row.
+      expect(referenceUrls.filter((u) => u.startsWith("/rows/"))).toEqual([
+        "/rows/AAA",
+        "/rows/CCC",
+      ]);
+
+      exportProject(spec!, exportDir);
+      const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+      expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      const start = await runNpm(
+        ["start", "--silent", "--", "--input", input, "--json"],
+        exportDir,
+      );
+      expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
+      const line = start.stdout.split("\n").find((l) => l.trim().startsWith("{"));
+      expect(JSON.parse(line!) as RunOutcome).toEqual(reference);
+      expect(limited.urls).toEqual([...referenceUrls, ...referenceUrls]);
+    } finally {
+      await limited.close();
     }
   }, 180_000);
 

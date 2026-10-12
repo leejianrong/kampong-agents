@@ -203,7 +203,7 @@ export interface Guardrails {
   fallback_action?: FallbackAction;
 }
 
-export type WorkflowStep =
+export type BodyStep =
   | {
       step: string;
       type: "condition";
@@ -251,7 +251,35 @@ export type WorkflowStep =
       instructions?: string;
       model?: string;
       temperature?: number;
-    };
+    }
+  // KAN-1858 (ADR-0043): a nested foreach is accepted by the shape only and refused by validation.
+  | { step: string; foreach: unknown };
+
+/** What `on_error` says a failing item of a foreach does (version 1.1). */
+export type ForEachOnError =
+  "fail" | "continue" | "goto" | { retry: ForEachRetry } | { goto: string };
+
+export interface ForEachRetry {
+  n: number;
+  backoff?: "fixed" | "exponential";
+  base_ms?: number;
+  max_delay_ms?: number;
+  then?: "fail" | "continue";
+}
+
+// KAN-1858 (ADR-0043): runs its nested steps once per item of a list (version 1.1).
+export type ForEachStep = {
+  step: string;
+  foreach: {
+    items: string;
+    as: string;
+    concurrency?: number;
+    on_error?: ForEachOnError;
+    steps: BodyStep[];
+  };
+};
+
+export type WorkflowStep = Exclude<BodyStep, { foreach: unknown }> | ForEachStep;
 
 // KAN-1431: how a workflow starts (webhook only today).
 export type Trigger =
