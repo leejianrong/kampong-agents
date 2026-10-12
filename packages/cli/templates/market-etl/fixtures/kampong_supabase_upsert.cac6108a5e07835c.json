@@ -1,0 +1,10 @@
+{
+  "toolName": "kampong/supabase.upsert",
+  "method": "POST",
+  "url": "[REDACTED]/rest/v1/price_observations?on_conflict=symbol%2Ctrade_date",
+  "requestBody": "[{\"change_pct\":4,\"close\":104,\"symbol\":\"AAPL\",\"trade_date\":\"2026-10-09\"}]",
+  "status": 201,
+  "body": "",
+  "bodyRaw": "",
+  "bodyFormat": "utf8"
+}

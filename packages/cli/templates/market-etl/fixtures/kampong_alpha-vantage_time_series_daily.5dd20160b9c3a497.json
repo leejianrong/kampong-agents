@@ -1,0 +1,12 @@
+{
+  "toolName": "kampong/alpha-vantage.time_series_daily",
+  "method": "GET",
+  "url": "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=MSFT&outputsize=compact&datatype=json&apikey=[REDACTED]",
+  "status": 200,
+  "body": {
+    "Information": "Thank you for using Alpha Vantage! Our standard API rate limit is 25 requests per day. Please subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to instantly remove all daily rate limits."
+  },
+  "bodyRaw": "{\"Information\":\"Thank you for using Alpha Vantage! Our standard API rate limit is 25 requests per day. Please subscribe to any of the premium plans at https://www.alphavantage.co/premium/ to instantly remove all daily rate limits.\"}",
+  "bodyFormat": "utf8",
+  "contentType": "application/json"
+}

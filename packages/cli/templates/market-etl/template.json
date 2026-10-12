@@ -1,0 +1,3 @@
+{
+  "description": "Scheduled Alpha Vantage to Supabase price ETL that alerts Slack on large moves; runs offline on recorded fixtures."
+}

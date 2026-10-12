@@ -71,6 +71,7 @@ packages/spec/       AgentSpec YAML schema + validator (S1, S7) — yaml pkg, JS
 packages/engine/      Mastra-backed execution engine, guardrails/HITL, mock/record + Ollama (S3/S4)
 packages/exporter/    AgentSpec -> standalone TypeScript project codegen, one-way (S6)
 packages/cli/         kampong dev / kampong run / kampong export + the Fastify local server (S5)
+packages/cli/templates/ ready-made specs listed by `kampong templates` (market-etl; ADR-0046)
 apps/canvas/          local web canvas app — React + Vite + @xyflow/react (S2)
 e2e/                  cross-package acceptance tests (e.g. exporter behavioral equivalence)
 docs/adr/             architectural decisions, one per file
@@ -124,7 +125,7 @@ is fine for a scoped, deliberate exception.
   yet; set that up before this repo has more than one contributor.
 - A new architectural decision, or a default from `QUESTIONS.md` that turns out to be load-bearing,
   gets its own `docs/adr/NNNN-*.md` — number sequentially from the highest existing ADR (currently
-  0045).
+  0046).
 - Every bug or flake becomes a regression test before the fix, not after.
 
 ## Testing approach (see PLAN.md §Testing approach for the full reasoning)

@@ -1,0 +1,13 @@
+{
+  "kind": "module",
+  "toolName": "kampong/supabase.upsert",
+  "op": "upsert",
+  "input": "{\"on_conflict\":\"symbol,trade_date\",\"rows\":[{\"change_pct\":4,\"close\":104,\"symbol\":\"AAPL\",\"trade_date\":\"2026-10-09\"}],\"table\":\"price_observations\"}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "count": 1,
+      "rows": []
+    }
+  }
+}
