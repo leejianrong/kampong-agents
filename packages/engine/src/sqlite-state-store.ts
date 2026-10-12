@@ -8,8 +8,15 @@
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { StateClock, PutOptions, StateStore, StateValue } from "./state-store.js";
+
+// Loaded through createRequire, not a static import: the engine barrel is also
+// pulled into vite/vitest bundles (apps/canvas), which cannot bundle `node:sqlite`.
+const { DatabaseSync } = createRequire(import.meta.url)(
+  "node:sqlite",
+) as typeof import("node:sqlite");
 
 export const DEFAULT_STATE_DB_PATH = ".kampong/state.db";
 
@@ -21,7 +28,7 @@ export interface SqliteStateStoreOptions {
 }
 
 export class SqliteStateStore implements StateStore {
-  private readonly db: DatabaseSync;
+  private readonly db: DatabaseSyncType;
   private readonly now: StateClock;
 
   constructor(options: SqliteStateStoreOptions = {}) {
