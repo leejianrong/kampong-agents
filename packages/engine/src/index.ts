@@ -138,3 +138,15 @@ export {
   DEFAULT_STATE_DB_PATH,
   type SqliteStateStoreOptions,
 } from "./sqlite-state-store.js";
+
+// Unattended runner: overlap lock, jitter, backoff, fail-visible (KAN-1855).
+export {
+  runUnattended,
+  runnerLockKey,
+  DEFAULT_MAX_CONSECUTIVE_FAILURES,
+  type RunnerEvent,
+  type RunnerOptions,
+  type RunnerResult,
+  type RunnerStopReason,
+  type BackoffOptions,
+} from "./runner.js";

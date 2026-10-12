@@ -65,6 +65,10 @@ const VENDORED_FROM_ENGINE = [
   "vars.ts",
   // KAM-107: `knowledge_base` sources with `mode: inject`, loaded into every action step's instructions.
   "knowledge.ts",
+  // KAN-1855: the unattended runner (overlap lock, jitter, backoff, fail-visible) and the StateStore
+  // interface it locks through. The runner is generic; an export wires its jobs into it.
+  "runner.ts",
+  "state-store.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src
