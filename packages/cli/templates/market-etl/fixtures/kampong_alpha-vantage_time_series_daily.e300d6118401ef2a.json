@@ -1,0 +1,41 @@
+{
+  "toolName": "kampong/alpha-vantage.time_series_daily",
+  "method": "GET",
+  "url": "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=AAPL&outputsize=compact&datatype=json&apikey=[REDACTED]",
+  "status": 200,
+  "body": {
+    "Meta Data": {
+      "1. Information": "Daily Prices (open, high, low, close) and Volumes",
+      "2. Symbol": "AAPL",
+      "3. Last Refreshed": "2026-10-09",
+      "4. Output Size": "Compact",
+      "5. Time Zone": "US/Eastern"
+    },
+    "Time Series (Daily)": {
+      "2026-10-09": {
+        "1. open": "104.0000",
+        "2. high": "105.0000",
+        "3. low": "103.0000",
+        "4. close": "104.0000",
+        "5. volume": "1000000"
+      },
+      "2026-10-08": {
+        "1. open": "100.0000",
+        "2. high": "101.0000",
+        "3. low": "99.0000",
+        "4. close": "100.0000",
+        "5. volume": "1000000"
+      },
+      "2026-10-07": {
+        "1. open": "99.5000",
+        "2. high": "100.5000",
+        "3. low": "98.5000",
+        "4. close": "99.5000",
+        "5. volume": "1000000"
+      }
+    }
+  },
+  "bodyRaw": "{\"Meta Data\":{\"1. Information\":\"Daily Prices (open, high, low, close) and Volumes\",\"2. Symbol\":\"AAPL\",\"3. Last Refreshed\":\"2026-10-09\",\"4. Output Size\":\"Compact\",\"5. Time Zone\":\"US/Eastern\"},\"Time Series (Daily)\":{\"2026-10-09\":{\"1. open\":\"104.0000\",\"2. high\":\"105.0000\",\"3. low\":\"103.0000\",\"4. close\":\"104.0000\",\"5. volume\":\"1000000\"},\"2026-10-08\":{\"1. open\":\"100.0000\",\"2. high\":\"101.0000\",\"3. low\":\"99.0000\",\"4. close\":\"100.0000\",\"5. volume\":\"1000000\"},\"2026-10-07\":{\"1. open\":\"99.5000\",\"2. high\":\"100.5000\",\"3. low\":\"98.5000\",\"4. close\":\"99.5000\",\"5. volume\":\"1000000\"}}}",
+  "bodyFormat": "utf8",
+  "contentType": "application/json"
+}

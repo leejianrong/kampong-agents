@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=../../../spec/schemas/agent-spec.v1.0.schema.json
+#
+# market-etl (KAN-1865): a scheduled Alpha Vantage -> Supabase price pipeline that posts to Slack when a
+# symbol moves more than a threshold. It mirrors mastra-projects/market-etl, written as a spec only.
+#
+#   kampong run agent.yaml --input "" --tools replay --fixtures fixtures --var symbols=AAPL,MSFT,NVDA
+#
+# See README.md for the live run, the secrets it reads, and the Supabase table it writes to.
+version: "1.1"
+vars:
+  symbols:
+    type: list
+    items: string
+    default: [AAPL, MSFT, NVDA]
+    description: "Tickers to pull each run"
+  threshold:
+    type: number
+    default: 1.5
+    description: "Absolute day-over-day percent move that counts as an anomaly"
+  slack_channel:
+    type: string
+    default: "#market-alerts"
+    description: "Where anomaly alerts are posted"
+agent:
+  id: market-etl
+  name: "Market ETL"
+  role: "Market data analyst"
+  goal: "Load each symbol's latest daily price and flag unusually large moves."
+  # The only model call is the anomaly summary. Swap in any provider; the key stays a ${ENV_VAR}.
+  model:
+    provider: ollama
+    name: llama3.1
+  trigger:
+    type: schedule
+    cron: "0 */6 * * *"
+    overlap: skip
+  tools:
+    - name: fetch_daily
+      action: component
+      use: kampong/alpha-vantage@1.0.0
+      op: time_series_daily
+      with:
+        symbol: "{{ symbol }}"
+    - name: upsert_price
+      action: component
+      use: kampong/supabase@1.0.0
+      op: upsert
+      with:
+        table: price_observations
+        on_conflict: "symbol,trade_date"
+        rows: ["{{ row.record }}"]
+    - name: post_alert
+      action: component
+      use: kampong/slack@1.0.0
+      op: post_message
+      with:
+        channel: "{{ vars.slack_channel }}"
+        text: "{{ summarize.summary }}"
+  workflow:
+    - step: each_symbol
+      foreach:
+        items: "vars.symbols"
+        as: symbol
+        # A rate-limited or malformed symbol lands in each_symbol.errors; the others carry on.
+        on_error: continue
+        steps:
+          # Alpha Vantage answers a rate limit with HTTP 200 and no prices. The component's failure_when
+          # turns that into a failed call, so the next steps never see it.
+          - step: fetch
+            type: tool
+            tool: fetch_daily
+          - step: check
+            type: validate
+            assert: "$count($keys(fetch.`Time Series (Daily)`)) >= 2"
+            message: "{{ symbol }}: fewer than 2 daily observations"
+          - step: shape
+            type: transform
+            set:
+              latest_date: "$sort($keys(fetch.`Time Series (Daily)`))[-1]"
+              previous_date: "$sort($keys(fetch.`Time Series (Daily)`))[-2]"
+              latest_close: |-
+                $number($lookup(fetch.`Time Series (Daily)`,
+                $sort($keys(fetch.`Time Series (Daily)`))[-1])."4. close")
+              previous_close: |-
+                $number($lookup(fetch.`Time Series (Daily)`,
+                $sort($keys(fetch.`Time Series (Daily)`))[-2])."4. close")
+          - step: sane
+            type: validate
+            assert: "shape.latest_close > 0 and shape.previous_close > 0"
+            message: "{{ symbol }}: a close price is not positive"
+          - step: delta
+            type: transform
+            set:
+              change_pct: |-
+                $round((shape.latest_close - shape.previous_close)
+                / shape.previous_close * 100, 4)
+          - step: row
+            type: transform
+            set:
+              record: |-
+                { 'symbol': symbol, 'trade_date': shape.latest_date,
+                'close': shape.latest_close, 'change_pct': delta.change_pct }
+          # The write comes only after the checks above, so a failed symbol leaves no partial row.
+          - step: write
+            type: tool
+            tool: upsert_price
+          - step: anomaly
+            branch:
+              if: "$abs(delta.change_pct) >= vars.threshold"
+              then:
+                - step: summarize
+                  action: summarize_move
+                  instructions: |-
+                    You write one-sentence market alerts for a trading desk. Be
+                    factual and do not speculate about causes.
+                  query: |-
+                    {{ symbol }} closed at {{ shape.latest_close }} on
+                    {{ shape.latest_date }}, {{ delta.change_pct }}% versus
+                    {{ shape.previous_close }} the day before (alert threshold
+                    {{ vars.threshold }}%). Summarize the move.
+                  output_schema:
+                    type: object
+                    required: [summary, direction]
+                    properties:
+                      summary:
+                        type: string
+                        description: "One sentence: the symbol and the percent move"
+                        maxLength: 280
+                      direction:
+                        type: string
+                        enum: [up, down]
+                - step: alert
+                  type: tool
+                  tool: post_alert
+    - step: report
+      type: transform
+      set:
+        loaded: "$count(each_symbol.results)"
+        failed: "$count(each_symbol.errors)"

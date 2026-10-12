@@ -32,6 +32,7 @@ import {
   explicitComponentRefs,
 } from "@kampong/exporter";
 import { runDoctor, type ConnectFn } from "./doctor.js";
+import { listTemplates } from "./templates.js";
 import { createDevServer } from "./server.js";
 import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
@@ -99,6 +100,9 @@ Commands:
                                       project -- one-way, zero dependency on this tool.
   lock <spec>.yaml [--update]        Pin the components a spec uses to their content digests
                                       in kampong.lock (next to the spec).
+
+  templates [--json]                 List the ready-made specs you can copy and edit, with the
+                                      folder each one lives in.
 
   doctor <spec>.yaml                 Preflight a spec: components, pins, permissions, credentials
                                       (names only), with --online host reachability, and with --probe whether each credential is accepted.
@@ -196,6 +200,8 @@ export async function runCli(
       return runLockCommand(rest, io);
     case "doctor":
       return runDoctorCommand(rest, io, testOptions);
+    case "templates":
+      return runTemplatesCommand(rest, io);
     case "-v":
     case "--version":
       io.stdout(getVersion());
@@ -1097,6 +1103,40 @@ async function runExportCommand(args: string[], io: CliIO): Promise<number> {
 }
 
 // --- lock -----------------------------------------------------------------
+
+const TEMPLATES_HELP_TEXT = `kampong templates [--json]
+
+Lists the templates that ship with kampong: complete specs to copy and edit. Each folder holds an
+agent.yaml, a README.md and, for a template that runs offline, its recorded fixtures/.
+
+Options:
+  --json      One JSON array of { name, description, path } on stdout
+  -h, --help  Show this help`;
+
+function runTemplatesCommand(args: string[], io: CliIO): number {
+  if (args.includes("-h") || args.includes("--help")) {
+    io.stdout(TEMPLATES_HELP_TEXT);
+    return EXIT_SUCCESS;
+  }
+  const unknown = args.find((a) => a !== "--json");
+  if (unknown !== undefined) {
+    io.stderr(`kampong templates: unknown argument ${unknown}\n`);
+    io.stderr(TEMPLATES_HELP_TEXT);
+    return EXIT_USAGE_ERROR;
+  }
+  const templates = listTemplates();
+  if (args.includes("--json")) {
+    io.stdout(JSON.stringify(templates));
+    return EXIT_SUCCESS;
+  }
+  if (templates.length === 0) io.stdout("No templates found.");
+  const width = Math.max(0, ...templates.map((t) => t.name.length));
+  for (const t of templates) {
+    io.stdout(`${t.name.padEnd(width)}  ${t.description}`);
+    io.stdout(`${" ".repeat(width)}  ${t.path}`);
+  }
+  return EXIT_SUCCESS;
+}
 
 const LOCK_HELP_TEXT = `kampong lock <spec>.yaml [--update]
 

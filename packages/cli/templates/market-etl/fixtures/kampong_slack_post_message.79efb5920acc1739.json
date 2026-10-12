@@ -1,0 +1,15 @@
+{
+  "toolName": "kampong/slack.post_message",
+  "method": "POST",
+  "url": "https://slack.com/api/chat.postMessage",
+  "requestBody": "{\"channel\":\"#market-alerts\",\"text\":\"AAPL moved 4% on the day.\"}",
+  "status": 200,
+  "body": {
+    "ok": true,
+    "channel": "C0MARKET",
+    "ts": "1760000000.000100"
+  },
+  "bodyRaw": "{\"ok\":true,\"channel\":\"C0MARKET\",\"ts\":\"1760000000.000100\"}",
+  "bodyFormat": "utf8",
+  "contentType": "application/json"
+}
