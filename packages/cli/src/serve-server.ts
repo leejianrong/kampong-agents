@@ -8,6 +8,7 @@ import {
   parseSlackInteractionPayload,
   postInteractionUpdate,
   verifySlackSignature,
+  handleWebhookRequest,
   type RunEvent,
   type RunState,
 } from "@kampong/engine";
@@ -52,29 +53,19 @@ export interface CreateServeServerOptions {
    * because they start after the server is built. `POST /schedule/run-now` needs them.
    */
   getRunners?: () => ServeRunnersHandle | undefined;
+  /** Test seam: the clock (ms) a webhook's timestamp window is measured against. Production omits it. */
+  now?: () => number;
+}
+
+/** A request as the body parsers above leave it: the bytes that arrived, for signature checks. */
+interface RawBodyRequest {
+  rawBody?: Buffer;
 }
 
 export interface ServeRuntime {
   app: FastifyInstance;
   spec: AgentSpec;
   runManager: RunManager;
-}
-
-// Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text
-// values. A header that looks like a credential is not passed, so it cannot end up in a message, a query or a
-// run trace through `{{ trigger.headers }}`; a webhook's own verification belongs in the trigger (KAN-1848).
-const CREDENTIAL_HEADER =
-  /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
-
-function triggerHeaders(
-  headers: Record<string, string | string[] | undefined>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined || CREDENTIAL_HEADER.test(name)) continue;
-    out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
-  }
-  return out;
 }
 
 // The answer to resolving an approval: a key with no record is 404, a spec that changed or a record another
@@ -98,6 +89,7 @@ export function createServeRuntime({
   specPath,
   run,
   getRunners,
+  now,
 }: CreateServeServerOptions): ServeRuntime {
   const source = readFileSync(specPath, "utf8");
   const parsed = parseSpec(source);
@@ -129,10 +121,33 @@ export function createServeRuntime({
   const slackFetchImpl = run?.slackFetchImpl;
   const env = run?.env ?? process.env;
 
-  // Accept any non-JSON content type as a raw string body, so `curl -d "..."`
-  // (which defaults to urlencoded) and text/plain both work; JSON bodies keep
-  // Fastify's built-in object parsing.
-  app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(null, body));
+  // Every body arrives as a Buffer first, kept as `request.rawBody`: an HMAC signature is over the exact bytes
+  // the sender signed, so verification (KAN-1848) must never see a parsed-and-reserialised body. JSON is
+  // parsed from that text (as Fastify's own parser would, including refusing an empty body); any other content
+  // type -- so `curl -d "..."` (urlencoded) and text/plain both work -- is passed on as a string.
+  app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
+    (req as RawBodyRequest).rawBody = body as Buffer;
+    const text = (body as Buffer).toString("utf8");
+    if (text === "") {
+      const err = new Error("Body cannot be empty when content-type is set to 'application/json'");
+      (err as Error & { statusCode: number }).statusCode = 400;
+      return done(err, undefined);
+    }
+    try {
+      // A "__proto__" key is dropped, as Fastify's default JSON parser does.
+      done(
+        null,
+        JSON.parse(text, (key, value) => (key === "__proto__" ? undefined : value)),
+      );
+    } catch (parseError) {
+      (parseError as Error & { statusCode: number }).statusCode = 400;
+      done(parseError as Error, undefined);
+    }
+  });
+  app.addContentTypeParser("*", { parseAs: "buffer" }, (req, body, done) => {
+    (req as RawBodyRequest).rawBody = body as Buffer;
+    done(null, (body as Buffer).toString("utf8"));
+  });
 
   // POST /webhook -- the trigger. The request body becomes the run input (raw
   // string as-is; a JSON body is passed through as its JSON text). Returns the
@@ -140,21 +155,39 @@ export function createServeRuntime({
   // /runs/:id or streams /runs/:id/events and resolves approvals via
   // /runs/:id/approve (Slack-button approval is a later slice).
   app.post("/webhook", async (request, reply) => {
+    const trigger = spec.agent.trigger?.type === "webhook" ? spec.agent.trigger : undefined;
+    // Authenticate first (KAN-1848, ADR-0047), then `when` and `map`: nothing below runs, answers or
+    // waits for a caller that has not passed, whichever respond mode the trigger uses.
+    const decision = await handleWebhookRequest(
+      trigger,
+      { headers: request.headers, rawBody: (request as RawBodyRequest).rawBody ?? "" },
+      { env, ...(now && { now }) },
+    );
+    if (decision.action === "reject" || decision.action === "respond") {
+      return reply.code(decision.status).send(decision.body);
+    }
+    if (decision.action === "error") return reply.code(decision.status).send(decision.body);
+    if (decision.action === "ignore") {
+      runManager.recordIgnored(decision.reason);
+      return reply.code(200).send({ success: true, ignored: true, reason: decision.reason });
+    }
     const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
     const { id, state } = await runManager.start(spec, input, {
-      headers: triggerHeaders(request.headers),
+      headers: decision.trigger.headers,
+      ...(decision.trigger.fields && { fields: decision.trigger.fields }),
     });
     // `respond: sync` holds the request until the run settles or the timeout passes (KAM-109).
-    if (spec.agent.trigger?.type === "webhook" && spec.agent.trigger.respond === "sync") {
-      const settled = await runManager.settle(
-        id,
-        spec.agent.trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS,
-      );
+    if (trigger?.respond === "sync") {
+      const settled = await runManager.settle(id, trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS);
       const answer = syncAnswer(id, settled ?? state);
       return reply.code(answer.code).send(answer.body);
     }
     return reply.code(201).send({ success: true, id, state });
   });
+
+  // GET /triggers/ignored -- the requests `when` accepted but did not run (the latest 100): recorded as
+  // ignored, never as runs.
+  app.get("/triggers/ignored", async () => ({ success: true, ignored: runManager.listIgnored() }));
 
   // POST /schedule/run-now -- KAN-1856: start the schedule's run immediately, outside the clock. It takes
   // the same overlap lock a scheduled tick takes. 404: the spec has no schedule trigger. 409: a run is

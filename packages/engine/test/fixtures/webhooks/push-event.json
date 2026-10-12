@@ -1,0 +1,6 @@
+{
+  "ref": "refs/heads/main",
+  "after": "abc123",
+  "repository": { "full_name": "acme/widgets" },
+  "pusher": { "name": "ada" }
+}

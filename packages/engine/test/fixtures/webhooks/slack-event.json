@@ -1,0 +1,4 @@
+{
+  "type": "event_callback",
+  "event": { "type": "app_mention", "user": "U123", "text": "deploy now", "channel": "C9" }
+}

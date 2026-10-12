@@ -1,0 +1,1 @@
+{ "status": "firing", "alerts": [{ "labels": { "alertname": "HighLatency", "severity": "page" } }] }

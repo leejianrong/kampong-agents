@@ -56,6 +56,7 @@ import {
   postInteractionUpdate,
   verifySlackSignature,
 } from "./runtime/slack-approval.js";
+import { handleWebhookRequest } from "./runtime/webhook-trigger.js";
 import type { RunEvent } from "./runtime/workflow.js";
 import type { AgentSpec } from "./runtime/spec-types.js";
 
@@ -79,13 +80,32 @@ const runManager = new RunManager({
   spec: SPEC${options.components ? ",\n  components" : ""},
 });
 
-// Accept any non-JSON content type as a raw string body, so \`curl -d "..."\`
-// (which defaults to urlencoded) and text/plain both work; JSON bodies keep
-// Fastify's built-in object parsing.
-app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(null, body));
+// Every body arrives as a Buffer first, kept as request.rawBody: an HMAC signature is over the exact bytes the
+// sender signed, so the webhook's verification must never see a parsed-and-reserialised body. JSON is parsed
+// from that text (an empty body is refused, as Fastify's own parser does); any other content type -- so
+// \`curl -d "..."\` (urlencoded) and text/plain both work -- is passed on as a string.
+type RawBodyRequest = { rawBody?: Buffer };
+app.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
+  (req as RawBodyRequest).rawBody = body as Buffer;
+  const text = (body as Buffer).toString("utf8");
+  if (text === "") {
+    const err = new Error("Body cannot be empty when content-type is set to 'application/json'");
+    (err as Error & { statusCode: number }).statusCode = 400;
+    return done(err, undefined);
+  }
+  try {
+    // A "__proto__" key is dropped, as Fastify's default JSON parser does.
+    done(null, JSON.parse(text, (key, value) => (key === "__proto__" ? undefined : value)));
+  } catch (parseError) {
+    (parseError as Error & { statusCode: number }).statusCode = 400;
+    done(parseError as Error, undefined);
+  }
+});
+app.addContentTypeParser("*", { parseAs: "buffer" }, (req, body, done) => {
+  (req as RawBodyRequest).rawBody = body as Buffer;
+  done(null, (body as Buffer).toString("utf8"));
+});
 
-// Request headers a version 1.1 expression reads as \`trigger.headers\`: lowercase names, text values. A header
-// that looks like a credential is not passed, so it cannot end up in a message, a query or a run trace.
 // The answer to resolving an approval: a key with no record is 404, a spec that changed or a record another
 // caller already claimed is 409 (the run did not resume), anything else is the resumed run's state.
 function approvalReply(reply: FastifyReply, id: string, state: RunState) {
@@ -98,35 +118,44 @@ function approvalReply(reply: FastifyReply, id: string, state: RunState) {
   return { success: true, id, state };
 }
 
-const CREDENTIAL_HEADER =
-  /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
-
-function triggerHeaders(
-  headers: Record<string, string | string[] | undefined>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value === undefined || CREDENTIAL_HEADER.test(name)) continue;
-    out[name.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
-  }
-  return out;
-}
-
 // POST /webhook -- the trigger. The request body becomes the run input (raw
 // string as-is; a JSON body is passed through as its JSON text). Returns the
 // run id immediately (on-demand execution); the caller polls /runs/:id or
 // streams /runs/:id/events and resolves approvals via /runs/:id/approve.
 app.post("/webhook", async (request, reply) => {
+  const trigger = SPEC.agent.trigger?.type === "webhook" ? SPEC.agent.trigger : undefined;
+  // Authenticate first (the trigger's auth / preset), then its when and map: nothing below runs, answers or
+  // waits for a caller that has not passed, whichever respond mode the trigger uses. A bad or missing
+  // signature is a bare 401. The secret comes from the trigger's secret_env variable.
+  const decision = await handleWebhookRequest(trigger, {
+    headers: request.headers,
+    rawBody: (request as RawBodyRequest).rawBody ?? "",
+  });
+  if (decision.action === "reject" || decision.action === "respond") {
+    return reply.code(decision.status).send(decision.body);
+  }
+  if (decision.action === "error") return reply.code(decision.status).send(decision.body);
+  if (decision.action === "ignore") {
+    // when was false: accepted, recorded as ignored, and no run starts.
+    runManager.recordIgnored(decision.reason);
+    return reply.code(200).send({ success: true, ignored: true, reason: decision.reason });
+  }
   const input = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
-  const { id, state } = await runManager.start(SPEC, input, { headers: triggerHeaders(request.headers) });
+  const { id, state } = await runManager.start(SPEC, input, {
+    headers: decision.trigger.headers,
+    ...(decision.trigger.fields && { fields: decision.trigger.fields }),
+  });
   // \`respond: sync\` holds the request until the run settles or the timeout passes.
-  if (SPEC.agent.trigger?.type === "webhook" && SPEC.agent.trigger.respond === "sync") {
-    const settled = await runManager.settle(id, SPEC.agent.trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS);
+  if (trigger?.respond === "sync") {
+    const settled = await runManager.settle(id, trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS);
     const answer = syncAnswer(id, settled ?? state);
     return reply.code(answer.code).send(answer.body);
   }
   return reply.code(201).send({ success: true, id, state });
 });
+
+// GET /triggers/ignored -- the requests the trigger's when accepted but did not run (the latest 100).
+app.get("/triggers/ignored", async () => ({ success: true, ignored: runManager.listIgnored() }));
 
 app.get<{ Params: { id: string } }>("/runs/:id", async (request, reply) => {
   const run = runManager.get(request.params.id);

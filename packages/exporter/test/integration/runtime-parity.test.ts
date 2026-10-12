@@ -76,6 +76,9 @@ const VENDORED_FROM_ENGINE = [
   "sqlite-state-store.ts",
   // KAN-1854: pending-approval records (spec hash, correlation key, listing) the paused run persists.
   "pending-approval.ts",
+  // KAN-1848: webhook auth presets (a byte-identical copy of the spec's), `when` and `map`.
+  "webhook-auth.ts",
+  "webhook-trigger.ts",
 ];
 
 // Vendored files with NO source-of-truth counterpart in packages/engine/src

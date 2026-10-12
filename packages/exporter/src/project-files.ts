@@ -1,4 +1,4 @@
-import type { AgentSpec } from "@kampong/spec";
+import { resolveWebhookAuth, type AgentSpec } from "@kampong/spec";
 import type { ExportComponent } from "./components.js";
 
 // The small set of plain project files every export needs besides
@@ -69,6 +69,12 @@ export function collectRequiredEnvVars(
     }
   }
   add(spec.agent.approval_notifier?.token);
+  // KAN-1848: the variable that holds a webhook's bearer token or signing secret.
+  const trigger = spec.agent.trigger;
+  if (trigger?.type === "webhook" && (trigger.preset || trigger.auth)) {
+    const resolved = resolveWebhookAuth(trigger.preset, trigger.auth);
+    if (resolved.ok && resolved.auth.type !== "none") vars.add(resolved.auth.secretEnv);
+  }
   if (spec.agent.approval_notifier?.type === "slack") vars.add("SLACK_SIGNING_SECRET");
   return [...vars];
 }

@@ -272,6 +272,31 @@ export function validateSpecExpressions(
       local?.push(step.step);
     });
   };
+  // KAN-1848: a webhook's `when` and `map` run when the request arrives, before any step: they read only
+  // `trigger` (headers, body, and the body's fields), and are whole expressions, not `{{ }}` text.
+  const trigger = spec.agent.trigger;
+  if (trigger?.type === "webhook") {
+    const checkIngress = (path: (string | number)[], source: string, where: string) => {
+      const parsed = parseExpression(source);
+      if (!parsed.ok) {
+        for (const e of parsed.errors) reportExpression(path, where, e);
+        return;
+      }
+      for (const [root] of expressionPaths(parsed.ast)) {
+        if (root !== undefined && root !== "trigger") {
+          report(
+            path,
+            `${where}: "${root}" is not available when a request arrives: it can read only trigger (trigger.headers, trigger.body, and the body's fields)`,
+          );
+        }
+      }
+    };
+    if (trigger.when !== undefined)
+      checkIngress(["agent", "trigger", "when"], trigger.when, "when");
+    for (const [name, source] of Object.entries(trigger.map ?? {})) {
+      checkIngress(["agent", "trigger", "map", name], source, `map.${name}`);
+    }
+  }
   walk(spec.agent.workflow, ["agent", "workflow"], undefined, new Map());
   scan(spec.agent.tools, ["agent", "tools"], { local: loopNames, hidden: new Map() });
   return errors;

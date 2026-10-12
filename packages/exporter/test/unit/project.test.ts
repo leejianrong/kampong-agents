@@ -485,9 +485,13 @@ describe("collectRequiredEnvVars with a component tool", () => {
       expect(entry).toContain("trigger: { headers }");
       expect(entry).toMatch(/is not declared in the spec's vars/);
       const server = readFileSync(join(out, "src/server.ts"), "utf8");
-      expect(server).toContain("triggerHeaders(request.headers)");
-      // a header that looks like a credential never reaches an expression or a run trace
-      expect(server).toContain("authorization|cookie|token|secret");
+      expect(server).toContain("handleWebhookRequest(trigger");
+      expect(server).toContain("headers: decision.trigger.headers");
+      // a header that looks like a credential never reaches an expression or a run trace (KAN-1848 moved
+      // the filter into the vendored webhook-trigger.ts)
+      expect(readFileSync(join(out, "src/runtime/webhook-trigger.ts"), "utf8")).toContain(
+        "authorization|cookie|token|secret",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

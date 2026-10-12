@@ -117,8 +117,16 @@ export function syncAnswer(id: string, state: RunState): SyncAnswer {
   }
 }
 
+/** A webhook request that was accepted but did not start a run, because the trigger's `when` was false (KAN-1848). */
+export interface IgnoredTrigger {
+  at: string;
+  reason: string;
+}
+const MAX_IGNORED = 100;
+
 export class RunManager {
   private readonly runs = new Map<string, AgentRun>();
+  private readonly ignored: IgnoredTrigger[] = [];
   private readonly evictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly evictAfterMs: number;
 
@@ -135,7 +143,7 @@ export class RunManager {
   async start(
     spec: AgentSpec,
     input: string,
-    trigger?: { headers?: Record<string, string> },
+    trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
   ): Promise<StartRunResult> {
     const run = this.createRun(spec, trigger);
     const id = this.register(spec, run);
@@ -151,7 +159,21 @@ export class RunManager {
     return { id, state: run.getState() };
   }
 
-  private createRun(spec: AgentSpec, trigger?: { headers?: Record<string, string> }): AgentRun {
+  /** Records a request the trigger's `when` filtered out: it is recorded as ignored, never as a run. */
+  recordIgnored(reason: string): void {
+    this.ignored.push({ at: new Date().toISOString(), reason });
+    if (this.ignored.length > MAX_IGNORED) this.ignored.shift();
+  }
+
+  /** The most recent ignored requests, oldest first (the last 100). */
+  listIgnored(): IgnoredTrigger[] {
+    return [...this.ignored];
+  }
+
+  private createRun(
+    spec: AgentSpec,
+    trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
+  ): AgentRun {
     return createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,

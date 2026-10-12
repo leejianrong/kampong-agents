@@ -48,7 +48,7 @@ export interface PersistedApproval {
   /** The run's raw input. */
   input: string;
   /** What started the run, with credential-looking headers removed. */
-  trigger?: { headers?: Record<string, string>; body?: unknown };
+  trigger?: { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> };
   /** Epoch milliseconds. */
   createdAt: number;
   /** Epoch milliseconds the record expires at. */
@@ -76,7 +76,9 @@ const CREDENTIAL_HEADER =
   /authorization|cookie|token|secret|signature|api-?key|password|credential|x-amz-security/i;
 
 export function storableTrigger(
-  trigger: { headers?: Record<string, string>; body?: unknown } | undefined,
+  trigger:
+    | { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> }
+    | undefined,
 ): PersistedApproval["trigger"] {
   if (!trigger) return undefined;
   const headers = trigger.headers
@@ -87,6 +89,7 @@ export function storableTrigger(
   return {
     ...(headers && { headers }),
     ...(trigger.body !== undefined && { body: trigger.body }),
+    ...(trigger.fields !== undefined && { fields: trigger.fields }),
   };
 }
 
