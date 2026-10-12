@@ -37,3 +37,4 @@ site/
 /playwright-report/
 /test-results/
 /e2e/browser/screenshots/
+.vitest/
