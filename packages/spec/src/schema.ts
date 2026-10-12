@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildSchedule } from "./schedule.js";
 import { requestOptionalFields } from "./request.js";
 import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 
@@ -265,11 +266,32 @@ export const workflowStepSchema = z.union([
 // `respond` (KAM-109): `async` (the default) answers a webhook POST with a run id to poll. `sync` holds the
 // request open and answers with the final output, for callers that want an answer (a Q&A endpoint).
 // `timeout_ms` is how long it waits before falling back to the run id; the run carries on either way.
-export const triggerSchema = z.object({
+export const webhookTriggerSchema = z.object({
   type: z.literal("webhook"),
   respond: z.enum(["async", "sync"]).optional(),
   timeout_ms: z.number().int().min(1000).max(300000).optional(),
 });
+
+// KAN-1856: `schedule` starts a run on a clock while `kampong serve` is up. Exactly one of `cron` (five
+// fields, read in `tz`, default UTC) or `every` (`30s`, `15m`, `6h`, `1d`) says when; the cross-field and
+// content checks (XOR, cron syntax, IANA zone) run in the spec's superRefine so each error carries the
+// line of the offending field. `overlap` says what to do when a tick comes due while the previous run is
+// still going: `skip` (the default) drops it, `queue` keeps one and runs it as soon as the run ends.
+// Version 1.1 only. The input of a scheduled run is empty.
+export const scheduleTriggerSchema = z
+  .object({
+    type: z.literal("schedule"),
+    cron: z.string().optional(),
+    every: z.string().optional(),
+    tz: z.string().optional(),
+    overlap: z.enum(["skip", "queue"]).optional(),
+  })
+  .strict();
+
+export const triggerSchema = z.discriminatedUnion("type", [
+  webhookTriggerSchema,
+  scheduleTriggerSchema,
+]);
 
 // KAN-1432 (ADR-0021 Slice D): where a *headless* deployment (`kampong
 // serve` / the exported app) sends an Approve/Reject prompt when a run
@@ -462,7 +484,40 @@ export const agentSpecSchema = z
       }
     });
     const trigger = spec.agent.trigger;
-    if (trigger) {
+    if (trigger?.type === "schedule") {
+      const at = ["agent", "trigger"];
+      if (spec.version !== "1.1") {
+        ctx.addIssue({
+          code: "custom",
+          message: 'a schedule trigger needs version "1.1"',
+          path: [...at, "type"],
+        });
+      }
+      if ((trigger.cron === undefined) === (trigger.every === undefined)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "a schedule trigger needs exactly one of cron or every",
+          path: [...at, trigger.cron === undefined ? "type" : "every"],
+        });
+      } else if (trigger.every !== undefined && trigger.tz !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "tz only applies to a cron schedule",
+          path: [...at, "tz"],
+        });
+      } else {
+        const built = buildSchedule(trigger);
+        if (!built.ok) {
+          const field = /time zone/.test(built.error)
+            ? "tz"
+            : trigger.cron !== undefined
+              ? "cron"
+              : "every";
+          ctx.addIssue({ code: "custom", message: built.error, path: [...at, field] });
+        }
+      }
+    }
+    if (trigger?.type === "webhook") {
       for (const field of ["respond", "timeout_ms"] as const) {
         if (trigger[field] !== undefined && spec.version !== "1.1") {
           ctx.addIssue({
@@ -493,6 +548,8 @@ export type SpecVars = z.infer<typeof varsSchema>;
 export type SpecVar = z.infer<typeof varSchema>;
 export type AgentSpec = z.infer<typeof agentSpecSchema>;
 export type Trigger = z.infer<typeof triggerSchema>;
+export type WebhookTrigger = z.infer<typeof webhookTriggerSchema>;
+export type ScheduleTrigger = z.infer<typeof scheduleTriggerSchema>;
 export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;

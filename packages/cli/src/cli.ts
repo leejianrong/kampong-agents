@@ -33,7 +33,7 @@ import {
 } from "@kampong/exporter";
 import { runDoctor, type ConnectFn } from "./doctor.js";
 import { createDevServer } from "./server.js";
-import { createServeServer, ServeSpecInvalidError } from "./serve-server.js";
+import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
@@ -485,11 +485,13 @@ async function runServeCommand(
     return EXIT_VALIDATION_FAILURE;
   }
 
-  let app;
+  let runtime;
+  const runnersRef: { current?: ReturnType<typeof startServeRunners> } = {};
   try {
     const fakeModel = testOptions.model;
-    app = createServeServer({
+    runtime = createServeRuntime({
       specPath: resolvedSpecPath,
+      getRunners: () => runnersRef.current,
       ...(fakeModel ? { run: { createModel: () => fakeModel } } : {}),
     });
   } catch (err) {
@@ -504,6 +506,7 @@ async function runServeCommand(
     return EXIT_EXECUTION_FAILURE;
   }
 
+  const app = runtime.app;
   try {
     await app.listen({ port, host });
   } catch (err) {
@@ -514,20 +517,25 @@ async function runServeCommand(
   const served = parseSpec(readFileSync(resolvedSpecPath, "utf8"));
   if (served.spec) reportSpecWarnings(served.spec, "serve", io);
 
-  // Recurring jobs (schedule/poll triggers, KAN-1856/1857) run under the unattended runner. There are
-  // none yet, so this is a no-op; once there are, repeated failures stop the service with a non-zero exit.
-  const runners = startServeRunners(served.spec ? collectServeJobs(served.spec) : [], {
-    log: (line) => io.stderr(line),
-  });
+  // Recurring jobs (a schedule trigger, KAN-1856; poll, KAN-1857) run under the unattended runner;
+  // repeated failures stop the service with a non-zero exit. A spec with none makes this a no-op.
+  const activeRunners = startServeRunners(
+    served.spec ? collectServeJobs(served.spec, runtime.runManager) : [],
+    { log: (line) => io.stderr(line) },
+  );
+  runnersRef.current = activeRunners;
 
   io.stdout(`kampong serve running at http://${host}:${port}`);
   io.stdout(`  spec:    ${resolvedSpecPath}`);
   io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
+  if (served.spec?.agent.trigger?.type === "schedule") {
+    io.stdout(`  run now: POST http://${host}:${port}/schedule/run-now`);
+  }
   io.stdout("Press Ctrl+C to stop.");
 
   return new Promise<number>((resolvePromise) => {
     const shutdown = (code: number): void => {
-      void runners
+      void activeRunners
         .stop()
         .catch(() => {
           /* best-effort shutdown */
@@ -540,7 +548,7 @@ async function runServeCommand(
     };
     process.once("SIGINT", () => shutdown(EXIT_SUCCESS));
     process.once("SIGTERM", () => shutdown(EXIT_SUCCESS));
-    void runners.done.then(({ failed }) => {
+    void activeRunners.done.then(({ failed }) => {
       if (failed) shutdown(EXIT_EXECUTION_FAILURE);
     });
   });

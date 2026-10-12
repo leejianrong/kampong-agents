@@ -10,6 +10,7 @@ import {
   type RunEvent,
 } from "@kampong/engine";
 import { componentDispatcherFor } from "./components.js";
+import { SCHEDULE_JOB_NAME, type ServeRunnersHandle } from "./serve-runner.js";
 import {
   DEFAULT_SYNC_TIMEOUT_MS,
   RunManager,
@@ -44,6 +45,17 @@ export interface CreateServeServerOptions {
   specPath: string;
   /** Test seam forwarded to RunManager (fake model / fixtures). Production omits it. */
   run?: RunManagerOptions;
+  /**
+   * The runners started for this spec's recurring jobs (`startServeRunners`), looked up per request
+   * because they start after the server is built. `POST /schedule/run-now` needs them.
+   */
+  getRunners?: () => ServeRunnersHandle | undefined;
+}
+
+export interface ServeRuntime {
+  app: FastifyInstance;
+  spec: AgentSpec;
+  runManager: RunManager;
 }
 
 // Request headers a version 1.1 expression reads as `trigger.headers` (KAN-1841): lowercase names, text
@@ -63,7 +75,16 @@ function triggerHeaders(
   return out;
 }
 
-export function createServeServer({ specPath, run }: CreateServeServerOptions): FastifyInstance {
+export function createServeServer(options: CreateServeServerOptions): FastifyInstance {
+  return createServeRuntime(options).app;
+}
+
+/** The server plus what `kampong serve` needs to attach the scheduler to the same RunManager. */
+export function createServeRuntime({
+  specPath,
+  run,
+  getRunners,
+}: CreateServeServerOptions): ServeRuntime {
   const source = readFileSync(specPath, "utf8");
   const parsed = parseSpec(source);
   if (!parsed.success || !parsed.spec) {
@@ -105,7 +126,7 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
       headers: triggerHeaders(request.headers),
     });
     // `respond: sync` holds the request until the run settles or the timeout passes (KAM-109).
-    if (spec.agent.trigger?.respond === "sync") {
+    if (spec.agent.trigger?.type === "webhook" && spec.agent.trigger.respond === "sync") {
       const settled = await runManager.settle(
         id,
         spec.agent.trigger.timeout_ms ?? DEFAULT_SYNC_TIMEOUT_MS,
@@ -114,6 +135,32 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
       return reply.code(answer.code).send(answer.body);
     }
     return reply.code(201).send({ success: true, id, state });
+  });
+
+  // POST /schedule/run-now -- KAN-1856: start the schedule's run immediately, outside the clock. It takes
+  // the same overlap lock a scheduled tick takes. 404: the spec has no schedule trigger. 409: a run is
+  // already in progress (a scheduled tick or an earlier run-now), whatever the overlap policy; a manual
+  // run is refused rather than queued. 503: the scheduler is not running in this process.
+  app.post("/schedule/run-now", async (_request, reply) => {
+    if (spec.agent.trigger?.type !== "schedule") {
+      return reply
+        .code(404)
+        .send({ success: false, error: "This spec has no schedule trigger to run now." });
+    }
+    const runners = getRunners?.();
+    if (!runners) {
+      return reply.code(503).send({ success: false, error: "The scheduler is not running." });
+    }
+    const result = await runners.runNow(SCHEDULE_JOB_NAME);
+    if (result.status === "busy") {
+      return reply
+        .code(409)
+        .send({ success: false, error: "A scheduled run is already in progress." });
+    }
+    if (result.status === "unknown_job") {
+      return reply.code(503).send({ success: false, error: "The scheduler is not running." });
+    }
+    return reply.code(201).send({ success: true, id: result.id, state: result.state });
   });
 
   app.get<{ Params: { id: string } }>("/runs/:id", async (request, reply) => {
@@ -235,5 +282,5 @@ export function createServeServer({ specPath, run }: CreateServeServerOptions): 
 
   app.get("/healthz", async () => ({ status: "ok" }));
 
-  return app;
+  return { app, spec, runManager };
 }

@@ -73,6 +73,21 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
         ]
       : [];
 
+  // KAN-1856: the export carries the scheduling code (src/runtime/schedule*.ts, runner.ts) but does not
+  // wire it into src/server.ts yet, so say so rather than let a schedule silently never fire.
+  const scheduleSection =
+    spec.agent.trigger?.type === "schedule"
+      ? [
+          "## Schedule trigger -- not wired into this export",
+          "",
+          "The spec declares a `schedule` trigger. `kampong serve` runs it; `src/server.ts` here does",
+          "**not** start a scheduler, so nothing fires on a clock until you add one. The pieces are",
+          "vendored in `src/runtime/` (`schedule.ts`, `schedule-runner.ts`, `runner.ts`) if you want to",
+          "wire them up yourself, or use an external cron that POSTs to `/webhook`.",
+          "",
+        ]
+      : [];
+
   return [
     `# ${spec.agent.name}`,
     "",
@@ -163,6 +178,7 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
     "variable -- never baked into the image (same `${ENV}` secrets model as running it locally).",
     "",
     ...envSection,
+    ...scheduleSection,
     "## Tool calls",
     "",
     "This project always makes live HTTP calls for its tools -- there is no mock/record layer",
