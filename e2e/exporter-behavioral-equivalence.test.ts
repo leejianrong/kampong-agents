@@ -534,6 +534,97 @@ agent:
     }
   }, 180_000);
 
+  it("a branch step, a switch and a stop run in an exported project exactly as the engine does (KAN-1859)", async () => {
+    const hits = await startFakeToolServer("ok");
+    try {
+      const source = `version: "1.1"
+agent:
+  id: e2e-branch
+  name: "E2E Branch"
+  role: "Analyst"
+  goal: "Route rows, and stop early."
+  model:
+    provider: ollama
+    name: llama3.1
+    base_url: "http://127.0.0.1:${ollama.port}"
+  tools:
+    - name: store_row
+      action: http_request
+      method: POST
+      url: "http://127.0.0.1:${hits.port}/rows/{{ row.id }}"
+    - name: route_to
+      action: http_request
+      method: POST
+      url: "http://127.0.0.1:${hits.port}/route/{{ trigger.kind }}"
+  workflow:
+    - step: each
+      foreach:
+        items: "trigger.rows"
+        as: row
+        steps:
+          - step: check
+            branch:
+              if: "row.ignore = true"
+              then:
+                - step: skip_row
+                  stop:
+                    reason: "row {{ row.id }} ignored"
+              else:
+                - step: write
+                  type: tool
+                  tool: store_row
+    - step: route
+      branch:
+        switch: "trigger.kind"
+        cases:
+          a:
+            - step: send
+              type: tool
+              tool: route_to
+        default:
+          - step: nothing
+            stop:
+              reason: "no route for {{ trigger.kind }}"
+    - step: summary
+      type: transform
+      set:
+        skipped: "$count(each.skipped)"
+        taken: "route.taken"
+`;
+      const { success, spec, errors } = parseSpec(source);
+      expect(success, JSON.stringify(errors)).toBe(true);
+      const rows = [
+        { id: "r1", ignore: false },
+        { id: "r2", ignore: true },
+      ];
+      const inputs = [JSON.stringify({ kind: "a", rows }), JSON.stringify({ kind: "z", rows })];
+      const references: RunOutcome[] = [];
+      for (const input of inputs)
+        references.push(toOutcome(await createAgentRun(spec!).start(input)));
+      expect(references[0]!.output?.summary).toEqual({ skipped: 1, taken: "a" });
+      expect(references[1]!.skipped).toEqual({ step: "nothing", reason: "no route for z" });
+      expect(references[1]!.output).not.toHaveProperty("summary");
+      const referenceUrls = [...(hits.urls ?? [])];
+      expect(referenceUrls).toEqual(["/rows/r1", "/route/a", "/rows/r1"]);
+
+      exportProject(spec!, exportDir);
+      const install = await runNpm(["install", "--no-audit", "--no-fund"], exportDir);
+      expect(install.code, `npm install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      for (const [i, input] of inputs.entries()) {
+        const start = await runNpm(
+          ["start", "--silent", "--", "--input", input, "--json"],
+          exportDir,
+        );
+        expect(start.code, `npm start failed:\n${start.stdout}\n${start.stderr}`).toBe(0);
+        const line = start.stdout.split("\n").find((l) => l.trim().startsWith("{"));
+        expect(JSON.parse(line!) as RunOutcome).toEqual(references[i]);
+      }
+      expect(hits.urls).toEqual([...referenceUrls, ...referenceUrls]);
+    } finally {
+      await hits.close();
+    }
+  }, 180_000);
+
   it("an export that uses a rest and a module component runs them, secrets included, exactly as the engine does", async () => {
     const componentsDir = join(exportDir, "..", `${exportDir.split("/").pop()}-components`);
     const put = (rel: string, content: string) => {

@@ -102,13 +102,13 @@ describe("foreach: shape", () => {
   it("rejects goto as not yet supported, at the field's line", () => {
     const inline = errorsOf(specWith("1.1", loop(undefined, "        on_error: goto\n")));
     expect(inline).toHaveLength(1);
-    expect(inline[0]!.message).toMatch(/goto is not yet supported.*KAN-1859/);
+    expect(inline[0]!.message).toMatch(/goto is not supported.*branch step/);
     expect(inline[0]!.line).toBe(24);
     const map = errorsOf(
       specWith("1.1", loop(undefined, "        on_error:\n          goto: first\n")),
     );
     expect(map).toHaveLength(1);
-    expect(map[0]!.message).toMatch(/goto is not yet supported.*KAN-1859/);
+    expect(map[0]!.message).toMatch(/goto is not supported.*branch step/);
     expect(map[0]!.line).toBe(25);
   });
 });

@@ -3,7 +3,9 @@ import { z } from "zod";
 import type {
   AgentSpec,
   BodyStep,
+  BranchStep,
   ForEachStep,
+  StopStep,
   SchemaNode,
   Tool,
   WorkflowStep,
@@ -367,7 +369,7 @@ async function* runSteps(
   resume?: ResumeContext,
 ): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
   const stepOutputs: Record<string, unknown> = {};
-  let stepIndex = 0;
+  let currentPath: PathSegment[] = [];
 
   // The one place a run waits for a human. On a resumed run the paused step's gate returns the stored
   // decision instead of asking again. Otherwise, when the run persists approvals, it writes the record
@@ -381,7 +383,7 @@ async function* runSteps(
     if (
       resume &&
       !resume.used &&
-      resume.record.stepIndex === stepIndex &&
+      samePath(resumePath, currentPath) &&
       resume.record.phase === phase
     ) {
       resume.used = true;
@@ -396,7 +398,8 @@ async function* runSteps(
         key,
         specHash: specHash(spec),
         agentId: spec.agent.id,
-        stepIndex,
+        stepIndex: currentPath[0] as number,
+        stepPath: currentPath,
         step: event.step,
         phase,
         kind: event.kind,
@@ -487,71 +490,191 @@ async function* runSteps(
     }
   }
 
-  const steps = spec.agent.workflow;
-  for (stepIndex = resume?.record.stepIndex ?? 0; stepIndex < steps.length; stepIndex++) {
-    const step = steps[stepIndex]!;
+  // The path of the step being run: its index in the workflow, then, for a step inside a branch arm, the arm
+  // ("then", "else", "case:<value>" or "default") and its index in that arm, and so on (ADR-0045). A pause
+  // records it, so a resume goes straight back into the nested step.
+  type Flow = "done" | "ended";
+  const resumePath: PathSegment[] | undefined = resume
+    ? (resume.record.stepPath ?? [resume.record.stepIndex])
+    : undefined;
 
-    // The paused step already ran and its guardrail was approved: do not run it again.
-    if (
-      resume &&
-      !resume.used &&
-      resume.record.stepIndex === stepIndex &&
-      resume.record.phase === "after"
-    ) {
-      resume.used = true;
-      continue;
-    }
+  // Runs a step list: the workflow, or an arm of a branch. `resumeAt` is the rest of the resume path, relative to
+  // this list, on the way back to the paused step. Returns "ended" once the run has reached a terminal event.
+  async function* runList(
+    steps: readonly WorkflowStep[],
+    base: PathSegment[],
+    resumeAt: PathSegment[] | undefined,
+  ): AsyncGenerator<RunEvent, Flow, ApprovalDecision | undefined> {
+    for (let i = typeof resumeAt?.[0] === "number" ? resumeAt[0] : 0; i < steps.length; i++) {
+      const step = steps[i]!;
+      const path = [...base, i];
+      currentPath = path;
+      // Set only for the step the resume path goes through: what is left of it below this step.
+      const below = resumeAt !== undefined && i === resumeAt[0] ? resumeAt.slice(1) : undefined;
 
-    yield { type: "step_started", step: step.step };
-
-    if (isConditionStep(step)) {
-      let branch: string;
-      try {
-        const truth = scope
-          ? await evaluateExpressionCondition(step.if, scope(), deps.expressionLimits)
-          : evaluateCondition(step.if, stepOutputs);
-        branch = truth ? step.then : step.else;
-      } catch (err) {
-        yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
-        return;
-      }
-
-      if (branch === REQUEST_HUMAN_APPROVAL) {
-        const decision = yield* pause(
-          {
-            step: step.step,
-            kind: "guardrail",
-            reason: `Step "${step.step}" requested human approval.`,
-          },
-          "before",
-        );
-        if (decision === null) return;
-        if (!decision?.approved) {
-          yield {
-            type: "rejected",
-            step: step.step,
-            reason: decision?.reason ?? "Approval was rejected.",
-          };
-          return;
-        }
-        stepOutputs[step.step] = { approved: true };
-        yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+      // The paused step already ran and its guardrail was approved: do not run it again.
+      if (resume && !resume.used && samePath(resumePath, path) && resume.record.phase === "after") {
+        resume.used = true;
         continue;
       }
 
-      const toolMatch = EXECUTE_TOOL_PATTERN.exec(branch);
-      if (toolMatch) {
-        const toolName = toolMatch[1]!;
-        const tool = spec.agent.tools?.find((t) => t.name === toolName);
+      yield { type: "step_started", step: step.step };
+
+      // KAN-1859 (ADR-0045): a branch picks one nested step list and runs it; a stop ends the run early.
+      if (isBranchStep(step)) {
+        if (!scope) {
+          yield {
+            type: "failed",
+            step: step.step,
+            error: `Step "${step.step}": branch needs version "1.1"`,
+          };
+          return "ended";
+        }
+        let segment: string | undefined;
+        let arm: readonly WorkflowStep[] | undefined;
+        if (below && below.length > 0) {
+          // Coming back from a pause inside an arm: the choice was made then, and its output is in `outputs`.
+          segment = String(below[0]);
+          arm = armBySegment(step, segment);
+          if (!arm) {
+            yield {
+              type: "failed",
+              step: step.step,
+              error: `Step "${step.step}": the paused arm "${segment}" no longer exists in this branch`,
+            };
+            return "ended";
+          }
+        } else {
+          try {
+            const picked = await selectArm(step, scope(), deps.expressionLimits);
+            segment = picked.segment;
+            arm = picked.list;
+            stepOutputs[step.step] = picked.output;
+          } catch (err) {
+            yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+            return "ended";
+          }
+          yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+        }
+        if (arm && segment !== undefined) {
+          const flow = yield* runList(arm, [...path, segment], below?.slice(1));
+          if (flow === "ended") return "ended";
+        }
+        continue;
+      }
+
+      if (isStopStep(step)) {
+        let reason: string;
+        try {
+          if (!scope) throw new Error('stop needs version "1.1"');
+          reason =
+            step.stop.reason !== undefined
+              ? String(await resolveTemplate(step.stop.reason, scope(), deps.expressionLimits))
+              : `stopped at step "${step.step}"`;
+        } catch (err) {
+          yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+          return "ended";
+        }
+        const status = step.stop.status ?? "skipped";
+        stepOutputs[step.step] = { stopped: true, status, reason };
+        yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+        yield {
+          type: "completed",
+          output: stepOutputs,
+          ...(status === "skipped" && { skipped: { step: step.step, reason } }),
+        };
+        return "ended";
+      }
+
+      if (isConditionStep(step)) {
+        let branch: string;
+        try {
+          const truth = scope
+            ? await evaluateExpressionCondition(step.if, scope(), deps.expressionLimits)
+            : evaluateCondition(step.if, stepOutputs);
+          branch = truth ? step.then : step.else;
+        } catch (err) {
+          yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+          return "ended";
+        }
+
+        if (branch === REQUEST_HUMAN_APPROVAL) {
+          const decision = yield* pause(
+            {
+              step: step.step,
+              kind: "guardrail",
+              reason: `Step "${step.step}" requested human approval.`,
+            },
+            "before",
+          );
+          if (decision === null) return "ended";
+          if (!decision?.approved) {
+            yield {
+              type: "rejected",
+              step: step.step,
+              reason: decision?.reason ?? "Approval was rejected.",
+            };
+            return "ended";
+          }
+          stepOutputs[step.step] = { approved: true };
+          yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+          continue;
+        }
+
+        const toolMatch = EXECUTE_TOOL_PATTERN.exec(branch);
+        if (toolMatch) {
+          const toolName = toolMatch[1]!;
+          const tool = spec.agent.tools?.find((t) => t.name === toolName);
+          if (!tool) {
+            yield {
+              type: "failed",
+              step: step.step,
+              error: `Condition references unknown tool "${toolName}".`,
+            };
+            return "ended";
+          }
+
+          const result = yield* executeTool(
+            tool,
+            step.step,
+            stepOutputs,
+            input,
+            deps,
+            expressionContext,
+            pause,
+          );
+          if (!result) return "ended";
+          stepOutputs[step.step] = result.output;
+          yield { type: "step_completed", step: step.step, output: result.output };
+          continue;
+        }
+
+        // V2 only implements the two branch shapes above (execute_tool(...)
+        // and request_human_approval); an unrecognized value must fail
+        // loudly here rather than silently "succeed" as an opaque annotation
+        // -- fail-visibly is a load-bearing project convention (AGENTS.md,
+        // ADR-0004), not just a model-call rule.
+        yield {
+          type: "failed",
+          step: step.step,
+          error: `Condition step "${step.step}" resolved to an unsupported branch action "${branch}" (expected "execute_tool(<tool_name>)" or "request_human_approval").`,
+        };
+        return "ended";
+      }
+
+      // KAN-1429 (ADR-0021): a tool step -- call a named tool as a normal,
+      // always-run step (not gated behind a condition branch). Same
+      // approval/param-resolution behavior as the execute_tool(...) branch above.
+      if (isToolStep(step)) {
+        const tool = spec.agent.tools?.find((t) => t.name === step.tool);
         if (!tool) {
           yield {
             type: "failed",
             step: step.step,
-            error: `Condition references unknown tool "${toolName}".`,
+            error: `Tool step "${step.step}" references unknown tool "${step.tool}".`,
           };
-          return;
+          return "ended";
         }
-
         const result = yield* executeTool(
           tool,
           step.step,
@@ -561,184 +684,146 @@ async function* runSteps(
           expressionContext,
           pause,
         );
-        if (!result) return;
+        if (!result) return "ended";
         stepOutputs[step.step] = result.output;
         yield { type: "step_completed", step: step.step, output: result.output };
         continue;
       }
 
-      // V2 only implements the two branch shapes above (execute_tool(...)
-      // and request_human_approval); an unrecognized value must fail
-      // loudly here rather than silently "succeed" as an opaque annotation
-      // -- fail-visibly is a load-bearing project convention (AGENTS.md,
-      // ADR-0004), not just a model-call rule.
-      yield {
-        type: "failed",
-        step: step.step,
-        error: `Condition step "${step.step}" resolved to an unsupported branch action "${branch}" (expected "execute_tool(<tool_name>)" or "request_human_approval").`,
-      };
-      return;
-    }
-
-    // KAN-1429 (ADR-0021): a tool step -- call a named tool as a normal,
-    // always-run step (not gated behind a condition branch). Same
-    // approval/param-resolution behavior as the execute_tool(...) branch above.
-    if (isToolStep(step)) {
-      const tool = spec.agent.tools?.find((t) => t.name === step.tool);
-      if (!tool) {
-        yield {
-          type: "failed",
-          step: step.step,
-          error: `Tool step "${step.step}" references unknown tool "${step.tool}".`,
-        };
-        return;
-      }
-      const result = yield* executeTool(
-        tool,
-        step.step,
-        stepOutputs,
-        input,
-        deps,
-        expressionContext,
-        pause,
-      );
-      if (!result) return;
-      stepOutputs[step.step] = result.output;
-      yield { type: "step_completed", step: step.step, output: result.output };
-      continue;
-    }
-
-    // KAN-1429 (ADR-0021): a first-class approval step -- pause for a human,
-    // reject stops the run (reusing the approval/resume machinery).
-    if (isApprovalStep(step)) {
-      let reason: string;
-      try {
-        reason = step.message
-          ? await renderText(step.message, stepOutputs, input, expressionContext)
-          : `Step "${step.step}" requires human approval.`;
-      } catch (err) {
-        yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
-        return;
-      }
-      const decision = yield* pause({ step: step.step, kind: "approval", reason }, "before");
-      if (decision === null) return;
-      if (!decision?.approved) {
-        yield {
-          type: "rejected",
-          step: step.step,
-          reason: decision?.reason ?? "Approval was rejected.",
-        };
-        return;
-      }
-      stepOutputs[step.step] = {
-        approved: true,
-        ...(decision.reason ? { reason: decision.reason } : {}),
-      };
-      yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
-      continue;
-    }
-
-    // KAN-1860: transform, validate and dedupe compute over the same scope as a condition (version 1.1).
-    if (isDataStep(step)) {
-      try {
-        if (!scope) throw new Error(`${step.type} needs version "1.1"`);
-        const outcome = await runDataStep(step, spec, scope(), deps, state);
-        stepOutputs[step.step] = outcome.output;
-        yield { type: "step_completed", step: step.step, output: outcome.output };
-        if (outcome.skip) {
-          yield {
-            type: "completed",
-            output: stepOutputs,
-            skipped: { step: step.step, reason: outcome.skip },
-          };
-          return;
+      // KAN-1429 (ADR-0021): a first-class approval step -- pause for a human,
+      // reject stops the run (reusing the approval/resume machinery).
+      if (isApprovalStep(step)) {
+        let reason: string;
+        try {
+          reason = step.message
+            ? await renderText(step.message, stepOutputs, input, expressionContext)
+            : `Step "${step.step}" requires human approval.`;
+        } catch (err) {
+          yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+          return "ended";
         }
-      } catch (err) {
-        // Our own messages (a missing value, a failed assertion) name the step as an expression failure does.
-        const error =
-          err instanceof ExpressionError
-            ? describeFailure(step.step, err)
-            : `Step "${step.step}": ${(err as Error).message}`;
-        yield { type: "failed", step: step.step, error };
-        return;
-      }
-      continue;
-    }
-
-    // KAN-1858 (ADR-0043): a foreach step runs its nested steps once per item.
-    if (isForEachStep(step)) {
-      const looped = yield* runForEach(step, {
-        spec,
-        deps,
-        state,
-        stepOutputs,
-        input,
-        scope,
-        knowledge,
-        guardrails,
-      });
-      if (!looped) return;
-      stepOutputs[step.step] = looped;
-      yield { type: "step_completed", step: step.step, output: looped };
-      continue;
-    }
-
-    let stepResult: { output: unknown; confidence?: number };
-    try {
-      stepResult = await runActionStep(
-        step,
-        spec,
-        deps,
-        stepOutputs,
-        input,
-        expressionContext,
-        knowledge,
-      );
-    } catch (err) {
-      yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
-      return;
-    }
-    stepOutputs[step.step] = stepResult.output;
-    yield {
-      type: "step_completed",
-      step: step.step,
-      output: stepResult.output,
-      confidence: stepResult.confidence,
-    };
-
-    if (step.confidence_gate && guardrails?.confidence_threshold !== undefined) {
-      const confidence = stepResult.confidence ?? 1;
-      if (isBelowConfidenceThreshold(confidence, guardrails.confidence_threshold)) {
-        if (guardrails.fallback_action !== "escalate_to_human") {
-          yield {
-            type: "failed",
-            step: step.step,
-            error: `Guardrail breach at step "${step.step}" (confidence ${confidence} < threshold ${guardrails.confidence_threshold}) but fallback_action "${guardrails.fallback_action ?? "(none)"}" isn't supported.`,
-          };
-          return;
-        }
-        const decision = yield* pause(
-          {
-            step: step.step,
-            kind: "guardrail",
-            reason: `Confidence ${confidence} at step "${step.step}" is below the guardrail threshold ${guardrails.confidence_threshold}.`,
-          },
-          "after",
-        );
-        if (decision === null) return;
+        const decision = yield* pause({ step: step.step, kind: "approval", reason }, "before");
+        if (decision === null) return "ended";
         if (!decision?.approved) {
           yield {
             type: "rejected",
             step: step.step,
             reason: decision?.reason ?? "Approval was rejected.",
           };
-          return;
+          return "ended";
+        }
+        stepOutputs[step.step] = {
+          approved: true,
+          ...(decision.reason ? { reason: decision.reason } : {}),
+        };
+        yield { type: "step_completed", step: step.step, output: stepOutputs[step.step] };
+        continue;
+      }
+
+      // KAN-1860: transform, validate and dedupe compute over the same scope as a condition (version 1.1).
+      if (isDataStep(step)) {
+        try {
+          if (!scope) throw new Error(`${step.type} needs version "1.1"`);
+          const outcome = await runDataStep(step, spec, scope(), deps, state);
+          stepOutputs[step.step] = outcome.output;
+          yield { type: "step_completed", step: step.step, output: outcome.output };
+          if (outcome.skip) {
+            yield {
+              type: "completed",
+              output: stepOutputs,
+              skipped: { step: step.step, reason: outcome.skip },
+            };
+            return "ended";
+          }
+        } catch (err) {
+          // Our own messages (a missing value, a failed assertion) name the step as an expression failure does.
+          const error =
+            err instanceof ExpressionError
+              ? describeFailure(step.step, err)
+              : `Step "${step.step}": ${(err as Error).message}`;
+          yield { type: "failed", step: step.step, error };
+          return "ended";
+        }
+        continue;
+      }
+
+      // KAN-1858 (ADR-0043): a foreach step runs its nested steps once per item.
+      if (isForEachStep(step)) {
+        const looped = yield* runForEach(step, {
+          spec,
+          deps,
+          state,
+          stepOutputs,
+          input,
+          scope,
+          knowledge,
+          guardrails,
+        });
+        if (!looped) return "ended";
+        stepOutputs[step.step] = looped;
+        yield { type: "step_completed", step: step.step, output: looped };
+        continue;
+      }
+
+      let stepResult: { output: unknown; confidence?: number };
+      try {
+        stepResult = await runActionStep(
+          step,
+          spec,
+          deps,
+          stepOutputs,
+          input,
+          expressionContext,
+          knowledge,
+        );
+      } catch (err) {
+        yield { type: "failed", step: step.step, error: describeFailure(step.step, err) };
+        return "ended";
+      }
+      stepOutputs[step.step] = stepResult.output;
+      yield {
+        type: "step_completed",
+        step: step.step,
+        output: stepResult.output,
+        confidence: stepResult.confidence,
+      };
+
+      if (step.confidence_gate && guardrails?.confidence_threshold !== undefined) {
+        const confidence = stepResult.confidence ?? 1;
+        if (isBelowConfidenceThreshold(confidence, guardrails.confidence_threshold)) {
+          if (guardrails.fallback_action !== "escalate_to_human") {
+            yield {
+              type: "failed",
+              step: step.step,
+              error: `Guardrail breach at step "${step.step}" (confidence ${confidence} < threshold ${guardrails.confidence_threshold}) but fallback_action "${guardrails.fallback_action ?? "(none)"}" isn't supported.`,
+            };
+            return "ended";
+          }
+          const decision = yield* pause(
+            {
+              step: step.step,
+              kind: "guardrail",
+              reason: `Confidence ${confidence} at step "${step.step}" is below the guardrail threshold ${guardrails.confidence_threshold}.`,
+            },
+            "after",
+          );
+          if (decision === null) return "ended";
+          if (!decision?.approved) {
+            yield {
+              type: "rejected",
+              step: step.step,
+              reason: decision?.reason ?? "Approval was rejected.",
+            };
+            return "ended";
+          }
         }
       }
     }
+    return "done";
   }
 
-  yield { type: "completed", output: stepOutputs };
+  const flow = yield* runList(spec.agent.workflow, [], resumePath);
+  if (flow === "done") yield { type: "completed", output: stepOutputs };
 }
 
 function isConditionStep(step: WorkflowStep): step is Extract<WorkflowStep, { type: "condition" }> {
@@ -755,6 +840,75 @@ function isApprovalStep(step: WorkflowStep): step is Extract<WorkflowStep, { typ
 
 function isForEachStep(step: WorkflowStep): step is ForEachStep {
   return "foreach" in step;
+}
+
+function isBranchStep(step: WorkflowStep | BodyStep): step is BranchStep {
+  return "branch" in step;
+}
+
+function isStopStep(step: WorkflowStep | BodyStep): step is StopStep {
+  return "stop" in step;
+}
+
+// ---- branch (KAN-1859, ADR-0045) -----------------------------------------------------------------------
+
+/** One step of a pause's path: an index into a step list, or the name of the arm of a branch. */
+export type PathSegment = number | string;
+
+const samePath = (a: readonly PathSegment[] | undefined, b: readonly PathSegment[]): boolean =>
+  a !== undefined && a.length === b.length && a.every((seg, i) => seg === b[i]);
+
+/** What a `switch` compares against its cases: a scalar, as text (a YAML key is text whatever it looks like). */
+function switchText(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  throw new Error(
+    value === undefined
+      ? "switch evaluated to nothing: a name it reads is missing from the data"
+      : `switch must evaluate to a string, number or boolean, not ${Array.isArray(value) ? "a list" : value === null ? "null" : "an object"}`,
+  );
+}
+
+interface PickedArm {
+  /** The arm's name in a pause path; undefined when no arm runs. */
+  segment: string | undefined;
+  list: WorkflowStep[] | undefined;
+  /** The branch step's own output: `{ taken }` (and `value` for a switch). */
+  output: Record<string, unknown>;
+}
+
+/** Decides which arm of a branch runs, from the data as it is before the branch. */
+async function selectArm(
+  step: BranchStep,
+  data: Record<string, unknown>,
+  limits: Partial<ExpressionLimits> | undefined,
+): Promise<PickedArm> {
+  const b = step.branch;
+  if ("if" in b) {
+    if (await evaluateExpressionCondition(b.if, data, limits)) {
+      return { segment: "then", list: b.then, output: { taken: "then" } };
+    }
+    return b.else
+      ? { segment: "else", list: b.else, output: { taken: "else" } }
+      : { segment: undefined, list: undefined, output: { taken: "none" } };
+  }
+  const value = switchText(await evaluateExpression(b.switch, data, limits));
+  if (Object.hasOwn(b.cases, value)) {
+    return { segment: `case:${value}`, list: b.cases[value]!, output: { taken: value, value } };
+  }
+  return b.default
+    ? { segment: "default", list: b.default, output: { taken: "default", value } }
+    : { segment: undefined, list: undefined, output: { taken: "none", value } };
+}
+
+/** The arm a pause path names, to go back into it on resume. */
+function armBySegment(step: BranchStep, segment: string): WorkflowStep[] | undefined {
+  const b = step.branch;
+  if ("if" in b) return segment === "then" ? b.then : segment === "else" ? b.else : undefined;
+  if (segment === "default") return b.default;
+  const key = segment.startsWith("case:") ? segment.slice(5) : undefined;
+  return key !== undefined && Object.hasOwn(b.cases, key) ? b.cases[key] : undefined;
 }
 
 type DataStep = Extract<WorkflowStep, { type: "transform" | "validate" | "dedupe" }>;
@@ -818,7 +972,7 @@ async function runDataStep(
   if (step.type === "validate") {
     if ((step.on_fail as string | undefined) === "branch") {
       throw new Error(
-        "on_fail: branch is not yet supported (it needs conditional branching, KAN-1859)",
+        "on_fail: branch is not supported (use a branch step with the negated assertion and a stop instead, ADR-0045)",
       );
     }
     if (await evaluateExpressionCondition(step.assert, data, limits)) {
@@ -920,7 +1074,7 @@ async function* runForEach(
   const policy = loop.on_error ?? "fail";
   if (policy === "goto" || (typeof policy === "object" && "goto" in policy)) {
     yield fail(
-      `Step "${step.step}": on_error: goto is not yet supported (it needs conditional branching, KAN-1859)`,
+      `Step "${step.step}": on_error: goto is not supported (a branch step inside the body can choose what to do instead)`,
     );
     return undefined;
   }
@@ -975,7 +1129,7 @@ async function* runForEach(
   };
 
   const runBodyStep = async (
-    inner: BodyStep,
+    inner: Exclude<BodyStep | WorkflowStep, BranchStep | StopStep>,
     index: number,
     item: unknown,
     local: Record<string, unknown>,
@@ -1047,14 +1201,64 @@ async function* runForEach(
 
   // What a retry may repeat: a call that leaves the process. A failed assertion or expression would fail the
   // same way again.
-  const mayRetry = (inner: BodyStep): boolean =>
+  const mayRetry = (inner: BodyStep | WorkflowStep): boolean =>
     !("foreach" in inner) && !isDataStep(inner) && !isApprovalStep(inner);
 
-  const runItem = async (index: number): Promise<ItemOutcome> => {
-    const item = items[index];
-    const local: Record<string, unknown> = {};
-    for (const inner of loop.steps) {
+  // Runs a list of body steps (the body, or an arm of a branch in it) for one item. Returns the outcome when the
+  // item ends early (a failure, or a stop), or undefined when the list ran to its end. A step that ran leaves its
+  // output in `local`, so the steps after it, and after a branch, read it.
+  const runBodyList = async (
+    list: readonly (BodyStep | WorkflowStep)[],
+    index: number,
+    item: unknown,
+    local: Record<string, unknown>,
+  ): Promise<ItemOutcome | undefined> => {
+    const data = () => ({ ...scope(), [loop.as]: item, ...local });
+    for (const inner of list) {
       const name = `${step.step}[${index}].${inner.step}`;
+      if (isBranchStep(inner)) {
+        emit({ type: "step_started", step: name });
+        let picked: PickedArm;
+        try {
+          picked = await selectArm(inner, data(), deps.expressionLimits);
+        } catch (err) {
+          const message =
+            err instanceof ExpressionError
+              ? describeFailure(inner.step, err)
+              : (err as Error).message;
+          return { kind: "failed", step: inner.step, message };
+        }
+        local[inner.step] = picked.output;
+        emit({ type: "step_completed", step: name, output: picked.output });
+        if (picked.list) {
+          const ended = await runBodyList(picked.list, index, item, local);
+          if (ended) return ended;
+        }
+        continue;
+      }
+      if (isStopStep(inner)) {
+        emit({ type: "step_started", step: name });
+        let reason: string;
+        try {
+          reason =
+            inner.stop.reason !== undefined
+              ? String(await resolveTemplate(inner.stop.reason, data(), deps.expressionLimits))
+              : `stopped at step "${inner.step}"`;
+        } catch (err) {
+          const message =
+            err instanceof ExpressionError
+              ? describeFailure(inner.step, err)
+              : (err as Error).message;
+          return { kind: "failed", step: inner.step, message };
+        }
+        const status = inner.stop.status ?? "skipped";
+        local[inner.step] = { stopped: true, status, reason };
+        emit({ type: "step_completed", step: name, output: local[inner.step] });
+        // Inside a loop a stop ends the item, not the run: as a skip (the default) or as done.
+        return status === "skipped"
+          ? { kind: "skipped", step: inner.step, reason }
+          : { kind: "done", outputs: local };
+      }
       emit({ type: "step_started", step: name });
       let attempt = 0;
       for (;;) {
@@ -1083,7 +1287,13 @@ async function* runForEach(
         }
       }
     }
-    return { kind: "done", outputs: local };
+    return undefined;
+  };
+
+  const runItem = async (index: number): Promise<ItemOutcome> => {
+    const local: Record<string, unknown> = {};
+    const ended = await runBodyList(loop.steps, index, items[index], local);
+    return ended ?? { kind: "done", outputs: local };
   };
 
   // After a failure the item is isolated (`continue`, or `retry` with then: continue) or the loop stops.

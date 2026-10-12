@@ -401,6 +401,41 @@ describe("collectRequiredEnvVars with a component tool", () => {
     }
   });
 
+  it("exports a branch step: the vendored runtime runs it, and a dedupe or approval inside an arm gets the README notes (KAN-1859)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-branch-"));
+    try {
+      const out = join(dir, "out");
+      const spec = {
+        ...FULL_SPEC,
+        version: "1.1",
+        agent: {
+          ...FULL_SPEC.agent,
+          workflow: [
+            {
+              step: "route",
+              branch: {
+                if: "trigger.go = true",
+                then: [
+                  { step: "seen", type: "dedupe", once: { key: "trigger.id", ttl: "1h" } },
+                  { step: "ask", type: "approval" },
+                ],
+                else: [{ step: "halt", stop: { reason: "nothing to do" } }],
+              },
+            },
+          ],
+        },
+      } as unknown as AgentSpec;
+      exportProject(spec, out);
+      expect(readFileSync(join(out, "src/runtime/workflow.ts"), "utf8")).toContain("selectArm");
+      expect(readFileSync(join(out, "src/runtime/spec-types.ts"), "utf8")).toContain("BranchStep");
+      const readme = readFileSync(join(out, "README.md"), "utf8");
+      expect(readme).toContain("Dedupe state");
+      expect(readme).toContain("Pending approvals");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("exports persisted pending approvals: vendored record module, key routes, README note (KAN-1854)", () => {
     const dir = mkdtempSync(join(tmpdir(), "kampong-export-approvals-"));
     try {

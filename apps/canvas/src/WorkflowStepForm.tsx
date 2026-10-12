@@ -16,7 +16,16 @@ import { buildWorkflowStepFromForm, type WorkflowStep } from "@kampong/spec";
 // transform, validate and dedupe (KAN-1860) are version 1.1 steps: the spec's own check, not this form, says
 // so if the spec is still 1.0. Their expression fields are plain text, as the condition's `if` is.
 type StepKind =
-  "action" | "tool" | "approval" | "condition" | "transform" | "validate" | "dedupe" | "foreach";
+  | "action"
+  | "tool"
+  | "approval"
+  | "condition"
+  | "transform"
+  | "validate"
+  | "dedupe"
+  | "foreach"
+  | "branch"
+  | "stop";
 
 export interface WorkflowStepFormProps {
   onSubmit: (step: WorkflowStep) => void;
@@ -50,12 +59,33 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
   const [loopOnError, setLoopOnError] = useState<"fail" | "continue" | "retry">("fail");
   const [loopRetries, setLoopRetries] = useState("3");
   const [loopBody, setLoopBody] = useState("");
+  // branch and stop (KAN-1859): an if/else whose arms are lists of tool steps, and an early stop.
+  const [branchIf, setBranchIf] = useState("");
+  const [branchThen, setBranchThen] = useState("");
+  const [branchElse, setBranchElse] = useState("");
+  const [stopReason, setStopReason] = useState("");
+  const [stopStatus, setStopStatus] = useState<"skipped" | "completed">("skipped");
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     let result;
-    if (kind === "foreach") {
+    if (kind === "branch") {
+      result = buildWorkflowStepFromForm({
+        kind: "branch",
+        step,
+        if: branchIf,
+        then: branchThen,
+        else: branchElse,
+      });
+    } else if (kind === "stop") {
+      result = buildWorkflowStepFromForm({
+        kind: "stop",
+        step,
+        ...(stopReason.trim() !== "" && { reason: stopReason.trim() }),
+        status: stopStatus,
+      });
+    } else if (kind === "foreach") {
       result = buildWorkflowStepFromForm({
         kind: "foreach",
         step,
@@ -129,6 +159,8 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               ["validate", "Validate"],
               ["dedupe", "Dedupe"],
               ["foreach", "Foreach"],
+              ["branch", "Branch"],
+              ["stop", "Stop"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -396,6 +428,65 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
               value={loopBody}
               onChange={(e) => setLoopBody(e.target.value)}
             />
+          </label>
+        </>
+      )}
+
+      {kind === "branch" && (
+        <>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              If (expression that gives true or false)
+            </span>
+            <input
+              className="md3-text-field"
+              value={branchIf}
+              onChange={(e) => setBranchIf(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Then (one tool per line, step: tool)
+            </span>
+            <textarea
+              className="md3-text-field"
+              value={branchThen}
+              onChange={(e) => setBranchThen(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">
+              Else (optional, one tool per line)
+            </span>
+            <textarea
+              className="md3-text-field"
+              value={branchElse}
+              onChange={(e) => setBranchElse(e.target.value)}
+            />
+          </label>
+        </>
+      )}
+
+      {kind === "stop" && (
+        <>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Reason</span>
+            <input
+              className="md3-text-field"
+              value={stopReason}
+              onChange={(e) => setStopReason(e.target.value)}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-field__label md3-label-large">Ends the run as</span>
+            <select
+              className="md3-text-field"
+              value={stopStatus}
+              onChange={(e) => setStopStatus(e.target.value as "skipped" | "completed")}
+            >
+              <option value="skipped">skipped</option>
+              <option value="completed">completed</option>
+            </select>
           </label>
         </>
       )}
