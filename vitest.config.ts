@@ -29,17 +29,26 @@ export default defineConfig({
             "packages/*/test/integration/**/*.test.ts",
             "apps/*/test/integration/**/*.test.{ts,tsx}",
           ],
+          // packages/server's suites share one Postgres; they live in the
+          // "integration-db" project below, which serializes them.
+          exclude: ["**/node_modules/**", "packages/server/test/integration/**"],
+          environment: "node",
+        },
+      },
+      {
+        test: {
+          name: "integration-db",
+          include: ["packages/server/test/integration/**/*.test.ts"],
           environment: "node",
           // KAN-1389: packages/server's DB-backed integration suites
-          // (test/integration/db/*, test/integration/routes/*) all run
-          // against one shared Postgres and collide on shared workspace rows
-          // when their files run in parallel -- each file passes alone, the
-          // whole suite passes serialized. Now that CI actually provisions
-          // Postgres and runs these (KAN-1388), serialize the integration
-          // layer so those runs are stable. This is the documented interim
-          // fix; the proper isolation (a database/schema per test file) stays
-          // tracked as KAN-1389. Costs little -- integration is the slow
-          // layer already, and file-level parallelism was never its point.
+          // (test/integration/db/*, routes/*) all run against ONE shared
+          // Postgres and collide on shared workspace rows when their files
+          // run in parallel -- each file passes alone, the whole suite passes
+          // serialized. Only this DB-touching project is serialized; every
+          // other integration file keeps default file parallelism (the
+          // previous fix serialized the whole integration layer). Nothing
+          // outside this project touches the DB, so running projects side by
+          // side is safe.
           fileParallelism: false,
         },
       },

@@ -93,9 +93,10 @@ KAN-1227 also closes **KAN-1388**: the CI integration job provisions a `postgres
 the RLS/auth integration suites — which `skipIf(!DATABASE_URL)` and had been skipping in CI
 entirely — run for real. A superuser silently bypasses `FORCE ROW LEVEL SECURITY`, which would make
 every isolation assertion pass vacuously; owning the tables as a non-superuser is what makes the
-coverage genuine. The integration test layer is now serialized (`fileParallelism: false`) so the
-DB-backed suites don't collide on the shared Postgres — the documented interim fix for
-**KAN-1389**, whose proper per-file database isolation stays open.
+coverage genuine. The DB-backed suites (`packages/server/test/integration`) run in their own
+serialized vitest project, `integration-db` (`fileParallelism: false`), so they don't collide on the
+shared Postgres (**KAN-1389**); all other integration files keep default file parallelism.
+`npm run test:integration` runs both projects.
 
 ## Consequences
 

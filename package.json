@@ -18,7 +18,7 @@
     "format:check": "prettier --check .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:unit": "vitest run --project unit --project unit-web",
-    "test:integration": "vitest run --project integration",
+    "test:integration": "vitest run --project integration --project integration-db",
     "test:e2e": "vitest run --project e2e",
     "test:e2e:browser": "playwright test",
     "test": "npm run test:unit && npm run test:integration",

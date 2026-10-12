@@ -144,81 +144,91 @@ function runWithPipedStdin(
   });
 }
 
-describe("kampong run -- rejecting an approval prompt via real piped stdin (KAN-1186)", () => {
-  let dir: string;
-  let ollama: { port: number; close: () => Promise<void> };
-  let tool: { port: number; close: () => Promise<void> };
+// KAN-1218: each test spawns the real built CLI, which in a CPU-constrained
+// sandbox can exceed vitest's default 5000ms. 30s sits above the helper's own
+// 10s hang-detection deadline, so a genuine hang regression still fails with
+// the descriptive helper error rather than a bare vitest timeout.
+const SUBPROCESS_TEST_TIMEOUT_MS = 30_000;
 
-  beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), "kampong-cli-stdin-reject-"));
-    ollama = await startFakeOllamaServer("unused");
-    tool = await startFakeToolServer("succeeded");
-  });
+describe(
+  "kampong run -- rejecting an approval prompt via real piped stdin (KAN-1186)",
+  { timeout: SUBPROCESS_TEST_TIMEOUT_MS },
+  () => {
+    let dir: string;
+    let ollama: { port: number; close: () => Promise<void> };
+    let tool: { port: number; close: () => Promise<void> };
 
-  afterEach(async () => {
-    rmSync(dir, { recursive: true, force: true });
-    await ollama.close();
-    await tool.close();
-  });
+    beforeEach(async () => {
+      dir = mkdtempSync(join(tmpdir(), "kampong-cli-stdin-reject-"));
+      ollama = await startFakeOllamaServer("unused");
+      tool = await startFakeToolServer("succeeded");
+    });
 
-  it("an old-style two-line 'n' + reason answer, piped as a single chunk, does not hang and reports a rejected run at exit 2", async () => {
-    const specPath = join(dir, "agent.yaml");
-    writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
+    afterEach(async () => {
+      rmSync(dir, { recursive: true, force: true });
+      await ollama.close();
+      await tool.close();
+    });
 
-    // Exactly the bug report's repro: `printf 'n\nsome reason\n' | kampong run ...`.
-    const { code, stdout } = await runWithPipedStdin(
-      ["run", specPath, "--input", "refund #1", "--json"],
-      "n\nsome reason\n",
-    );
+    it("an old-style two-line 'n' + reason answer, piped as a single chunk, does not hang and reports a rejected run at exit 2", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
 
-    expect(code).toBe(2); // EXIT_EXECUTION_FAILURE
-    const jsonLine = stdout
-      .trim()
-      .split("\n")
-      .find((line) => line.trim().startsWith("{"));
-    expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
-    const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string; error: string };
-    expect(parsed.success).toBe(false);
-    expect(parsed.status).toBe("rejected");
-  });
+      // Exactly the bug report's repro: `printf 'n\nsome reason\n' | kampong run ...`.
+      const { code, stdout } = await runWithPipedStdin(
+        ["run", specPath, "--input", "refund #1", "--json"],
+        "n\nsome reason\n",
+      );
 
-  it('a single-chunk "n:<reason>" answer does not hang and carries the reason through the rejected report', async () => {
-    const specPath = join(dir, "agent.yaml");
-    writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
+      expect(code).toBe(2); // EXIT_EXECUTION_FAILURE
+      const jsonLine = stdout
+        .trim()
+        .split("\n")
+        .find((line) => line.trim().startsWith("{"));
+      expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
+      const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string; error: string };
+      expect(parsed.success).toBe(false);
+      expect(parsed.status).toBe("rejected");
+    });
 
-    const { code, stdout } = await runWithPipedStdin(
-      ["run", specPath, "--input", "refund #1", "--json"],
-      "n:not sure about this one\n",
-    );
+    it('a single-chunk "n:<reason>" answer does not hang and carries the reason through the rejected report', async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
 
-    expect(code).toBe(2);
-    const jsonLine = stdout
-      .trim()
-      .split("\n")
-      .find((line) => line.trim().startsWith("{"));
-    expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
-    const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string; error: string };
-    expect(parsed.success).toBe(false);
-    expect(parsed.status).toBe("rejected");
-    expect(parsed.error).toBe("not sure about this one");
-  });
+      const { code, stdout } = await runWithPipedStdin(
+        ["run", specPath, "--input", "refund #1", "--json"],
+        "n:not sure about this one\n",
+      );
 
-  it("a piped 'y' answer approves and completes without hanging", async () => {
-    const specPath = join(dir, "agent.yaml");
-    writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
+      expect(code).toBe(2);
+      const jsonLine = stdout
+        .trim()
+        .split("\n")
+        .find((line) => line.trim().startsWith("{"));
+      expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
+      const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string; error: string };
+      expect(parsed.success).toBe(false);
+      expect(parsed.status).toBe("rejected");
+      expect(parsed.error).toBe("not sure about this one");
+    });
 
-    const { code, stdout } = await runWithPipedStdin(
-      ["run", specPath, "--input", "refund #1", "--json"],
-      "y\n",
-    );
+    it("a piped 'y' answer approves and completes without hanging", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
 
-    expect(code).toBe(0);
-    const jsonLine = stdout
-      .trim()
-      .split("\n")
-      .find((line) => line.trim().startsWith("{"));
-    expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
-    const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string };
-    expect(parsed.success).toBe(true);
-  });
-});
+      const { code, stdout } = await runWithPipedStdin(
+        ["run", specPath, "--input", "refund #1", "--json"],
+        "y\n",
+      );
+
+      expect(code).toBe(0);
+      const jsonLine = stdout
+        .trim()
+        .split("\n")
+        .find((line) => line.trim().startsWith("{"));
+      expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
+      const parsed = JSON.parse(jsonLine!) as { success: boolean; status: string };
+      expect(parsed.success).toBe(true);
+    });
+  },
+);
