@@ -130,3 +130,11 @@ export {
   RevokedComponentError,
   shippedRegistryIndexPath,
 } from "./revocation.js";
+
+// Durable keyed runtime state (ADR-0028, KAM-112).
+export type { StateStore, StateValue, PutOptions, StateClock } from "./state-store.js";
+export {
+  SqliteStateStore,
+  DEFAULT_STATE_DB_PATH,
+  type SqliteStateStoreOptions,
+} from "./sqlite-state-store.js";
