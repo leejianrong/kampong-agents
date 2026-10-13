@@ -27,13 +27,10 @@ rate-limited or malformed symbol leaves no partial row. The other symbols are st
 
 ## Try it with no network
 
-`market-etl` ships with recorded fixtures, so it runs with no network and no real keys. Two limits today: a
-replayed Alpha Vantage or Slack call still reads its credential first, so set both to any placeholder, and
-model calls are not recorded, so the `summarize` step needs a running Ollama (or raise the threshold so no
-symbol crosses it).
+`market-etl` ships with recorded fixtures, so it runs with no network and no keys. One limit today: model calls are
+not recorded, so the `summarize` step needs a running Ollama (or raise the threshold so no symbol crosses it).
 
 ```sh
-export ALPHAVANTAGE_API_KEY=placeholder SLACK_BOT_TOKEN=placeholder
 kampong templates                       # lists the template and the folder it lives in
 cd packages/cli/templates/market-etl    # or copy the folder anywhere and cd into it
 kampong doctor agent.yaml --tools replay --fixtures fixtures
