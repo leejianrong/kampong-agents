@@ -316,6 +316,54 @@ describe("kampong serve — headless Slack approval (KAN-1432)", () => {
     expect(final.status).toBe("completed");
   });
 
+  it("accepts a click a relay re-sent as JSON (KAM-124): the signed bytes are rebuilt and still verified", async () => {
+    const { fetchImpl } = fakeSlackFetch();
+    const server = startServer(fetchImpl);
+    await server.ready();
+    const hook = await server.inject({
+      method: "POST",
+      url: "/webhook",
+      headers: { "content-type": "application/json" },
+      payload: { message: "where is my refund?" },
+    });
+    const runId = hook.json().id as string;
+    await waitForStatus(server, runId, ["awaiting_approval"]);
+
+    // What Slack signed, and what a smee-style relay forwards: the payload text, wrapped in JSON.
+    const body = slackInteractionBody("kampong_approve", runId);
+    const relayed = {
+      payload: decodeURIComponent(body.slice("payload=".length).replace(/\+/g, " ")),
+    };
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const forged = await server.inject({
+      method: "POST",
+      url: "/slack/interactions",
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": "v0=deadbeef",
+      },
+      payload: relayed,
+    });
+    expect(forged.statusCode).toBe(401);
+    const status = await server.inject({ method: "GET", url: `/runs/${runId}` });
+    expect(status.json().state.status).toBe("awaiting_approval");
+
+    const interaction = await server.inject({
+      method: "POST",
+      url: "/slack/interactions",
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": sign(timestamp, body),
+      },
+      payload: relayed,
+    });
+    expect(interaction.statusCode).toBe(200);
+    const final = await waitForStatus(server, runId, ["completed", "failed"]);
+    expect(final.status).toBe("completed");
+  });
+
   it("a correctly signed Reject interaction rejects the run", async () => {
     const { fetchImpl } = fakeSlackFetch();
     const server = startServer(fetchImpl);
