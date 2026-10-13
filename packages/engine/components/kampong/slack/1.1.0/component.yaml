@@ -1,0 +1,330 @@
+kind: rest
+id: kampong/slack
+version: 1.1.0
+title: Slack
+description: Post messages (text, or Block Kit blocks with buttons), reply in a thread, update a message and add a reaction, with a bot token. Treats Slack's HTTP 200 { ok false } answers as failures.
+license: Apache-2.0
+permissions:
+  egress: [slack.com]
+auth:
+  slots:
+    token:
+      env: SLACK_BOT_TOKEN
+      hosts: [slack.com]
+      inject:
+        header: Authorization
+        template: "Bearer {{ secret }}"
+      probe:
+        op: auth_test
+        # Slack answers 200 with ok:false for every failure; only these say the token is not valid.
+        refused_when: [invalid_auth, not_authed, account_inactive, token_revoked, token_expired]
+ops:
+  auth_test:
+    title: Check the token
+    description: Asks Slack whether the bot token is valid (auth.test). Changes nothing.
+    effect: read
+    request:
+      method: POST
+      url: https://slack.com/api/auth.test
+    failure_when:
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        team: { type: string }
+        user: { type: string }
+  post_message:
+    title: Post a message
+    description: Posts text to a channel with chat.postMessage. Set `thread_ts` to post into a thread. For buttons and layout use post_blocks.
+    effect: write
+    input:
+      type: object
+      required: [channel, text]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: A channel name such as #support, or a channel id.
+        text:
+          type: string
+          title: Text
+          format: multiline
+        thread_ts:
+          type: string
+          title: Thread
+          description: The `ts` of the message to reply under.
+    request:
+      method: POST
+      url: https://slack.com/api/chat.postMessage
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          text: "{{ input.text }}"
+          thread_ts: "{{ input.thread_ts }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    # Slack reports most failures as HTTP 200 with { "ok": false, "error": "..." }. A rate limit is the one
+    # worth a retry (Slack also sends 429 with Retry-After, which the retry policy honours).
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        channel: { type: string }
+        ts: { type: string }
+  reply_in_thread:
+    title: Reply in a thread
+    description: Replies under an existing message (chat.postMessage with a thread). Set `broadcast` to also show the reply in the channel.
+    effect: write
+    input:
+      type: object
+      required: [channel, thread_ts, text]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: The channel id the thread is in (as returned in `channel` when it was posted).
+        thread_ts:
+          type: string
+          title: Thread
+          description: The `ts` of the message the thread starts from.
+        text:
+          type: string
+          title: Text
+          format: multiline
+        broadcast:
+          type: boolean
+          title: Also post to the channel
+    request:
+      method: POST
+      url: https://slack.com/api/chat.postMessage
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          thread_ts: "{{ input.thread_ts }}"
+          text: "{{ input.text }}"
+          reply_broadcast: "{{ input.broadcast }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        channel: { type: string }
+        ts: { type: string }
+  update_message:
+    title: Update a message
+    description: >-
+      Edits the text of a message the bot posted (chat.update). Blocks on the message are kept; to change or
+      remove them (for example to replace buttons with the outcome) use update_blocks.
+    effect: write
+    input:
+      type: object
+      required: [channel, ts, text]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: The channel id the message is in.
+        ts:
+          type: string
+          title: Message
+          description: The `ts` of the message to edit.
+        text:
+          type: string
+          title: Text
+          format: multiline
+    request:
+      method: POST
+      url: https://slack.com/api/chat.update
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          ts: "{{ input.ts }}"
+          text: "{{ input.text }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        channel: { type: string }
+        ts: { type: string }
+  post_blocks:
+    title: Post blocks
+    description: >-
+      Posts Block Kit blocks (layout, and buttons for an approval) with chat.postMessage. Keep `text` as the
+      notification fallback. The blocks are written as YAML on the canvas. `thread_ts` posts into a thread.
+    effect: write
+    input:
+      type: object
+      required: [channel, text, blocks]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: A channel name such as #support, or a channel id.
+        text:
+          type: string
+          title: Text
+          description: The fallback shown in notifications.
+          format: multiline
+        blocks:
+          type: array
+          title: Blocks
+          items: { type: object }
+        thread_ts:
+          type: string
+          title: Thread
+          description: The `ts` of the message to reply under.
+    request:
+      method: POST
+      url: https://slack.com/api/chat.postMessage
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          text: "{{ input.text }}"
+          blocks: "{{ input.blocks }}"
+          thread_ts: "{{ input.thread_ts }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        channel: { type: string }
+        ts: { type: string }
+  update_blocks:
+    title: Update blocks
+    description: >-
+      Replaces the blocks of a message the bot posted (chat.update), for example to swap the buttons for the
+      outcome once someone has clicked. Send `blocks: []` to remove them.
+    effect: write
+    input:
+      type: object
+      required: [channel, ts, blocks]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: The channel id the message is in.
+        ts:
+          type: string
+          title: Message
+          description: The `ts` of the message to edit.
+        text:
+          type: string
+          title: Text
+          description: The fallback text; left as it was when omitted.
+          format: multiline
+        blocks:
+          type: array
+          title: Blocks
+          items: { type: object }
+    request:
+      method: POST
+      url: https://slack.com/api/chat.update
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          ts: "{{ input.ts }}"
+          text: "{{ input.text }}"
+          blocks: "{{ input.blocks }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        channel: { type: string }
+        ts: { type: string }
+  add_reaction:
+    title: Add a reaction
+    description: Adds an emoji reaction to a message (reactions.add). Adding the same one twice is reported as the Slack error `already_reacted`.
+    effect: write
+    input:
+      type: object
+      required: [channel, timestamp, name]
+      properties:
+        channel:
+          type: string
+          title: Channel
+          description: The channel id the message is in.
+        timestamp:
+          type: string
+          title: Message
+          description: The `ts` of the message to react to.
+        name:
+          type: string
+          title: Emoji
+          description: The emoji name without colons, such as white_check_mark.
+    request:
+      method: POST
+      url: https://slack.com/api/reactions.add
+      headers:
+        Content-Type: "application/json; charset=utf-8"
+      body:
+        json:
+          channel: "{{ input.channel }}"
+          timestamp: "{{ input.timestamp }}"
+          name: "{{ input.name }}"
+    retry: { max: 2, backoff: exponential, base_ms: 1000, max_delay_ms: 20000 }
+    failure_when:
+      - path: error
+        equals: ratelimited
+        message_path: error
+        retryable: true
+      - path: ok
+        equals: false
+        message_path: error
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }

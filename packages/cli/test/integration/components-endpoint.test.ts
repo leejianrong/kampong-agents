@@ -64,7 +64,7 @@ describe("GET /api/components", () => {
     const body = res.json();
     expect(body.problems).toEqual([]);
     // The first-party components are always there.
-    expect(body.components.map((c: { id: string }) => c.id).sort()).toEqual([
+    expect([...new Set(body.components.map((c: { id: string }) => c.id))].sort()).toEqual([
       "kampong/alpha-vantage",
       "kampong/github",
       "kampong/gmail",
@@ -128,6 +128,7 @@ describe("GET /api/components", () => {
     expect(JSON.stringify(body)).not.toContain("evil.example.test");
     expect(body.problems.join(" ")).toMatch(/reserved/);
     const slack = body.components.filter((c: { id: string }) => c.id === "kampong/slack");
-    expect(slack).toHaveLength(1);
+    // Only the shipped versions, each once: the project's own 1.0.0 was not added.
+    expect(slack.map((c: { version: string }) => c.version).sort()).toEqual(["1.0.0", "1.1.0"]);
   });
 });
