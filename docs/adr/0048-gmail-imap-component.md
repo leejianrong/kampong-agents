@@ -30,7 +30,7 @@ later, managed path.
   `kampong/gmail` does, so a value taken from an email cannot add a `Bcc` header. Addresses are checked for
   shape.
 - **Credentials are two secret slots**, `user` (`GMAIL_ADDRESS`) and `password` (`GMAIL_APP_PASSWORD`), both
-  bound to `imap.gmail.com`. Because both are secrets, a recorded fixture redacts the address as well as the
+  bound to `imap.gmail.com:993`. Because both are secrets, a recorded fixture redacts the address as well as the
   password, so a replayed message shows `[REDACTED]` where the account's own address was. A refused login
   carries `status: 401` so `kampong doctor --probe` can tell it from an unreachable server.
 - **Dependencies:** `imapflow` and `mailparser`, pinned exactly in the manifest's `deps` and in
@@ -40,7 +40,7 @@ later, managed path.
 ## What is not enforced
 
 The module's sockets are opened by `imapflow`, not by `ctx.fetch`, so the runtime cannot refuse a host. The
-manifest declares `egress: [imap.gmail.com]` and the host is a constant in the code (never read from input), but
+manifest declares `egress: [imap.gmail.com:993]` and the host is a constant in the code (never read from input), but
 that is a statement a reviewer can hold the module to, not a wall (ADR-0031 points 3 and 4). The module still
 receives its secrets only through `ctx.secrets`. A sandboxed runner would close this gap for every module at
 once, which is why it stays the open item in ADR-0031.

@@ -10,15 +10,15 @@ deps:
   mailparser: 3.9.31
 permissions:
   # Declared, not enforced: the sockets are opened by imapflow, not by ctx.fetch (ADR-0031).
-  egress: [imap.gmail.com]
+  egress: [imap.gmail.com:993]
 auth:
   slots:
     user:
       env: GMAIL_ADDRESS
-      hosts: [imap.gmail.com]
+      hosts: [imap.gmail.com:993]
     password:
       env: GMAIL_APP_PASSWORD
-      hosts: [imap.gmail.com]
+      hosts: [imap.gmail.com:993]
       # Only a refused login says the credential is bad. The probe signs in and out, and changes nothing.
       probe: { op: check_login }
 ops:

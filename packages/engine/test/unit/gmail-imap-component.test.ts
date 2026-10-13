@@ -346,10 +346,10 @@ describe("kampong/gmail-imap through the op pipeline", () => {
 
   it("declares its permissions: one host, two slots bound to it, and exact dependency pins", async () => {
     const { manifest } = await registry.resolve("kampong/gmail-imap", "1.0.0");
-    expect(manifest.permissions?.egress).toEqual(["imap.gmail.com"]);
+    expect(manifest.permissions?.egress).toEqual(["imap.gmail.com:993"]);
     expect(Object.keys(manifest.auth?.slots ?? {})).toEqual(["user", "password"]);
     for (const slot of Object.values(manifest.auth?.slots ?? {}))
-      expect(slot.hosts).toEqual(["imap.gmail.com"]);
+      expect(slot.hosts).toEqual(["imap.gmail.com:993"]);
     expect(manifest.kind === "module" && manifest.deps).toEqual({
       imapflow: "2.1.2",
       mailparser: "3.9.31",
