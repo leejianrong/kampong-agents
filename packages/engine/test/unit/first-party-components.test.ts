@@ -30,6 +30,7 @@ describe("first-party components folder", () => {
     expect(ids).toEqual([
       "kampong/alpha-vantage@1.0.0",
       "kampong/github@1.0.0",
+      "kampong/gmail-imap@1.0.0",
       "kampong/gmail@1.0.0",
       "kampong/slack@1.0.0",
       "kampong/supabase@1.0.0",
