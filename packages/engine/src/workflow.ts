@@ -242,18 +242,21 @@ export async function* runWorkflow(
   resume?: ResumeRequest,
 ): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
   // A store the run opened itself (`openState`) is closed when the run ends, however it ends.
-  const state: StateHandle = { store: deps.state, owned: false };
+  const state: StateHandle = { store: deps.state, owned: false, claims: [] };
   try {
     if (resume) {
       const record = yield* claimPersistedApproval(spec, deps, state, resume);
       if (!record) return;
-      yield* runSteps(spec, { ...deps, trigger: record.trigger }, record.input, state, {
-        record,
-        decision: resume.decision,
-        used: false,
-      });
+      yield* settleDedupeClaims(
+        runSteps(spec, { ...deps, trigger: record.trigger }, record.input, state, {
+          record,
+          decision: resume.decision,
+          used: false,
+        }),
+        state,
+      );
     } else {
-      yield* runSteps(spec, deps, input, state);
+      yield* settleDedupeClaims(runSteps(spec, deps, input, state), state);
     }
   } finally {
     if (state.owned && state.store) await state.store.close();
@@ -263,6 +266,64 @@ export async function* runWorkflow(
 interface StateHandle {
   store: StateStore | undefined;
   owned: boolean;
+  /** The dedupe keys this run has claimed and not yet settled (KAM-151). */
+  claims: DedupeClaim[];
+}
+
+// KAM-151 (ADR-0041): a dedupe claim is an open/close lifecycle, not a one-shot. The step claims its key as
+// `open` for a short time (a crashed process must not hold a key for the whole ttl). When the run ends
+// successfully (completed, or skipped: there was nothing to do) the claim becomes `done` for the full ttl;
+// when it fails or is rejected, or the run is abandoned, the key is released so a retry is not swallowed. A
+// run paused on a persisted approval counts as successful so far: its record survives a restart, and the
+// key stays held for the ttl. Inside a foreach the same lifecycle applies to each item.
+interface DedupeClaim {
+  key: string;
+  ttlMs: number;
+}
+
+/** How long an unsettled claim holds its key: a run that dies mid-way frees it after this. */
+export const DEDUPE_OPEN_TTL_MS = 15 * 60_000;
+
+async function settleClaims(
+  store: StateStore | undefined,
+  claims: DedupeClaim[],
+  succeeded: boolean,
+): Promise<void> {
+  const settling = claims.splice(0);
+  if (!store) return;
+  for (const { key, ttlMs } of settling) {
+    try {
+      if (succeeded) await store.put(key, { at: Date.now(), state: "done" }, { ttlMs });
+      else await store.delete(key);
+    } catch {
+      // Settling must not replace the run's own outcome; an unsettled key expires with its open ttl.
+    }
+  }
+}
+
+// Passes every event (and the decisions sent back) through, settling the run's claims when it ends.
+async function* settleDedupeClaims(
+  inner: AsyncGenerator<RunEvent, void, ApprovalDecision | undefined>,
+  state: StateHandle,
+): AsyncGenerator<RunEvent, void, ApprovalDecision | undefined> {
+  try {
+    let next = await inner.next(undefined);
+    while (!next.done) {
+      const event = next.value;
+      if (event.type === "completed") await settleClaims(state.store, state.claims, true);
+      else if (event.type === "failed" || event.type === "rejected") {
+        await settleClaims(state.store, state.claims, false);
+      } else if (event.type === "awaiting_approval" && event.key !== undefined) {
+        await settleClaims(state.store, state.claims, true);
+      }
+      const sent = yield event;
+      next = await inner.next(sent);
+    }
+  } finally {
+    // Abandoned or thrown part-way: whatever is still open is released.
+    await inner.return(undefined);
+    await settleClaims(state.store, state.claims, false);
+  }
 }
 
 type PauseFn = (
@@ -957,6 +1018,7 @@ async function runDataStep(
   data: Record<string, unknown>,
   deps: EngineDeps,
   state: StateHandle,
+  claims: DedupeClaim[] = state.claims,
 ): Promise<{ output: unknown; skip?: string }> {
   const limits = deps.expressionLimits;
   if (step.type === "transform") {
@@ -999,17 +1061,24 @@ async function runDataStep(
   const store = await ensureDedupeStore(deps, state);
   // Scoped to the workflow and the step, so two workflows (or two dedupe steps) sharing a store do not
   // swallow each other's keys. Renaming the step or the agent id starts a fresh set of keys.
+  const stateKey = `dedupe:${spec.agent.id}:${step.step}:${key}`;
   const first = await store.putIfAbsent(
-    `dedupe:${spec.agent.id}:${step.step}:${key}`,
-    { at: Date.now() },
-    { ttlMs: ttl.value },
+    stateKey,
+    { at: Date.now(), state: "open" },
+    { ttlMs: Math.min(ttl.value, DEDUPE_OPEN_TTL_MS) },
   );
-  return first
-    ? { output: { duplicate: false, key } }
-    : {
-        output: { duplicate: true, key },
-        skip: `duplicate key "${key}" seen within ${step.once.ttl}`,
-      };
+  if (first) {
+    claims.push({ key: stateKey, ttlMs: ttl.value });
+    return { output: { duplicate: false, key } };
+  }
+  const holder = await store.get<{ state?: string }>(stateKey);
+  return {
+    output: { duplicate: true, key },
+    skip:
+      holder?.state === "open"
+        ? `duplicate key "${key}" is being processed by another run`
+        : `duplicate key "${key}" seen within ${step.once.ttl}`,
+  };
 }
 
 // ---- foreach (KAN-1858, ADR-0043) ----------------------------------------------------------------------
@@ -1133,6 +1202,14 @@ async function* runForEach(
     wake = undefined;
   };
 
+  // KAM-151: each item settles its own dedupe claims when it ends (released if the item failed).
+  const claimsByItem = new Map<number, DedupeClaim[]>();
+  const itemClaims = (index: number): DedupeClaim[] => {
+    let list = claimsByItem.get(index);
+    if (!list) claimsByItem.set(index, (list = []));
+    return list;
+  };
+
   const runBodyStep = async (
     inner: Exclude<BodyStep | WorkflowStep, BranchStep | StopStep>,
     index: number,
@@ -1160,7 +1237,7 @@ async function* runForEach(
     }
     if (isApprovalStep(inner)) throw new Error(APPROVAL_IN_LOOP);
     if (isDataStep(inner)) {
-      const outcome = await runDataStep(inner, spec, data(), deps, state);
+      const outcome = await runDataStep(inner, spec, data(), deps, state, itemClaims(index));
       return { output: outcome.output, ...(outcome.skip !== undefined && { skip: outcome.skip }) };
     }
     const result = await runActionStep(
@@ -1318,6 +1395,8 @@ async function* runForEach(
           message: (err as Error).message,
         }));
         outcomes[index] = outcome;
+        await settleClaims(state.store, itemClaims(index), outcome.kind !== "failed");
+        claimsByItem.delete(index);
         if (outcome.kind === "failed" && !isolates) aborted = true;
       }
     } finally {

@@ -440,8 +440,12 @@ Version 1.1. Each field that holds an expression is a whole JSONata expression, 
   refused; use a `branch` with a `stop`.
 - **`dedupe`** claims `key` in the state store for `ttl` (`30s`, `15m`, `6h`, `7d`). The first run to claim it
   continues; any other ends as completed with `skipped`. The claim is atomic across processes and survives a
-  restart. It is kept until the ttl even if a later step fails (a retry is then skipped as a duplicate), so put
-  `dedupe` last or pick the ttl with that in mind. The store is SQLite at `.kampong/state.db`.
+  restart. It is open while the run is going (held for at most 15 minutes, so a crashed process frees it), becomes
+  held for the full `ttl` when the run completes (or ends as `skipped`), and is released if the run fails or is
+  rejected, so a retry is not swallowed. Inside a `foreach` the same applies to each item. A run paused on a
+  persisted approval keeps its key for the `ttl`, even if it fails after being resumed. A run that finds the key
+  open elsewhere is skipped and not retried automatically; the next tick or redelivery will. The store is SQLite at
+  `.kampong/state.db`.
 
 ### `foreach`
 
