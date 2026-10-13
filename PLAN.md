@@ -1,6 +1,6 @@
 # Kampong Agents: Plan
 
-Status: agreed · Milestone: MVP (v1)
+Status: agreed · Milestone: MVP (v1) shipped; V9 shipped, V11 in progress (see `SLICES.md` for per-slice status)
 
 ## Problem
 
@@ -51,18 +51,18 @@ On conflict: the technical builder's expectations win. The canvas must never pro
 
 ## Requirements
 
-| ID  | Requirement                                                                                                                                                                                           | Status          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.                                           | Core goal       |
-| R1  | Canvas edits and direct YAML edits — including specs authored entirely in an external editor or agentic coding tool — stay bidirectionally synced with zero data loss, for every supported node type. | Must-have       |
-| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                                                                 | Must-have       |
-| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry.                                         | Must-have       |
-| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.                                           | Must-have       |
-| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                                                                      | Must-have       |
-| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                                                                      | Must-have       |
-| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                                                                    | Roadmap (V5)    |
-| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                                                                       | Roadmap (V6)    |
-| R9  | Further-future, not yet sequenced in detail: R9.1 multi-agent org-chart orchestration; R9.2 natural-language prompt-to-workflow generation.                                                           | Roadmap (V7/V8) |
+| ID  | Requirement                                                                                                                                                                                           | Status                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| R0  | A developer designs an agent visually and gets a lossless, git-diffable YAML spec, kept bidirectionally in sync with the canvas — with no platform lock-in.                                           | Core goal                |
+| R1  | Canvas edits and direct YAML edits — including specs authored entirely in an external editor or agentic coding tool — stay bidirectionally synced with zero data loss, for every supported node type. | Must-have                |
+| R2  | A spec executes locally — BYOK cloud model or local Ollama model — including tool calls and a blocking human-approval guardrail step.                                                                 | Must-have                |
+| R3  | The full local workflow (build, run, test) works fully offline via mock tool recording and local models, with no required network calls or default telemetry.                                         | Must-have                |
+| R4  | A spec exports to a standalone TypeScript project that runs independently of this tool and behaves identically to the canvas-run version on the same input.                                           | Must-have                |
+| R5  | Tool definition works via a structured form with zero LLM calls; NL-assisted schema drafting is optional on top.                                                                                      | Must-have                |
+| R6  | CLI commands are scriptable: JSON output, meaningful exit codes, usable from CI.                                                                                                                      | Must-have                |
+| R7  | Hosted/BYOK SaaS mode, reusing the same canvas UI.                                                                                                                                                    | Built, not deployed (V5) |
+| R8  | Enterprise governance: SSO/RBAC/audit logs/PII scrubbing/cost circuit breakers.                                                                                                                       | Roadmap (V6)             |
+| R9  | Further-future, not yet sequenced in detail: R9.1 multi-agent org-chart orchestration; R9.2 natural-language prompt-to-workflow generation.                                                           | Roadmap (V7/V8)          |
 
 ## Shape
 

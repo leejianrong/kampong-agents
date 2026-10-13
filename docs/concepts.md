@@ -63,9 +63,12 @@ single-agent design, run, and export loop before adding delegation.
 
 TypeScript end to end, on Mastra. The canvas is React + Vite + `@xyflow/react`, the local server
 is Fastify with server-sent events for live run and file-change updates, and YAML is parsed with
-the comment-preserving `yaml` package, which is what makes the lossless round trip possible. No
-database in v1.
+the comment-preserving `yaml` package, which is what makes the lossless round trip possible. The
+local tool needs no database for specs; the one exception is a small SQLite file
+(`.kampong/state.db`) that holds dedupe keys, run state and pending approvals for workflows that
+run unattended. The hosted server uses Postgres.
 [ADR-0003](adr/0003-mastra-typescript-runtime.md),
-[ADR-0007](adr/0007-frontend-and-local-server-stack.md)
+[ADR-0007](adr/0007-frontend-and-local-server-stack.md),
+[ADR-0028](adr/0028-durable-state-store.md)
 
 For the whole set of decisions, see [Design decisions](design-decisions.md).

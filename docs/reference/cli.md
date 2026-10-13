@@ -1,12 +1,16 @@
 # CLI reference
 
-The `kampong` command has three subcommands. Run `kampong <command> --help` for the same
+The `kampong` command has seven subcommands. Run `kampong <command> --help` for the same
 information at the terminal.
 
 ```
 kampong dev [dir]                          Start the local canvas server.
 kampong run <spec>.yaml --input "<text>"   Run a spec headlessly.
+kampong serve <spec>.yaml                  Run a spec as a live webhook / scheduled service.
 kampong export <spec>.yaml <output-dir>    Eject a spec to a standalone TypeScript project.
+kampong templates [--json]                 List the ready-made specs you can copy and edit.
+kampong doctor <spec>.yaml                 Preflight a spec: components, pins, credentials, fixtures.
+kampong lock <spec>.yaml [--update]        Pin the components a spec uses to their content digests.
 ```
 
 ## `kampong dev`
@@ -45,6 +49,8 @@ kampong run <spec>.yaml --input "<text>" [options]
 | `--json`           | off                            | Emit one machine-readable JSON object on stdout instead of a human summary.                               |
 | `--tools <mode>`   | `live`                         | `live` (real calls), `record` (call once, save a fixture), or `replay` (fixture only, never the network). |
 | `--fixtures <dir>` | `<spec dir>/.kampong/fixtures` | Where fixtures are read and written for record and replay.                                                |
+| `--var <name=value>` |                              | A value for one of the spec's `vars` (version 1.1). Repeatable; wins over the var's default.              |
+| `--header <name=value>` |                            | A request header a webhook would have carried, read as `trigger.headers`. Repeatable.                      |
 | `--approve-all`    | off                            | Auto-approve every pause instead of prompting on stdin. For CI.                                           |
 | `--timeout <ms>`   | `60000`                        | Max milliseconds for a single model call before the run aborts. Overrides the spec's `model.timeout_ms`.  |
 | `-h`, `--help`     |                                | Show help.                                                                                                |
@@ -53,6 +59,78 @@ kampong run <spec>.yaml --input "<text>" [options]
 
 Without `--approve-all`, a paused run prompts on stdin. Answer `y`/`yes` to approve; anything else
 rejects. Reject with a reason via `n:<reason>`, like `n:looks risky`.
+
+## `kampong serve`
+
+Runs a spec as a long-lived service: the self-host and deploy path. The same engine and spec as
+`kampong run`, but the process stays up and a run starts when the spec's trigger fires.
+
+```sh
+kampong serve <spec>.yaml [--port <n>] [--host <host>]
+```
+
+| Option          | Default   | Description                |
+| --------------- | --------- | -------------------------- |
+| `--port <n>`    | `8080`    | Port to listen on.         |
+| `--host <host>` | `0.0.0.0` | Host or interface to bind. |
+
+| Endpoint                    | What it does                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `POST /webhook`             | Start a run; the body is the input. Auth, `when` and `map` apply first (see the `webhook` trigger).     |
+| `GET /runs/:id`             | The run's current state.                                                                               |
+| `GET /runs/:id/events`      | Server-sent events stream of the run's progress.                                                       |
+| `POST /runs/:id/approve`    | Resolve a paused run: `{ "approved": boolean, "reason"?: string }`.                                    |
+| `POST /schedule/run-now`    | Start a scheduled spec's run now. `409` if a run holds the lock, `404` if the spec has no schedule.    |
+| `GET /triggers/ignored`     | The latest 100 webhook requests that `when` ignored.                                                   |
+| `GET /healthz`              | Liveness check.                                                                                        |
+
+A spec with a `schedule` trigger is driven by the unattended runner: one run at a time with an overlap
+lock, jitter and backoff, and a visible failure limit. Pending approvals are persisted and survive a
+restart. Model keys and connector tokens resolve from this process's environment.
+
+## `kampong templates`
+
+Lists the ready-made specs that ship with kampong: complete folders to copy and edit. Each holds an
+`agent.yaml`, a `README.md` and, when it can run offline, recorded `fixtures/`.
+
+```sh
+kampong templates [--json]
+```
+
+`--json` prints an array of `{ name, description, path }`. The command copies nothing; copy the folder
+yourself. Today there is one: `market-etl`, a scheduled price pipeline (see
+[Scheduled data pipelines](../tutorial/pipelines.md)).
+
+## `kampong doctor`
+
+Checks a spec before you run it: that its components resolve and are pinned, what permissions they ask
+for, and that each credential's environment variable is set (names only, never values).
+
+```sh
+kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--probe] [--json]
+```
+
+| Option             | Description                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `--online`         | Also open a TCP connection to each host the spec's components, tools and injected URLs may reach.   |
+| `--probe`          | Check each credential is accepted, by calling the read-only probe op its component declares.        |
+| `--tools replay`   | Check fixtures as `kampong run --tools replay` would use them.                                      |
+| `--fixtures <dir>` | Fixture directory (default `<spec dir>/.kampong/fixtures`).                                         |
+| `--json`           | One JSON object: `{ ok, checks: [{ status, area, message }] }`.                                     |
+
+## `kampong lock`
+
+Pins every component a spec uses (`action: component`) to its content digest in `kampong.lock`, next to the
+spec. A run refuses a component that is not pinned or whose files no longer match the pin. First-party
+`kampong/*` components do not need a pin.
+
+```sh
+kampong lock <spec>.yaml [--update] [--allow-wider-permissions]
+```
+
+`--update` accepts a changed component and re-pins it. `--allow-wider-permissions`, with `--update`, also
+accepts one that may now do more than when it was pinned (a new host, environment variable, file access, or
+a secret reaching a new host). Without it such an update is refused and the widening is listed.
 
 ## `kampong export`
 

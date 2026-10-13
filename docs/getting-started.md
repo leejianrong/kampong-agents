@@ -29,6 +29,11 @@ the compiled assets rather than a live dev server.
     [`AGENTS.md`](https://github.com/leejianrong/kampong-agents/blob/main/AGENTS.md) in the repo
     for the full command list and contributor conventions.
 
+!!! warning "The `kampong` command"
+    The examples below call `kampong`. Until the bin-symlink problem is fixed, `npx kampong` and a
+    linked or global install print nothing. Define an alias that runs the built file directly:
+    `alias kampong="node $PWD/packages/cli/dist/cli.js"` (run it from the repo root, after the build).
+
 ## Set your API key
 
 Secrets never live in a spec file. A spec only ever references an environment variable, like

@@ -1,144 +1,127 @@
 # Kampong Agents — agent brief
 
-A dev-first, canvas-code-duality agent-workflow builder. Full context lives in `PLAN.md`
-(problem/solution/scope/requirements), `SLICES.md` (build sequence), and `docs/adr/*.md`
-(the decisions and their reasoning) — this file is the fast-start summary, not a replacement
-for reading those when you're actually implementing a slice.
+A dev-first, canvas-code-duality agent-workflow builder (single-agent, TypeScript on Mastra).
+Deep context lives in `PLAN.md` (problem/scope/requirements), `SLICES.md` (build sequence and a
+status table), and `docs/adr/*.md` (decisions and why). This file is the fast start, not a
+replacement for reading those before you implement a slice.
+
+**Trust the code over any doc, including this one, and fix the doc when they disagree.**
 
 ## Build status
 
-**V1–V4 (the full MVP) are implemented and merged to `main`.** Concretely: the `AgentSpec`
-YAML schema + validator and published JSON Schema (`packages/spec`); the sidecar layout store,
-canvas read/write path, tool- and workflow-step forms, file-watcher auto-reload, and YAML
-preview panel (`apps/canvas`); the Mastra-backed execution engine with guardrail/HITL approval
-and BYOK model config (`packages/engine`); `kampong dev`/`run`/`export` and the Fastify local
-server, including the mock/record tool layer and Ollama adapter (`packages/cli`); and the
-one-way TypeScript exporter (`packages/exporter`). Lint, typecheck, build, and all three test
-layers are green. V5–V8 (hosted/BYOK SaaS, enterprise governance, multi-agent orchestration,
-NL-to-workflow generation) remain roadmap — not started. Trust the code over this file or the
-planning docs for exactly what's implemented and how; trust `PLAN.md`/`SLICES.md`/`docs/adr/`
-for what's _supposed_ to get built next and why.
+- **Done and merged:** V1–V4 (the MVP: `AgentSpec` YAML + canvas, engine with guardrails/HITL,
+  `kampong dev|run|export`, TypeScript exporter) and V9 (webhook triggers, connectors, Slack approvals).
+- **Built but parked until deployed:** V5 hosted/BYOK server (`packages/server`: Postgres + RLS,
+  Better Auth, BYOK vault, Helm in `deploy/`). V10 managed go-live is partly built.
+- **In progress: V11**, authorable real-world workflows. Shipped: spec version `"1.1"` (JSONata
+  expressions, `vars`), `output_schema`, component repository (`kampong/*` first-party components),
+  SQLite state store, unattended runner, `schedule` trigger, `transform`/`validate`/`dedupe`, `foreach`,
+  `branch`/`stop`, persisted approvals, webhook auth presets with `when`/`map`, and the `market-etl`
+  template. Open work is on the board (canvas forms for the new steps, Gmail IMAP, Slack interactivity,
+  poll trigger, model record/replay, RAG, more templates).
+- **Roadmap, not started:** V6 governance, V7 multi-agent, V8 NL generation, V12 registry.
 
-Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`) — one epic per
-slice in `SLICES.md`. V1–V4 epics are done; V5–V8 epics are open and labeled `[ROADMAP]`.
+Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`), one epic per slice.
+Older commits and ADRs cite `KAN-`/`EPIC-` ids for the same cards. Pick up a card from the board,
+claim it, and keep it in the active cycle (see KAM-150).
 
-## Load-bearing conventions (don't re-litigate these — see the cited ADR if you need the why)
+## Load-bearing conventions (don't re-litigate; see the ADR for the why)
 
-- **YAML is the single source of truth, canvas is bidirectional with it, code export is
-  one-way.** The canvas never reads from or writes to generated TypeScript; only the
-  `AgentSpec` YAML round-trips. (ADR-0002)
-- **TypeScript end to end, on Mastra.** No Python component anywhere — canvas, CLI, execution
-  engine, and exporter are all one language/runtime. Mastra core is Apache 2.0 (safe for
-  hosted resale); its own `ee/`-directory enterprise features are separately licensed — don't
-  depend on those for the V6 governance work, build it ourselves. (ADR-0003)
-- **v1 is single-agent only.** No multi-agent org-chart orchestration yet; the spec schema
-  should leave room for a `sub_agents` field later, but nothing assumes it's coming soon.
-  (ADR-0001)
-- **No separate LLM gateway (LiteLLM/Portkey) until the hosted slice (V5).** Model calls go
-  straight through Mastra's Vercel AI SDK provider interface; a failed call fails visibly,
-  it is not silently retried against another provider. (ADR-0004)
-- **The canvas is a local web app served by the CLI (`kampong dev` → localhost), not a
-  desktop app.** This is what lets the same UI be reused for hosted mode (V5) later.
-  (ADR-0005)
-- **Canvas node layout lives in a sidecar `.kampong/layout.json`, never in the spec YAML.**
-  Keeps the spec hand-authorable and diff-clean. (ADR-0006)
-- **Stack: React + Vite + `@xyflow/react` for the canvas; Fastify + SSE for the local server;
-  the `yaml` package (not `js-yaml`) for comment-preserving parsing; no database in v1.**
-  (ADR-0007)
-- **Hand-editing a spec in Cursor or an agentic coding tool (Claude Code, Codex) is a primary
-  workflow, not an edge case.** A folder of externally-authored specs renders on the canvas with
-  zero import step; external file changes auto-reload by default (no prompt) — the canvas only
-  prompts on a genuine in-flight-mutation conflict. The `AgentSpec` JSON Schema is published and
-  wired via the `yaml-language-server` pragma so external tools get real validation/autocomplete
-  without any custom editor tooling on our side. The in-app YAML view stays a light viewer/editor,
-  not a competing IDE. (ADR-0008)
-- **Local-first, no telemetry by default.** Nothing phones home unless a user explicitly
-  opts in. Secrets are never written into a spec file — specs reference `${ENV_VAR}`
-  placeholders only, actual values live in `.env`/the environment.
-- **A local model (Ollama) that's unavailable is a hard, visible error — never a silent
-  fallback to a paid cloud API.**
-- **Any frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation
-  tokens, state layers) rather than ad hoc styling — see the `material-design-3` skill/
-  reference before building canvas UI.
-- **Enterprise features (hosted/BYOK, SSO/RBAC/audit) are on the roadmap, not cut** — see
-  `PLAN.md` §Scope and `SLICES.md` V5/V6. Don't build them early; don't assume they're never
-  coming either.
+- **YAML is the single source of truth; canvas is bidirectional with it; code export is one-way.**
+  The canvas never reads generated TypeScript. (ADR-0002)
+- **TypeScript end to end, on Mastra.** No Python component. Mastra core is Apache 2.0; its `ee/`
+  features are separately licensed, so build governance ourselves. (ADR-0003)
+- **Single-agent only.** Leave room for `sub_agents` in the schema; nothing assumes it's soon. (ADR-0001)
+- **No separate LLM gateway until hosted (V5).** A failed model call fails visibly; it is never silently
+  retried on another provider. (ADR-0004)
+- **The canvas is a local web app served by the CLI, not a desktop app**, so the same UI serves hosted
+  mode. (ADR-0005)
+- **Canvas layout lives in `.kampong/layout.json`, never in the spec YAML.** (ADR-0006)
+- **Stack:** React + Vite + `@xyflow/react`; Fastify + SSE; the `yaml` package (not `js-yaml`) for
+  comment-preserving parsing. No database for specs. The one local exception is the SQLite state store
+  (`.kampong/state.db`, ADR-0028); the hosted server uses Postgres. (ADR-0007, ADR-0028)
+- **Hand-editing specs in Cursor or Claude Code is a primary workflow.** External changes auto-reload with
+  no prompt; the canvas prompts only on a genuine in-flight-mutation conflict. The published JSON Schema
+  plus the `yaml-language-server` pragma is how external tools validate. The in-app YAML view stays a
+  light viewer. (ADR-0008)
+- **Spec versions:** `"1.0"` keeps the original `{step.field}` syntax and string conditions and must keep
+  validating. New step kinds (`transform`, `validate`, `dedupe`, `foreach`, `branch`, `stop`), `vars`,
+  schedule/webhook auth and `output_schema` are `"1.1"` only. Each carries its own YAML line in errors.
+  The hosted server does not run 1.1 specs yet. (ADR-0027)
+- **Exported projects vendor the engine files** (parity-tested copies, e.g. `workflow.ts`, `run.ts`,
+  `schedule.ts`), so a change to a vendored file must keep the parity tests passing. (ADR-0010)
+- **Local-first, no telemetry by default.** Secrets never go in a spec: only `${ENV_VAR}` placeholders
+  (and `secret_env` names), with values in `.env` or the environment.
+- **An unavailable local model (Ollama) is a hard, visible error**, never a silent fallback to a paid API.
+- **Model calls: prefer OpenRouter, then any OpenAI-compatible endpoint, over a direct Anthropic key.**
+  `mastra-projects/` goes through OpenRouter only (its ADR-0005).
+- **Frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation, state layers);
+  see the `material-design-3` skill.
+- **Enterprise features (V6) are roadmap, not cut.** Don't build them early; don't assume they never come.
 
 ## Repo layout
 
 ```
-packages/spec/       AgentSpec YAML schema + validator (S1, S7) — yaml pkg, JSON Schema artifact
-packages/engine/      Mastra-backed execution engine, guardrails/HITL, mock/record + Ollama (S3/S4)
-packages/exporter/    AgentSpec -> standalone TypeScript project codegen, one-way (S6)
-packages/cli/         kampong dev / kampong run / kampong export + the Fastify local server (S5)
-packages/cli/templates/ ready-made specs listed by `kampong templates` (market-etl; ADR-0046)
-apps/canvas/          local web canvas app — React + Vite + @xyflow/react (S2)
-e2e/                  cross-package acceptance tests (e.g. exporter behavioral equivalence)
-docs/adr/             architectural decisions, one per file
-mastra-projects/      separate discovery initiative — see below, not part of the product
+packages/spec/        AgentSpec schema + validator, published JSON Schema, expression checks
+packages/engine/      Mastra-backed engine: workflow, guardrails/HITL, runner, schedule, state store
+packages/engine/components/   first-party `kampong/*` connectors (slack, gmail, github, supabase, alpha-vantage)
+packages/exporter/    AgentSpec -> standalone TypeScript project, one-way
+packages/cli/         kampong dev | run | serve | export | templates | doctor | lock; Fastify local server
+packages/cli/templates/  ready-made specs (market-etl; ADR-0046)
+packages/server/      hosted multi-tenant server (Drizzle/Postgres, Better Auth) — V5
+apps/canvas/          React + Vite + @xyflow/react canvas
+e2e/                  cross-package acceptance tests; e2e/browser = Playwright
+deploy/helm/          Kubernetes chart for the hosted server
+docs/                 product docs (Zensical site: `zensical.toml`) and docs/adr/
+mastra-projects/      separate discovery initiative, not part of the product (below)
 ```
 
-Each package has `test/unit` (no infra, runs everywhere) and, where relevant, `test/integration`
-(cross-module behavior). Root-level `e2e/` holds tests that install/execute a real generated
-project or otherwise exercise the full stack.
+Each package has `test/unit` and, where relevant, `test/integration`.
 
-**`mastra-projects/`** is a separate initiative, not the kampong-agents product: real, non-mocked
-demo apps built directly on Mastra (no kampong `AgentSpec`/canvas/exporter involved) to discover
-which agent-workflow use cases are worth building support for. It has its own
-`PLAN.md`/`SLICES.md`/`QUESTIONS.md`/`docs/adr/` — read those before working in that folder rather
-than assuming this file's conventions apply there. It is deliberately outside the npm
-workspace/build/lint/format/CI (ADR-0002 in `mastra-projects/docs/adr/`) — `npm run
-build`/`lint`/`typecheck`/`test:*` at the repo root never touch it, and every demo's model calls go
-through OpenRouter, never a direct Anthropic key (ADR-0005), and ships its own real-time SSE
-dashboard (ADR-0006).
+**`mastra-projects/`** is outside the npm workspace/build/lint/CI: non-mocked demo apps built directly
+on Mastra (no `AgentSpec`) to find which use cases are worth supporting. Read its own
+`PLAN.md`/`SLICES.md`/`QUESTIONS.md`/`docs/adr/` before working there; this file's conventions don't
+apply. Root `npm run build|lint|typecheck|test:*` never touch it.
 
 ## Commands
 
 ```
 npm install              # install all workspaces
-npm run build             # tsc -b (dependency-order-aware) + vite build for apps/canvas
-npm run lint               # eslint .
-npm run format:check       # prettier --check .
-npm run typecheck          # tsc --noEmit per package
-npm run test:unit          # fast layer — no infra, mirrors the pre-push hook
-npm run test:integration   # cross-module layer
-npm run test:e2e           # full-stack acceptance layer
-npm test                   # unit + integration (what CI's fast path expects)
+npm run build            # tsc -b (dependency-order-aware) + vite build for apps/canvas
+npm run lint             # eslint .
+npm run format:check     # prettier --check .
+npm run typecheck        # tsc --noEmit per package
+npm run test:unit        # fast layer, no infra (unit + unit-web); mirrors the pre-push hook
+npm run test:integration # cross-module layer; integration-db needs Postgres (see ci.yml)
+npm run test:e2e         # full-stack acceptance (installs and runs generated projects)
+npm run test:e2e:browser # Playwright
+npm test                 # unit + integration
 ```
 
-**Run `npm run build` before `typecheck`/`test:unit`/`test:integration`/`test:e2e` on a fresh
-checkout.** Cross-package imports (e.g. `apps/canvas` importing `@kampong/spec`) resolve via each
-package's `"types"`/`"main"` field pointing at `dist/`, which is gitignored — without a build
-first, those imports fail to resolve with `TS2307: Cannot find module`. `npm run build` itself
-must stay `tsc -b` at the root (not `npm run build --workspaces`, which iterates by directory name,
-not the dependency graph, and will try to build `apps/canvas` before `packages/spec` exists) —
-this bit a real CI run once; don't reintroduce it.
+**Run `npm run build` first on a fresh checkout.** Cross-package imports resolve through each
+package's gitignored `dist/`, so without a build they fail with `TS2307`. Root `build` must stay
+`tsc -b` (not `npm run build --workspaces`, which ignores the dependency graph; this broke CI once).
 
-The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typecheck + test:unit —
-the same fast, no-infra gate as the first five CI jobs, so a push rarely lands red. `--no-verify`
-is fine for a scoped, deliberate exception.
+The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typecheck + test:unit.
+`--no-verify` is fine for a scoped, deliberate exception.
 
 ## Workflow conventions
 
-- One branch per vertical slice from `SLICES.md`, cut from a fresh `main`.
-- Every change should land via PR with CI green. Branch protection on `main` isn't configured
-  yet; set that up before this repo has more than one contributor.
-- A new architectural decision, or a default from `QUESTIONS.md` that turns out to be load-bearing,
-  gets its own `docs/adr/NNNN-*.md` — number sequentially from the highest existing ADR (currently
-  0047).
-- Every bug or flake becomes a regression test before the fix, not after.
+- One branch per card or slice, cut from a fresh `main`; land via PR with CI green. Branch protection on
+  `main` isn't configured; set it up before a second contributor joins.
+- Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
+  unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
+- A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0047).
+- Every bug or flake becomes a regression test before the fix.
+- A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 
-## Testing approach (see PLAN.md §Testing approach for the full reasoning)
+## Testing approach (see PLAN.md §Testing approach)
 
-- **Highest-leverage test:** the `AgentSpec` round-trip — `YAML → canvas render → mutation →
-YAML serialize → re-parse` must be a fixed point for every fixture, including preserved
-  comments/formatting (the reason we use the `yaml` package, not `js-yaml` — ADR-0007). This
-  lives at the integration layer (`packages/spec/test/integration/round-trip.test.ts` has the
-  placeholder).
-- **Exporter correctness is behavioral equivalence, not code-shape comparison:** actually
-  `npm install && npm start` the generated project in a clean directory and diff its output
-  against the canvas/CLI-run output on the same input. This is an e2e-layer test
-  (`e2e/exporter-behavioral-equivalence.test.ts` has the placeholder) because it really
-  installs and runs a generated Node project.
-- **Local execution tests (guardrails, HITL, tool calls) should use recorded mock tool
-  responses** for determinism — no live network calls in unit/integration tests.
+- **Round-trip:** `YAML → canvas render → mutation → serialize → re-parse` must be a fixed point for every
+  fixture, comments and formatting included (`packages/spec/test/integration/round-trip.test.ts`).
+- **Exporter correctness is behavioral equivalence**, not code shape: install and run the generated project
+  in a clean directory and compare its output to the engine's on the same input
+  (`e2e/exporter-behavioral-equivalence.test.ts`, `e2e/market-etl-template.test.ts`).
+- **Execution tests use recorded fixtures** (`--tools replay`, `e2e/fixtures/`): no live network in
+  unit/integration tests.
