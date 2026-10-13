@@ -45,7 +45,7 @@ Needs Node 22 or newer.
 ```sh
 npm install
 npm run build
-alias kampong="node $PWD/packages/cli/dist/cli.js"   # the npm bin symlink currently prints nothing
+npm link -w packages/cli                               # puts `kampong` on your PATH
 
 cp .env.example .env                                   # then set OPENROUTER_API_KEY (free tier works)
 kampong run examples/agent.yaml --input "Hi, what can you do?"
