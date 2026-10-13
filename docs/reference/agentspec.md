@@ -192,8 +192,9 @@ immediately and is refused, not queued, while another holds the lock.
 
 !!! note "Exports"
 
-    `kampong export` vendors the scheduling code but does not yet wire a scheduler into the generated server.
-    Run a scheduled spec with `kampong serve` for now.
+    An exported project runs the schedule too: `npm run serve` (and the generated Dockerfile) starts the
+    scheduler, with the same overlap lock, backoff and `POST /schedule/run-now`. `npm start` is a single run.
+    Keep `.kampong/` on a volume so the lock and dedupe keys survive a restart.
 
 ## `agent.model`
 

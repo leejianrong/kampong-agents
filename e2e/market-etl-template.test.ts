@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -127,11 +127,14 @@ describe("market-etl template: exported project behavioural equivalence (KAN-186
   });
 
   it("an exported market-etl writes the same rows, isolates the rate-limited symbol and fires the threshold branch exactly as the engine does", async () => {
+    // `every: 2s` in place of the template's six-hourly cron, so the exported server ticks within the test
+    // (the trigger does not change what a run does, so the single-run comparison below is unaffected).
     const source = TEMPLATE.replace(
       "    provider: ollama\n    name: llama3.1\n",
       `    provider: ollama\n    name: llama3.1\n    base_url: "http://127.0.0.1:${ollama.port}"\n`,
-    );
+    ).replace('    cron: "0 */6 * * *"\n', "    every: 2s\n");
     expect(source).not.toBe(TEMPLATE);
+    expect(source).toContain("every: 2s");
     const { success, spec, errors } = parseSpec(source);
     expect(success, JSON.stringify(errors)).toBe(true);
 
@@ -250,5 +253,65 @@ describe("market-etl template: exported project behavioural equivalence (KAN-186
       expect(line).not.toContain(SECRETS.ALPHAVANTAGE_API_KEY);
       expect(line).not.toContain(SECRETS.SLACK_BOT_TOKEN);
     }
-  }, 300_000);
+
+    // KAM-158: `npm run serve` runs the schedule. The server ticks on its own clock (`every: 2s`), and
+    // POST /schedule/run-now starts a run immediately; every run makes the requests the engine's run did.
+    const serveLog = join(logDir, "requests-serve.json");
+    const port = 20000 + Math.floor(Math.random() * 20000);
+    let server: ChildProcess | undefined;
+    let serverOutput = "";
+    try {
+      server = spawn(join(exportDir, "node_modules", ".bin", "tsx"), ["src/server.ts"], {
+        cwd: exportDir,
+        env: {
+          ...process.env,
+          ...SECRETS,
+          PORT: String(port),
+          HOST: "127.0.0.1",
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${PRELOAD}`.trim(),
+          MARKET_ETL_REQUEST_LOG: serveLog,
+        },
+      });
+      server.stdout?.on("data", (chunk: Buffer) => (serverOutput += chunk.toString()));
+      server.stderr?.on("data", (chunk: Buffer) => (serverOutput += chunk.toString()));
+      const base = `http://127.0.0.1:${port}`;
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      for (let i = 0; ; i++) {
+        const up = await fetch(`${base}/healthz`).then(
+          (r) => r.ok,
+          () => false,
+        );
+        if (up) break;
+        if (i > 150) throw new Error(`the exported server never came up:\n${serverOutput}`);
+        await sleep(200);
+      }
+      const started = await fetch(`${base}/schedule/run-now`, { method: "POST" });
+      expect(started.status, serverOutput).toBe(201);
+      const { id } = (await started.json()) as { id: string };
+      let state: RunState | undefined;
+      for (let i = 0; i < 150; i++) {
+        state = ((await (await fetch(`${base}/runs/${id}`)).json()) as { state: RunState }).state;
+        if (state.status !== "running") break;
+        await sleep(200);
+      }
+      expect(state?.status, serverOutput).toBe("completed");
+      // Long enough for at least one tick of the 2s schedule, then stop gracefully so the log is written.
+      await sleep(8000);
+      const exited = new Promise<void>((r) => server!.once("exit", () => r()));
+      server.kill("SIGTERM");
+      await exited;
+      const seen = normalise(JSON.parse(readFileSync(serveLog, "utf8")) as Seen[]);
+      const perRun = expected[0]!.log.length;
+      expect(seen.length % perRun, "whole runs only").toBe(0);
+      expect(
+        seen.length / perRun,
+        "run-now plus at least one scheduled tick",
+      ).toBeGreaterThanOrEqual(2);
+      for (let at = 0; at < seen.length; at += perRun) {
+        expect(seen.slice(at, at + perRun)).toEqual(expected[0]!.log);
+      }
+    } finally {
+      server?.kill("SIGKILL");
+    }
+  }, 360_000);
 });
