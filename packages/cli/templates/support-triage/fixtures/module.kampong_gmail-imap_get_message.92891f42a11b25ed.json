@@ -1,0 +1,23 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.get_message",
+  "op": "get_message",
+  "input": "{\"uid\":5}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "uid": 5,
+      "mailbox": "INBOX",
+      "message_id": "<orig-5@client.example>",
+      "references": ["<earlier-0@client.example>"],
+      "subject": "How do I reset my password?",
+      "from": "Ana Cruz <ana@client.example>",
+      "to": ["[REDACTED]"],
+      "cc": [],
+      "date": "2026-10-12T09:00:00.000Z",
+      "text": "Hello, I forgot my password and cannot log in. How do I reset it?\n",
+      "truncated": false,
+      "attachments": []
+    }
+  }
+}

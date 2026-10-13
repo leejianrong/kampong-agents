@@ -1,0 +1,13 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.mark_seen",
+  "op": "mark_seen",
+  "input": "{\"uid\":5}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "ok": true,
+      "uid": 5
+    }
+  }
+}
