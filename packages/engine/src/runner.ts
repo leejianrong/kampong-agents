@@ -123,7 +123,9 @@ export async function runUnattended(options: RunnerOptions): Promise<RunnerResul
       signal.addEventListener("abort", onAbort, { once: true });
     });
     try {
-      await Promise.race([clock.sleep(ms), aborted]);
+      // The signal goes to the clock too, so an aborted wait clears its timer: a pending real timer would
+      // keep the process alive for the rest of the interval after the service has stopped.
+      await Promise.race([clock.sleep(ms, signal), aborted]);
     } finally {
       signal.removeEventListener("abort", onAbort);
     }

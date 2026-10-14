@@ -4,12 +4,23 @@
 
 export interface Clock {
   now(): number;
-  sleep(ms: number): Promise<void>;
+  /** Resolves after `ms`, or as soon as `signal` aborts (the timer is then cleared, not left to fire). */
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
 
 export const realClock: Clock = {
   now: () => Date.now(),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep: (ms, signal) =>
+    new Promise((resolve) => {
+      if (signal?.aborted) return resolve();
+      const done = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      signal?.addEventListener("abort", done, { once: true });
+    }),
 };
 
 /** A clock that never waits: for replaying recorded fixtures, where real backoff delays only slow tests. */

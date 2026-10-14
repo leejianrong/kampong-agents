@@ -16,6 +16,19 @@
 // Failure policy: a failed run is reported, then retried after an exponential backoff. After
 // `maxConsecutiveFailures` in a row the runner emits `failure_limit` and returns reason "failure_limit"
 // so the caller can exit non-zero. It never keeps failing silently.
+// Unattended runner (ADR-0028, KAN-1855): a generic long-running loop that runs one job on an interval
+// with an overlap lock, jitter, exponential backoff, graceful shutdown and fail-visible behaviour.
+// It knows nothing about schedules or pollers (KAN-1856/1857 supply the jobs); time, sleep and
+// randomness are injected so tests never really wait.
+//
+// Overlap lock: before each run the runner takes `runner:lock:<name>` with putIfAbsent and a TTL. A
+// second process (or a restarted one whose predecessor crashed) skips its tick while the lock is live;
+// a crashed holder's lock simply expires. lockTtlMs must exceed the longest expected run -- the lock
+// is not renewed, and release only deletes a lock this runner still owns.
+//
+// Failure policy: a failed run is reported, then retried after an exponential backoff. After
+// `maxConsecutiveFailures` in a row the runner emits `failure_limit` and returns reason "failure_limit"
+// so the caller can exit non-zero. It never keeps failing silently.
 
 import { randomUUID } from "node:crypto";
 import { realClock, type Clock } from "./pacing.js";
@@ -128,7 +141,9 @@ export async function runUnattended(options: RunnerOptions): Promise<RunnerResul
       signal.addEventListener("abort", onAbort, { once: true });
     });
     try {
-      await Promise.race([clock.sleep(ms), aborted]);
+      // The signal goes to the clock too, so an aborted wait clears its timer: a pending real timer would
+      // keep the process alive for the rest of the interval after the service has stopped.
+      await Promise.race([clock.sleep(ms, signal), aborted]);
     } finally {
       signal.removeEventListener("abort", onAbort);
     }
