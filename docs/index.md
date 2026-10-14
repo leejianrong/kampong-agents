@@ -85,8 +85,11 @@ Both execute the same agent, against the same file. That's the whole idea.
 
 Kampong Agents is early. Today it builds one agent at a time, with no multi-agent org charts. It
 runs and exports that agent, works offline, and treats hand-editing as a first-class workflow.
+A workflow can run on a schedule or a webhook, loop over a list, branch, and call first-party
+connectors (see [Scheduled data pipelines](tutorial/pipelines.md)). The canvas edits most of this,
+but nested loops and branch arms are still hand-written YAML.
 There is also a [hosted app](hosted-app.md), the same canvas with sign-in, workspaces, and
-server-side provider keys, for running it as a shared, multi-tenant service. Enterprise
-governance, multi-agent orchestration, and natural-language spec generation are on the roadmap,
-not in the box. See [Design decisions](design-decisions.md) for the reasoning behind the current
+server-side provider keys. It is built but not yet deployed, and it does not run version 1.1 specs
+yet. Enterprise governance, multi-agent orchestration, and natural-language spec generation are on
+the roadmap, not in the box. See [Design decisions](design-decisions.md) for the reasoning behind the current
 scope.

@@ -103,17 +103,53 @@ Var names are letters, digits and underscores.
 | `guardrails`     | object | no       | Confidence threshold and fallback.                                            |
 | `knowledge_base` | array  | no       | Declared knowledge sources (see the note below).                              |
 | `workflow`       | array  | yes      | Ordered steps. At least one.                                                  |
-| `trigger`        | object | no       | How a deployed run starts: `type: webhook` (see below).                       |
+| `trigger`        | object | no       | How a deployed run starts: `webhook` or `schedule` (see below).               |
+| `approval_notifier` | object | no    | Where a headless run sends an approve/reject prompt (`type: slack`, `token`, `channel`). |
 
 ## `agent.trigger`
 
-`type: webhook` is the only kind. A POST to `/webhook` on `kampong serve` (or an exported project's
-`npm run serve`) starts a run, and its body becomes the input.
+Two kinds: `webhook` and `schedule`.
+
+### `type: webhook`
+
+A POST to `/webhook` on `kampong serve` (or an exported project's `npm run serve`) starts a run, and its
+body becomes the input.
 
 | Field        | Type    | Notes                                                                                              |
 | ------------ | ------- | -------------------------------------------------------------------------------------------------- |
 | `respond`    | string  | `async` (the default) or `sync`. Version 1.1 only.                                                  |
 | `timeout_ms` | integer | With `respond: sync`, how long to wait, 1000 to 300000. Default 30000. Version 1.1 only.            |
+| `preset`     | string  | `github`, `slack`, `alertmanager` or `generic`: expands to a concrete auth rule. Version 1.1 only.  |
+| `auth`       | `none` or object | A `bearer` or `hmac` check, below. With a preset it supplies `secret_env` and may override any field but the type. |
+| `when`       | string  | A JSONata condition over `trigger`. False means accepted but ignored (no run). Version 1.1 only.    |
+| `map`        | object  | `name: expression` pairs that become `trigger.*`, replacing the body's fields. Version 1.1 only.    |
+
+```yaml
+trigger:
+  type: webhook
+  preset: github
+  auth: { secret_env: GITHUB_WEBHOOK_SECRET }
+  when: 'trigger.headers.`x-github-event` = "pull_request"'
+  map:
+    repo: "trigger.repository.full_name"
+    number: "trigger.number"
+```
+
+**Auth.** `bearer` takes `secret_env`. `hmac` takes `header`, `algo` (`sha256` or `sha1`), `encoding` (`hex` or
+`base64`), and optionally `prefix`, `timestamp_header`, `window_s` (default 300 with a timestamp header) and
+`payload` (the signed text, with `{body}` and `{timestamp}`). `secret_env` is the _name_ of an environment
+variable (`NAME` or `${NAME}`), never the secret. Signatures are checked over the raw request bytes with a
+constant-time compare. Every failure, including an unset secret variable, answers `401 Unauthorized` and says
+nothing about which check failed. The `slack` preset also answers Slack's `url_verification` challenge. With no
+`auth` and no `preset` the webhook is open.
+
+**Order.** authenticate, then `when`, then `map`, then the `respond` mode. An ignored request answers
+`200 { success: true, ignored: true, reason }` and shows in `GET /triggers/ignored`. A `when` or `map` that
+cannot be evaluated answers `422` and nothing runs. Headers that look like credentials are never in
+`trigger.headers`.
+
+#### Responding
+
 
 With `respond: async` the POST answers `201` at once with a run id, and the caller polls
 `GET /runs/<id>`. With `respond: sync` the POST is held open and answers with the result, for a caller that
@@ -130,6 +166,34 @@ wants an answer (a question-and-answer endpoint):
 A `202` is not a failure: the run carries on, and `GET /runs/<id>` (and `POST /runs/<id>/approve`) work as
 usual. A spec that needs a human to approve should expect `202` and tell its caller to poll.
 
+
+### `type: schedule`
+
+Starts a run on a clock while `kampong serve` is up (version 1.1 only). Exactly one of `cron` or `every`.
+
+```yaml
+trigger:
+  type: schedule
+  every: 6h # or: cron: "0 7 * * 1-5", tz: Asia/Singapore
+  overlap: skip
+```
+
+| Field     | Type   | Notes                                                                                                     |
+| --------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| `cron`    | string | Five fields. `*`, lists, ranges, `a-b/n`, `*/n`, month and weekday names. A date that never exists is rejected. |
+| `every`   | string | `30s`, `15m`, `6h`, `1d`; at least `1s`. Counts elapsed time from when `kampong serve` started.            |
+| `tz`      | string | An IANA zone for `cron`. Default `UTC`. Not allowed with `every`.                                          |
+| `overlap` | string | `skip` (default) drops a tick that comes due during a run; `queue` keeps one and runs it as soon as the current run ends. |
+
+A scheduled run's input is the empty string, so read `vars` rather than `trigger`. A wall-clock time that does
+not exist (a DST gap) runs once just after the gap; one that happens twice runs once. A schedule that must tick
+every real hour regardless of the calendar should use `every`. `POST /schedule/run-now` starts a run
+immediately and is refused, not queued, while another holds the lock.
+
+!!! note "Exports"
+
+    `kampong export` vendors the scheduling code but does not yet wire a scheduler into the generated server.
+    Run a scheduled spec with `kampong serve` for now.
 
 ## `agent.model`
 
@@ -164,7 +228,7 @@ tools:
 | Field               | Type                                            | Required | Notes                                                                     |
 | ------------------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------------- |
 | `name`              | string                                          | yes      | Referenced from a condition branch as `execute_tool(<name>)`.             |
-| `action`            | `http_request`                                  | yes      | The only tool kind in v1.                                                 |
+| `action`            | `http_request`                                  | yes      | The generic HTTP tool. Other kinds: `component` (below), `slack_post_message`, `gmail_send`. |
 | `method`            | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` | yes      | HTTP method.                                                              |
 | `url`               | string                                          | yes      | Endpoint. `{placeholders}` resolve from `{input}` and `{<step>.<field>}`. |
 | `headers`           | map of string                                   | no       | Request headers. Credential-looking names must use `${ENV_VAR}`.          |
@@ -176,6 +240,24 @@ tools:
 | `retry`             | `{ max, backoff, base_ms, max_delay_ms }`       | no       | Re-attempt retryable failures with backoff.                               |
 | `extract`           | string                                          | no       | Dotted path into the JSON response. Only valid for `json`.                |
 | `requires_approval` | boolean                                         | no       | Pause for approval before the call.                                       |
+
+### Component tools
+
+```yaml
+- name: store_row
+  action: component
+  use: kampong/supabase@1.0.0
+  op: upsert
+  config: { table: prices, on_conflict: "symbol,trade_date" }
+  secrets: { api: "${SUPABASE_KEY}" }
+  with: { rows: "{{ row }}" }
+```
+
+A component is a versioned, reusable connector. `use` is an exact `namespace/name@1.2.3`, `op` one of its
+operations, `with` the op's input, `config` its non-secret per-use values (a `${ENV}` named like a credential
+is rejected here), and `secrets` binds a declared auth slot to an environment variable. First-party components
+live in `kampong/*`: `slack`, `gmail`, `github`, `supabase` and `alpha-vantage`. Anything else is pinned in
+`kampong.lock` with `kampong lock`. Run `kampong doctor` to check one before a run.
 
 ### Headers, query, body and response
 
@@ -273,7 +355,9 @@ guardrails:
 
 ## `agent.workflow[]`
 
-At least one step. Each is either an action step or a condition step.
+At least one step. A step is an action step, a condition step, or one of the kinds below. Everything except
+`action`, `condition`, `tool` and `approval` needs `version: "1.1"`; on a 1.0 spec the validator names the step
+kind and the line of the field.
 
 ### Action step
 
@@ -292,6 +376,10 @@ At least one step. Each is either an action step or a condition step.
 | `inputs`          | string[] | no       | Field names flagged as relevant to the model.                                |
 | `query`           | string   | no       | Extra per-step instruction for the model.                                    |
 | `confidence_gate` | boolean  | no       | Return a structured `{ result, confidence }` and enable the guardrail check. |
+| `output_schema`   | object   | no       | A JSON Schema subset. The model must return exactly this object, which is validated (one retry) and becomes the step's output. Version 1.1. |
+| `instructions`    | string   | no       | Replaces the role and goal as this step's system prompt. Version 1.1.        |
+| `model`           | string   | no       | A different model of the same provider for this step. Version 1.1.           |
+| `temperature`     | number   | no       | Sampling temperature, 0 to 2. Version 1.1.                                    |
 
 ### Condition step
 
@@ -310,6 +398,107 @@ At least one step. Each is either an action step or a condition step.
 | `if`   | string      | yes      | `<step_id>.<field> <op> <literal>`; ops `== != > >= < <=`; literals `true`/`false`/number/quoted string. In a `"1.1"` spec: a JSONata expression. |
 | `then` | string      | yes      | Branch when true: `execute_tool(<name>)` or `request_human_approval`.                                    |
 | `else` | string      | yes      | Branch when false: same two options.                                                                     |
+
+### Tool and approval steps
+
+```yaml
+- step: notify
+  type: tool
+  tool: post_to_slack # a name from agent.tools
+- step: sign_off
+  type: approval
+  message: "Send {{ draft.text }}?"
+```
+
+A `tool` step always runs its tool. An `approval` step pauses for a human; a rejection ends the run as
+`rejected`.
+
+### Data steps: `transform`, `validate`, `dedupe`
+
+Version 1.1. Each field that holds an expression is a whole JSONata expression, checked when the spec loads.
+
+```yaml
+- step: shape
+  type: transform
+  set:
+    change: "($number(latest.close) - $number(previous.close)) / $number(previous.close) * 100"
+- step: sane
+  type: validate
+  assert: "$exists(shape.change)"
+  on_fail: skip # fail (default) | skip
+  message: "no price for {{ symbol }}"
+- step: once
+  type: dedupe
+  once: { key: "trigger.id", ttl: "24h" }
+```
+
+- **`transform`** `set: { name: expression }`: the output is the object of values (`shape.change`). Every
+  expression reads the data as it was before the step. A value that selects nothing fails the step, naming the
+  field.
+- **`validate`** `assert` must be `true` or `false`. On failure, `fail` ends the run as failed with `message`;
+  `skip` ends it as completed with `skipped: { step, reason }` and nothing after it runs. `on_fail: branch` is
+  refused; use a `branch` with a `stop`.
+- **`dedupe`** claims `key` in the state store for `ttl` (`30s`, `15m`, `6h`, `7d`). The first run to claim it
+  continues; any other ends as completed with `skipped`. The claim is atomic across processes and survives a
+  restart. It is kept until the ttl even if a later step fails (a retry is then skipped as a duplicate), so put
+  `dedupe` last or pick the ttl with that in mind. The store is SQLite at `.kampong/state.db`.
+
+### `foreach`
+
+Version 1.1. Runs a nested list of steps once per item of a list.
+
+```yaml
+- step: each_symbol
+  foreach:
+    items: "vars.symbols" # a whole expression that gives a list
+    as: symbol # the loop variable
+    concurrency: 2 # 1 to 32, default 1
+    on_error: continue # fail (default) | continue | { retry: { n, backoff, base_ms, max_delay_ms, then } }
+    steps:
+      - step: fetch
+        type: tool
+        tool: fetch_price
+```
+
+The body takes any step kind except another `foreach` and an approval. Expressions in the body read the loop
+variable and the body steps that ran before them. The step's output is `{ results, errors, skipped, count }`:
+`results` holds one object of body outputs per item that completed, `errors` is `{ index, item, step, message }`
+for each isolated failure, `skipped` the items a `validate` skip, a `dedupe` duplicate or a `stop` ended (inside a
+loop these end the item, not the run), and `count` how many items there were. `items` that is not a list, or
+selects nothing, fails the step. `on_error: goto` is refused.
+
+### `branch` and `stop`
+
+Version 1.1. `branch` chooses between lists of steps, in two forms. An arm can hold any step, including another
+`branch` or a `foreach`.
+
+```yaml
+- step: route
+  branch:
+    if: "triage.confidence > 0.8" # true or false
+    then:
+      - step: answer
+        type: tool
+        tool: reply
+    else: # optional
+      - step: hand_off
+        type: approval
+- step: route_by_label
+  branch:
+    switch: "classify.label" # string, number or boolean, compared as text
+    cases:
+      duplicate:
+        - step: ignore
+          stop: { reason: "duplicate {{ trigger.id }}" }
+    default: # optional
+      - step: answer
+        type: tool
+        tool: reply
+```
+
+`stop: { reason?, status? }` ends the run successfully. `status` is `skipped` (the default: the run completes with
+`skipped: { step, reason }`) or `completed` (no `skipped`). Inside a `foreach` body a `stop` ends only that item.
+The `condition` step above is unchanged, and is the right choice for a 1.0 spec.
 
 ## `agent.knowledge_base[]`
 

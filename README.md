@@ -2,89 +2,97 @@
 
 https://github.com/user-attachments/assets/319eee49-3011-483b-8494-850d78a9a550
 
-A dev-first agent-workflow builder where the visual canvas and the underlying YAML spec are
-the same thing, not two things kept in sync by convention. Design an agent on the canvas, or
-hand-write the YAML in Cursor or Claude Code: either way you get one file, always safe to
-commit, diff, and review. When you're ready, eject to a standalone TypeScript project with
-zero further dependency on this tool.
-
-## Status
-
-Early. V1-V4 (canvas/YAML duality, local execution engine with guardrails/HITL, the local-first
-CLI with mock/record tools and an Ollama adapter, and TypeScript export) are built and merged —
-see [`SLICES.md`](./SLICES.md) for what's shipped versus roadmap.
+Design an agent workflow on a visual canvas, or hand-write it in Cursor or Claude Code. Either way
+you get one YAML file that is always safe to commit, diff and review. Run it locally against any
+model (including offline Ollama), put it on a schedule or a webhook, and when you're done, eject it
+to a standalone TypeScript project with no dependency on this tool.
 
 ```mermaid
 flowchart LR
   canvas["Visual canvas"]
   spec["AgentSpec YAML\n(single source of truth)"]
   external["Cursor / Claude Code / Codex\n(hand-edit directly)"]
+  run["kampong run / serve\n(local engine)"]
   export["Eject: standalone\nTypeScript project"]
 
   canvas <--> spec
   external <--> spec
+  spec --> run
   spec --> export
 ```
 
-## Design docs
+## What you can build
 
-- [`PLAN.md`](./PLAN.md): the problem, the scope, the requirements, the shape of the system.
-- [`SLICES.md`](./SLICES.md): the build sequence, one demoable slice at a time.
-- [`docs/adr/`](./docs/adr/): the architecture decisions and why each one was made.
-- [`ideation.md`](./ideation.md): the original research this project grew out of.
+- **Single-agent workflows** with tools, guardrails and human approval (Slack or terminal).
+- **Unattended pipelines:** a `schedule` or authenticated `webhook` trigger, `foreach` loops that survive
+  bad items, `branch`/`stop`, `transform`/`validate`/`dedupe` data steps, structured model output.
+- **First-party connectors** for Slack, Gmail, GitHub, Supabase and Alpha Vantage, and a pinned,
+  digest-checked component model for your own.
+- **A template to start from:** `market-etl`, a scheduled price pipeline that runs offline on recorded fixtures.
 
-## Working on this repo
+## Status
+
+Early, but real. The MVP (canvas/YAML duality, local engine with guardrails and approvals, CLI with
+mock/record tools and Ollama, TypeScript export) and the real-world workflow layer (webhooks, connectors,
+Slack approvals) are merged. The scheduling, data-step and component work is landing now. A hosted,
+multi-tenant server exists but is not deployed yet. Multi-agent orchestration, enterprise governance and
+natural-language generation are roadmap. [`SLICES.md`](./SLICES.md) has the per-slice status.
+
+## Quick start
+
+Needs Node 22 or newer.
 
 ```sh
 npm install
 npm run build
-npm test
+alias kampong="node $PWD/packages/cli/dist/cli.js"   # the npm bin symlink currently prints nothing
+
+cp .env.example .env                                   # then set OPENROUTER_API_KEY (free tier works)
+kampong run examples/agent.yaml --input "Hi, what can you do?"
+kampong dev examples                                   # the canvas, at http://localhost:4310
 ```
 
-That installs every workspace, builds every package, and runs the fast (unit + integration)
-test layers. See [`AGENTS.md`](./AGENTS.md) for the full command reference, repo layout, and
-the conventions any change here should follow.
+No key? `kampong templates` lists the ready-made specs, and the `market-etl` template runs on recorded
+data: see its [`README`](./packages/cli/templates/market-etl/README.md).
+
+## Usage
+
+```sh
+kampong dev [dir]                       # canvas + live YAML preview; edits the file on disk
+kampong run agent.yaml --input "..."    # headless run; --tools replay for offline, --approve-all for CI
+kampong serve agent.yaml                # webhook and scheduled service (POST /webhook, run-now)
+kampong export agent.yaml ./out         # standalone TypeScript project: cd ./out && npm install && npm start
+kampong doctor agent.yaml               # preflight: components, credentials, fixtures
+```
+
+Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command
+reference, the `AgentSpec` schema and a step-by-step tutorial are in [`docs/`](./docs/index.md), a
+[Zensical](https://zensical.org) site (`uvx zensical build`, or `uvx zensical serve` to preview).
+
+## Configuration
+
+Secrets never go in a spec, only `${ENV_VAR}` placeholders, with values in `.env` or the environment.
+A model is set per spec (`agent.model`): `openrouter`, `openai`, `anthropic` or a local `ollama`. An
+unreachable Ollama is a visible error, never a silent fallback to a paid API. Nothing phones home.
 
 ## Run with Docker
 
-If you're running several full-stack projects on the same laptop and ports keep colliding,
-`make up` runs the app in Docker on one configurable port, so a collision only ever costs
-you one line in `.env`:
+`make up` builds the image and starts the canvas on `http://localhost:4310`, seeding
+`workspace/agent.yaml` from `examples/agent.yaml` (bind-mounted, gitignored, persists across restarts).
+If the port is taken, copy `.env.example` to `.env` and change `HOST_PORT`. Set `OPENROUTER_API_KEY` there
+to run the example. For offline use, swap the example's model block for the commented Ollama one; inside
+the container Ollama is at `http://host.docker.internal:11434`, not `localhost`. `make logs` follows the
+logs, `make down` stops it, and `make help` lists the rest.
 
-```sh
-make up      # builds the image, seeds workspace/agent.yaml from examples/agent.yaml, starts
-             # the container -- prints the canvas URL (http://localhost:4310 by default)
-make logs    # follow the container's logs
-make down    # stop the stack
-```
+If you run a machine-wide Traefik proxy, copy `docker-compose.override.yml.example` to
+`docker-compose.override.yml` (gitignored) and the stack is also at `http://kampong-agents.localhost/`.
 
-If `4310` is taken by another project, copy `.env.example` to `.env` (`make up` does this for
-you automatically) and change `HOST_PORT` there. Your spec lives in `./workspace/agent.yaml`
-(gitignored, bind-mounted into the container) — edit it by hand or through the canvas at the
-printed URL; either way it persists across `make down`/`make up`. To run the example spec as-is,
-set `OPENROUTER_API_KEY` in `.env` (get one at [openrouter.ai/keys](https://openrouter.ai/keys)) —
-its default model defaults to a free-tier OpenRouter model, so this needs no other setup. Prefer
-fully offline/free instead? `examples/agent.yaml` has a commented-out Ollama block right below
-the OpenRouter one — point Ollama at your laptop first (`ollama serve`, `ollama pull llama3.2`),
-then swap the two blocks; a spec's `model.base_url` needs `http://host.docker.internal:11434` to
-reach your host's Ollama from inside the container, not `localhost` (which means the container
-itself). For other BYOK cloud providers, set `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in `.env`.
+## Contributing
 
-`make help` lists every target, including the non-Docker local gate (`make check`, `make test`,
-`make lint`, ...) as a thin wrapper over the npm scripts in [`AGENTS.md`](./AGENTS.md).
-
-### Stable hostname via a machine-wide Traefik proxy (optional)
-
-Running several dev stacks and don't want to track a port per project at all? If you have a
-machine-wide Traefik reverse proxy set up (see the `traefik-dev-proxy` skill/reference), copy
-`docker-compose.override.yml.example` to `docker-compose.override.yml` (gitignored) and this
-stack is also reachable at `http://kampong-agents.localhost/` — no port to remember, and the
-directly-published `HOST_PORT` keeps working at the same time. Nothing here is required:
-`docker-compose.yml` stays complete and CI-runnable with no override present.
-
-Issues and PRs are welcome. Read `AGENTS.md` first, since several of the design decisions
-there (YAML as source of truth, TypeScript/Mastra only, no telemetry by default) are
-intentional and load-bearing, not oversights.
+Issues and PRs are welcome. [`AGENTS.md`](./AGENTS.md) is the contributor and agent brief: commands,
+repo layout and the conventions that are intentional rather than oversights (YAML as source of truth,
+TypeScript on Mastra only, no telemetry by default). The design lives in [`PLAN.md`](./PLAN.md),
+[`SLICES.md`](./SLICES.md) and [`docs/adr/`](./docs/adr/).
 
 ## License
 
