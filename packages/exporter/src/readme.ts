@@ -73,17 +73,21 @@ export function buildReadme(spec: AgentSpec, components: ExportComponent[] = [])
         ]
       : [];
 
-  // KAN-1856: the export carries the scheduling code (src/runtime/schedule*.ts, runner.ts) but does not
-  // wire it into src/server.ts yet, so say so rather than let a schedule silently never fire.
+  // KAM-158 (ADR-0040): the live server (src/server.ts) runs the schedule, so a scheduled spec is started with
+  // `npm run serve`, not `npm start` (which is a single run).
   const scheduleSection =
     spec.agent.trigger?.type === "schedule"
       ? [
-          "## Schedule trigger -- not wired into this export",
+          "## Schedule trigger",
           "",
-          "The spec declares a `schedule` trigger. `kampong serve` runs it; `src/server.ts` here does",
-          "**not** start a scheduler, so nothing fires on a clock until you add one. The pieces are",
-          "vendored in `src/runtime/` (`schedule.ts`, `schedule-runner.ts`, `runner.ts`) if you want to",
-          "wire them up yourself, or use an external cron that POSTs to `/webhook`.",
+          "The spec declares a `schedule` trigger. `npm run serve` (or the Docker image, whose default command",
+          "is the same server) starts a run on the clock, one at a time: an overlap lock in `.kampong/state.db`",
+          "stops a slow run from doubling up, ticks are jittered, a failing run backs off, and the process",
+          "exits non-zero after repeated failures. `POST /schedule/run-now` starts a run immediately (409 while",
+          "one is in progress). `npm start` is a single run and does not wait for the clock.",
+          "",
+          "Keep `.kampong/` on a volume (in a container, mount `/app/.kampong`) so the lock and any dedupe",
+          "keys survive a restart.",
           "",
         ]
       : [];

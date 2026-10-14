@@ -102,6 +102,9 @@ const HAND_VENDORED_EXEMPTIONS: Record<string, RegExp> = {
   // doesn't cover, so it's exempt from the byte/functional diff instead.
   "run-manager.ts":
     /rewritten from the "@kampong\/engine"\n\/\/ package to the local \.\/run\.js runtime module/,
+  // KAM-158: vendored from packages/cli/src/serve-runner.ts, with its "@kampong/engine" value imports
+  // rewritten to the local runtime modules, for the same reason as run-manager.ts.
+  "serve-runner.ts": /Hand-vendored from packages\/cli\/src\/serve-runner\.ts/,
 };
 
 function transpileStrippingCommentsAndTypeImports(source: string): string {

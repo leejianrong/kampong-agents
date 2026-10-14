@@ -73,5 +73,5 @@ kampong serve agent.yaml          # starts the schedule; POST /schedule/run-now 
 ```
 
 Pending approvals are stored on disk and survive a restart. Set the connector tokens and model key in the
-environment of that process. `kampong export` ejects a schedule spec too, but the generated server does not
-yet start the scheduler; use `kampong serve` for scheduled runs.
+environment of that process. `kampong export` ejects a schedule spec too: in the exported project,
+`npm run serve` (or the Docker image) runs the same schedule, and `npm start` is a single run.
