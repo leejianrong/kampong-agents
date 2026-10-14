@@ -6,15 +6,29 @@
 // Per-key request pacing (KAN-1846). A tool that declares `pace: { rps }` is held to at most that many
 // requests per second against the same host, including across concurrent callers and retries.
 // Time is injected so tests never really sleep.
+// Per-key request pacing (KAN-1846). A tool that declares `pace: { rps }` is held to at most that many
+// requests per second against the same host, including across concurrent callers and retries.
+// Time is injected so tests never really sleep.
 
 export interface Clock {
   now(): number;
-  sleep(ms: number): Promise<void>;
+  /** Resolves after `ms`, or as soon as `signal` aborts (the timer is then cleared, not left to fire). */
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
 
 export const realClock: Clock = {
   now: () => Date.now(),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep: (ms, signal) =>
+    new Promise((resolve) => {
+      if (signal?.aborted) return resolve();
+      const done = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      signal?.addEventListener("abort", done, { once: true });
+    }),
 };
 
 /** A clock that never waits: for replaying recorded fixtures, where real backoff delays only slow tests. */

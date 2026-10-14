@@ -254,5 +254,6 @@ export function createFixtureFetch(options: CreateFixtureFetchOptions): ToolFetc
     return response;
   };
 
+  wrapped.replay = mode === "replay";
   return wrapped;
 }

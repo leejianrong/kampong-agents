@@ -29,6 +29,10 @@ the compiled assets rather than a live dev server.
     [`AGENTS.md`](https://github.com/leejianrong/kampong-agents/blob/main/AGENTS.md) in the repo
     for the full command list and contributor conventions.
 
+!!! tip "The `kampong` command"
+    The examples call `kampong`. After the build, `npm link -w packages/cli` puts it on your PATH. Without
+    linking, run `node packages/cli/dist/cli.js` in its place.
+
 ## Set your API key
 
 Secrets never live in a spec file. A spec only ever references an environment variable, like

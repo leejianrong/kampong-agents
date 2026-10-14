@@ -47,11 +47,21 @@ version "1.1"`, at the line of `type`. Every field that holds an expression is a
 - **Canvas.** The Add Workflow Step form gains Transform, Validate (fail or skip only) and Dedupe, built by the same
   `buildWorkflowStepFromForm` the other kinds use. Editing a step in place and expression editing remain KAN-1850.
 
+## Update (KAM-151): the open/close lifecycle
+
+The one-shot claim above is replaced by a lifecycle, with no change to the spec shape (`once: { key, ttl }`).
+The step claims its key as `{ state: open }` for `min(ttl, 15 minutes)`. When the run ends as `completed` (which
+includes `skipped`) the claim becomes `{ state: done }` for the full ttl; on `failed` or `rejected`, or if the
+run is abandoned part-way, the key is deleted, so a retry runs. A run that pauses on a persisted approval counts
+as successful so far (its record survives a restart), so its keys are held for the ttl; a failure after that
+resume does not release them, because the claims are not stored in the approval record. A foreach item settles
+its own claims when it ends. A run that finds an `open` key reports `being processed by another run`; it is
+skipped, and if that other run later fails nothing re-runs it until the next tick or redelivery. The 15 minute
+open ttl is not renewed, so a run longer than that can be overlapped by a second one.
+A separate `close` step or `once.mode` was not needed: the run's end is the close.
+
 ## Not in this card
 
-- **The open/close lifecycle** (mark a key as in progress on open, make it permanent on close, release it if the run
-  fails, so a failed run can be retried). The step claims the key when it runs. Consequence: if a later step fails,
-  the key stays claimed until its ttl and a retry is skipped as a duplicate. Choose a ttl with that in mind, or put
-  the dedupe step last. The lifecycle needs a run-end hook to release on failure; it is follow-up work.
+- **The open/close lifecycle**: done in KAM-151, see the update above.
 - **`on_fail: branch`**: still rejected after KAN-1859; a `branch` step with a `stop` does the same job (ADR-0045).
 - The hosted server still refuses 1.1 specs (ADR-0027), so these steps run locally and in exports only.

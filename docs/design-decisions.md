@@ -12,6 +12,8 @@ is shaped the way it is. The full set lives in `docs/adr/`; here they are groupe
 - [ADR-0008: External-edit-first workflow](adr/0008-external-edit-first-workflow.md)
 - [ADR-0021: Real-world workflows direction (V9)](adr/0021-real-world-workflows-direction.md)
 - [ADR-0022: Deployment model — two paths, one foundation](adr/0022-deployment-model-two-paths.md)
+- [ADR-0023: V10 monetization model](adr/0023-v10-monetization-model.md)
+- [ADR-0024: V10 hosting and credential custody](adr/0024-v10-hosting-and-credential-custody.md)
 
 ## Runtime and execution
 
@@ -25,9 +27,39 @@ is shaped the way it is. The full set lives in `docs/adr/`; here they are groupe
 - [ADR-0006: Sidecar layout file](adr/0006-sidecar-layout-file.md)
 - [ADR-0007: Frontend and local-server stack](adr/0007-frontend-and-local-server-stack.md)
 
-## Roadmap decisions (not built yet)
+## Authorable real-world workflows (V9–V11)
 
-These scope work that's planned but not started: hosted mode, multi-tenancy, auth, governance.
+The platform primitives that let a real workflow be authored, run unattended and exported: an expression
+language, typed step output, a durable state store, a component repository, and the step kinds built on them.
+
+- [ADR-0025: Component model and repository](adr/0025-component-model-and-repository.md)
+- [ADR-0026: Component trust tiers, vetting, and MCP as an import layer](adr/0026-component-trust-tiers-and-mcp.md)
+- [ADR-0027: Expression language and data model](adr/0027-expression-language-and-data-model.md)
+- [ADR-0028: A durable state store](adr/0028-durable-state-store.md)
+- [ADR-0029: Connector manifest schema](adr/0029-connector-manifest-schema.md)
+- [ADR-0030: First-party components and legacy desugaring](adr/0030-first-party-components-and-legacy-desugaring.md)
+- [ADR-0031: Component permissions: what is enforced](adr/0031-component-permissions-what-is-enforced.md)
+- [ADR-0032: Credential probes in `kampong doctor`](adr/0032-credential-probe.md)
+- [ADR-0033: An export verifies its components](adr/0033-export-verifies-its-components.md)
+- [ADR-0034: Record and replay at the invoke boundary](adr/0034-record-replay-at-the-invoke-boundary.md)
+- [ADR-0035: Retry for module ops](adr/0035-module-op-retry.md)
+- [ADR-0036: The canvas shows component trust](adr/0036-canvas-component-trust.md)
+- [ADR-0037: Revocation and release signing](adr/0037-revocation-and-release-signing.md)
+- [ADR-0038: Structured step output](adr/0038-structured-step-output.md)
+- [ADR-0039: Local Variables panel](adr/0039-local-variables-panel.md)
+- [ADR-0040: Schedule trigger](adr/0040-schedule-trigger.md)
+- [ADR-0041: `transform`, `validate` and `dedupe` steps](adr/0041-transform-validate-dedupe-steps.md)
+- [ADR-0042: Persisted pending approvals](adr/0042-persisted-pending-approvals.md)
+- [ADR-0043: The `foreach` step](adr/0043-foreach-step.md)
+- [ADR-0044: Supabase and Alpha Vantage components](adr/0044-supabase-and-alpha-vantage-components.md)
+- [ADR-0045: The `branch` and `stop` steps](adr/0045-branch-step.md)
+- [ADR-0046: Templates and market-etl](adr/0046-templates-and-market-etl.md)
+- [ADR-0047: Webhook auth presets and trigger filter](adr/0047-webhook-auth-presets-and-trigger-filter.md)
+
+## Hosted mode and the roadmap
+
+The hosted backend and its canvas UI (ADR-0013 to 0020) are built but not yet deployed. Sub-agents, governance and
+spec generation (ADR-0011, 0012, 0017) are still planned.
 
 - [ADR-0011: Sub-agents data model and org-chart canvas](adr/0011-sub-agents-data-model-and-org-chart-canvas.md)
 - [ADR-0012: Spec generation, evaluation, and fallback](adr/0012-spec-generation-evaluation-and-fallback.md)

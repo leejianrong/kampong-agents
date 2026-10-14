@@ -38,8 +38,10 @@ unattended runner (ADR-0028, KAN-1855) so they get its overlap lock, backoff and
 
 ## Consequences
 
-- An export of a schedule spec vendors the scheduling code but does not wire a scheduler into its generated
-  `src/server.ts`; the README says so. Wiring it is follow-up work.
+- An export of a schedule spec vendors the scheduling code. Initially it did not wire a scheduler into its
+  generated `src/server.ts`; KAM-158 did: the server starts the same runner (`serve-runner.ts`, hand-vendored from
+  the CLI) and serves `POST /schedule/run-now`, and the generated README says `npm run serve` is the scheduled
+  entry and `npm start` a single run.
 - The lock TTL is `max(5 x interval, 15 minutes)` and is not renewed: a run longer than that can overlap a
   second process's tick.
 - The canvas form for the trigger is KAN-1850.
