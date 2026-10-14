@@ -26,6 +26,12 @@
       "tier": 0
     },
     {
+      "id": "kampong/slack",
+      "version": "1.1.0",
+      "digest": "sha256:3e7a341ee38af0c7194d6f98b03635486eabdc0b67496342baa4186b8528336e",
+      "tier": 0
+    },
+    {
       "id": "kampong/supabase",
       "version": "1.0.0",
       "digest": "sha256:5d2d47bfa270f835326cdb7317abe292152c4632ca0538dc9c1affc7f3f55b3b",
