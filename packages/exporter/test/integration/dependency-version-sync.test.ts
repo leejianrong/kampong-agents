@@ -1,6 +1,8 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { ENGINE_DEPENDENCY_VERSIONS, SERVER_DEPENDENCY_VERSIONS } from "../../src/index.js";
 
 // Finding #4 (post-PR-#8 review): package-json.ts's ENGINE_DEPENDENCY_VERSIONS
@@ -44,6 +46,29 @@ interface PackageLock {
 
 const rootLockfile = JSON.parse(readFileSync(ROOT_LOCKFILE_PATH, "utf8")) as PackageLock;
 
+// KAM-122: a first-party module component brings its own pinned `deps` (kampong/gmail-imap needs imapflow and
+// mailparser). They are packages/engine dependencies so the module can be imported, but the vendored runtime
+// does not use them: an export gets them only when its spec uses that component (buildPackageJson adds a
+// module's `deps`). So they are exempt from "the runtime declares every engine dependency", and instead must
+// match the manifest, the engine's package.json and the lockfile exactly.
+const COMPONENTS_DIR = fileURLToPath(new URL("../../../engine/components", import.meta.url));
+function componentDeps(): Record<string, string> {
+  const found: Record<string, string> = {};
+  const visit = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name !== "node_modules") visit(join(dir, entry.name));
+      else if (entry.name === "component.yaml") {
+        const manifest = parseYaml(readFileSync(join(dir, entry.name), "utf8")) as {
+          deps?: Record<string, string>;
+        };
+        Object.assign(found, manifest.deps ?? {});
+      }
+    }
+  };
+  visit(COMPONENTS_DIR);
+  return found;
+}
+
 /** The exact version this repo's own root package-lock.json resolves a top-level dependency to. */
 function resolvedLockVersion(name: string): string | undefined {
   return rootLockfile.packages[`node_modules/${name}`]?.version;
@@ -81,8 +106,9 @@ describe("ENGINE_DEPENDENCY_VERSIONS stays in sync with this repo's actually-res
   });
 
   it("still declares every @kampong/* runtime dependency packages/engine has (only @kampong/spec is expected to be absent -- ADR-0002's zero-lock-in)", () => {
+    const componentOnly = componentDeps();
     const nonKampongEngineDeps = Object.keys(engineDependencies).filter(
-      (name) => !name.startsWith("@kampong/"),
+      (name) => !name.startsWith("@kampong/") && !Object.hasOwn(componentOnly, name),
     );
     for (const name of nonKampongEngineDeps) {
       expect(
@@ -91,6 +117,23 @@ describe("ENGINE_DEPENDENCY_VERSIONS stays in sync with this repo's actually-res
           `doesn't declare -- an exported project's vendored runtime (docs/adr/0010) needs every ` +
           `non-@kampong dependency packages/engine itself needs.`,
       ).toBe(true);
+    }
+  });
+});
+
+describe("first-party module component dependencies (KAM-122)", () => {
+  const engineDependencies = (
+    JSON.parse(readFileSync(ENGINE_PACKAGE_JSON_PATH, "utf8")) as PackageJson
+  ).dependencies!;
+
+  it("are pinned to the same exact version in the manifest, packages/engine and the root lockfile", () => {
+    const deps = componentDeps();
+    expect(Object.keys(deps).length).toBeGreaterThan(0);
+    for (const [name, version] of Object.entries(deps)) {
+      expect(engineDependencies[name], `packages/engine must depend on ${name}@${version}`).toBe(
+        version,
+      );
+      expect(resolvedLockVersion(name), `${name} in the root lockfile`).toBe(version);
     }
   });
 });

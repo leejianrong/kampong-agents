@@ -1,0 +1,152 @@
+kind: module
+id: kampong/gmail-imap
+version: 1.0.0
+title: Gmail (IMAP)
+description: Read a Gmail inbox and write reply drafts over IMAP with an app password. Nothing is marked read until you say so, and a draft is threaded under the message it answers.
+license: Apache-2.0
+entry: ./index.mjs
+deps:
+  imapflow: 2.1.2
+  mailparser: 3.9.31
+permissions:
+  # Declared, not enforced: the sockets are opened by imapflow, not by ctx.fetch (ADR-0031).
+  egress: [imap.gmail.com:993]
+auth:
+  slots:
+    user:
+      env: GMAIL_ADDRESS
+      hosts: [imap.gmail.com:993]
+    password:
+      env: GMAIL_APP_PASSWORD
+      hosts: [imap.gmail.com:993]
+      # Only a refused login says the credential is bad. The probe signs in and out, and changes nothing.
+      probe: { op: check_login }
+ops:
+  check_login:
+    title: Check the login
+    description: Signs in to imap.gmail.com with the address and app password and signs out. Changes nothing.
+    effect: read
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+  list_unseen:
+    title: List unread messages
+    description: >-
+      The unread (not \Seen) messages in a mailbox, oldest first, up to `limit`. Reading the list does not mark
+      anything read. `count` is how many are unread in total, so a caller can tell the list was cut.
+    effect: read
+    input:
+      type: object
+      properties:
+        mailbox:
+          type: string
+          title: Mailbox
+          description: Defaults to INBOX.
+        limit:
+          type: integer
+          title: Limit
+          description: How many to return, 1 to 100. Defaults to 20.
+    output:
+      type: object
+      properties:
+        count: { type: integer }
+        messages:
+          type: array
+          items: { type: object }
+  get_message:
+    title: Read a message
+    description: >-
+      One message by uid: headers (Message-ID, In-Reply-To, References), sender, recipients, date and the text
+      (cut at 50,000 characters, with `truncated` set). Does not mark it read.
+    effect: read
+    input:
+      type: object
+      required: [uid]
+      properties:
+        uid:
+          type: integer
+          title: UID
+          description: The message's uid, as list_unseen returns it.
+        mailbox:
+          type: string
+          title: Mailbox
+          description: Defaults to INBOX.
+    output:
+      type: object
+      properties:
+        uid: { type: integer }
+        message_id: { type: string }
+        subject: { type: string }
+        from: { type: string }
+        text: { type: string }
+        truncated: { type: boolean }
+  create_draft:
+    title: Create a draft
+    description: >-
+      Saves a plain-text draft to the account's Drafts folder, found by its \Drafts flag so it works in any
+      language. Nothing is sent. Give `reply_to_uid` to thread it under a message: In-Reply-To and References are
+      set from that message, and `to` and `subject` default to its sender and "Re: ...". Line breaks in the
+      address or subject fields are refused.
+    effect: write
+    input:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          title: Body
+          format: multiline
+        to:
+          type: string
+          title: To
+          description: One or more addresses, comma separated. Optional when replying.
+        cc:
+          type: string
+          title: Cc
+        subject:
+          type: string
+          title: Subject
+          description: Optional when replying.
+        reply_to_uid:
+          type: integer
+          title: Reply to (uid)
+          description: The uid of the message this answers.
+        mailbox:
+          type: string
+          title: Mailbox of that message
+          description: Where `reply_to_uid` lives. Defaults to INBOX.
+        in_reply_to:
+          type: string
+          title: In-Reply-To
+          description: A Message-ID, when threading without reply_to_uid.
+        references:
+          type: array
+          title: References
+          items: { type: string }
+    output:
+      type: object
+      properties:
+        mailbox: { type: string }
+        uid: { type: integer }
+        message_id: { type: string }
+  mark_seen:
+    title: Mark as read
+    description: Sets the \Seen flag on a message. Call it once the message has been handled.
+    effect: write
+    input:
+      type: object
+      required: [uid]
+      properties:
+        uid:
+          type: integer
+          title: UID
+        mailbox:
+          type: string
+          title: Mailbox
+          description: Defaults to INBOX.
+    output:
+      type: object
+      properties:
+        ok: { type: boolean }
+        uid: { type: integer }

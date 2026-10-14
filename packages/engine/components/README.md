@@ -27,6 +27,11 @@ repository; `test/unit/first-party-components.test.ts` checks the layout and the
   array of objects, so those two are written as YAML there. Updating through a button's `response_url` is not
   an op (the URL is a different host per interaction); the hosted interaction ingress owns it (V11-P2).
 - `kampong/gmail`: send a plain-text email (`kind: module`, because the API wants base64url MIME).
+- `kampong/gmail-imap`: read a Gmail inbox and write reply drafts over IMAP with an app password (`kind: module`,
+  ADR-0048): `list_unseen`, `get_message` (neither marks anything read), `create_draft` (threaded under the
+  message it answers, saved to the `\Drafts` mailbox, never sent) and `mark_seen`. The address in
+  `GMAIL_ADDRESS` and the app password in `GMAIL_APP_PASSWORD`, used only for `imap.gmail.com`. Depends on
+  `imapflow` and `mailparser`, so its egress list is declared, not enforced.
 - `kampong/github`: read a pull request, its diff (cut at a file boundary past a size limit, and says so)
   and every changed file (follows pages, and says so when it stops); comment on or review a pull request
   (`kind: module`, because a request template cannot follow pages or cut a diff). A personal access token

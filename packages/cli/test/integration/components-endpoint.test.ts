@@ -68,6 +68,7 @@ describe("GET /api/components", () => {
       "kampong/alpha-vantage",
       "kampong/github",
       "kampong/gmail",
+      "kampong/gmail-imap",
       "kampong/slack",
       "kampong/supabase",
     ]);

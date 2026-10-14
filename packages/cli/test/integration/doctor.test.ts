@@ -284,6 +284,30 @@ ops:
     expect(down.text).toContain("connection refused");
   });
 
+  it("dials the IMAP port for kampong/gmail-imap, not 443 (KAM-122)", async () => {
+    writeFileSync(
+      path("agent.yaml"),
+      spec(
+        `    - name: unread
+      action: component
+      use: kampong/gmail-imap@1.0.0
+      op: list_unseen`,
+        "- step: go\n      type: tool\n      tool: unread",
+      ),
+    );
+    const seen: string[] = [];
+    const { io } = capture();
+    await runCli(["doctor", path("agent.yaml"), "--online"], io, {
+      env: { ANTHROPIC_API_KEY: SECRET, GMAIL_ADDRESS: "me@example.com", GMAIL_APP_PASSWORD: "x" },
+      connect: async (host, port) => {
+        seen.push(`${host}:${port}`);
+        return undefined;
+      },
+    });
+    expect(seen).toContain("imap.gmail.com:993");
+    expect(seen).not.toContain("imap.gmail.com:443");
+  });
+
   it("dials the host of a knowledge_base url that is injected, and no other knowledge source (KAM-107)", async () => {
     writeFileSync(
       path("agent.yaml"),
