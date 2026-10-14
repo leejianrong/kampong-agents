@@ -8,6 +8,7 @@ import {
   parseSlackInteractionPayload,
   postInteractionUpdate,
   verifySlackSignature,
+  recoverSlackRawBody,
   handleWebhookRequest,
   type RunEvent,
   type RunState,
@@ -317,7 +318,8 @@ export function createServeRuntime({
     const signingSecret = env.SLACK_SIGNING_SECRET;
     const timestamp = request.headers["x-slack-request-timestamp"];
     const signature = request.headers["x-slack-signature"];
-    const rawBody = typeof request.body === "string" ? request.body : "";
+    // A relay that re-sent the click as JSON is rebuilt into the bytes Slack signed (and still verified).
+    const rawBody = recoverSlackRawBody(request.body);
 
     if (
       !signingSecret ||

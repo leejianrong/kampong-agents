@@ -146,6 +146,25 @@ export function verifySlackSignature({
   return timingSafeEqual(expectedBuf, actualBuf);
 }
 
+/**
+ * The exact bytes Slack signed, recovered when a relay re-sent the click as JSON (KAM-124). Slack posts
+ * `application/x-www-form-urlencoded` `payload=<url-encoded JSON>`; some relays (smee.io) parse that and
+ * forward `{ "payload": "<JSON text>" }`, which destroys the signed bytes so the HMAC can never match.
+ * Rebuilding the form body the way Slack encodes it (RFC 3986, spaces as "+") reproduces them, and the
+ * signature is still fully verified against the result, so a forged click is refused either way. A string
+ * body is returned as it arrived; anything without a string `payload` is "" (which never verifies).
+ */
+export function recoverSlackRawBody(body: unknown): string {
+  if (typeof body === "string") return body;
+  const payload = (body as { payload?: unknown } | null)?.payload;
+  if (typeof payload !== "string") return "";
+  const strict = encodeURIComponent(payload).replace(
+    /[!'()*~]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `payload=${strict.replace(/%20/g, "+")}`;
+}
+
 export interface SlackInteraction {
   actionId: string;
   runId: string;

@@ -36,6 +36,7 @@ import { listTemplates } from "./templates.js";
 import { createDevServer } from "./server.js";
 import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
+import { slackApprovalNotice } from "./slack-notice.js";
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
 // 1110). `packages/cli/src/index.ts` stays a pure library barrel (imported
@@ -378,6 +379,15 @@ async function runDevCommand(args: string[], io: CliIO): Promise<number> {
   io.stdout(`kampong dev running at http://${host}:${port}`);
   io.stdout(`  spec:   ${specPath}${existsSync(specPath) ? "" : " (does not exist yet)"}`);
   io.stdout(`  layout: ${layoutPath}`);
+  // A spec that posts approvals to Slack gets told, once, how that works under `dev` (KAM-124).
+  if (existsSync(specPath)) {
+    const loaded = parseSpec(readFileSync(specPath, "utf8"));
+    if (loaded.spec) {
+      for (const line of slackApprovalNotice(loaded.spec, { command: "dev", env: process.env })) {
+        io.stdout(line);
+      }
+    }
+  }
   io.stdout("Press Ctrl+C to stop.");
 
   return new Promise<number>((resolvePromise) => {
@@ -522,6 +532,16 @@ async function runServeCommand(
 
   const served = parseSpec(readFileSync(resolvedSpecPath, "utf8"));
   if (served.spec) reportSpecWarnings(served.spec, "serve", io);
+  if (served.spec) {
+    for (const line of slackApprovalNotice(served.spec, {
+      command: "serve",
+      env: process.env,
+      host,
+      port,
+    })) {
+      io.stderr(line);
+    }
+  }
 
   // Recurring jobs (a schedule trigger, KAN-1856; poll, KAN-1857) run under the unattended runner;
   // repeated failures stop the service with a non-zero exit. A spec with none makes this a no-op.

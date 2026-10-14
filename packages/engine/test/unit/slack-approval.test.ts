@@ -5,6 +5,7 @@ import {
   postApprovalRequest,
   postInteractionUpdate,
   verifySlackSignature,
+  recoverSlackRawBody,
   parseSlackInteractionPayload,
   isApproveAction,
   isRejectAction,
@@ -210,5 +211,64 @@ describe("parseSlackInteractionPayload", () => {
       actions: [{ action_id: "kampong_approve", value: JSON.stringify({ runId: "run-1" }) }],
     });
     expect(parseSlackInteractionPayload(raw)).toBeUndefined();
+  });
+});
+
+describe("recoverSlackRawBody (KAM-124)", () => {
+  const secret = "signing-secret";
+  const sign = (timestamp: string, body: string) =>
+    `v0=${createHmac("sha256", secret).update(`v0:${timestamp}:${body}`).digest("hex")}`;
+  // Slack encodes the payload like this: RFC 3986 strict, spaces as "+".
+  const slackEncode = (text: string) =>
+    "payload=" +
+    encodeURIComponent(text)
+      .replace(/[!'()*~]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+      .replace(/%20/g, "+");
+  const PAYLOAD = JSON.stringify({
+    type: "block_actions",
+    user: { username: "ana cruz (ops)" },
+    actions: [{ action_id: "kampong_approve", value: '{"runId":"r~1!"}' }],
+    note: "100% sure, it's fine*",
+  });
+
+  it("returns a string body as it arrived", () => {
+    expect(recoverSlackRawBody("payload=abc")).toBe("payload=abc");
+  });
+
+  it("rebuilds the exact signed bytes from a relayed { payload } body, so the signature verifies", () => {
+    const signed = slackEncode(PAYLOAD);
+    const timestamp = "1700000000";
+    const recovered = recoverSlackRawBody({ payload: PAYLOAD });
+    expect(recovered).toBe(signed);
+    expect(
+      verifySlackSignature({
+        signingSecret: secret,
+        timestamp,
+        rawBody: recovered,
+        signature: sign(timestamp, signed),
+        now: () => 1700000000_000,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not make a forged or altered click verify", () => {
+    const timestamp = "1700000000";
+    const signature = sign(timestamp, slackEncode(PAYLOAD));
+    const altered = recoverSlackRawBody({ payload: PAYLOAD.replace("approve", "reject") });
+    expect(
+      verifySlackSignature({
+        signingSecret: secret,
+        timestamp,
+        rawBody: altered,
+        signature,
+        now: () => 1700000000_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns an empty body (which never verifies) for anything that is not a payload", () => {
+    for (const body of [undefined, null, 5, {}, { payload: 3 }, []]) {
+      expect(recoverSlackRawBody(body)).toBe("");
+    }
   });
 });

@@ -36,8 +36,9 @@ You need a bot token and a channel. It takes about five minutes.
    **Signing Secret** from **Basic Information** into `SLACK_SIGNING_SECRET`, turn on
    **Interactivity & Shortcuts**, and set its Request URL to
    `https://<your-public-host>/slack/interactions`. Slack cannot reach `localhost`, so this needs
-   a tunnel such as ngrok or Cloudflare. In the canvas, approval is the in-app dialog and none of
-   this is needed.
+   a tunnel such as ngrok or Cloudflare (kampong does not start one). In the canvas, approval is
+   the in-app dialog and none of this is needed. The traps to avoid, including Socket Mode, are in
+   [Slack approvals locally](tutorial/slack-approvals.md).
 
 ## 2. Put the secrets in `.env`
 

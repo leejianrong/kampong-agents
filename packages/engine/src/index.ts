@@ -74,6 +74,7 @@ export {
   postApprovalRequest,
   postInteractionUpdate,
   verifySlackSignature,
+  recoverSlackRawBody,
   parseSlackInteractionPayload,
   isApproveAction,
   isRejectAction,
