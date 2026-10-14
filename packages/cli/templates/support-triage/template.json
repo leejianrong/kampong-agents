@@ -1,0 +1,3 @@
+{
+  "description": "Reads one unread support email over IMAP, drafts a reply with a model, asks in Slack when unsure, and saves a Gmail draft; runs offline on recorded fixtures."
+}

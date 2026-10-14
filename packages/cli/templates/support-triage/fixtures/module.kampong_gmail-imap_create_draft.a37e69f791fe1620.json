@@ -1,0 +1,14 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.create_draft",
+  "op": "create_draft",
+  "input": "{\"body\":\"Hi,\\n\\nYou can reset your password under Settings, then Security, then Reset password. The link is valid for one hour.\\n\\nThe Support Team\",\"reply_to_uid\":5}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "mailbox": "[Gmail]/Drafts",
+      "uid": 101,
+      "message_id": "<e4b39fcb-13c9-44e3-aa5f-0c63e0499021@example.com>"
+    }
+  }
+}

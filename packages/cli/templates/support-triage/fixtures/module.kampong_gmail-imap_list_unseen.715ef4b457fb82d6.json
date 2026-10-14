@@ -1,0 +1,21 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.list_unseen",
+  "op": "list_unseen",
+  "input": "{\"limit\":1}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "count": 1,
+      "messages": [
+        {
+          "uid": 5,
+          "message_id": "<orig-5@client.example>",
+          "subject": "How do I reset my password?",
+          "from": "Ana Cruz <ana@client.example>",
+          "date": "2026-10-12T09:00:00.000Z"
+        }
+      ]
+    }
+  }
+}
