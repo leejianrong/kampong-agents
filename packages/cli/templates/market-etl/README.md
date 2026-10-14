@@ -43,11 +43,8 @@ in `each_symbol.errors`, and nothing is written for it). A fourth recorded symbo
 day of history and fails the `check` step. Lower or raise the threshold with `--var threshold=0.05`
 (NVDA alerts too) or `--var threshold=50` (nothing does).
 
-Two limits of the offline run today, both tracked as follow-ups:
+One limit of the offline run today, tracked as a follow-up:
 
-- Replaying a recorded call to `kampong/alpha-vantage` or `kampong/slack` still reads the credential
-  before it looks for the fixture, so `ALPHAVANTAGE_API_KEY` and `SLACK_BOT_TOKEN` must be set to
-  any placeholder. Nothing is sent. (`kampong/supabase` is a module and replays without one.)
 - The model call is not recorded: model calls have no fixture layer. The tests give the engine a stand-in
   model; `kampong run` uses the spec's `agent.model` (Ollama by default), so only the `summarize` step
   needs a model, and only for a symbol that crosses the threshold. With no Ollama running, that symbol ends

@@ -310,11 +310,29 @@ export interface ToolContext {
 // `(url, init) => ...` fake) is assignable here -- TS allows a callback
 // with fewer declared params than the type it's assigned to, since the
 // runtime call always tolerates extra ignored arguments.
-export type ToolFetchImpl = (
+export type ToolFetchImpl = ((
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1] | undefined,
   context: ToolContext,
-) => Promise<Response>;
+) => Promise<Response>) & {
+  /**
+   * Set by the fixture layer in replay mode (KAM-155). Replay never sends a request, so the credentials
+   * a request carries are not needed: a variable that is not set reads as a placeholder, which the
+   * layer redacts from the fixture key exactly as it redacted the real value when recording.
+   */
+  replay?: boolean;
+};
+
+/** The environment a replayed call sees: real values where set, a redactable placeholder where not. */
+export function replayEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return new Proxy(env, {
+    get: (target, name) => {
+      if (typeof name !== "string") return undefined;
+      const value = target[name];
+      return value === undefined || value === "" ? `kampong-replay-placeholder-${name}` : value;
+    },
+  });
+}
 
 const defaultFetch: ToolFetchImpl = (input, init) => fetch(input, init);
 
@@ -574,7 +592,7 @@ export async function callHttpTool(
     clock = realClock,
   }: HttpToolCallOptions = {},
 ): Promise<unknown> {
-  const request = buildToolRequest(tool, params, env);
+  const request = buildToolRequest(tool, params, fetchImpl.replay ? replayEnv(env) : env);
   const paceKey = (() => {
     try {
       return new URL(request.url).host;
