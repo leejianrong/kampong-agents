@@ -24,11 +24,12 @@ flowchart LR
 ## What you can build
 
 - **Single-agent workflows** with tools, guardrails and human approval (Slack or terminal).
-- **Unattended pipelines:** a `schedule` or authenticated `webhook` trigger, `foreach` loops that survive
+- **Unattended pipelines:** a `schedule`, `poll` or authenticated `webhook` trigger, `foreach` loops that survive
   bad items, `branch`/`stop`, `transform`/`validate`/`dedupe` data steps, structured model output.
 - **First-party connectors** for Slack, Gmail, GitHub, Supabase and Alpha Vantage, and a pinned,
   digest-checked component model for your own.
-- **A template to start from:** `market-etl`, a scheduled price pipeline that runs offline on recorded fixtures.
+- **Templates to start from:** `market-etl`, a scheduled price pipeline that runs offline on recorded fixtures, and
+  `support-triage`, an inbox assistant that drafts replies for a person to send.
 
 ## Status
 
@@ -60,7 +61,7 @@ data: see its [`README`](./packages/cli/templates/market-etl/README.md).
 ```sh
 kampong dev [dir]                       # canvas + live YAML preview; edits the file on disk
 kampong run agent.yaml --input "..."    # headless run; --tools replay for offline, --approve-all for CI
-kampong serve agent.yaml                # webhook and scheduled service (POST /webhook, run-now)
+kampong serve agent.yaml                # webhook, scheduled or polling service (POST /webhook, run-now)
 kampong export agent.yaml ./out         # standalone TypeScript project: cd ./out && npm install && npm start
 kampong doctor agent.yaml               # preflight: components, credentials, fixtures
 ```

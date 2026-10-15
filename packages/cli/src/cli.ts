@@ -546,14 +546,23 @@ async function runServeCommand(
   // Recurring jobs (a schedule trigger, KAN-1856; poll, KAN-1857) run under the unattended runner;
   // repeated failures stop the service with a non-zero exit. A spec with none makes this a no-op.
   const activeRunners = startServeRunners(
-    served.spec ? collectServeJobs(served.spec, runtime.runManager) : [],
+    served.spec
+      ? collectServeJobs(served.spec, runtime.runManager, Date.now, {
+          components: componentDispatcherFor(resolvedSpecPath),
+        })
+      : [],
     { log: (line) => io.stderr(line) },
   );
   runnersRef.current = activeRunners;
 
   io.stdout(`kampong serve running at http://${host}:${port}`);
   io.stdout(`  spec:    ${resolvedSpecPath}`);
-  io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
+  if (served.spec?.agent.trigger?.type === "poll") {
+    const poll = served.spec.agent.trigger;
+    io.stdout(`  trigger: poll ${poll.use} ${poll.op} every ${poll.every}`);
+  } else {
+    io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
+  }
   if (served.spec?.agent.trigger?.type === "schedule") {
     io.stdout(`  run now: POST http://${host}:${port}/schedule/run-now`);
   }

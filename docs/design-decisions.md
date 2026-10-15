@@ -55,6 +55,9 @@ language, typed step output, a durable state store, a component repository, and 
 - [ADR-0045: The `branch` and `stop` steps](adr/0045-branch-step.md)
 - [ADR-0046: Templates and market-etl](adr/0046-templates-and-market-etl.md)
 - [ADR-0047: Webhook auth presets and trigger filter](adr/0047-webhook-auth-presets-and-trigger-filter.md)
+- [ADR-0048: Gmail over IMAP as a separate component](adr/0048-gmail-imap-component.md)
+- [ADR-0049: Slack approvals on a laptop](adr/0049-slack-approval-local-story.md)
+- [ADR-0050: The poll trigger](adr/0050-poll-trigger.md)
 
 ## Hosted mode and the roadmap
 

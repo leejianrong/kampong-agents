@@ -103,12 +103,12 @@ Var names are letters, digits and underscores.
 | `guardrails`     | object | no       | Confidence threshold and fallback.                                            |
 | `knowledge_base` | array  | no       | Declared knowledge sources (see the note below).                              |
 | `workflow`       | array  | yes      | Ordered steps. At least one.                                                  |
-| `trigger`        | object | no       | How a deployed run starts: `webhook` or `schedule` (see below).               |
+| `trigger`        | object | no       | How a deployed run starts: `webhook`, `schedule` or `poll` (see below).       |
 | `approval_notifier` | object | no    | Where a headless run sends an approve/reject prompt (`type: slack`, `token`, `channel`). |
 
 ## `agent.trigger`
 
-Two kinds: `webhook` and `schedule`.
+Three kinds: `webhook`, `schedule` and `poll`.
 
 ### `type: webhook`
 
@@ -195,6 +195,55 @@ immediately and is refused, not queued, while another holds the lock.
     An exported project runs the schedule too: `npm run serve` (and the generated Dockerfile) starts the
     scheduler, with the same overlap lock, backoff and `POST /schedule/run-now`. `npm start` is a single run.
     Keep `.kampong/` on a volume so the lock and dedupe keys survive a restart.
+
+### `type: poll`
+
+Calls a connector op on an interval while `kampong serve` is up and starts one run per new item it returns
+(version 1.1 only). A poll is for a source that cannot call you: an inbox, a list endpoint.
+
+```yaml
+trigger:
+  type: poll
+  every: 5m
+  use: kampong/gmail-imap@1.0.0
+  op: list_unseen
+  with: { mailbox: INBOX }
+  items: messages # the list inside the op's result
+  id: uid # a key for one item
+  dedupe: greatest
+```
+
+| Field              | Type    | Notes                                                                                                                              |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `every`            | string  | `30s`, `15m`, `6h`, `1d`; at least `1s`. The first poll runs as soon as `kampong serve` starts.                                    |
+| `use`, `op`        | string  | The component (an exact `id@version`, pinned in `kampong.lock` like any other) and the op to call.                                 |
+| `with`             | object  | The op's input, as written: `{{ }}` references are not resolved here, because no run exists yet.                                   |
+| `config`, `secrets`| object  | As on a component tool. Secrets are `${ENV_VAR}` placeholders, never values.                                                       |
+| `items`            | string  | An expression over the op's result that selects the list. Without it, the result itself must be a list.                            |
+| `id`               | string  | An expression over one item giving its key: a non-empty string or a number. Required.                                              |
+| `dedupe`           | string  | How a key becomes new, below. Required.                                                                                            |
+| `window`           | string  | `time_window` only, same format as `every`: how long a key stays seen.                                                             |
+| `one_run_per_item` | boolean | Default `true`. `false` starts one run over all the new items, with the list at `trigger.items` and as the input.                  |
+
+| `dedupe`      | An item is new when                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `unique`      | its key was never seen. One small entry per key is kept forever.                                                          |
+| `time_window` | its key was not seen within `window`. The entry expires with the window.                                                  |
+| `greatest`    | its key is above the highest started so far (numbers by value, strings by code unit). Items start in ascending key order. |
+| `last`        | it comes after the item that was last at the previous poll. The list must be oldest first. If that item has gone, every item is new. |
+
+Each run reads its item as `trigger`: the item's fields at the top level (`trigger.subject`) and the whole item
+as `trigger.body`. The state lives in `.kampong/state.db`, so a restart does not start an item again. A key is
+remembered only once its run has started: if starting fails, the item comes back on the next poll. The first
+poll starts every item the op returns, so point it at a source that holds only what you want handled (the
+IMAP `list_unseen` op does, as long as the workflow ends with `mark_seen`).
+
+A failed poll (the connector refused, the result was not a list, an `id` gave nothing) is reported and
+retried with backoff, and stops `kampong serve` after repeated failures, like any recurring job.
+
+!!! note "Exports"
+
+    An exported project does not run a poll yet: `kampong export` refuses a spec with a poll trigger.
 
 ## `agent.model`
 
