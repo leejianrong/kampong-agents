@@ -1,4 +1,4 @@
-import type { Document } from "yaml";
+import { isMap, type Document } from "yaml";
 
 // The canvas write path (PLAN.md Shape S2/S1, ADR-0002) mutates the loaded
 // Document in place via setIn/addIn/deleteIn rather than rebuilding plain JS
@@ -13,6 +13,24 @@ export type PatchOp =
 export function applyPatch(doc: Document, ops: PatchOp[]): void {
   for (const op of ops) {
     if (op.op === "set") {
+      // A new top-level key other than `agent` goes above it, where hand-written specs keep `vars`, instead of
+      // after the whole agent block at the end of the file.
+      const [first] = op.path;
+      if (
+        op.path.length === 1 &&
+        typeof first === "string" &&
+        first !== "agent" &&
+        isMap(doc.contents) &&
+        !doc.contents.has(first)
+      ) {
+        const at = doc.contents.items.findIndex(
+          (pair) => String((pair.key as { value?: unknown }).value) === "agent",
+        );
+        if (at >= 0) {
+          doc.contents.items.splice(at, 0, doc.createPair(first, op.value));
+          continue;
+        }
+      }
       doc.setIn(op.path, op.value);
     } else if (op.op === "add") {
       // addIn requires the collection at `path` to already exist -- if it

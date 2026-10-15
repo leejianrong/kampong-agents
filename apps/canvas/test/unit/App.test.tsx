@@ -301,4 +301,62 @@ describe("App", () => {
       expect(screen.queryByRole("button", { name: "Checks" })).toBeNull();
     });
   });
+
+  describe("Spec vars (KAM-159)", () => {
+    const withVersion = (version: string, vars?: Record<string, unknown>) => ({
+      ...SPEC_RESPONSE,
+      spec: { ...SPEC_RESPONSE.spec, version, ...(vars && { vars }) },
+    });
+    function appWith(response: unknown) {
+      const applied: unknown[] = [];
+      const api = {
+        loadSpec: async () => response,
+        applyPatch: async (ops: unknown) => (applied.push(ops), { success: true }),
+        subscribeToEvents: () => () => {},
+        startRun: async () => ({ success: true }),
+        approveRun: async () => ({ success: true }),
+        subscribeToRunEvents: () => () => {},
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      render(<App api={api as any} />);
+      return applied;
+    }
+
+    it("opens from the toolbar and saves the first var as a vars block", async () => {
+      const applied = appWith(withVersion("1.1"));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add var" }));
+      fireEvent.change(screen.getByLabelText("Name"), { target: { value: "symbols" } });
+      fireEvent.change(screen.getByLabelText("Type"), { target: { value: "list" } });
+      fireEvent.change(screen.getByLabelText("Default", { exact: false }), {
+        target: { value: "AAPL, MSFT" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save var" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toEqual([
+        {
+          op: "set",
+          path: ["vars"],
+          value: { symbols: { type: "list", default: ["AAPL", "MSFT"] } },
+        },
+      ]);
+    });
+
+    it("adds to an existing block and removes the last var along with the block", async () => {
+      const applied = appWith(withVersion("1.1", { only: { type: "string" } }));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remove only" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toEqual([{ op: "remove", path: ["vars"] }]);
+    });
+
+    it("is gated on a 1.0 spec", async () => {
+      appWith(withVersion("1.0"));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      expect(screen.getByRole("status").textContent).toContain("Vars need spec version");
+    });
+  });
 });

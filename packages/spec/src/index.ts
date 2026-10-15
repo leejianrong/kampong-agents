@@ -20,6 +20,7 @@ export * from "./graph.js";
 export * from "./tool-form.js";
 export * from "./component-form.js";
 export * from "./workflow-form.js";
+export * from "./vars-form.js";
 export * from "./json-schema.js";
 export * from "./pragma.js";
 export * from "./repository.js";
