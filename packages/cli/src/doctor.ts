@@ -12,6 +12,7 @@ import {
   ToolCallError,
   type ComponentTool,
   type ToolFetchImpl,
+  MODEL_FIXTURE_PREFIX,
 } from "@kampong/engine";
 import {
   describePermissions,
@@ -104,6 +105,23 @@ function urlTarget(raw: string): { host: string; port: number } | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** True when any step, however deeply nested in a foreach or branch, is a model step (an `action` step). */
+function hasModelStep(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasModelStep);
+  if (node && typeof node === "object") {
+    const record = node as Record<string, unknown>;
+    if (
+      typeof record.step === "string" &&
+      typeof record.action === "string" &&
+      !/^execute_tool\(|^request_human_approval$/.test(record.action)
+    ) {
+      return true;
+    }
+    return Object.values(record).some(hasModelStep);
+  }
+  return false;
 }
 
 export async function runDoctor(
@@ -334,6 +352,22 @@ export async function runDoctor(
   if (options.toolsMode === "replay") {
     const dir = options.fixturesDir ?? join(dirname(specPath), ".kampong", "fixtures");
     const files = existsSync(dir) ? readdirSync(dir) : [];
+    // KAM-156: a replay answers model calls from fixtures too. A model fixture is keyed on the prompt, which
+    // is only known at run time, so doctor can say whether any exist, not whether each call has one.
+    if (hasModelStep(spec.agent.workflow)) {
+      const recorded = files.filter(
+        (f) => f.startsWith(MODEL_FIXTURE_PREFIX) && f.endsWith(".json"),
+      ).length;
+      if (recorded > 0) {
+        add("pass", "fixtures", `${recorded} recorded model answer(s) in ${dir}`);
+      } else {
+        add(
+          "fail",
+          "fixtures",
+          `the workflow has model steps but ${dir} has no recorded model answers; record them with --tools record (or run with --model live)`,
+        );
+      }
+    }
     for (const declared of tools) {
       const tool = desugarLegacyTool(declared) ?? declared;
       // A legacy tool's fixtures are filed under its own name; a component's under `<id>.<op>`.

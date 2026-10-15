@@ -58,6 +58,7 @@ language, typed step output, a durable state store, a component repository, and 
 - [ADR-0048: Gmail over IMAP as a separate component](adr/0048-gmail-imap-component.md)
 - [ADR-0049: Slack approvals on a laptop](adr/0049-slack-approval-local-story.md)
 - [ADR-0050: The poll trigger](adr/0050-poll-trigger.md)
+- [ADR-0051: Record and replay for model calls](adr/0051-model-fixtures.md)
 
 ## Hosted mode and the roadmap
 

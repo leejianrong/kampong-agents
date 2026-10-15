@@ -45,10 +45,11 @@ approval. (A fixture is keyed by the operation and its input, so a second mailbo
 mailbox instead.) The fixtures come from a scripted mailbox, not a capture of a real account. To record your own,
 run live once with `--tools record` and your credentials.
 
-One limit of the offline run today: **model calls are not recorded** (KAM-156), so the `triage` step calls the
-spec's `agent.model`, which is a local Ollama by default. With no Ollama running that step fails visibly (it
-never falls back to a paid API). Run `ollama serve` and `ollama pull llama3.1`, or point `agent.model` at
-OpenRouter or another provider.
+The `triage` model call replays from a recorded answer (`@model.*.json`), so the offline run needs no Ollama and
+no key. The answer comes from a scripted stand-in, not a real model. Another email makes a different prompt and
+so has no recorded answer: the step fails with "No recorded model fixture" (never a live call). Record your own
+with `--tools record`, or use `--model live` to send the call to the spec's `agent.model`, a local Ollama by
+default (`ollama serve` and `ollama pull llama3.1`) or OpenRouter or another provider.
 
 ## Run it live
 

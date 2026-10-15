@@ -15,10 +15,10 @@ replacement for reading those before you implement a slice.
   Better Auth, BYOK vault, Helm in `deploy/`). V10 managed go-live is partly built.
 - **In progress: V11**, authorable real-world workflows. Shipped: spec version `"1.1"` (JSONata
   expressions, `vars`), `output_schema`, component repository (`kampong/*` first-party components),
-  SQLite state store, unattended runner, `schedule` and `poll` triggers, `transform`/`validate`/`dedupe`, `foreach`,
+  SQLite state store, unattended runner, `schedule` and `poll` triggers, model record/replay, `transform`/`validate`/`dedupe`, `foreach`,
   `branch`/`stop`, persisted approvals, webhook auth presets with `when`/`map`, and the `market-etl`
   template. Open work is on the board (canvas forms for the new steps, Slack interactivity,
-  model record/replay, RAG, more templates).
+  RAG, more templates).
 - **Roadmap, not started:** V6 governance, V7 multi-agent, V8 NL generation, V12 registry.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`), one epic per slice.
@@ -112,7 +112,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0050).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0051).
 - Every bug or flake becomes a regression test before the fix.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 

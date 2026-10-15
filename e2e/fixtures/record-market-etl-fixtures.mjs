@@ -7,6 +7,7 @@
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createModelFixtures } from "../../packages/engine/dist/index.js";
 import { runCli } from "../../packages/cli/dist/cli.js";
 import { fakeFetch } from "./market-etl-network.mjs";
 import { fakeModel } from "./market-etl-model.mjs";
@@ -50,7 +51,10 @@ for (const args of [
       ...args,
     ],
     io,
-    { model: fakeModel },
+    {
+      // The stand-in's answers are filed as model fixtures (KAM-156), so a replay needs no model at all.
+      model: createModelFixtures({ mode: "record", fixturesDir: fixtures, inner: fakeModel }),
+    },
   );
   if (code !== 0) throw new Error(`recording run failed with exit code ${code}`);
 }

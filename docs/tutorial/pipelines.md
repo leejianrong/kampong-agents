@@ -27,8 +27,8 @@ rate-limited or malformed symbol leaves no partial row. The other symbols are st
 
 ## Try it with no network
 
-`market-etl` ships with recorded fixtures, so it runs with no network and no keys. One limit today: model calls are
-not recorded, so the `summarize` step needs a running Ollama (or raise the threshold so no symbol crosses it).
+`market-etl` ships with recorded fixtures, so it runs with no network and no keys. Model calls replay from recorded answers
+too, so the `summarize` step needs no Ollama either.
 
 ```sh
 kampong templates                       # lists the template and the folder it lives in

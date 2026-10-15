@@ -178,6 +178,12 @@ export {
   type Schedule,
   type ScheduleSpec,
 } from "./schedule.js";
+export {
+  createModelFixtures,
+  MissingModelFixtureError,
+  MODEL_FIXTURE_PREFIX,
+  type CreateModelFixturesOptions,
+} from "./model-fixtures.js";
 export { pollKey, processPoll, type PollConfig, type PollInput, type PollOutcome } from "./poll.js";
 export { createSchedulePacer, type OverlapPolicy, type SchedulePacer } from "./schedule-runner.js";
 
