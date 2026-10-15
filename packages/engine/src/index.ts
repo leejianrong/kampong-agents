@@ -178,6 +178,7 @@ export {
   type Schedule,
   type ScheduleSpec,
 } from "./schedule.js";
+export { pollKey, processPoll, type PollConfig, type PollInput, type PollOutcome } from "./poll.js";
 export { createSchedulePacer, type OverlapPolicy, type SchedulePacer } from "./schedule-runner.js";
 
 // KAN-1848 (ADR-0047): webhook auth presets, the `when` filter and `map`.

@@ -72,6 +72,12 @@ export function exportProject(
 ): ExportResult {
   // Checked first so nothing is written: a project that fails on its first tool call is worse than a
   // refused export.
+  if (spec.agent.trigger?.type === "poll") {
+    throw new Error(
+      "A poll trigger runs under `kampong serve` only; export does not support it yet. " +
+        "Use a webhook or schedule trigger for an exported project.",
+    );
+  }
   const components = selectComponents(spec, options.components);
   if (!options.force && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
     throw new ExportDirectoryNotEmptyError(outputDir);

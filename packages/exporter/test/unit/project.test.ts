@@ -497,3 +497,33 @@ describe("collectRequiredEnvVars with a component tool", () => {
     }
   });
 });
+
+// KAM-117: the poll trigger runs under `kampong serve` only. An export that quietly dropped it would be a
+// project that never starts a run, so it is refused, and nothing is written.
+describe("exportProject: poll trigger", () => {
+  it("refuses a spec with a poll trigger and writes nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kampong-export-poll-"));
+    const out = join(dir, "project");
+    try {
+      const spec = {
+        ...FULL_SPEC,
+        version: "1.1",
+        agent: {
+          ...FULL_SPEC.agent,
+          trigger: {
+            type: "poll",
+            every: "5m",
+            use: "kampong/gmail-imap@1.0.0",
+            op: "list_unseen",
+            id: "uid",
+            dedupe: "unique",
+          },
+        },
+      } as AgentSpec;
+      expect(() => exportProject(spec, out)).toThrow(/poll trigger.*kampong serve/);
+      expect(() => readFileSync(join(out, "package.json"))).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

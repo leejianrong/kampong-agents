@@ -453,9 +453,36 @@ export const scheduleTriggerSchema = z
   })
   .strict();
 
+// KAM-117 (ADR-0050): `poll` runs a component op on an interval while `kampong serve` is up and starts one
+// run per new item it returns. `use`/`op`/`with`/`config`/`secrets` are a component tool's own fields.
+// `items` is an expression selecting the list in the op's result (default: the result is the list), `id` an
+// expression over one item giving its key, and `dedupe` how a key becomes "new": `unique` (never seen),
+// `time_window` (not seen within `window`), `greatest` (above the highest key so far) or `last` (after the
+// previous poll's last item). `one_run_per_item: false` starts a single run over all the new items instead.
+// The cross-field and expression checks run in the spec's superRefine. Version 1.1 only.
+export const pollDedupeSchema = z.enum(["unique", "greatest", "last", "time_window"]);
+
+export const pollTriggerSchema = z
+  .object({
+    type: z.literal("poll"),
+    every: z.string(),
+    use: componentRefSchema,
+    op: z.string().min(1),
+    with: z.record(z.string(), z.unknown()).optional(),
+    config: z.record(z.string(), z.string()).optional(),
+    secrets: z.record(z.string(), envVarPlaceholderSchema).optional(),
+    items: z.string().optional(),
+    id: z.string(),
+    dedupe: pollDedupeSchema,
+    window: z.string().optional(),
+    one_run_per_item: z.boolean().optional(),
+  })
+  .strict();
+
 export const triggerSchema = z.discriminatedUnion("type", [
   webhookTriggerSchema,
   scheduleTriggerSchema,
+  pollTriggerSchema,
 ]);
 
 // KAN-1432 (ADR-0021 Slice D): where a *headless* deployment (`kampong
@@ -930,6 +957,41 @@ export const agentSpecSchema = z
         }
       }
     }
+    if (trigger?.type === "poll") {
+      const at = ["agent", "trigger"];
+      if (spec.version !== "1.1") {
+        ctx.addIssue({
+          code: "custom",
+          message: 'a poll trigger needs version "1.1"',
+          path: [...at, "type"],
+        });
+      }
+      const every = parseEvery(trigger.every);
+      if (!every.ok) {
+        ctx.addIssue({ code: "custom", message: every.error, path: [...at, "every"] });
+      }
+      if (trigger.dedupe === "time_window") {
+        if (trigger.window === undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: "dedupe time_window needs a window (e.g. 24h)",
+            path: [...at, "dedupe"],
+          });
+        }
+      } else if (trigger.window !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "window only applies to dedupe time_window",
+          path: [...at, "window"],
+        });
+      }
+      if (trigger.window !== undefined) {
+        const window = parseEvery(trigger.window);
+        if (!window.ok) {
+          ctx.addIssue({ code: "custom", message: window.error, path: [...at, "window"] });
+        }
+      }
+    }
     if (trigger?.type === "webhook") {
       for (const field of ["respond", "timeout_ms"] as const) {
         if (trigger[field] !== undefined && spec.version !== "1.1") {
@@ -996,6 +1058,8 @@ export type AgentSpec = z.infer<typeof agentSpecSchema>;
 export type Trigger = z.infer<typeof triggerSchema>;
 export type WebhookTrigger = z.infer<typeof webhookTriggerSchema>;
 export type ScheduleTrigger = z.infer<typeof scheduleTriggerSchema>;
+export type PollTrigger = z.infer<typeof pollTriggerSchema>;
+export type PollDedupe = z.infer<typeof pollDedupeSchema>;
 export type ApprovalNotifier = z.infer<typeof approvalNotifierSchema>;
 export type Tool = z.infer<typeof toolSchema>;
 export type ForEachOnError = z.infer<typeof forEachOnErrorSchema>;

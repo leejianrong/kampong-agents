@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import {
   buildSchedule,
   createSchedulePacer,
+  parseEvery,
+  processPoll,
+  type ComponentDispatcher,
   DEFAULT_MAX_CONSECUTIVE_FAILURES,
   nextTick,
   runnerLockKey,
@@ -29,7 +32,7 @@ export interface ServeJob {
   /** Replaces the fixed `intervalMs` cadence; see RunnerOptions.nextDelayMs. */
   nextDelayMs?: (now: number, first: boolean) => number;
   lockTtlMs?: number;
-  run(signal: AbortSignal): Promise<void>;
+  run(signal: AbortSignal, context: { store: StateStore }): Promise<void>;
   /**
    * Starts one run now and returns as soon as it has an id; `finished` settles when the run does. The
    * scheduled `run` is this plus waiting. Present on jobs that `POST /schedule/run-now` can trigger.
@@ -39,11 +42,22 @@ export interface ServeJob {
 
 /** The slice of RunManager a scheduled job needs. */
 export interface ScheduledRuns {
-  start(spec: AgentSpec, input: string): Promise<StartRunResult>;
+  start(
+    spec: AgentSpec,
+    input: string,
+    trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
+  ): Promise<StartRunResult>;
   settle(id: string, timeoutMs: number): Promise<RunState | undefined>;
 }
 
+/** What a poll job needs besides the run manager: a way to call the trigger's connector op. */
+export interface PollDeps {
+  components: ComponentDispatcher;
+  env?: NodeJS.ProcessEnv;
+}
+
 export const SCHEDULE_JOB_NAME = "schedule";
+export const POLL_JOB_NAME = "poll";
 const MIN_LOCK_TTL_MS = 15 * 60_000;
 // How long a scheduled run may keep its tick's lock: several nominal intervals, but at least 15 minutes.
 // The runner does not renew a lock, so a run longer than this could overlap a second process's tick.
@@ -55,8 +69,10 @@ export function collectServeJobs(
   spec: AgentSpec,
   runs?: ScheduledRuns,
   now: () => number = Date.now,
+  poll?: PollDeps,
 ): ServeJob[] {
   const trigger = spec.agent.trigger;
+  if (trigger?.type === "poll") return runs && poll ? [pollJob(spec, trigger, runs, poll)] : [];
   if (trigger?.type !== "schedule" || !runs) return [];
   const built = buildSchedule(trigger);
   if (!built.ok) throw new Error(`schedule trigger: ${built.error}`);
@@ -100,6 +116,65 @@ export function collectServeJobs(
       start,
     },
   ];
+}
+
+// KAM-117 (ADR-0050): one poll = call the trigger's op, keep the new items, start a run per item. Only the
+// poll holds the overlap lock; the runs it starts go on without it, so a slow run never delays the next poll.
+function pollJob(
+  spec: AgentSpec,
+  trigger: Extract<NonNullable<AgentSpec["agent"]["trigger"]>, { type: "poll" }>,
+  runs: ScheduledRuns,
+  { components, env }: PollDeps,
+): ServeJob {
+  const every = parseEvery(trigger.every);
+  if (!every.ok) throw new Error(`poll trigger: ${every.error}`);
+  const window = trigger.window === undefined ? undefined : parseEvery(trigger.window);
+  if (window && !window.ok) throw new Error(`poll trigger: ${window.error}`);
+  const tool = {
+    name: POLL_JOB_NAME,
+    action: "component" as const,
+    use: trigger.use,
+    op: trigger.op,
+    ...(trigger.with && { with: trigger.with }),
+    ...(trigger.config && { config: trigger.config }),
+    ...(trigger.secrets && { secrets: trigger.secrets }),
+  };
+  return {
+    name: POLL_JOB_NAME,
+    intervalMs: every.value,
+    run: async (signal, { store }) => {
+      const call = await components.prepare(tool);
+      const result = await call.run(trigger.with ?? {}, { ...(env && { env }) });
+      await processPoll({
+        store,
+        result,
+        config: {
+          name: POLL_JOB_NAME,
+          dedupe: trigger.dedupe,
+          id: trigger.id,
+          ...(trigger.items !== undefined && { items: trigger.items }),
+          ...(window?.ok && { windowMs: window.value }),
+          ...(trigger.one_run_per_item !== undefined && {
+            oneRunPerItem: trigger.one_run_per_item,
+          }),
+        },
+        start: async (batch) => {
+          if (signal.aborted) throw new Error("poll: stopped before the run could start");
+          const first = batch[0];
+          const single = trigger.one_run_per_item !== false;
+          const fields = single
+            ? first !== null && typeof first === "object" && !Array.isArray(first)
+              ? (first as Record<string, unknown>)
+              : undefined
+            : { items: batch };
+          await runs.start(spec, JSON.stringify(single ? first : batch), {
+            headers: {},
+            ...(fields && { fields }),
+          });
+        },
+      });
+    },
+  };
 }
 
 export interface ServeRunnerOptions {
@@ -162,7 +237,7 @@ export function startServeRunners(
   const running = jobs.map((job) =>
     runUnattended({
       name: job.name,
-      job: job.run,
+      job: (signal) => job.run(signal, { store }),
       intervalMs: job.intervalMs,
       ...(job.nextDelayMs ? { nextDelayMs: job.nextDelayMs } : {}),
       ...(job.lockTtlMs ? { lockTtlMs: job.lockTtlMs } : {}),

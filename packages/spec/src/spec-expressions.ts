@@ -297,6 +297,18 @@ export function validateSpecExpressions(
       checkIngress(["agent", "trigger", "map", name], source, `map.${name}`);
     }
   }
+  // KAM-117: a poll's `items` reads the op's result and `id` one item, both before any run exists, so they
+  // are checked for syntax only: their names are the result's own, not the spec's.
+  if (trigger?.type === "poll") {
+    for (const field of ["items", "id"] as const) {
+      const source = trigger[field];
+      if (source === undefined) continue;
+      const parsed = parseExpression(source);
+      if (!parsed.ok) {
+        for (const e of parsed.errors) reportExpression(["agent", "trigger", field], field, e);
+      }
+    }
+  }
   walk(spec.agent.workflow, ["agent", "workflow"], undefined, new Map());
   scan(spec.agent.tools, ["agent", "tools"], { local: loopNames, hidden: new Map() });
   return errors;

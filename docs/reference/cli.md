@@ -6,7 +6,7 @@ information at the terminal.
 ```
 kampong dev [dir]                          Start the local canvas server.
 kampong run <spec>.yaml --input "<text>"   Run a spec headlessly.
-kampong serve <spec>.yaml                  Run a spec as a live webhook / scheduled service.
+kampong serve <spec>.yaml                  Run a spec as a live webhook / scheduled / polling service.
 kampong export <spec>.yaml <output-dir>    Eject a spec to a standalone TypeScript project.
 kampong templates [--json]                 List the ready-made specs you can copy and edit.
 kampong doctor <spec>.yaml                 Preflight a spec: components, pins, credentials, fixtures.
@@ -84,7 +84,7 @@ kampong serve <spec>.yaml [--port <n>] [--host <host>]
 | `GET /triggers/ignored`     | The latest 100 webhook requests that `when` ignored.                                                   |
 | `GET /healthz`              | Liveness check.                                                                                        |
 
-A spec with a `schedule` trigger is driven by the unattended runner: one run at a time with an overlap
+A spec with a `schedule` or `poll` trigger is driven by the unattended runner: one run at a time with an overlap
 lock, jitter and backoff, and a visible failure limit. Pending approvals are persisted and survive a
 restart. Model keys and connector tokens resolve from this process's environment.
 
