@@ -148,3 +148,49 @@ describe("WorkflowStepForm", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
+
+// KAM-160: the expression fields use the shared field when the spec is 1.1, and stay plain text on 1.0.
+describe("WorkflowStepForm expression fields (KAM-160)", () => {
+  afterEach(cleanup);
+  const scope = {
+    vars: [{ name: "threshold", detail: "number" }],
+    steps: [{ name: "classify", fields: ["confidence"] }],
+    trigger: [],
+  };
+  const open = (kind: string, withScope: boolean) => {
+    render(
+      <WorkflowStepForm {...(withScope && { scope })} onSubmit={() => {}} onCancel={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: kind }));
+  };
+
+  it.each([
+    ["Branch", "If (expression that gives true or false)"],
+    ["Validate", "Assert (expression that must be true)"],
+    ["Dedupe", "Key (expression)"],
+    ["Foreach", "Items (expression that gives a list)"],
+    ["Condition", "If (condition)"],
+  ])("%s checks its expression against the spec", (kind, label) => {
+    open(kind, true);
+    fireEvent.change(screen.getByLabelText(label), { target: { value: "vars.missing" } });
+    expect(screen.getByText(/Problem: vars.missing is not declared in vars/)).toBeTruthy();
+  });
+
+  it("a transform checks each of its lines", () => {
+    open("Transform", true);
+    fireEvent.change(screen.getByLabelText("Values (one per line, name: expression)"), {
+      target: { value: "ok: vars.threshold\nbad: ghost.x" },
+    });
+    expect(
+      screen.getByText(/Problem: Line 2: "ghost" is not something an expression can read/),
+    ).toBeTruthy();
+  });
+
+  it("on a 1.0 spec the same fields say nothing: a condition there is not an expression", () => {
+    open("Condition", false);
+    fireEvent.change(screen.getByLabelText("If (condition)"), {
+      target: { value: "vars.missing" },
+    });
+    expect(screen.queryByText(/Problem:/)).toBeNull();
+  });
+});

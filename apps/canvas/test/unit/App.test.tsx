@@ -359,4 +359,50 @@ describe("App", () => {
       expect(screen.getByRole("status").textContent).toContain("Vars need spec version");
     });
   });
+
+  describe("Expression fields (KAM-160)", () => {
+    function open11(version: string) {
+      const response = {
+        ...SPEC_RESPONSE,
+        spec: {
+          ...SPEC_RESPONSE.spec,
+          version,
+          vars: { threshold: { type: "number", default: 5 } },
+        },
+      };
+      const api = {
+        loadSpec: async () => response,
+        applyPatch: async () => ({ success: true }),
+        subscribeToEvents: () => () => {},
+        startRun: async () => ({ success: true }),
+        approveRun: async () => ({ success: true }),
+        subscribeToRunEvents: () => () => {},
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      render(<App api={api as any} />);
+    }
+
+    it("checks a new step's expressions against the spec's vars on a 1.1 spec", async () => {
+      open11("1.1");
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Add Workflow Step" }));
+      fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+      const field = screen.getByLabelText("Assert (expression that must be true)");
+      fireEvent.change(field, { target: { value: "vars.threshhold > 1" } });
+      expect(
+        screen.getByText(/vars.threshhold is not declared in vars \(declared: threshold\)/),
+      ).toBeTruthy();
+      fireEvent.change(field, { target: { value: "vars." } });
+      expect(screen.getByRole("option", { name: /threshold/ })).toBeTruthy();
+    });
+
+    it("leaves them plain on a 1.0 spec", async () => {
+      open11("1.0");
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Add Workflow Step" }));
+      fireEvent.click(screen.getByRole("button", { name: "Condition" }));
+      fireEvent.change(screen.getByLabelText("If (condition)"), { target: { value: "vars.x" } });
+      expect(screen.queryByText(/Problem:/)).toBeNull();
+    });
+  });
 });

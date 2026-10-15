@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { buildWorkflowStepFromForm, type WorkflowStep } from "@kampong/spec";
+import { buildWorkflowStepFromForm, type ExpressionScope, type WorkflowStep } from "@kampong/spec";
+import { ExpressionField } from "./ExpressionField.js";
 
 // The "Add Workflow Step" affordance -- same structured, zero-LLM-calls
 // pattern as ToolForm.tsx (PLAN.md Affordances, Q12/R5).
@@ -28,11 +29,13 @@ type StepKind =
   | "stop";
 
 export interface WorkflowStepFormProps {
+  /** Names in scope for the expression fields (KAM-160). Absent on a 1.0 spec, whose fields are plain text. */
+  scope?: ExpressionScope;
   onSubmit: (step: WorkflowStep) => void;
   onCancel: () => void;
 }
 
-export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) {
+export function WorkflowStepForm({ scope, onSubmit, onCancel }: WorkflowStepFormProps) {
   const [kind, setKind] = useState<StepKind>("action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
@@ -269,14 +272,12 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
 
       {kind === "condition" && (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">If (condition)</span>
-            <input
-              className="md3-text-field"
-              value={ifCondition}
-              onChange={(e) => setIfCondition(e.target.value)}
-            />
-          </label>
+          <ExpressionField
+            label="If (condition)"
+            value={ifCondition}
+            onChange={setIfCondition}
+            scope={scope}
+          />
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">Then (target step id)</span>
             <input
@@ -297,30 +298,23 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
       )}
 
       {kind === "transform" && (
-        <label className="md3-field">
-          <span className="md3-field__label md3-label-large">
-            Values (one per line, name: expression)
-          </span>
-          <textarea
-            className="md3-text-field"
-            value={setLines}
-            onChange={(e) => setSetLines(e.target.value)}
-          />
-        </label>
+        <ExpressionField
+          label="Values (one per line, name: expression)"
+          value={setLines}
+          onChange={setSetLines}
+          scope={scope}
+          lines
+        />
       )}
 
       {kind === "validate" && (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">
-              Assert (expression that must be true)
-            </span>
-            <input
-              className="md3-text-field"
-              value={assertion}
-              onChange={(e) => setAssertion(e.target.value)}
-            />
-          </label>
+          <ExpressionField
+            label="Assert (expression that must be true)"
+            value={assertion}
+            onChange={setAssertion}
+            scope={scope}
+          />
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">On fail</span>
             <select
@@ -345,14 +339,12 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
 
       {kind === "dedupe" && (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Key (expression)</span>
-            <input
-              className="md3-text-field"
-              value={dedupeKey}
-              onChange={(e) => setDedupeKey(e.target.value)}
-            />
-          </label>
+          <ExpressionField
+            label="Key (expression)"
+            value={dedupeKey}
+            onChange={setDedupeKey}
+            scope={scope}
+          />
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">Remember for (e.g. 24h, 7d)</span>
             <input
@@ -366,16 +358,12 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
 
       {kind === "foreach" && (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">
-              Items (expression that gives a list)
-            </span>
-            <input
-              className="md3-text-field"
-              value={loopItems}
-              onChange={(e) => setLoopItems(e.target.value)}
-            />
-          </label>
+          <ExpressionField
+            label="Items (expression that gives a list)"
+            value={loopItems}
+            onChange={setLoopItems}
+            scope={scope}
+          />
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">Loop variable</span>
             <input
@@ -434,16 +422,12 @@ export function WorkflowStepForm({ onSubmit, onCancel }: WorkflowStepFormProps) 
 
       {kind === "branch" && (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">
-              If (expression that gives true or false)
-            </span>
-            <input
-              className="md3-text-field"
-              value={branchIf}
-              onChange={(e) => setBranchIf(e.target.value)}
-            />
-          </label>
+          <ExpressionField
+            label="If (expression that gives true or false)"
+            value={branchIf}
+            onChange={setBranchIf}
+            scope={scope}
+          />
           <label className="md3-field">
             <span className="md3-field__label md3-label-large">
               Then (one tool per line, step: tool)
