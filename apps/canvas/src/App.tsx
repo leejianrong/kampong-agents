@@ -1,5 +1,6 @@
 import {
   specToGraph,
+  expressionScopeFor,
   outputReferenceOptions,
   removeVarPatch,
   setVarPatch,
@@ -355,6 +356,7 @@ export function App({
           {openForm === "workflow" && (
             <div className="md3-app__overlay">
               <WorkflowStepForm
+                scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
                 onSubmit={(step) => void handleAddWorkflowStep(step)}
                 onCancel={() => setOpenForm(null)}
               />

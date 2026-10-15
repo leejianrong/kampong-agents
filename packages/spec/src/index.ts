@@ -26,3 +26,5 @@ export * from "./pragma.js";
 export * from "./repository.js";
 export * from "./warnings.js";
 export * from "./expression.js";
+export * from "./expression-names.js";
+export * from "./expression-assist.js";

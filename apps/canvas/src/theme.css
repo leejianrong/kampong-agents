@@ -1087,3 +1087,45 @@ select.md3-text-field {
   min-width: 0;
   word-break: break-word;
 }
+
+/* Expression field (KAM-160): the suggestion list drops under the input; a problem is words, not only colour. */
+.md3-expression {
+  position: relative;
+}
+
+.md3-expression__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0.125rem 0 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 12rem;
+  overflow-y: auto;
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-elevation-2, 0 2px 6px rgb(0 0 0 / 0.3));
+}
+
+.md3-expression__option {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+}
+
+.md3-expression__option--active,
+.md3-expression__option:hover {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-expression__problems {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--md-sys-color-error);
+}

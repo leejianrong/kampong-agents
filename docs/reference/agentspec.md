@@ -61,6 +61,13 @@ a list a list), so a component input can be filled with real data; inside other 
 step, naming the expression. A condition must come out `true` or `false`: nothing, or any other type, fails
 the step (`$exists(x)` tests whether a name is there, `$boolean(x)` tests truthiness).
 
+On the canvas, every expression field in **Add Workflow Step** (a condition, a branch's `if`, a transform's
+values, a validate's `assert`, a dedupe's `key`, a foreach's `items`) checks what you type with the same parser
+and the same name rule as the loader, so a problem shows as you type instead of on save, and it completes the
+path you are typing: `vars.` lists the declared vars, `trigger.` its fields, and a step name its known outputs
+(an `output_schema`'s properties, a transform's names). Press Ctrl+Space to list the roots. A `"1.0"` spec's
+conditions are not expressions, so those fields stay plain text there.
+
 ### `vars`
 
 ```yaml

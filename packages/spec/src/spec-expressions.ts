@@ -5,6 +5,7 @@ import {
   templateExpressions,
   type ExpressionError,
 } from "./expression.js";
+import { EXPRESSION_ROOTS, nameProblem } from "./expression-names.js";
 import type { SpecError } from "./parse.js";
 import type { AgentSpec, BodyStep, BranchStep, WorkflowStep } from "./schema.js";
 
@@ -14,7 +15,7 @@ import type { AgentSpec, BodyStep, BranchStep, WorkflowStep } from "./schema.js"
 // not exist) is an error too: such a reference does not fail at run time, it evaluates to nothing, and a
 // condition on nothing is silently false (ADR-0027, spike result).
 
-const ROOTS = ["trigger", "input", "vars"] as const;
+const ROOTS = EXPRESSION_ROOTS;
 
 // What an expression in one step may read besides the root names and the workflow's steps: `local` is what a
 // foreach body adds (the loop variable and the body steps that ran before), and `hidden` maps the name of a step
@@ -79,8 +80,6 @@ export function validateSpecExpressions(
       `${where}: ${e.message}${e.position !== undefined ? ` (character ${e.position}${e.line && e.line > 1 ? `, line ${e.line}` : ""})` : ""}`,
     );
 
-  const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
-  const oddStepNames = stepNames.filter((n) => !IDENT.test(n));
   const check = (
     path: (string | number)[],
     source: string,
@@ -97,7 +96,7 @@ export function validateSpecExpressions(
       return;
     }
     for (const names of expressionPaths(parsed.ast)) {
-      const [root, second] = names;
+      const [root] = names;
       if (root === undefined) continue;
       const sibling = view.hidden.get(root);
       if (sibling !== undefined) {
@@ -106,29 +105,9 @@ export function validateSpecExpressions(
           `${where}${here}: "${root}" is a step in another arm of branch "${sibling}", which may not run: ` +
             `its output is not available here (read it after the branch, where it is present only if that arm ran)`,
         );
-      } else if (root === "vars") {
-        if (second !== undefined && !varNames.includes(second)) {
-          report(
-            path,
-            `${where}${here}: vars.${second} is not declared in vars` +
-              (varNames.length > 0
-                ? ` (declared: ${varNames.join(", ")})`
-                : " (there is no vars block)"),
-          );
-        }
-      } else if (
-        !(ROOTS as readonly string[]).includes(root) &&
-        !stepNames.includes(root) &&
-        !local.includes(root)
-      ) {
-        report(
-          path,
-          `${where}${here}: "${root}" is not something an expression can read: use trigger, input, vars, ` +
-            `or the name of a step (${[...stepNames, ...local].join(", ")})` +
-            (oddStepNames.length > 0
-              ? `. A step name that is not a plain identifier (${oddStepNames.join(", ")}) must be written in backticks: \`${oddStepNames[0]}\`.field`
-              : ""),
-        );
+      } else {
+        const problem = nameProblem(names, { varNames, stepNames, local });
+        if (problem !== undefined) report(path, `${where}${here}: ${problem}`);
       }
     }
   };
