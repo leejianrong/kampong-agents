@@ -18,7 +18,10 @@ flowchart LR
 
 This is why there's no import step and no "export to YAML". The YAML is the project. It's plain
 text you commit, diff, and review like code. The round trip is built to be lossless: parse,
-render, serialize, and you get the same file back, comments and formatting included.
+render, serialize, and you get the same file back, comments and formatting included: long
+quoted expressions are not refolded, and flow maps and lists keep their spacing. One exception: a hand-wrapped
+`>-` block is saved with each paragraph on one line (the value is the same); use `|` to keep line breaks
+([ADR-0052](adr/0052-yaml-serialisation-style.md)).
 [ADR-0002](adr/0002-yaml-source-of-truth-oneway-export.md)
 
 ## Layout lives in a sidecar, not the spec

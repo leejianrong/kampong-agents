@@ -1,5 +1,5 @@
 import type { ZodIssue } from "zod";
-import { Document, LineCounter, parseDocument } from "yaml";
+import { Document, LineCounter, parseDocument, visit, type SchemaOptions } from "yaml";
 import { agentSpecSchema, type AgentSpec } from "./schema.js";
 import { validateSpecExpressions } from "./spec-expressions.js";
 
@@ -27,6 +27,7 @@ export interface ParseResult {
 export function parseSpec(source: string): ParseResult {
   const lineCounter = new LineCounter();
   const doc = parseDocument(source, { lineCounter, keepSourceTokens: true });
+  flowStyles.set(doc, sniffFlowStyle(doc, source));
 
   const syntaxErrors: SpecError[] = doc.errors.map((err) => ({
     path: [],
@@ -113,9 +114,75 @@ export function toSpecError(issue: ZodIssue, doc: Document, lineCounter: LineCou
   return { path, message: issue.message, line, column };
 }
 
+// Flow collections keep the spacing the document was written with (KAM-157). The yaml package has one padding
+// setting for maps and sequences together and the parsed nodes do not remember theirs, so `parseSpec` reads each
+// kind's style off the source (the character after each `{` or `[`) and the majority wins, separately for maps
+// and for sequences: prettier's `{ a: 1 }` with `[a, b]` and the tight `{a: 1}` with `[a, b]` both survive. A
+// document that was never parsed from text (a new one) is written tight. A document that mixes the styles is
+// normalised to its majority on save.
+interface FlowStyle {
+  map: boolean;
+  seq: boolean;
+}
+const flowStyles = new WeakMap<Document, FlowStyle>();
+
+function sniffFlowStyle(doc: Document, source: string): FlowStyle {
+  const tally = { map: 0, seq: 0 };
+  const count = (
+    kind: "map" | "seq",
+    node: { flow?: boolean; range?: [number, number, number] | null },
+  ) => {
+    const at = node.range?.[0];
+    if (!node.flow || at === undefined) return;
+    const next = source[at + 1];
+    // An empty collection or one broken across lines says nothing about padding.
+    if (next === undefined || next === "}" || next === "]" || next === "\n" || next === "\r")
+      return;
+    tally[kind] += next === " " ? 1 : -1;
+  };
+  visit(doc, {
+    Map: (_, node) => count("map", node),
+    Seq: (_, node) => count("seq", node),
+  });
+  return { map: tally.map > 0, seq: tally.seq > 0 };
+}
+
+const MAP_TAG = "tag:yaml.org,2002:map";
+const SEQ_TAG = "tag:yaml.org,2002:seq";
+const withFlowPadding =
+  (style: FlowStyle): NonNullable<SchemaOptions["customTags"]> =>
+  (tags) =>
+    tags.map((tag) => {
+      if (typeof tag === "string" || (tag.tag !== MAP_TAG && tag.tag !== SEQ_TAG)) return tag;
+      const padding = (tag.tag === MAP_TAG ? style.map : style.seq) ? " " : "";
+      return {
+        ...tag,
+        // The stock collection tags have no stringify of their own: a collection prints itself. The padding is
+        // set per collection kind because a nested context inherits its parent's.
+        stringify: (item, ctx, onComment, onChompKeep) =>
+          (item as { toString(...args: unknown[]): string }).toString(
+            { ...ctx, flowCollectionPadding: padding },
+            onComment,
+            onChompKeep,
+          ),
+      } as typeof tag;
+    });
+
+/**
+ * Serialises a document without reformatting what an author wrote (KAM-157, ADR-0007's diff-clean goal):
+ * `lineWidth: 0` stops long double-quoted, plain and folded (`>-`) scalars being refolded at 80 columns, which
+ * would rewrite a hand-authored JSONata expression on every canvas save, and flow collections keep the spacing
+ * they were parsed with (see above). A folded block scalar is emitted as one line per paragraph, so a `>-` that
+ * was hand-wrapped is unwrapped on save; the value is unchanged. Use `|` where the line breaks matter to you.
+ */
 export function toYamlString(doc: Document): string {
-  // flowCollectionPadding: false matches conventional hand-written YAML
-  // ([a, b], not [ a, b ]) so re-serializing an untouched document is a true
-  // no-op rather than a cosmetic reformat on every save.
-  return doc.toString({ flowCollectionPadding: false });
+  const style = flowStyles.get(doc);
+  if (!style || (!style.map && !style.seq)) {
+    return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
+  }
+  // The schema is fixed when a document is made, so the tags are swapped on a copy; the caller's document
+  // (which the canvas keeps editing) is left as it was.
+  const copy = doc.clone();
+  copy.setSchema(doc.directives?.yaml.version ?? "1.2", { customTags: withFlowPadding(style) });
+  return copy.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
