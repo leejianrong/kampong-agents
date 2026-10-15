@@ -18,7 +18,7 @@
     "ai": "^7.0.137",
     "imapflow": "2.1.2",
     "jsonata": "2.2.2",
-    "mailparser": "3.9.31",
+    "mailparser": "3.9.38",
     "zod": "^4.6.5"
   }
 }
