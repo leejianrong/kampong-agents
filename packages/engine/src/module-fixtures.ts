@@ -43,7 +43,7 @@ function pathFor(fixturesDir: string, toolName: string, op: string, input: strin
 }
 
 /** Redacts object keys as well as values: a secret used as a key must not reach the file. */
-function redactDeep(value: unknown, secrets: readonly string[]): unknown {
+export function redactDeep(value: unknown, secrets: readonly string[]): unknown {
   if (typeof value === "string") return redactString(value, secrets);
   if (Array.isArray(value)) return value.map((entry) => redactDeep(entry, secrets));
   if (value && typeof value === "object") {

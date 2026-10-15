@@ -242,6 +242,69 @@ describe("kampong run -- exit codes (SLICES.md V3 unit test plan)", () => {
     expect(code).toBe(EXIT_USAGE_ERROR);
   });
 
+  it("exits 64 on an unrecognized --model value (KAM-156)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, SIMPLE_SPEC);
+    const { io, err } = capture();
+
+    const code = await runCli(["run", specPath, "--input", "hi", "--model", "bogus"], io);
+
+    expect(code).toBe(EXIT_USAGE_ERROR);
+    expect(err.join("\n")).toContain("--model must be one of");
+  });
+
+  // KAM-156: `--tools replay` covers model calls, so a replay needs no model, no key and no network, and a call
+  // with no recorded answer fails by name instead of reaching a provider. `--model live` opts back in.
+  describe("model calls under --tools replay", () => {
+    const KEYED_SPEC = `version: "1.0"
+agent:
+  id: greeter
+  name: "Greeter"
+  role: "Front desk"
+  goal: "Greet visitors."
+  model:
+    provider: openai
+    name: gpt-4o
+    api_key: \${KAMPONG_TEST_UNSET_KEY}
+  workflow:
+    - step: greet
+      action: say_hello
+`;
+    const replayArgs = (...extra: string[]) => [
+      "run",
+      join(dir, "agent.yaml"),
+      "--json",
+      "--input",
+      "hi",
+      "--tools",
+      "replay",
+      "--fixtures",
+      join(dir, "fixtures"),
+      ...extra,
+    ];
+
+    it("fails with a missing model fixture, not a missing key", async () => {
+      writeFileSync(join(dir, "agent.yaml"), KEYED_SPEC);
+      const { io, out } = capture();
+
+      const code = await runCli(replayArgs(), io);
+
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(out.join("\n")).toContain("No recorded model fixture");
+      expect(out.join("\n")).not.toContain("KAMPONG_TEST_UNSET_KEY");
+    });
+
+    it("--model live keeps the real client, which here has no key", async () => {
+      writeFileSync(join(dir, "agent.yaml"), KEYED_SPEC);
+      const { io, out } = capture();
+
+      const code = await runCli(replayArgs("--model", "live"), io);
+
+      expect(code).toBe(EXIT_EXECUTION_FAILURE);
+      expect(out.join("\n")).toContain("KAMPONG_TEST_UNSET_KEY");
+    });
+  });
+
   it("exits 64 on a non-numeric --timeout value (KAN-1185)", async () => {
     const specPath = join(dir, "agent.yaml");
     writeFileSync(specPath, SIMPLE_SPEC);

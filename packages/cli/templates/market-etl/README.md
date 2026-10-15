@@ -43,17 +43,15 @@ in `each_symbol.errors`, and nothing is written for it). A fourth recorded symbo
 day of history and fails the `check` step. Lower or raise the threshold with `--var threshold=0.05`
 (NVDA alerts too) or `--var threshold=50` (nothing does).
 
-One limit of the offline run today, tracked as a follow-up:
+The `summarize` model call replays from a recorded answer too (`@model.*.json`), so no model, key or Ollama
+is needed. A model fixture is keyed on the whole prompt, so a symbol or threshold that makes a different
+prompt has no answer: it ends up in `each_symbol.errors` at `summarize` with a "No recorded model fixture"
+message (a visible failure, never a call to a live model) while its row is still written. Record more with
+`--tools record`, or use `--model live` to send the call to the spec's `agent.model` (Ollama by default).
 
-- The model call is not recorded: model calls have no fixture layer. The tests give the engine a stand-in
-  model; `kampong run` uses the spec's `agent.model` (Ollama by default), so only the `summarize` step
-  needs a model, and only for a symbol that crosses the threshold. With no Ollama running, that symbol ends
-  up in `each_symbol.errors` at `summarize` (a visible failure, never a fallback to a paid API) while its
-  row is still written; raise the threshold to avoid the model entirely.
-
-The fixtures were generated from synthetic responses shaped like the real ones, by
-`e2e/fixtures/record-market-etl-fixtures.mjs`, not captured from a live account. To record your own,
-run live once with `--tools record` and your keys.
+The fixtures were generated from synthetic responses shaped like the real ones, and the model answers from a
+scripted stand-in, by `e2e/fixtures/record-market-etl-fixtures.mjs`, not captured from a live account or model.
+To record your own, run live once with `--tools record` and your keys.
 
 ## Run it live
 

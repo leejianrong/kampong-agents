@@ -36,7 +36,7 @@ with Ctrl+C.
 ## `kampong run`
 
 Runs a spec against the execution engine with no server and no browser. Designed to run fully
-offline with `--tools replay` and an Ollama model.
+offline with `--tools replay`: tool, connector and model calls all answer from recorded fixtures.
 
 ```sh
 kampong run <spec>.yaml --input "<text>" [options]
@@ -48,7 +48,8 @@ kampong run <spec>.yaml --input "<text>" [options]
 | `--input "<text>"` |                                | The run's input text. Required.                                                                           |
 | `--json`           | off                            | Emit one machine-readable JSON object on stdout instead of a human summary.                               |
 | `--tools <mode>`   | `live`                         | `live` (real calls), `record` (call once, save a fixture), or `replay` (fixture only, never the network). |
-| `--fixtures <dir>` | `<spec dir>/.kampong/fixtures` | Where fixtures are read and written for record and replay.                                                |
+| `--model <mode>`   | follows `--tools`              | `live`, `record` or `replay` for model calls alone. `--model live` keeps a real model under `--tools replay`. |
+| `--fixtures <dir>` | `<spec dir>/.kampong/fixtures` | Where fixtures are read and written for record and replay (tools, connectors and model calls).             |
 | `--var <name=value>` |                              | A value for one of the spec's `vars` (version 1.1). Repeatable; wins over the var's default.              |
 | `--header <name=value>` |                            | A request header a webhook would have carried, read as `trigger.headers`. Repeatable.                      |
 | `--approve-all`    | off                            | Auto-approve every pause instead of prompting on stdin. For CI.                                           |
@@ -114,7 +115,7 @@ kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--pro
 | ------------------ | --------------------------------------------------------------------------------------------------- |
 | `--online`         | Also open a TCP connection to each host the spec's components, tools and injected URLs may reach.   |
 | `--probe`          | Check each credential is accepted, by calling the read-only probe op its component declares.        |
-| `--tools replay`   | Check fixtures as `kampong run --tools replay` would use them.                                      |
+| `--tools replay`   | Check fixtures as `kampong run --tools replay` would use them, including that model answers exist.  |
 | `--fixtures <dir>` | Fixture directory (default `<spec dir>/.kampong/fixtures`).                                         |
 | `--json`           | One JSON object: `{ ok, checks: [{ status, area, message }] }`.                                     |
 

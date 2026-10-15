@@ -1,15 +1,15 @@
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSpec, specWarnings } from "@kampong/spec";
 import { EXIT_SUCCESS, EXIT_USAGE_ERROR, runCli } from "../../src/cli.js";
 import { capture } from "../unit/test-helpers.js";
-// @ts-expect-error a plain .mjs shared with the e2e layer; it has no type declarations
-import { fakeModel } from "../../../../e2e/fixtures/market-etl-model.mjs";
 
 // KAN-1865: the market-etl template, spec-only, runs offline on its recorded fixtures. Nothing here touches
-// the network: the global fetch is replaced by one that fails the test, and tool calls replay from
-// templates/market-etl/fixtures.
+// the network: the global fetch is replaced by one that fails the test, and tool calls and model calls both
+// replay from templates/market-etl/fixtures (KAM-156), so no model, key or stand-in is involved.
 
 const TEMPLATE_DIR = fileURLToPath(new URL("../../templates/market-etl/", import.meta.url));
 const SPEC_PATH = `${TEMPLATE_DIR}agent.yaml`;
@@ -35,10 +35,7 @@ interface Outcome {
 
 describe("the market-etl template", () => {
   beforeEach(() => {
-    // Replaying a rest component op still reads its credential before it looks for the fixture (a gap,
-    // follow-up card), so a placeholder value is needed. It is never sent anywhere.
-    vi.stubEnv("ALPHAVANTAGE_API_KEY", "placeholder");
-    vi.stubEnv("SLACK_BOT_TOKEN", "placeholder");
+    // A replay needs no credential (KAM-155) and no model: none is set here.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -52,14 +49,6 @@ describe("the market-etl template", () => {
   });
 
   const run = async (...vars: string[]) => {
-    const calls: string[] = [];
-    const model = {
-      ...fakeModel,
-      async generateStructured(request: { prompt: string }) {
-        calls.push(request.prompt);
-        return fakeModel.generateStructured(request);
-      },
-    };
     const { io, out, err } = capture();
     const code = await runCli(
       [
@@ -75,13 +64,11 @@ describe("the market-etl template", () => {
         ...vars.flatMap((v) => ["--var", v]),
       ],
       io,
-      { model },
     );
     return {
       code,
       outcome: JSON.parse(out[0] ?? "{}") as Outcome,
       stderr: err.join("\n"),
-      modelCalls: calls,
     };
   };
 
@@ -127,7 +114,7 @@ describe("the market-etl template", () => {
   });
 
   it("the threshold branch fires only for the symbol that moved past it", async () => {
-    const { outcome, modelCalls } = await run("symbols=AAPL,NVDA");
+    const { outcome } = await run("symbols=AAPL,NVDA");
     const [aapl, nvda] = outcome.output.each_symbol.results;
     expect(aapl!.anomaly.taken).toBe("then");
     expect(aapl!.summarize).toEqual({ summary: "AAPL moved 4% on the day.", direction: "up" });
@@ -135,7 +122,6 @@ describe("the market-etl template", () => {
     expect(nvda!.anomaly.taken).toBe("none");
     expect(nvda!.summarize).toBeUndefined();
     expect(nvda!.alert).toBeUndefined();
-    expect(modelCalls).toHaveLength(1);
   });
 
   it("a lower threshold fires it for both, a higher one for neither", async () => {
@@ -148,7 +134,9 @@ describe("the market-etl template", () => {
       "none",
       "none",
     ]);
-    expect(high.modelCalls).toHaveLength(0);
+    expect(high.outcome.output.each_symbol.results.every((r) => r.summarize === undefined)).toBe(
+      true,
+    );
   });
 
   it("kampong doctor passes offline against the fixtures, without calling out", async () => {
@@ -169,6 +157,27 @@ describe("the market-etl template", () => {
     expect(out.join("\n")).toContain("tool fetch_daily has a recorded fixture");
     expect(out.join("\n")).toContain("tool upsert_price has a recorded fixture");
     expect(out.join("\n")).toContain("tool post_alert has a recorded fixture");
+    expect(out.join("\n")).toMatch(/recorded model answer\(s\)/);
+  });
+
+  it("a replay with no recorded model answer fails visibly, and --model live is the way out", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "kampong-no-model-"));
+    try {
+      for (const f of readdirSync(FIXTURES)) {
+        if (!f.startsWith("@model.")) copyFileSync(join(FIXTURES, f), join(empty, f));
+      }
+      const { io, out, err } = capture();
+      const code = await runCli(
+        ["run", SPEC_PATH, "--input", "", "--json", "--tools", "replay", "--fixtures", empty],
+        io,
+      );
+      // The AAPL move crosses the threshold, so its summarize step needs a model answer that is not there.
+      expect(code).toBe(EXIT_SUCCESS); // a failed item is collected, not fatal (foreach)
+      expect(out.join("\n")).toContain("No recorded model fixture");
+      expect(err.join("\n")).not.toContain("reached the network");
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 
   it("is listed by kampong templates", async () => {

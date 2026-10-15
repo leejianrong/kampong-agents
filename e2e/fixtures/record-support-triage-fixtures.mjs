@@ -21,6 +21,7 @@ register("./support-triage-imap-loader.mjs", import.meta.url);
 const { CONFIDENT } = await import("./support-triage-scenarios.mjs");
 const { fakeModel } = await import("./support-triage-model.mjs");
 const { runCli } = await import("../../packages/cli/dist/cli.js");
+const { createModelFixtures } = await import("../../packages/engine/dist/index.js");
 
 const dir = mkdtempSync(join(tmpdir(), "kampong-record-support-triage-"));
 const scenario = join(dir, "scenario.json");
@@ -52,7 +53,16 @@ try {
       fixtures,
     ],
     io,
-    { model: fakeModel },
+    {
+      // The stand-in's answers are filed as model fixtures (KAM-156), so a replay needs no model at all.
+      model: createModelFixtures({
+        mode: "record",
+        fixturesDir: fixtures,
+        inner: fakeModel,
+        // The mailbox address is a secret slot, redacted from the tool fixtures; a prompt that carries it is too.
+        secrets: [CONFIDENT.user],
+      }),
+    },
   );
   if (code !== 0) throw new Error(`recording run failed with exit code ${code}`);
   console.error(`recorded into ${fixtures}`);

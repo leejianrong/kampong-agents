@@ -4,11 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSpec, specWarnings } from "@kampong/spec";
 import { EXIT_SUCCESS, EXIT_USAGE_ERROR, runCli } from "../../src/cli.js";
 import { capture } from "../unit/test-helpers.js";
-// @ts-expect-error plain .mjs stand-in model shared with the fixture recorder; no type declarations
-import { fakeModel } from "../../../../e2e/fixtures/support-triage-model.mjs";
 
 // KAM-126: the support-triage template, spec-only, runs offline on its recorded fixtures. Nothing here touches
-// the network, a mailbox or a credential; the model is a stand-in (model calls have no fixture layer yet). The
+// the network, a mailbox or a credential; the model's answer replays from a recorded
+// fixture too (KAM-156). The
 // full behaviour (an unsure email, a rejection, a restart with an approval pending, an exported project) is in
 // e2e/support-triage-template.test.ts; this is the fast check that the shipped template and fixtures agree.
 
@@ -42,20 +41,11 @@ describe("the support-triage template", () => {
     expect(source).not.toMatch(/xoxb-|app[ _-]?password:\s*\S/i);
   });
 
-  it("replays the recorded confident ticket to a saved draft: no approval, one model call, nothing sent", async () => {
-    const calls: string[] = [];
-    const model = {
-      ...fakeModel,
-      async generateStructured(request: { prompt: string }) {
-        calls.push(request.prompt);
-        return fakeModel.generateStructured(request);
-      },
-    };
+  it("replays the recorded confident ticket to a saved draft: no approval, the model answered from its fixture, nothing sent", async () => {
     const { io, out, err } = capture();
     const code = await runCli(
       ["run", SPEC_PATH, "--input", "", "--json", "--tools", "replay", "--fixtures", FIXTURES],
       io,
-      { model },
     );
     expect(code, out.join("\n") + err.join("\n")).toBe(EXIT_SUCCESS);
     const outcome = JSON.parse(out.join("\n")) as {
@@ -71,9 +61,8 @@ describe("the support-triage template", () => {
     expect(outcome.output.claim).toMatchObject({ ok: true, uid: 5 });
     expect(outcome.output.draft_confident).toMatchObject({ mailbox: "[Gmail]/Drafts", uid: 101 });
     expect(outcome.output).not.toHaveProperty("review");
-    expect(calls).toHaveLength(1);
-    // The email text reaches the model as data, with the FAQ in the system prompt (not in this prompt).
-    expect(calls[0]).toContain("How do I reset my password?");
+    // The recorded answer is keyed on the whole prompt, so a hit means the email reached the model as data
+    // and the FAQ rode in the system prompt, exactly as recorded.
   });
 
   it("kampong doctor finds a recorded fixture for every Gmail operation the spec calls", async () => {
@@ -87,6 +76,7 @@ describe("the support-triage template", () => {
     for (const tool of ["list_unread", "read_message", "mark_read", "save_draft"]) {
       expect(text, tool).toContain(`tool ${tool} has a recorded fixture`);
     }
+    expect(text).toMatch(/recorded model answer\(s\)/);
   });
 
   it("is listed by kampong templates, with its description and folder", async () => {

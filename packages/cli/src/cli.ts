@@ -9,7 +9,10 @@ import { parseSpec, specWarnings, type AgentSpec } from "@kampong/spec";
 import {
   createAgentRun,
   createFixtureFetch,
+  createModelFixtures,
+  createMastraModelClient,
   createModuleFixtures,
+  desugarLegacyTool,
   instantClock,
   Pacer,
   type ModelClient,
@@ -22,6 +25,7 @@ import {
   componentDispatcherFor,
   lockComponents,
   lockPathFor,
+  registryFor,
   resolveExportComponents,
 } from "./components.js";
 import {
@@ -142,7 +146,12 @@ Options:
                           save a fixture) | "replay" (never touch the network; read a
                           previously recorded fixture -- a cache miss is an execution
                           failure, never a silent live fallback)
-  --fixtures <dir>       Fixture storage directory for --tools record/replay
+  --model <mode>         How model calls run: "live" | "record" | "replay". Defaults to the
+                          --tools mode, so \`--tools replay\` answers model calls from
+                          recorded fixtures too, with no model, key or network. A call with
+                          no fixture is an execution failure. \`--model live\` keeps a real
+                          model under \`--tools replay\`.
+  --fixtures <dir>       Fixture storage directory for --tools record/replay and --model
                           (default: "<spec dir>/.kampong/fixtures")
   --var <name=value>     A value for one of the spec's \`vars\` (version 1.1), winning over its
                           default. Repeat for several; a list is comma-separated or a JSON array.
@@ -598,6 +607,8 @@ interface RunArgs {
   input: string;
   json: boolean;
   toolsMode: ToolFixtureMode;
+  /** `--model`: how model calls run. Follows `--tools` unless given. */
+  modelMode?: ToolFixtureMode;
   fixturesDir?: string;
   approveAll: boolean;
   timeoutMs?: number;
@@ -612,6 +623,7 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
   let input: string | undefined;
   let json = false;
   let toolsMode: ToolFixtureMode = "live";
+  let modelMode: ToolFixtureMode | undefined;
   let fixturesDir: string | undefined;
   let approveAll = false;
   let timeoutMs: number | undefined;
@@ -652,6 +664,17 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
             };
           }
           toolsMode = value as ToolFixtureMode;
+          break;
+        }
+        case "--model": {
+          const value = requireValue(args, ++i, "--model");
+          if (!TOOL_MODES.includes(value as ToolFixtureMode)) {
+            return {
+              ok: false,
+              error: `--model must be one of ${TOOL_MODES.join("|")}, got "${value}".`,
+            };
+          }
+          modelMode = value as ToolFixtureMode;
           break;
         }
         case "--fixtures":
@@ -696,6 +719,7 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
       input,
       json,
       toolsMode,
+      ...(modelMode && { modelMode }),
       fixturesDir,
       approveAll,
       timeoutMs,
@@ -719,6 +743,38 @@ function collectSecrets(spec: AgentSpec, env: NodeJS.ProcessEnv): string[] {
   if (match) {
     const value = env[match[1]!];
     if (value) secrets.push(value);
+  }
+  return secrets;
+}
+
+/**
+ * `collectSecrets` plus the value of every secret slot a component tool reads (a slot remapped with
+ * `secrets:`, else the component's own default variable). A tool result can carry such a value into a model
+ * prompt, so the model fixture layer redacts it from a recording exactly as the tool layer does; without this a
+ * replay (where the tool fixture says `[REDACTED]`) would ask for a prompt that was recorded with the live value.
+ */
+async function collectRunSecrets(
+  spec: AgentSpec,
+  specPath: string,
+  env: NodeJS.ProcessEnv,
+): Promise<string[]> {
+  const secrets = collectSecrets(spec, env);
+  const registry = registryFor(specPath);
+  for (const declared of spec.agent.tools ?? []) {
+    const tool = desugarLegacyTool(declared) ?? declared;
+    if (tool.action !== "component") continue;
+    const at = tool.use.lastIndexOf("@");
+    try {
+      const { manifest } = await registry.resolve(tool.use.slice(0, at), tool.use.slice(at + 1));
+      for (const [slot, def] of Object.entries(manifest.auth?.slots ?? {})) {
+        const mapped = tool.secrets?.[slot];
+        const name = mapped ? (ENV_VAR_PATTERN.exec(mapped)?.[1] ?? mapped) : def.env;
+        const value = env[name];
+        if (value) secrets.push(value);
+      }
+    } catch {
+      // A component that cannot be resolved fails the run on its own, with a better message than this.
+    }
   }
   return secrets;
 }
@@ -839,8 +895,18 @@ async function runRunCommand(
     io.stderr(RUN_HELP_TEXT);
     return EXIT_USAGE_ERROR;
   }
-  const { specPath, input, json, toolsMode, fixturesDir, approveAll, timeoutMs, vars, headers } =
-    parsed.value;
+  const {
+    specPath,
+    input,
+    json,
+    toolsMode,
+    modelMode: modelModeFlag,
+    fixturesDir,
+    approveAll,
+    timeoutMs,
+    vars,
+    headers,
+  } = parsed.value;
 
   let source: string;
   try {
@@ -877,13 +943,17 @@ async function runRunCommand(
     return EXIT_USAGE_ERROR;
   }
 
+  const runSecrets =
+    toolsMode === "live" && !modelModeFlag
+      ? []
+      : await collectRunSecrets(spec, specPath, process.env);
   const fetchImpl =
     toolsMode === "live"
       ? undefined
       : createFixtureFetch({
           mode: toolsMode,
           fixturesDir: fixturesDir ?? defaultFixturesDir(specPath),
-          secrets: collectSecrets(spec, process.env),
+          secrets: runSecrets,
         });
 
   // Module components are recorded at the invoke(op) boundary too, so one that does not speak HTTP is as
@@ -894,17 +964,32 @@ async function runRunCommand(
       : createModuleFixtures({
           mode: toolsMode,
           fixturesDir: fixturesDir ?? defaultFixturesDir(specPath),
-          secrets: collectSecrets(spec, process.env),
+          secrets: runSecrets,
         });
 
   let run: ReturnType<typeof createAgentRun>;
   try {
     // Replaying recorded fixtures must not sit through real retry backoff or pacing delays.
     const replayClock = toolsMode === "replay" ? instantClock : undefined;
+    // Model calls follow the tool mode (KAM-156): a replay answers from recorded fixtures and needs no model,
+    // key or network; a record wraps the real client. An injected test model is used as it is.
+    const modelMode = modelModeFlag ?? toolsMode;
+    const model =
+      testOptions.model ??
+      (modelMode === "live"
+        ? undefined
+        : createModelFixtures({
+            mode: modelMode,
+            fixturesDir: fixturesDir ?? defaultFixturesDir(specPath),
+            secrets: runSecrets,
+            ...(modelMode === "record" && {
+              inner: createMastraModelClient(spec, process.env, { timeoutMs }),
+            }),
+          }));
     run = createAgentRun(spec, {
       fetchImpl,
       moduleFixtures,
-      model: testOptions.model,
+      model,
       // A `dedupe` step remembers its keys next to the spec, so a second `kampong run` sees the first.
       statePath: join(dirname(specPath), ".kampong", "state.db"),
       components: componentDispatcherFor(specPath),
