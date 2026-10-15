@@ -59,6 +59,7 @@ language, typed step output, a durable state store, a component repository, and 
 - [ADR-0049: Slack approvals on a laptop](adr/0049-slack-approval-local-story.md)
 - [ADR-0050: The poll trigger](adr/0050-poll-trigger.md)
 - [ADR-0051: Record and replay for model calls](adr/0051-model-fixtures.md)
+- [ADR-0052: YAML serialisation keeps the author's style](adr/0052-yaml-serialisation-style.md)
 
 ## Hosted mode and the roadmap
 
