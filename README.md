@@ -28,7 +28,8 @@ flowchart LR
   bad items, `branch`/`stop`, `transform`/`validate`/`dedupe` data steps, structured model output.
 - **First-party connectors** for Slack, Gmail, GitHub, Supabase and Alpha Vantage, and a pinned,
   digest-checked component model for your own.
-- **A template to start from:** `market-etl`, a scheduled price pipeline that runs offline on recorded fixtures.
+- **Templates to start from:** `market-etl`, a scheduled price pipeline that runs offline on recorded fixtures, and
+  `support-triage`, an inbox assistant that drafts replies for a person to send.
 
 ## Status
 

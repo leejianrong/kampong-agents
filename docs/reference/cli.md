@@ -98,8 +98,8 @@ kampong templates [--json]
 ```
 
 `--json` prints an array of `{ name, description, path }`. The command copies nothing; copy the folder
-yourself. Today there is one: `market-etl`, a scheduled price pipeline (see
-[Scheduled data pipelines](../tutorial/pipelines.md)).
+yourself. Today there are two: `market-etl`, a scheduled price pipeline (see
+[Scheduled data pipelines](../tutorial/pipelines.md)), and `support-triage`, an inbox assistant that drafts replies.
 
 ## `kampong doctor`
 
