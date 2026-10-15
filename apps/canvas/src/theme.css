@@ -1079,3 +1079,11 @@ select.md3-text-field {
   display: flex;
   gap: 0.25rem;
 }
+
+/* Spec vars panel (KAM-159): a name with its type and default under it, beside its actions. */
+.md3-vars__name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  word-break: break-word;
+}

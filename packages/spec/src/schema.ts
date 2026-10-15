@@ -502,7 +502,7 @@ export const approvalNotifierSchema = z.object({
 // can be re-tuned without editing it. `default` is a literal of the declared type, or `${ENV_VAR}` to take
 // the value from the environment (parsed by `resolveVars`: a number, a string, or a list given as a
 // comma-separated string or a JSON array).
-const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_DEFAULT = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
 
 export const varSchema = z

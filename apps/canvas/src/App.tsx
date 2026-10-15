@@ -1,10 +1,13 @@
 import {
   specToGraph,
   outputReferenceOptions,
+  removeVarPatch,
+  setVarPatch,
   specWarnings,
   type AgentSpec,
   type ComponentCatalog,
   type Guardrails,
+  type SpecVar,
   type Tool,
   type WorkflowStep,
 } from "@kampong/spec";
@@ -15,6 +18,7 @@ import { DoctorPanel } from "./DoctorPanel.js";
 import { SecretsPanel } from "./SecretsPanel.js";
 import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
+import { VarsPanel } from "./VarsPanel.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -42,7 +46,7 @@ export interface AppProps {
   onUnauthorized?: () => void;
 }
 
-type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables";
+type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables" | "vars";
 
 export function App({
   apiBaseUrl = "",
@@ -222,6 +226,21 @@ export function App({
     await refresh();
   }
 
+  // The panel stays open after a save (it lists what it saved), so these refresh instead of closing it.
+  async function handleSaveVar(name: string, value: SpecVar) {
+    const declared = Object.keys(spec?.vars ?? {}).length;
+    if (!(await applyPatchOrReportError(setVarPatch(name, value, declared)))) return false;
+    await refresh();
+    return true;
+  }
+
+  async function handleRemoveVar(name: string) {
+    const declared = Object.keys(spec?.vars ?? {}).length;
+    if (!(await applyPatchOrReportError(removeVarPatch(name, declared)))) return false;
+    await refresh();
+    return true;
+  }
+
   return (
     <div className="md3-app">
       <div className="md3-app__canvas-pane">
@@ -244,6 +263,12 @@ export function App({
           </button>
           <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("guardrails")}>
             Set Guardrails
+          </button>
+          <button
+            className="md3-button md3-button-tonal"
+            onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
+          >
+            Spec Vars
           </button>
           <span className="md3-app__toolbar-spacer" />
           {api.listSecrets && (
@@ -354,6 +379,16 @@ export function App({
         {openForm === "run" && (
           <div className="md3-app__run-dock">
             <RunPanel api={api} />
+          </div>
+        )}
+        {openForm === "vars" && spec && (
+          <div className="md3-app__run-dock">
+            <VarsPanel
+              version={spec.version}
+              vars={spec.vars}
+              onSave={handleSaveVar}
+              onRemove={handleRemoveVar}
+            />
           </div>
         )}
         {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
