@@ -457,3 +457,28 @@ request and the check is made against the final document.
   the minimum), whether `var.*` ops ship in the same card, and whether a literal `fetch` in plain 1.1 prose outside
   `{{ }}` should ever be flagged (this ADR says no).
 - `AGENTS.md` and `docs/reference/` change when KAM-170 lands, in that PR, not this one.
+
+## Implementation notes (KAM-170)
+
+What the build settled, where it differs from the text above, and what it left out.
+
+- **Reference places.** A re-grep of `schema.ts` found no further place that names a step or a tool: guardrails,
+  `approval_notifier`, `knowledge_base`, triggers (`when`, `map`, `respond`) and `foreach.on_error` (`goto` is rejected by
+  the schema) do not. A tool is scanned as a whole: every string under it except `name`, `use` and `action`, which
+  covers a component tool's `with`, `config` and `secrets` as well as `url`, `body` and `headers`. A `${ENV}` is not
+  read as a placeholder.
+- **Shared patterns.** The engine's placeholder, condition and `execute_tool` patterns are copied into
+  `packages/spec/src/references.ts`, not imported by the engine, because `http-tool.ts`, `condition.ts` and
+  `workflow.ts` are vendored into exported projects (ADR-0010) and must not depend on `@kampong/spec`. A unit test
+  reads the engine files and fails if the copies drift.
+- **One loop-variable rule.** A step name may not equal the `as` of any foreach in the workflow (that is what
+  `schema.ts` enforces), not only the enclosing one, so `invalid_name` fires before the validator does.
+- **Refusal lines are in the file as it is.** `has_references` and `breaks_references` report each read at the
+  path and line it has in the saved file, not in the edited copy the check ran on.
+- **The save path now uses `toYamlString`.** `applyPatchToSource` still serialised with `doc.toString`, which refolds
+  long scalars at 80 columns, so ADR-0052 did not hold for a canvas save. All writes go through `toYamlString`
+  now. A source that does not parse is returned as errors instead of throwing.
+- **A request that changes nothing writes nothing** and keeps its revision, in both repositories.
+- **`var.remove` and `var.rename` are not built.** They are a follow-up on the same machinery.
+- **Hosted concurrency.** `PgSpecRepository.applyOpsAndSave` reads the row `FOR UPDATE` and writes
+  `WHERE version = <read>`, so two concurrent saves serialise instead of one being lost.

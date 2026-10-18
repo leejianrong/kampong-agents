@@ -1,4 +1,13 @@
-import { applyPatch, type PatchOp } from "./mutate.js";
+import type { PatchOp } from "./mutate.js";
+import {
+  applyLayoutMoves,
+  applyOpsToSource,
+  type ApplyOpsToSourceResult,
+  type LayoutMove,
+  type OpChanges,
+  type OpError,
+  type SpecOp,
+} from "./ops.js";
 import { parseSpec, type SpecError } from "./parse.js";
 import { specToGraph } from "./graph.js";
 import { withAutoLayout, type LayoutMap } from "./layout.js";
@@ -36,6 +45,22 @@ export interface LoadResult {
   source: string;
 }
 
+/**
+ * What `applyOpsAndSave` returns. `revision` is an optimistic-concurrency token (hosted: the row's version;
+ * local: a hash of the file text); it is not part of the spec. A stale `baseRevision` is `stale: true` with
+ * the current revision.
+ */
+export type ApplyOpsResult =
+  | {
+      success: true;
+      source: string;
+      spec: unknown;
+      revision: string;
+      changes: OpChanges;
+      layoutMoves: LayoutMove[];
+    }
+  | { success: false; errors: OpError[]; source: string; revision?: string; stale?: boolean };
+
 export type ApplyPatchResult =
   | { success: true; source: string; spec: unknown }
   | { success: false; errors: SpecError[]; source: string };
@@ -56,6 +81,13 @@ export interface SpecRepository {
    * and validated before anything else reads it").
    */
   applyPatchAndSave(ops: PatchOp[]): Promise<ApplyPatchResult>;
+
+  /**
+   * The mutation entry point (ADR-0055): raw patch ops and the step/tool ops, applied in order and validated
+   * once. `baseRevision`, when given, must equal the spec's current revision or nothing is written and the
+   * result is `stale`. `applyPatchAndSave` is this with patch ops and no revision.
+   */
+  applyOpsAndSave(ops: SpecOp[], options?: { baseRevision?: string }): Promise<ApplyOpsResult>;
 
   /**
    * Lists the specs visible in this repository's configured scope.
@@ -83,15 +115,60 @@ export interface SpecRepository {
  * compile against the same interface but could quietly diverge in behavior.
  */
 export function applyPatchToSource(source: string, ops: PatchOp[]): ApplyPatchResult {
-  const { doc } = parseSpec(source);
-  applyPatch(doc, ops);
-  const nextSource = doc.toString({ flowCollectionPadding: false });
-  const result = parseSpec(nextSource);
+  const result = applyOpsToSource(source, ops);
+  if (!result.success) return { success: false, errors: result.errors, source };
+  return { success: true, source: result.source, spec: result.spec };
+}
 
-  if (!result.success) {
-    return { success: false, errors: result.errors, source };
+/** Renames and drops the layout keys an operation changed (ADR-0006), writing only if something moved. */
+export async function persistLayoutMoves(
+  repo: Pick<SpecRepository, "readLayout" | "writeLayout">,
+  moves: readonly LayoutMove[],
+): Promise<void> {
+  if (moves.length === 0) return;
+  const layout = await repo.readLayout();
+  const next = applyLayoutMoves(layout, moves);
+  if (JSON.stringify(next) !== JSON.stringify(layout)) await repo.writeLayout(next);
+}
+
+export type EvaluatedOps =
+  | ApplyOpsToSourceResult
+  | { success: false; stale: true; errors: OpError[]; source: string; revision: string };
+
+/**
+ * The pure core of `applyOpsAndSave`, shared by both repositories so they cannot differ (ADR-0054, ADR-0055):
+ * checks `baseRevision` against the `revision` the caller just read, then applies and validates the ops.
+ * The caller persists `source` (and the layout moves) only when this succeeds.
+ */
+export function evaluateOps(
+  current: { source: string; revision: string },
+  ops: SpecOp[],
+  baseRevision?: string,
+): EvaluatedOps {
+  if (baseRevision !== undefined && baseRevision !== current.revision) {
+    return staleResult(current.source, current.revision);
   }
-  return { success: true, source: nextSource, spec: result.spec };
+  return applyOpsToSource(current.source, ops);
+}
+
+/** The refusal for a write made against an out-of-date revision. */
+export function staleResult(
+  source: string,
+  revision: string,
+): Extract<EvaluatedOps, { stale: true }> {
+  return {
+    success: false,
+    stale: true,
+    errors: [
+      {
+        code: "stale",
+        path: [],
+        message: "the spec changed since it was loaded: reload it and apply the change again",
+      },
+    ],
+    source,
+    revision,
+  };
 }
 
 /**

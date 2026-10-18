@@ -134,7 +134,16 @@ export function expressionUses(ast: ExpressionNode, name: string): boolean {
  * lambda or a `.(…)` step are relative to their own context, not reads of the root, and are left out.
  */
 export function expressionPaths(ast: ExpressionNode): string[][] {
-  const paths: string[][] = [];
+  return expressionPathNodes(ast).map((nodes) => nodes.map((n) => n.value as string));
+}
+
+/**
+ * `expressionPaths`, but with the syntax-tree node of each leading name, so a caller can see where in the
+ * source the name is (`position` is the offset just after the name token, backticks included). The step
+ * operations use it to rewrite a renamed step's reads (ADR-0055).
+ */
+export function expressionPathNodes(ast: ExpressionNode): ExpressionNode[][] {
+  const paths: ExpressionNode[][] = [];
   const visit = (node: unknown, relative: boolean): void => {
     if (Array.isArray(node)) {
       node.forEach((child) => visit(child, relative));
@@ -145,10 +154,10 @@ export function expressionPaths(ast: ExpressionNode): string[][] {
     if (n.type === "path") {
       const steps = (n.steps as ExpressionNode[]) ?? [];
       if (!relative && steps[0]?.type === "name") {
-        const names: string[] = [];
+        const names: ExpressionNode[] = [];
         for (const step of steps) {
           if (step.type !== "name" || typeof step.value !== "string") break;
-          names.push(step.value);
+          names.push(step);
         }
         paths.push(names);
       }

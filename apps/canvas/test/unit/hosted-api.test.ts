@@ -156,6 +156,10 @@ describe("createHostedSpecClient", () => {
     const client = createHostedSpecClient("", "s1");
     await expect(client.loadSpec()).resolves.toMatchObject({ success: true });
     await client.applyPatch([{ op: "set", path: ["agent", "goal"], value: "hi" }]);
+    // ADR-0055: operations go to the same PUT, and a stale revision resolves as a refusal.
+    await expect(
+      client.applyOps([{ op: "step.remove", step: "a" }], { baseRevision: "1" }),
+    ).resolves.toMatchObject({ success: true });
     await client.startRun("hello");
     expect(start).toHaveBeenCalledOnce();
   });

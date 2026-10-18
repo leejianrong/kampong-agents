@@ -1,11 +1,15 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname } from "node:path";
 import {
-  applyPatchToSource,
+  evaluateOps,
   loadWithLayout as loadWithLayoutShared,
   parseLayout,
+  persistLayoutMoves,
   serializeLayout,
+  type ApplyOpsResult,
   type ApplyPatchResult,
+  type SpecOp,
   type LayoutMap,
   type LoadResult,
   type PatchOp,
@@ -56,6 +60,11 @@ import {
 
 export type { ApplyPatchResult, LoadResult };
 
+/** A short hash of the spec text: the local revision token (ADR-0055). */
+export function revisionOf(source: string): string {
+  return createHash("sha256").update(source).digest("hex").slice(0, 16);
+}
+
 export class SpecStore implements SpecRepository {
   constructor(
     private readonly specPath: string,
@@ -104,12 +113,26 @@ export class SpecStore implements SpecRepository {
 
   /** Validates a patch against a fresh parse before writing; an invalid mutation never touches disk. */
   async applyPatchAndSave(ops: PatchOp[]): Promise<ApplyPatchResult> {
+    return this.applyOpsAndSave(ops);
+  }
+
+  /**
+   * ADR-0055. The revision is a hash of the file text, so an edit made outside the canvas (ADR-0008)
+   * changes it too and a stale `baseRevision` is refused. The spec is written first and the layout second;
+   * a crash between them leaves a layout key `loadWithLayout` repairs.
+   */
+  async applyOpsAndSave(
+    ops: SpecOp[],
+    options: { baseRevision?: string } = {},
+  ): Promise<ApplyOpsResult> {
     const source = await this.readSource();
-    const result = applyPatchToSource(source, ops);
+    const revision = revisionOf(source);
+    const result = evaluateOps({ source, revision }, ops, options.baseRevision);
     if (!result.success) {
-      return result;
+      return "stale" in result ? { ...result } : { ...result, revision };
     }
-    writeFileSync(this.specPath, result.source);
-    return result;
+    if (result.source !== source) writeFileSync(this.specPath, result.source);
+    await persistLayoutMoves(this, result.layoutMoves);
+    return { ...result, revision: revisionOf(result.source) };
   }
 }

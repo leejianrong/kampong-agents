@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loadWithLayout, parseSpec, type PatchOp } from "@kampong/spec";
+import { loadWithLayout, parseSpec, type SpecOp } from "@kampong/spec";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
@@ -89,7 +89,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
     }
   });
 
-  app.put<{ Params: { id: string }; Body: { ops?: PatchOp[] } }>(
+  app.put<{ Params: { id: string }; Body: { ops?: SpecOp[]; baseRevision?: string } }>(
     "/api/specs/:id",
     async (request, reply) => {
       const ctx = await authorizeWorkspace(auth, db, request, reply);
@@ -104,12 +104,21 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
 
       try {
         const result = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
-          new PgSpecRepository(tx, ctx.workspaceId, request.params.id).applyPatchAndSave(ops),
+          new PgSpecRepository(tx, ctx.workspaceId, request.params.id).applyOpsAndSave(ops, {
+            baseRevision: request.body?.baseRevision,
+          }),
         );
         if (!result.success) {
-          return reply.code(422).send({ success: false, errors: result.errors });
+          return reply
+            .code(result.stale ? 409 : 422)
+            .send({ success: false, errors: result.errors, revision: result.revision });
         }
-        return { success: true, spec: result.spec };
+        return {
+          success: true,
+          spec: result.spec,
+          revision: result.revision,
+          changes: result.changes,
+        };
       } catch (err) {
         if (err instanceof SpecNotFoundError) {
           return reply

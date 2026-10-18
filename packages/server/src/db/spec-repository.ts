@@ -1,6 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
-  applyPatchToSource,
+  evaluateOps,
+  persistLayoutMoves,
+  staleResult,
+  type ApplyOpsResult,
+  type SpecOp,
   type ApplyPatchResult,
   type LayoutMap,
   type PatchOp,
@@ -82,18 +86,51 @@ export class PgSpecRepository implements SpecRepository {
 
   /** Validates a patch against a fresh read before writing; an invalid mutation never reaches the database. */
   async applyPatchAndSave(ops: PatchOp[]): Promise<ApplyPatchResult> {
-    const source = await this.readSource();
-    const result = applyPatchToSource(source, ops);
-    if (!result.success) {
-      return result;
-    }
+    return this.applyOpsAndSave(ops);
+  }
 
-    await this.db
+  /**
+   * ADR-0055. The row is read `FOR UPDATE` (inside the caller's workspace-scoped transaction, so a second
+   * save waits instead of overwriting) and written `WHERE version = <the version just read>`, so even
+   * outside a transaction a lost update is refused as `stale` rather than silently applied. The revision
+   * is the row's version.
+   */
+  async applyOpsAndSave(
+    ops: SpecOp[],
+    options: { baseRevision?: string } = {},
+  ): Promise<ApplyOpsResult> {
+    const [row] = await this.db
+      .select({ yamlSource: specs.yamlSource, version: specs.version })
+      .from(specs)
+      .where(and(eq(specs.id, this.specId), eq(specs.workspaceId, this.workspaceId)))
+      .for("update");
+    if (!row) {
+      throw new SpecNotFoundError(this.specId, this.workspaceId);
+    }
+    const revision = String(row.version);
+    const result = evaluateOps({ source: row.yamlSource, revision }, ops, options.baseRevision);
+    if (!result.success) {
+      return "stale" in result ? { ...result } : { ...result, revision };
+    }
+    if (result.source === row.yamlSource) return { ...result, revision };
+
+    const [updated] = await this.db
       .update(specs)
       .set({ yamlSource: result.source, version: sql`${specs.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(specs.id, this.specId), eq(specs.workspaceId, this.workspaceId)));
-
-    return result;
+      .where(
+        and(
+          eq(specs.id, this.specId),
+          eq(specs.workspaceId, this.workspaceId),
+          eq(specs.version, row.version),
+        ),
+      )
+      .returning({ version: specs.version });
+    if (!updated) {
+      // Someone else wrote between the read and the write (only possible outside a transaction).
+      return staleResult(row.yamlSource, revision);
+    }
+    await persistLayoutMoves(this, result.layoutMoves);
+    return { ...result, revision: String(updated.version) };
   }
 
   /** Every spec row in this repository's workspace -- see `SpecRepository.list()`'s docstring for why this is genuinely workspace-wide, unlike every other method here. */
