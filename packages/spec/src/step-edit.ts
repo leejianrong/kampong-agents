@@ -1,6 +1,10 @@
 import type { AgentSpec, WorkflowStep } from "./schema.js";
 import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 import type { PatchOp } from "./mutate.js";
+import { diagnoseExpression, type ExpressionScope } from "./expression-assist.js";
+import { parseExpression } from "./expression.js";
+import { parseEvery } from "./schedule.js";
+import { buildWorkflowStepFromForm } from "./workflow-form.js";
 
 // Editing a step that is already in the workflow, from the canvas (KAM-162, a slice of KAM-110): which steps
 // there are and where each sits in the file, and the form logic for an action step's per-step model settings and
@@ -276,4 +280,102 @@ export function buildActionStepEdit(
   field("temperature", temperature, step.step.temperature);
   field("output_schema", schema, step.step.output_schema);
   return { success: true, patch };
+}
+
+// ---- transform, validate and dedupe steps (KAM-152) ----------------------------------------------
+
+export type DataStepEditInput =
+  | { kind: "transform"; set: string }
+  | { kind: "validate"; assert: string; onFail: "fail" | "skip"; message: string }
+  | { kind: "dedupe"; key: string; ttl: string };
+
+type DataStep = Extract<WorkflowStep, { type: "transform" | "validate" | "dedupe" }>;
+
+/** The form's text for an existing data step. `set` is one `name: expression` per line. */
+export function dataStepToEditInput(step: DataStep): DataStepEditInput {
+  if (step.type === "transform") {
+    return {
+      kind: "transform",
+      set: Object.entries(step.set)
+        .map(([name, expression]) => `${name}: ${expression}`)
+        .join("\n"),
+    };
+  }
+  if (step.type === "validate") {
+    return {
+      kind: "validate",
+      assert: step.assert,
+      onFail: step.on_fail === "skip" ? "skip" : "fail",
+      message: step.message ?? "",
+    };
+  }
+  return { kind: "dedupe", key: step.once.key, ttl: step.once.ttl };
+}
+
+/**
+ * Validates the form and returns the patch for the fields that changed. Expressions get the loader's syntax check
+ * and, when `scope` is given, its name check, so a step that would not load is not saved. A transform's `set` is
+ * replaced whole, so a removed name goes with it.
+ */
+export function buildDataStepEdit(
+  input: DataStepEditInput,
+  step: { path: (string | number)[]; step: DataStep },
+  version: string,
+  scope?: ExpressionScope,
+): ActionStepEditResult {
+  const errors: string[] = [];
+  if (version !== "1.1") errors.push(`a ${input.kind} step needs version "1.1"`);
+  const check = (source: string, where: string) => {
+    if (source.trim() === "") return;
+    const parsed = parseExpression(source);
+    if (!parsed.ok) {
+      for (const e of parsed.errors) errors.push(`${where}: ${e.message}`);
+    } else if (scope) {
+      for (const d of diagnoseExpression(source, scope)) errors.push(`${where}: ${d.message}`);
+    }
+  };
+  const patch: PatchOp[] = [];
+  const put = (path: (string | number)[], value: unknown, before: unknown) => {
+    if (JSON.stringify(value) !== JSON.stringify(before)) patch.push({ op: "set", path, value });
+  };
+  const at = step.path;
+  const existing = step.step;
+
+  if (input.kind === "transform" && existing.type === "transform") {
+    const built = buildWorkflowStepFromForm({
+      kind: "transform",
+      step: existing.step,
+      set: input.set,
+    });
+    if (!built.success) errors.push(...(built.errors ?? []));
+    else {
+      const set = (built.step as { set: Record<string, string> }).set;
+      for (const [name, expression] of Object.entries(set)) check(expression, `${name}`);
+      put([...at, "set"], set, existing.set);
+    }
+  } else if (input.kind === "validate" && existing.type === "validate") {
+    if (input.assert.trim() === "") errors.push("A validate step needs an assertion");
+    check(input.assert, "assert");
+    const message = input.message.trim();
+    put([...at, "assert"], input.assert.trim(), existing.assert);
+    put([...at, "on_fail"], input.onFail, existing.on_fail ?? "fail");
+    if (message === "") {
+      if (existing.message !== undefined) patch.push({ op: "remove", path: [...at, "message"] });
+    } else put([...at, "message"], message, existing.message);
+  } else if (input.kind === "dedupe" && existing.type === "dedupe") {
+    const key = input.key.trim();
+    const ttl = input.ttl.trim();
+    if (key === "") errors.push("A dedupe step needs a key expression");
+    check(key, "key");
+    if (ttl === "") errors.push("A dedupe step needs a ttl (e.g. 24h)");
+    else {
+      const parsed = parseEvery(ttl);
+      if (!parsed.ok) errors.push(`ttl: ${parsed.error}`);
+    }
+    put([...at, "once", "key"], key, existing.once.key);
+    put([...at, "once", "ttl"], ttl, existing.once.ttl);
+  } else {
+    errors.push("The form does not match the step");
+  }
+  return errors.length > 0 ? { success: false, errors } : { success: true, patch };
 }

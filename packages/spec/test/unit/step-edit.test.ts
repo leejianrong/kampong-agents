@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseSpec, toYamlString } from "../../src/parse.js";
+import { expressionScopeFor } from "../../src/expression-assist.js";
 import { applyPatch } from "../../src/mutate.js";
 import {
   actionStepToEditInput,
   buildActionStepEdit,
+  buildDataStepEdit,
+  dataStepToEditInput,
+  type DataStepEditInput,
   buildOutputSchema,
   emptySchemaDraft,
   listSteps,
@@ -279,6 +283,135 @@ describe("buildActionStepEdit", () => {
         'temperature needs version "1.1"',
         'output_schema needs version "1.1"',
       ],
+    });
+  });
+});
+
+describe("data steps (KAM-152)", () => {
+  const DATA = `# data
+version: "1.1"
+vars:
+  limit:
+    type: number
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: fetch
+      action: fetch
+    - step: shape
+      type: transform
+      set:
+        # the title
+        title: fetch.title
+        n: vars.limit
+    - step: check
+      type: validate
+      assert: $exists(shape.title)
+      on_fail: skip
+      message: no title
+    - step: once
+      type: dedupe
+      once:
+        key: shape.title
+        ttl: 24h
+`;
+  const loadData = () => {
+    const { doc, spec, errors } = parseSpec(DATA);
+    expect(errors).toEqual([]);
+    return { doc, spec: spec! };
+  };
+  const run = (
+    name: string,
+    change: (i: DataStepEditInput) => DataStepEditInput,
+    version = "1.1",
+  ) => {
+    const { doc, spec } = loadData();
+    const ref = listSteps(spec).find((r) => r.name === name)!;
+    const input = change(dataStepToEditInput(ref.step as never));
+    const r = buildDataStepEdit(
+      input,
+      ref as never,
+      version,
+      expressionScopeFor(spec, { before: name }),
+    );
+    if (!r.success) return r;
+    applyPatch(doc, r.patch);
+    return { success: true as const, patch: r.patch, text: toYamlString(doc) };
+  };
+
+  it("turns each step into form text and back to no change", () => {
+    const { spec } = loadData();
+    for (const ref of listSteps(spec).filter((r) =>
+      ["transform", "validate", "dedupe"].includes(r.kind),
+    )) {
+      const input = dataStepToEditInput(ref.step as never);
+      expect(buildDataStepEdit(input, ref as never, "1.1")).toEqual({ success: true, patch: [] });
+    }
+    expect(dataStepToEditInput(listSteps(spec)[1]!.step as never)).toEqual({
+      kind: "transform",
+      set: "title: fetch.title\nn: vars.limit",
+    });
+  });
+
+  it("edits a transform's values and loads clean", () => {
+    const r = run(
+      "shape",
+      (i) => ({ ...i, set: "title: fetch.title\nlimit: vars.limit * 2" }) as never,
+    );
+    expect(r.success).toBe(true);
+    const text = (r as { text: string }).text;
+    expect(parseSpec(text).errors).toEqual([]);
+    expect(text).toContain("limit: vars.limit * 2");
+    expect(text.startsWith("# data\n")).toBe(true);
+  });
+
+  it("edits validate and dedupe fields, and clears the message", () => {
+    const v = run(
+      "check",
+      (i) => ({ ...i, assert: "$exists(shape.n)", onFail: "fail", message: "" }) as never,
+    );
+    const vt = (v as { text: string }).text;
+    expect(parseSpec(vt).errors).toEqual([]);
+    expect(vt).toContain("assert: $exists(shape.n)");
+    expect(vt).toContain("on_fail: fail");
+    expect(vt).not.toContain("no title");
+    const d = run("once", (i) => ({ ...i, key: "shape.n", ttl: "1d" }) as never);
+    const dt = (d as { text: string }).text;
+    expect(parseSpec(dt).errors).toEqual([]);
+    expect(dt).toContain("key: shape.n");
+    expect(dt).toContain("ttl: 1d");
+  });
+
+  it("refuses what the loader refuses: syntax, unknown names, ttl, blanks", () => {
+    const errs = (name: string, change: (i: DataStepEditInput) => unknown) => {
+      const r = run(name, change as never);
+      return r.success ? [] : r.errors;
+    };
+    expect(errs("shape", (i) => ({ ...i, set: "a: (" }))[0]).toMatch(/^a: /);
+    expect(errs("shape", (i) => ({ ...i, set: "a: nosuch.x" }))[0]).toMatch(
+      /not something an expression can read/,
+    );
+    expect(errs("shape", (i) => ({ ...i, set: "a: vars.nope" }))[0]).toMatch(
+      /vars.nope is not declared/,
+    );
+    expect(errs("shape", (i) => ({ ...i, set: "" }))[0]).toMatch(/at least one value/);
+    expect(errs("check", (i) => ({ ...i, assert: "" }))).toEqual([
+      "A validate step needs an assertion",
+    ]);
+    expect(errs("check", (i) => ({ ...i, assert: "a =" }))[0]).toMatch(/^assert: /);
+    expect(errs("once", (i) => ({ ...i, ttl: "soon" }))[0]).toMatch(/^ttl: /);
+    expect(errs("once", (i) => ({ ...i, key: "" }))).toEqual([
+      "A dedupe step needs a key expression",
+    ]);
+  });
+
+  it("needs version 1.1", () => {
+    expect(run("check", (i) => i, "1.0")).toEqual({
+      success: false,
+      errors: ['a validate step needs version "1.1"'],
     });
   });
 });
