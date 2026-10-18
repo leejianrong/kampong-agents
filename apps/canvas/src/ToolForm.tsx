@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   buildToolFromForm,
+  httpToolToDraft,
   parseKeyValueLines,
   type ComponentCatalogEntry,
   type OutputReferenceOption,
@@ -23,6 +24,11 @@ type ToolKind = "http_request" | "slack_post_message" | "gmail_send" | "componen
 
 export interface ToolFormProps {
   /**
+   * A tool to edit (KAM-175). The form starts from its values, its kind and name are fixed (a rename also has to
+   * change the steps that call it), and Save hands back the rebuilt tool for the caller to diff against this one.
+   */
+  initial?: Tool;
+  /**
    * Installed components (KAN-1885). When omitted, which is the case on a server that has none to offer,
    * the Component kind is not shown.
    */
@@ -41,6 +47,7 @@ export interface ToolFormProps {
 }
 
 export function ToolForm({
+  initial,
   components,
   componentProblems,
   references,
@@ -48,24 +55,32 @@ export function ToolForm({
   onSubmit,
   onCancel,
 }: ToolFormProps) {
-  const [kind, setKind] = useState<ToolKind>("http_request");
-  const [name, setName] = useState("");
-  const [method, setMethod] = useState("GET");
-  const [url, setUrl] = useState("");
-  const [extract, setExtract] = useState("");
+  const editing = initial !== undefined;
+  const http = initial?.action === "http_request" ? httpToolToDraft(initial) : undefined;
+  const slack = initial?.action === "slack_post_message" ? initial : undefined;
+  const gmail = initial?.action === "gmail_send" ? initial : undefined;
+  const [kind, setKind] = useState<ToolKind>(initial?.action ?? "http_request");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [method, setMethod] = useState(http?.method ?? "GET");
+  const [url, setUrl] = useState(http?.url ?? "");
+  const [extract, setExtract] = useState(initial?.extract ?? "");
   // KAN-1845: headers and query are one `name: value` / `name=value` per line.
-  const [headers, setHeaders] = useState("");
-  const [query, setQuery] = useState("");
-  const [bodyType, setBodyType] = useState<"none" | "json" | "form" | "raw">("none");
-  const [bodyContent, setBodyContent] = useState("");
-  const [bodyContentType, setBodyContentType] = useState("");
-  const [responseMode, setResponseMode] = useState<"json" | "text" | "bytes">("json");
-  const [token, setToken] = useState("");
-  const [channel, setChannel] = useState("");
-  const [text, setText] = useState("");
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [headers, setHeaders] = useState(http?.headers ?? "");
+  const [query, setQuery] = useState(http?.query ?? "");
+  const [bodyType, setBodyType] = useState<"none" | "json" | "form" | "raw">(
+    http?.bodyType ?? "none",
+  );
+  const [bodyContent, setBodyContent] = useState(http?.bodyContent ?? "");
+  const [bodyContentType, setBodyContentType] = useState(http?.bodyContentType ?? "");
+  const [responseMode, setResponseMode] = useState<"json" | "text" | "bytes">(
+    http?.responseMode ?? "json",
+  );
+  const [token, setToken] = useState(slack?.token ?? gmail?.token ?? "");
+  const [channel, setChannel] = useState(slack?.channel ?? "");
+  const [text, setText] = useState(slack?.text ?? "");
+  const [to, setTo] = useState(gmail?.to ?? "");
+  const [subject, setSubject] = useState(gmail?.subject ?? "");
+  const [body, setBody] = useState(gmail?.body ?? "");
   const [errors, setErrors] = useState<string[]>([]);
 
   function buildBody(): { value?: RequestBody; error?: string } {
@@ -99,7 +114,7 @@ export function ToolForm({
     ["gmail_send", "Gmail"],
     ...(components !== undefined ? ([["component", "Component"]] as const) : []),
   ];
-  const kindSwitcher = (
+  const kindSwitcher = editing ? null : (
     <div className="md3-field">
       <span className="md3-field__label md3-label-large">Tool kind</span>
       <div className="md3-segmented-button" role="group" aria-label="Tool kind">
@@ -122,13 +137,14 @@ export function ToolForm({
     </div>
   );
 
-  if (kind === "component" && components !== undefined) {
+  if (kind === "component" && (components !== undefined || editing)) {
     return (
       <ComponentToolForm
+        initial={initial?.action === "component" ? initial : undefined}
         // Re-mounted when the installed list changes, so the first selection follows what is there now
         // rather than what was there when the form opened.
-        key={components.map((c) => `${c.id}@${c.version}`).join(",")}
-        components={components}
+        key={(components ?? []).map((c) => `${c.id}@${c.version}`).join(",")}
+        components={components ?? []}
         problems={componentProblems}
         references={references}
         header={kindSwitcher}
@@ -193,12 +209,21 @@ export function ToolForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-form md3-form--fill">
+    <form
+      onSubmit={handleSubmit}
+      aria-label={editing ? "Edit Tool" : "Add Tool"}
+      className="md3-form md3-form--fill"
+    >
       {kindSwitcher}
 
       <label className="md3-field">
         <span className="md3-field__label md3-label-large">Name</span>
-        <input className="md3-text-field" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="md3-text-field"
+          value={name}
+          disabled={editing}
+          onChange={(e) => setName(e.target.value)}
+        />
       </label>
 
       {kind === "http_request" && (

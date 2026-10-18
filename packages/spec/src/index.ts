@@ -33,3 +33,4 @@ export * from "./expression-assist.js";
 export * from "./trigger-form.js";
 export * from "./step-edit.js";
 export * from "./upgrade.js";
+export * from "./tool-edit.js";

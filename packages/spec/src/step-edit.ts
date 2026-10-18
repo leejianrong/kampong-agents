@@ -308,7 +308,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
  * instead would rewrite keys nobody touched (moving `required` below `properties`, say) and drop the style the
  * author used for them.
  */
-function diffPatch(path: (string | number)[], before: unknown, after: unknown): PatchOp[] {
+export function diffPatch(path: (string | number)[], before: unknown, after: unknown): PatchOp[] {
   if (canonical(before) === canonical(after)) return [];
   if (!isPlainObject(before) || !isPlainObject(after)) return [{ op: "set", path, value: after }];
   const ops: PatchOp[] = [];
@@ -496,6 +496,87 @@ export function buildDataStepEdit(
     }
     put([...at, "once", "key"], key, existing.once.key);
     put([...at, "once", "ttl"], ttl, existing.once.ttl);
+  } else {
+    errors.push("The form does not match the step");
+  }
+  return errors.length > 0 ? { success: false, errors } : { success: true, patch };
+}
+
+// ---- tool, stop and approval steps (KAM-175) -----------------------------------------------------
+
+export type SimpleStepEditInput =
+  | { kind: "tool"; tool: string }
+  | { kind: "stop"; reason: string; status: "" | "completed" | "skipped" }
+  | { kind: "approval"; message: string };
+
+type SimpleStep = Extract<WorkflowStep, { type: "tool" | "approval" } | { stop: unknown }>;
+
+/** Whether the step is one `buildSimpleStepEdit` handles. */
+export function isSimpleStep(step: WorkflowStep): step is SimpleStep {
+  return "stop" in step || ("type" in step && (step.type === "tool" || step.type === "approval"));
+}
+
+export function simpleStepToEditInput(step: SimpleStep): SimpleStepEditInput {
+  if ("stop" in step) {
+    return { kind: "stop", reason: step.stop.reason ?? "", status: step.stop.status ?? "" };
+  }
+  if (step.type === "tool") return { kind: "tool", tool: step.tool };
+  return { kind: "approval", message: step.message ?? "" };
+}
+
+/**
+ * Validates the form and returns the patch for the fields that changed. A tool step must name a tool the agent
+ * declares (`toolNames`); a stop's reason and an approval's message are checked as templates like a query is.
+ * A cleared reason, status or message is removed from the file rather than written as an empty string.
+ */
+export function buildSimpleStepEdit(
+  input: SimpleStepEditInput,
+  step: { path: (string | number)[]; step: SimpleStep },
+  version: string,
+  toolNames: readonly string[],
+  scope?: ExpressionScope,
+): ActionStepEditResult {
+  const errors: string[] = [];
+  const patch: PatchOp[] = [];
+  const existing = step.step;
+  const checkTemplate = (source: string, where: string) => {
+    if (version !== "1.1") return;
+    for (const { expression } of templateExpressions(source)) {
+      const parsed = parseExpression(expression);
+      if (!parsed.ok) for (const e of parsed.errors) errors.push(`${where}: ${e.message}`);
+      else if (scope) {
+        for (const d of diagnoseExpression(expression, scope))
+          errors.push(`${where}: ${d.message}`);
+      }
+    }
+  };
+  // Compared trimmed, so a block scalar that ends in a newline is not rewritten when the text is untouched.
+  const text = (path: (string | number)[], value: string, before: string | undefined) => {
+    if (value === (before ?? "").trim()) return;
+    if (value === "") patch.push({ op: "remove", path });
+    else patch.push({ op: "set", path, value });
+  };
+
+  if (input.kind === "tool" && "type" in existing && existing.type === "tool") {
+    const tool = input.tool.trim();
+    if (tool === "") errors.push("Choose the tool this step calls");
+    else if (!toolNames.includes(tool)) errors.push(`"${tool}" is not a tool of this agent`);
+    else if (tool !== existing.tool) {
+      patch.push({ op: "set", path: [...step.path, "tool"], value: tool });
+    }
+  } else if (input.kind === "stop" && "stop" in existing) {
+    if (version !== "1.1") errors.push('a stop step needs version "1.1"');
+    const reason = input.reason.trim();
+    checkTemplate(reason, "reason");
+    text([...step.path, "stop", "reason"], reason, existing.stop.reason);
+    if (input.status !== (existing.stop.status ?? "")) {
+      if (input.status === "") patch.push({ op: "remove", path: [...step.path, "stop", "status"] });
+      else patch.push({ op: "set", path: [...step.path, "stop", "status"], value: input.status });
+    }
+  } else if (input.kind === "approval" && "type" in existing && existing.type === "approval") {
+    const message = input.message.trim();
+    checkTemplate(message, "message");
+    text([...step.path, "message"], message, existing.message);
   } else {
     errors.push("The form does not match the step");
   }

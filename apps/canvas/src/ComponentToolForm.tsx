@@ -3,6 +3,9 @@ import { ComponentTrust, type PinResult } from "./ComponentTrust.js";
 import {
   buildComponentToolFromForm,
   buildOpInput,
+  mergeWith,
+  withToFormValues,
+  withToYaml,
   parseWithYaml,
   planOpForm,
   type ComponentCatalogEntry,
@@ -17,6 +20,12 @@ import {
 // what a form can express falls back to editing `with` as YAML. Secrets are only ever `${ENV}` names.
 
 export interface ComponentToolFormProps {
+  /**
+   * A component tool to edit (KAM-175). Its component, version and operation are fixed; the inputs, config, secrets,
+   * approval and extract start from what it has. When the component is not installed, or an input is not
+   * something a field can show, the inputs are edited as YAML instead.
+   */
+  initial?: Extract<Tool, { action: "component" }>;
   components: ComponentCatalogEntry[];
   /** Problems loading components (a manifest in the wrong place, say), shown so a missing one is explained. */
   problems?: string[];
@@ -76,6 +85,7 @@ const EFFECT_HINT = {
 } as const;
 
 export function ComponentToolForm({
+  initial,
   components,
   problems = [],
   references = [],
@@ -84,22 +94,38 @@ export function ComponentToolForm({
   onSubmit,
   onCancel,
 }: ComponentToolFormProps) {
-  const [name, setName] = useState("");
-  const [use, setUse] = useState(components[0] ? refOf(components[0]) : "");
+  const editing = initial !== undefined;
+  const [name, setName] = useState(initial?.name ?? "");
+  const [use, setUse] = useState(initial?.use ?? (components[0] ? refOf(components[0]) : ""));
   const entry = components.find((c) => refOf(c) === use);
   const opNames = entry ? Object.keys(entry.ops) : [];
-  const [op, setOp] = useState(opNames[0] ?? "");
-  const [values, setValues] = useState<Record<string, FormValue>>({});
-  const [yaml, setYaml] = useState("");
-  const [config, setConfig] = useState<Record<string, string>>({});
-  const [secrets, setSecrets] = useState<Record<string, string>>({});
-  const [approval, setApproval] = useState<"default" | "always" | "never">("default");
-  const [extract, setExtract] = useState("");
-  const [focused, setFocused] = useState<string | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
-
+  const [op, setOp] = useState(initial?.op ?? opNames[0] ?? "");
   const opSpec = entry && Object.hasOwn(entry.ops, op) ? entry.ops[op] : undefined;
   const plan = useMemo(() => planOpForm(opSpec?.input), [opSpec]);
+  // An edit shows the saved inputs as fields when the op is known and every value fits its field; otherwise as YAML.
+  const seeded = useMemo(() => {
+    if (!initial) return undefined;
+    if (!opSpec) return { reason: "the component is not installed" };
+    if (!plan.supported) return { reason: plan.reason ?? "the input is not supported" };
+    return withToFormValues(plan, initial.with);
+  }, [initial, opSpec, plan]);
+  const yamlMode = editing ? seeded !== undefined && "reason" in seeded : !plan.supported;
+  const [values, setValues] = useState<Record<string, FormValue>>(
+    seeded && "values" in seeded ? seeded.values : {},
+  );
+  const [yaml, setYaml] = useState(editing && yamlMode ? withToYaml(initial.with) : "");
+  const [config, setConfig] = useState<Record<string, string>>(initial?.config ?? {});
+  const [secrets, setSecrets] = useState<Record<string, string>>(initial?.secrets ?? {});
+  const [approval, setApproval] = useState<"default" | "always" | "never">(
+    initial?.requires_approval === undefined
+      ? "default"
+      : initial.requires_approval
+        ? "always"
+        : "never",
+  );
+  const [extract, setExtract] = useState(initial?.extract ?? "");
+  const [focused, setFocused] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
 
   function chooseComponent(next: string) {
     const picked = components.find((c) => refOf(c) === next);
@@ -151,18 +177,18 @@ export function ComponentToolForm({
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!entry || !opSpec) {
+    if (!editing && (!entry || !opSpec)) {
       setErrors(["Choose a component and an operation."]);
       return;
     }
     let withInput: Record<string, unknown>;
-    if (plan.supported) {
+    if (!yamlMode) {
       const built = buildOpInput(plan, values);
       if (built.errors.length > 0) {
         setErrors(built.errors);
         return;
       }
-      withInput = built.input;
+      withInput = initial ? mergeWith(plan, initial, built.input) : built.input;
     } else {
       const parsed = parseWithYaml(yaml);
       if (parsed.value === undefined) {
@@ -171,7 +197,7 @@ export function ComponentToolForm({
       }
       withInput = parsed.value;
     }
-    const missingConfig = entry.config
+    const missingConfig = (entry?.config ?? [])
       .filter((param) => param.required && (config[param.name] ?? "").trim() === "")
       .map((param) => `${param.name} is required`);
     if (missingConfig.length > 0) {
@@ -301,10 +327,14 @@ export function ComponentToolForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-form md3-form--fill">
+    <form
+      onSubmit={handleSubmit}
+      aria-label={editing ? "Edit Tool" : "Add Tool"}
+      className="md3-form md3-form--fill"
+    >
       {header}
 
-      {components.length === 0 ? (
+      {components.length === 0 && !editing ? (
         <div role="status" className="md3-banner md3-banner--info">
           <p>
             No components are installed. Put one under{" "}
@@ -326,6 +356,7 @@ export function ComponentToolForm({
             <input
               className="md3-text-field"
               value={name}
+              disabled={editing}
               onChange={(e) => setName(e.target.value)}
             />
           </label>
@@ -334,20 +365,24 @@ export function ComponentToolForm({
           {entry && <ComponentTrust key={`${use}:${entry.digest}`} entry={entry} onPin={onPin} />}
 
           <Field label="Component" hint={entry?.description}>
-            {(control) => (
-              <select
-                {...control}
-                className="md3-text-field"
-                value={use}
-                onChange={(e) => chooseComponent(e.target.value)}
-              >
-                {components.map((c) => (
-                  <option key={refOf(c)} value={refOf(c)}>
-                    {c.title ? `${c.title} (${refOf(c)})` : refOf(c)}
-                  </option>
-                ))}
-              </select>
-            )}
+            {(control) =>
+              editing ? (
+                <input {...control} className="md3-text-field" value={use} disabled readOnly />
+              ) : (
+                <select
+                  {...control}
+                  className="md3-text-field"
+                  value={use}
+                  onChange={(e) => chooseComponent(e.target.value)}
+                >
+                  {components.map((c) => (
+                    <option key={refOf(c)} value={refOf(c)}>
+                      {c.title ? `${c.title} (${refOf(c)})` : refOf(c)}
+                    </option>
+                  ))}
+                </select>
+              )
+            }
           </Field>
 
           <Field
@@ -358,23 +393,27 @@ export function ComponentToolForm({
                 : undefined
             }
           >
-            {(control) => (
-              <select
-                {...control}
-                className="md3-text-field"
-                value={op}
-                onChange={(e) => chooseOp(e.target.value)}
-              >
-                {opNames.map((n) => (
-                  <option key={n} value={n}>
-                    {entry!.ops[n]!.title ?? n}
-                  </option>
-                ))}
-              </select>
-            )}
+            {(control) =>
+              editing ? (
+                <input {...control} className="md3-text-field" value={op} disabled readOnly />
+              ) : (
+                <select
+                  {...control}
+                  className="md3-text-field"
+                  value={op}
+                  onChange={(e) => chooseOp(e.target.value)}
+                >
+                  {opNames.map((n) => (
+                    <option key={n} value={n}>
+                      {entry!.ops[n]!.title ?? n}
+                    </option>
+                  ))}
+                </select>
+              )
+            }
           </Field>
 
-          {references.length > 0 && plan.supported && (
+          {references.length > 0 && !yamlMode && (
             <label className="md3-field">
               <span className="md3-field__label md3-label-large">Insert reference</span>
               <select
@@ -397,14 +436,14 @@ export function ComponentToolForm({
             </label>
           )}
 
-          {plan.supported ? (
+          {!yamlMode ? (
             plan.fields.map((field) => renderField(field))
           ) : (
             <>
               <div role="note" className="md3-banner md3-banner--info">
                 <p>
-                  This operation's input is outside what the form can show ({plan.reason}). Enter it
-                  as YAML.
+                  This operation's input is outside what the form can show (
+                  {seeded && "reason" in seeded ? seeded.reason : plan.reason}). Enter it as YAML.
                 </p>
               </div>
               <label className="md3-field">
@@ -489,7 +528,7 @@ export function ComponentToolForm({
         <button
           type="submit"
           className="md3-button md3-button-filled"
-          disabled={components.length === 0}
+          disabled={components.length === 0 && !editing}
         >
           Save tool
         </button>
