@@ -1,7 +1,7 @@
 import { basename, dirname, relative } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import { loadWithLayout, type AgentSpec, type PatchOp, type SpecRepository } from "@kampong/spec";
+import { loadWithLayout, type AgentSpec, type SpecOp, type SpecRepository } from "@kampong/spec";
 import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
@@ -277,29 +277,44 @@ export function createDevServer({
     },
   );
 
-  app.put<{ Body: { ops: PatchOp[] } }>("/api/spec", async (request, reply) => {
-    watcher.beginMutation();
-    try {
-      const result = await store.applyPatchAndSave(request.body.ops);
-      if (!result.success) {
+  app.put<{ Body: { ops: SpecOp[]; baseRevision?: string } }>(
+    "/api/spec",
+    async (request, reply) => {
+      watcher.beginMutation();
+      try {
+        // ADR-0055: `ops` may be raw patch ops or step/tool ops; `baseRevision` is optional.
+        const result = await store.applyOpsAndSave(request.body.ops, {
+          baseRevision: request.body.baseRevision,
+        });
+        if (!result.success) {
+          watcher.endMutation();
+          if (result.stale) {
+            reply.code(409);
+            return { success: false, errors: result.errors, revision: result.revision };
+          }
+          reply.code(422);
+          return { success: false, errors: result.errors, revision: result.revision };
+        }
+        // `result.source` is the exact bytes just written -- reusing it here
+        // (rather than re-reading the file) is what avoids a second
+        // store.readSource() call that used to throw its own ENOENT and mask
+        // whatever error/response was already in flight if the file got
+        // deleted mid-request.
+        watcher.endMutation(result.source);
+        return {
+          success: true,
+          spec: result.spec,
+          revision: result.revision,
+          changes: result.changes,
+        };
+      } catch (err) {
         watcher.endMutation();
-        reply.code(422);
-        return { success: false, errors: result.errors };
+        const { status, body } = specFileErrorResponse(err, specPath);
+        reply.code(status);
+        return body;
       }
-      // `result.source` is the exact bytes just written -- reusing it here
-      // (rather than re-reading the file) is what avoids a second
-      // store.readSource() call that used to throw its own ENOENT and mask
-      // whatever error/response was already in flight if the file got
-      // deleted mid-request.
-      watcher.endMutation(result.source);
-      return { success: true, spec: result.spec };
-    } catch (err) {
-      watcher.endMutation();
-      const { status, body } = specFileErrorResponse(err, specPath);
-      reply.code(status);
-      return body;
-    }
-  });
+    },
+  );
 
   app.get("/api/events", (request, reply) => {
     reply.hijack();

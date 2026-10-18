@@ -28,6 +28,7 @@ nav = [
   { "Reference" = [
     { "CLI" = "reference/cli.md" },
     { "AgentSpec schema" = "reference/agentspec.md" },
+    { "Spec editing API" = "reference/spec-api.md" },
   ] },
   { "Design decisions" = "design-decisions.md" },
 ]

@@ -209,6 +209,95 @@ describe.skipIf(!DATABASE_URL)("Authenticated spec-CRUD routes against a real Po
       expect(read.json().source).toBe(VALID_SPEC);
     });
 
+    // KAM-170 (ADR-0055): step operations, the refusal shapes and the revision token on the hosted route.
+    describe("step operations", () => {
+      const put = (cookie: string, specId: string, payload: unknown) =>
+        app.inject({
+          method: "PUT",
+          url: `/api/specs/${specId}`,
+          headers: { cookie },
+          payload: payload as object,
+        });
+
+      it("renames a step: 200 with the revision and the changes, the stored source rewritten", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const specId = (await createSpec(cookie, "greeter")).json().id;
+
+        const renamed = await put(cookie, specId, {
+          ops: [{ op: "step.rename", step: "greet", to: "hello" }],
+        });
+        expect(renamed.statusCode).toBe(200);
+        expect(renamed.json().revision).toBe("2");
+        expect(renamed.json().changes.renamed).toEqual([
+          { kind: "step", from: "greet", to: "hello" },
+        ]);
+        const read = await app.inject({
+          method: "GET",
+          url: `/api/specs/${specId}`,
+          headers: { cookie },
+        });
+        expect(read.json().source).toBe(VALID_SPEC.replace("step: greet", "step: hello"));
+      });
+
+      it("refuses a delete that would leave a read dangling: 422 with the references", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const source = `version: "1.1"
+agent:
+  id: greeter
+  name: "Greeter"
+  role: "Front desk"
+  goal: "Greet visitors."
+  workflow:
+    - step: greet
+      action: say_hello
+    - step: again
+      action: "{{ greet.text }} again"
+`;
+        const specId = (await createSpec(cookie, "g11", source)).json().id;
+        const refused = await put(cookie, specId, { ops: [{ op: "step.remove", step: "greet" }] });
+        expect(refused.statusCode).toBe(422);
+        const error = refused.json().errors[0];
+        expect(error.code).toBe("has_references");
+        expect(error.references[0]).toMatchObject({ kind: "template", line: 11 });
+        expect(refused.json().revision).toBe("1");
+      });
+
+      it("answers 409 for a stale baseRevision and applies the current one", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const specId = (await createSpec(cookie, "greeter")).json().id;
+        const goal = (value: string) => ({ ops: [{ op: "set", path: ["agent", "goal"], value }] });
+
+        expect((await put(cookie, specId, { ...goal("One"), baseRevision: "1" })).statusCode).toBe(
+          200,
+        );
+        const stale = await put(cookie, specId, { ...goal("Two"), baseRevision: "1" });
+        expect(stale.statusCode).toBe(409);
+        expect(stale.json()).toMatchObject({ success: false, revision: "2" });
+        expect(
+          (await put(cookie, specId, { ...goal("Three"), baseRevision: "2" })).statusCode,
+        ).toBe(200);
+      });
+
+      it("serialises two concurrent saves instead of losing one (the row is read FOR UPDATE)", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const specId = (await createSpec(cookie, "greeter")).json().id;
+
+        const [a, b] = await Promise.all([
+          put(cookie, specId, { ops: [{ op: "set", path: ["agent", "goal"], value: "From A" }] }),
+          put(cookie, specId, { ops: [{ op: "set", path: ["agent", "role"], value: "From B" }] }),
+        ]);
+        expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
+        expect([a.json().revision, b.json().revision].sort()).toEqual(["2", "3"]);
+        const read = await app.inject({
+          method: "GET",
+          url: `/api/specs/${specId}`,
+          headers: { cookie },
+        });
+        expect(read.json().source).toContain("From A");
+        expect(read.json().source).toContain("From B");
+      });
+    });
+
     it("returns 404 for a spec id that does not exist in the workspace", async () => {
       const { cookie } = await newUserWithWorkspace();
       const response = await app.inject({

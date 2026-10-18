@@ -19,7 +19,7 @@
 // erased at build time, is the safe way to share these shapes without
 // pulling a Node-only package into the browser bundle.
 import type { PendingApproval, RunEvent, RunState } from "@kampong/engine";
-import type { ComponentCatalog, SpecSummary } from "@kampong/spec";
+import type { ComponentCatalog, OpChanges, OpErrorCode, SpecOp, SpecSummary } from "@kampong/spec";
 
 export interface SpecErrorDto {
   path: (string | number)[];
@@ -45,6 +45,65 @@ export interface ApplyPatchResponse {
   success: boolean;
   spec?: Record<string, unknown>;
   errors?: SpecErrorDto[];
+}
+
+/** A rejected operation (ADR-0055): the usual error plus which op, a code, and the reads that block it. */
+export interface OpErrorDto extends SpecErrorDto {
+  code?: OpErrorCode;
+  opIndex?: number;
+  references?: { path: (string | number)[]; kind: string; text: string; line?: number }[];
+}
+
+export interface ApplyOpsResponse {
+  success: boolean;
+  spec?: Record<string, unknown>;
+  /** The spec's revision after the write, or (on a refusal) the current one. */
+  revision?: string;
+  changes?: OpChanges;
+  errors?: OpErrorDto[];
+  /** The `baseRevision` sent was out of date (HTTP 409); nothing was written. */
+  stale?: boolean;
+}
+
+/**
+ * Sends operations to the spec endpoint. A 422 (invalid) or 409 (stale) is an expected outcome the UI shows,
+ * so it resolves with `success: false`; any other failure throws an `ApiError`.
+ */
+async function postOps(
+  url: string,
+  ops: SpecOp[],
+  baseRevision: string | undefined,
+): Promise<ApplyOpsResponse> {
+  const res = await fetch(
+    url,
+    jsonInit({ ops, ...(baseRevision !== undefined && { baseRevision }) }, { method: "PUT" }),
+  );
+  if (res.status === 422 || res.status === 409) {
+    const body = (await res.json()) as ApplyOpsResponse;
+    return { ...body, ...(res.status === 409 && { stale: true }) };
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      await errorMessageFor(res, `Failed to save the change (HTTP ${res.status}).`),
+      res.status,
+    );
+  }
+  return (await res.json()) as ApplyOpsResponse;
+}
+
+/** `applyPatch`'s contract: a refused write throws, with the messages joined. */
+async function patchViaOps(
+  send: (ops: SpecOp[]) => Promise<ApplyOpsResponse>,
+  ops: PatchOp[],
+): Promise<ApplyPatchResponse> {
+  const result = await send(ops);
+  if (!result.success) {
+    throw new ApiError(
+      (result.errors ?? []).map((e) => e.message).join("; ") || "Failed to save the change.",
+      result.stale ? 409 : 422,
+    );
+  }
+  return result;
 }
 
 export interface StartRunResponse {
@@ -97,6 +156,13 @@ export interface PinComponentResponse {
 export interface ApiClient {
   loadSpec(): Promise<LoadSpecResponse>;
   applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse>;
+  /**
+   * Applies raw patch ops and step/tool operations in one request (ADR-0055). Resolves with
+   * `success: false` and `errors` (with a `code`, and `references` for a blocked delete or move) when the
+   * request is refused; throws only for transport and server errors. `baseRevision` makes the write
+   * conditional on the spec not having changed (`stale: true` otherwise).
+   */
+  applyOps(ops: SpecOp[], options?: { baseRevision?: string }): Promise<ApplyOpsResponse>;
   /**
    * Subscribes to out-of-band spec-change events. Only the local server has a
    * file watcher (ADR-0008); the hosted client returns a no-op unsubscribe,
@@ -206,14 +272,11 @@ export function createApiClient(baseUrl = ""): ApiClient {
     },
 
     async applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse> {
-      const res = await fetch(`${baseUrl}/api/spec`, jsonInit({ ops }, { method: "PUT" }));
-      if (!res.ok) {
-        throw new ApiError(
-          await errorMessageFor(res, `Failed to save the change (HTTP ${res.status}).`),
-          res.status,
-        );
-      }
-      return (await res.json()) as ApplyPatchResponse;
+      return patchViaOps((o) => this.applyOps(o), ops);
+    },
+
+    async applyOps(ops, options): Promise<ApplyOpsResponse> {
+      return postOps(`${baseUrl}/api/spec`, ops, options?.baseRevision);
     },
 
     async listComponents(): Promise<ComponentCatalog> {
@@ -542,6 +605,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
   const wrapSpecClient = (c: ApiClient): ApiClient => ({
     loadSpec: wrap(c.loadSpec.bind(c)),
     applyPatch: wrap(c.applyPatch.bind(c)),
+    applyOps: wrap(c.applyOps.bind(c)),
     subscribeToEvents: c.subscribeToEvents.bind(c),
     startRun: c.startRun.bind(c),
     approveRun: c.approveRun.bind(c),
@@ -585,17 +649,11 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
     },
 
     async applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse> {
-      const res = await fetch(
-        `${baseUrl}/api/specs/${specId}`,
-        jsonInit({ ops }, { method: "PUT" }),
-      );
-      if (!res.ok) {
-        throw new ApiError(
-          await errorMessageFor(res, `Failed to save the change (HTTP ${res.status}).`),
-          res.status,
-        );
-      }
-      return (await res.json()) as ApplyPatchResponse;
+      return patchViaOps((o) => this.applyOps(o), ops);
+    },
+
+    async applyOps(ops, options): Promise<ApplyOpsResponse> {
+      return postOps(`${baseUrl}/api/specs/${specId}`, ops, options?.baseRevision);
     },
 
     subscribeToEvents(): () => void {

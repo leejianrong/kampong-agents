@@ -118,6 +118,84 @@ describe("createApiClient", () => {
     ).rejects.toThrow(/must not be empty/);
   });
 
+  // KAM-170 (ADR-0055): applyOps sends operations and a baseRevision; a refusal resolves, it does not throw.
+  describe("applyOps", () => {
+    const rename = [{ op: "step.rename" as const, step: "a", to: "b" }];
+
+    it("sends ops and baseRevision to PUT /api/spec and returns the revision and changes", async () => {
+      const body = {
+        success: true,
+        revision: "r2",
+        changes: { renamed: [{ kind: "step", from: "a", to: "b" }], removed: [], rewrote: 1 },
+      };
+      const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => fakeResponse(200, body));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await createApiClient("http://h").applyOps(rename, { baseRevision: "r1" });
+
+      expect(result).toEqual(body);
+      expect(fetchMock.mock.calls[0]![0]).toBe("http://h/api/spec");
+      expect(fetchMock.mock.calls[0]![1].method).toBe("PUT");
+      expect(JSON.parse(fetchMock.mock.calls[0]![1].body as string)).toEqual({
+        ops: rename,
+        baseRevision: "r1",
+      });
+    });
+
+    it("omits baseRevision when none is given", async () => {
+      const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+        fakeResponse(200, { success: true }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await createApiClient("http://h").applyOps(rename);
+      expect(JSON.parse(fetchMock.mock.calls[0]![1].body as string)).toEqual({ ops: rename });
+    });
+
+    it("resolves with the codes and references on a 422, and with stale on a 409", async () => {
+      const errors = [
+        {
+          code: "has_references",
+          message: "step a is read in 1 place",
+          path: [],
+          references: [{ path: ["agent"], kind: "template", text: "{{ a.x }}", line: 3 }],
+        },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => fakeResponse(422, { success: false, errors })),
+      );
+      const refused = await createApiClient().applyOps([{ op: "step.remove", step: "a" }]);
+      expect(refused).toEqual({ success: false, errors });
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          fakeResponse(409, { success: false, errors: [{ code: "stale" }], revision: "r9" }),
+        ),
+      );
+      const stale = await createApiClient().applyOps(rename, { baseRevision: "r1" });
+      expect(stale).toMatchObject({ success: false, stale: true, revision: "r9" });
+    });
+
+    it("throws an ApiError for a server error, and applyPatch still throws on a refusal", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => fakeResponse(500, { error: "boom" })),
+      );
+      await expect(createApiClient().applyOps(rename)).rejects.toThrow(/boom/);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          fakeResponse(409, { success: false, errors: [{ message: "changed meanwhile" }] }),
+        ),
+      );
+      await expect(
+        createApiClient().applyPatch([{ op: "set", path: ["agent", "goal"], value: "x" }]),
+      ).rejects.toMatchObject({ status: 409, message: "changed meanwhile" });
+    });
+  });
+
   it("listComponents reads /api/components", async () => {
     const body = { components: [], problems: ["x"] };
     const fetchMock = vi.fn(async (_url: string) => fakeResponse(200, body));

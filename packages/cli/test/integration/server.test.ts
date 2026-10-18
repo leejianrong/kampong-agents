@@ -75,6 +75,64 @@ describe("createDevServer", () => {
     expect(readFileSync(specPath, "utf8")).toBe(before);
   });
 
+  // KAM-170 (ADR-0055): the same endpoint takes step and tool operations and an optional baseRevision.
+  describe("PUT /api/spec with step operations", () => {
+    const put = (payload: unknown) =>
+      app.inject({ method: "PUT", url: "/api/spec", payload: payload as object });
+
+    it("renames a step: 200 with the revision and the changes, the file and the layout updated", async () => {
+      await app.inject({ method: "GET", url: "/api/spec" }); // seeds the layout
+      const response = await put({ ops: [{ op: "step.rename", step: "greet", to: "hello" }] });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.success).toBe(true);
+      expect(body.revision).toMatch(/^[0-9a-f]{16}$/);
+      expect(body.changes.renamed).toEqual([{ kind: "step", from: "greet", to: "hello" }]);
+      expect(readFileSync(specPath, "utf8")).toBe(
+        VALID_SOURCE.replace("step: greet", "step: hello"),
+      );
+      const layout = JSON.parse(readFileSync(layoutPath, "utf8"));
+      expect(layout["workflow:hello"]).toBeDefined();
+      expect(layout["workflow:greet"]).toBeUndefined();
+    });
+
+    it("refuses a delete that would leave a read dangling: 422 with a code and the references", async () => {
+      writeFileSync(
+        specPath,
+        VALID_SOURCE.replace(
+          "      action: say_hello\n",
+          '      action: say_hello\n    - step: again\n      action: "{{ greet.text }} again"\n',
+        ).replace('version: "1.0"', 'version: "1.1"'),
+      );
+      const before = readFileSync(specPath, "utf8");
+      const response = await put({ ops: [{ op: "step.remove", step: "greet" }] });
+
+      expect(response.statusCode).toBe(422);
+      const body = response.json();
+      expect(body.success).toBe(false);
+      expect(body.errors[0].code).toBe("has_references");
+      expect(body.errors[0].references[0]).toMatchObject({ kind: "template", line: 12 });
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+    });
+
+    it("answers 409 with the current revision when baseRevision is stale, and writes nothing", async () => {
+      const first = (await put({ ops: [] })).json();
+      await put({ ops: [{ op: "set", path: ["agent", "goal"], value: "Changed" }] });
+      const after = readFileSync(specPath, "utf8");
+
+      const stale = await put({
+        ops: [{ op: "set", path: ["agent", "goal"], value: "Lost" }],
+        baseRevision: first.revision,
+      });
+
+      expect(stale.statusCode).toBe(409);
+      expect(stale.json().errors[0].code).toBe("stale");
+      expect(stale.json().revision).not.toBe(first.revision);
+      expect(readFileSync(specPath, "utf8")).toBe(after);
+    });
+  });
+
   // KAN-1216: deleting the spec file out from under a running `kampong dev`
   // used to make GET /api/spec throw an uncaught ENOENT, which Fastify's
   // default error handler turned into a bare 500 leaking the raw fs error

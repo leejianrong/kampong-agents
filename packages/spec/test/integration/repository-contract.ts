@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { LayoutMap } from "../../src/layout.js";
+import type { SpecOp } from "../../src/ops.js";
+import { parseSpec } from "../../src/parse.js";
 import type { SpecRepository } from "../../src/repository.js";
 
 // KAN-1224 (ADR-0014's "both implementations pass the same round-trip
@@ -19,20 +22,283 @@ import type { SpecRepository } from "../../src/repository.js";
 // import is a test-time-only dependency, not a runtime/build one.
 
 /** The exact spec source every implementation's fixture must be seeded with -- see each consumer's own setup (`createRepository`) for how it gets there. */
-export const CONTRACT_FIXTURE_SOURCE = `version: "1.0"
+export const CONTRACT_FIXTURE_SOURCE = `version: "1.1"
 agent:
   id: greeter
   name: "Greeter"
   role: "Front desk"
   goal: "Greet visitors."
+  tools:
+    - name: wave
+      action: http_request
+      method: GET
+      url: "https://greeter.example/wave"
   workflow:
     - step: greet
       action: say_hello
+    - step: shout
+      type: transform
+      set:
+        loud: greet.text
+    - step: each_visitor
+      foreach:
+        items: trigger.visitors
+        as: visitor
+        steps:
+          - step: wave_at
+            type: tool
+            tool: wave
 `;
 
 export interface RepositoryContractOptions {
   /** The repository under test -- see each `describe.skipIf`/`describe` block for how it's constructed and seeded. */
   createRepository: () => Promise<SpecRepository>;
+}
+
+/**
+ * KAM-170 (ADR-0055, ADR-0054 item 5): one table of operation sequences, run against every repository.
+ * A case either succeeds with the expected spec (and layout) or is refused with the expected codes and
+ * leaves storage as it was. The same table runs against the in-memory repository (the pure layer), the
+ * filesystem one and the Postgres one, so a rule that exists in only one mode fails here.
+ */
+interface OpSequenceCase {
+  name: string;
+  ops: SpecOp[];
+  layout?: LayoutMap;
+  /** The whole expected spec text after the ops; compared as a parsed spec, not as text. */
+  expectSource?: string;
+  expectLayout?: LayoutMap;
+  /** The expected error codes, when the request is refused. */
+  expectCodes?: string[];
+}
+
+const F = CONTRACT_FIXTURE_SOURCE;
+const LAYOUT: LayoutMap = {
+  "agent:greeter": { x: 0, y: 0 },
+  "tool:wave": { x: 260, y: 0 },
+  "workflow:greet": { x: 520, y: 0 },
+  "workflow:shout": { x: 520, y: 120 },
+  "workflow:each_visitor": { x: 520, y: 240 },
+};
+
+export const OP_SEQUENCES: OpSequenceCase[] = [
+  {
+    name: "insert into a foreach body",
+    ops: [
+      {
+        op: "step.insert",
+        place: { in: { step: "each_visitor", slot: "steps" } },
+        step: { step: "tally", type: "transform", set: { n: "wave_at.count" } },
+      },
+    ],
+    expectSource:
+      F +
+      "          - step: tally\n            type: transform\n            set:\n              n: wave_at.count\n",
+  },
+  {
+    name: "rename a step: its reads are rewritten and its layout key moves",
+    ops: [{ op: "step.rename", step: "greet", to: "hello" }],
+    layout: LAYOUT,
+    expectSource: F.replace("- step: greet\n", "- step: hello\n").replace(
+      "loud: greet.text",
+      "loud: hello.text",
+    ),
+    expectLayout: (() => {
+      const { "workflow:greet": at, ...rest } = LAYOUT;
+      return { ...rest, "workflow:hello": at! };
+    })(),
+  },
+  {
+    name: "rename a tool: the tool: field follows and its layout key moves",
+    ops: [{ op: "tool.rename", tool: "wave", to: "signal" }],
+    layout: LAYOUT,
+    expectSource: F.replace("- name: wave\n", "- name: signal\n").replace(
+      "tool: wave\n",
+      "tool: signal\n",
+    ),
+    expectLayout: (() => {
+      const { "tool:wave": at, ...rest } = LAYOUT;
+      return { ...rest, "tool:signal": at! };
+    })(),
+  },
+  {
+    name: "remove a step nothing reads: its layout key is dropped",
+    ops: [{ op: "step.remove", step: "shout" }],
+    layout: LAYOUT,
+    expectSource: F.replace(
+      "    - step: shout\n      type: transform\n      set:\n        loud: greet.text\n",
+      "",
+    ),
+    expectLayout: Object.fromEntries(
+      Object.entries(LAYOUT).filter(([key]) => key !== "workflow:shout"),
+    ),
+  },
+  {
+    name: "move a step to the front of the workflow",
+    ops: [{ op: "step.move", step: "each_visitor", to: { in: "workflow", index: 0 } }],
+    expectSource: `version: "1.1"
+agent:
+  id: greeter
+  name: "Greeter"
+  role: "Front desk"
+  goal: "Greet visitors."
+  tools:
+    - name: wave
+      action: http_request
+      method: GET
+      url: "https://greeter.example/wave"
+  workflow:
+    - step: each_visitor
+      foreach:
+        items: trigger.visitors
+        as: visitor
+        steps:
+          - step: wave_at
+            type: tool
+            tool: wave
+    - step: greet
+      action: say_hello
+    - step: shout
+      type: transform
+      set:
+        loud: greet.text
+`,
+  },
+  {
+    name: "refuse a move into a foreach body that a reader outside cannot see into",
+    ops: [{ op: "step.move", step: "greet", to: { in: { step: "each_visitor", slot: "steps" } } }],
+    expectCodes: ["breaks_references"],
+  },
+  {
+    name: "a request that renames, then inserts a step that reads the new name",
+    ops: [
+      { op: "step.rename", step: "greet", to: "hello" },
+      {
+        op: "step.insert",
+        place: { in: "workflow", index: 1 },
+        step: { step: "echo", type: "transform", set: { e: "hello.text" } },
+      },
+    ],
+    expectSource: F.replace("- step: greet\n", "- step: hello\n")
+      .replace("loud: greet.text", "loud: hello.text")
+      .replace(
+        "    - step: shout\n",
+        "    - step: echo\n      type: transform\n      set:\n        e: hello.text\n    - step: shout\n",
+      ),
+  },
+  {
+    name: "refuse removing a step that is still read",
+    ops: [{ op: "step.remove", step: "greet" }],
+    layout: LAYOUT,
+    expectCodes: ["has_references"],
+  },
+  {
+    name: "refuse removing a tool a step still uses",
+    ops: [{ op: "tool.remove", tool: "wave" }],
+    expectCodes: ["has_references"],
+  },
+  {
+    name: "refuse a rename onto a name already used inside a foreach body",
+    ops: [{ op: "step.rename", step: "greet", to: "wave_at" }],
+    expectCodes: ["name_taken"],
+  },
+  {
+    name: "refuse an approval step in a foreach body",
+    ops: [
+      {
+        op: "step.insert",
+        place: { in: { step: "each_visitor", slot: "steps" } },
+        step: { step: "ask", type: "approval" },
+      },
+    ],
+    expectCodes: ["approval_in_foreach"],
+  },
+  {
+    name: "refuse a move that puts a reader before the step it reads",
+    ops: [{ op: "step.move", step: "greet", to: { in: "workflow", index: 2 } }],
+    expectCodes: ["breaks_references"],
+  },
+  {
+    name: "refuse an unknown step and a bad index",
+    ops: [{ op: "step.remove", step: "ghost" }],
+    expectCodes: ["step_not_found"],
+  },
+];
+
+function runOpSequences(createRepository: () => Promise<SpecRepository>): void {
+  describe("operation sequences (ADR-0055)", () => {
+    for (const c of OP_SEQUENCES) {
+      it(c.name, async () => {
+        const repo = await createRepository();
+        if (c.layout) await repo.writeLayout(c.layout);
+        const result = await repo.applyOpsAndSave(c.ops);
+        if (c.expectSource !== undefined && c.expectCodes === undefined) {
+          expect(result.success).toBe(true);
+          const expected = parseSpec(c.expectSource).spec;
+          expect(expected).toBeDefined();
+          if (result.success) expect(result.spec).toEqual(expected);
+          expect(parseSpec(await repo.readSource()).spec).toEqual(expected);
+          expect(await repo.readLayout()).toEqual(c.expectLayout ?? c.layout ?? {});
+        } else {
+          expect(result.success).toBe(false);
+          if (!result.success && c.expectCodes) {
+            expect(result.errors.map((e) => e.code)).toEqual(c.expectCodes);
+          }
+          expect(await repo.readSource()).toBe(CONTRACT_FIXTURE_SOURCE);
+          expect(await repo.readLayout()).toEqual(c.layout ?? {});
+        }
+      });
+    }
+
+    it("a request that changes nothing writes nothing and keeps the revision", async () => {
+      const repo = await createRepository();
+      const first = await repo.applyOpsAndSave([]);
+      const again = await repo.applyOpsAndSave([{ op: "step.rename", step: "greet", to: "greet" }]);
+      expect(first.success && again.success).toBe(true);
+      if (first.success && again.success) expect(again.revision).toBe(first.revision);
+      expect(await repo.readSource()).toBe(CONTRACT_FIXTURE_SOURCE);
+    });
+
+    it("refuses a write made against a stale revision, and accepts the current one", async () => {
+      const repo = await createRepository();
+      const start = await repo.applyOpsAndSave([]);
+      if (!start.success) throw new Error("the fixture should apply an empty request");
+      const rename: SpecOp[] = [{ op: "step.rename", step: "greet", to: "hello" }];
+
+      const first = await repo.applyOpsAndSave(rename, { baseRevision: start.revision });
+      expect(first.success).toBe(true);
+      if (!first.success) return;
+      expect(first.revision).not.toBe(start.revision);
+
+      const stale = await repo.applyOpsAndSave(
+        [{ op: "set", path: ["agent", "goal"], value: "Lost update" }],
+        { baseRevision: start.revision },
+      );
+      expect(stale.success).toBe(false);
+      if (!stale.success) {
+        expect(stale.stale).toBe(true);
+        expect(stale.errors[0]!.code).toBe("stale");
+        expect(stale.revision).toBe(first.revision);
+      }
+      expect(await repo.readSource()).not.toContain("Lost update");
+
+      const current = await repo.applyOpsAndSave(
+        [{ op: "set", path: ["agent", "goal"], value: "Kept" }],
+        { baseRevision: first.revision },
+      );
+      expect(current.success).toBe(true);
+      expect(await repo.readSource()).toContain("Kept");
+    });
+
+    it("applyPatchAndSave still works, as the same write path", async () => {
+      const repo = await createRepository();
+      const result = await repo.applyPatchAndSave([
+        { op: "set", path: ["agent", "goal"], value: "Via the alias" },
+      ]);
+      expect(result.success).toBe(true);
+      expect(await repo.readSource()).toContain("Via the alias");
+    });
+  });
 }
 
 /**
@@ -44,6 +310,8 @@ export interface RepositoryContractOptions {
 export function runSpecRepositoryContractTests({
   createRepository,
 }: RepositoryContractOptions): void {
+  runOpSequences(createRepository);
+
   describe("SpecRepository contract", () => {
     it("readSource returns the seeded spec source, byte for byte", async () => {
       const repo = await createRepository();
