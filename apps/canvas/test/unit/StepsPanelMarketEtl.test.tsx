@@ -23,11 +23,10 @@ describe("StepsPanel on the market-etl template", () => {
     expect(editable()).toEqual(["check", "shape", "sane", "delta", "row", "summarize", "report"]);
   });
 
-  // The two steps that read the loop's own steps (KAM-164) and the three whose values span several lines
-  // (KAM-165) fail today. `it.fails` keeps CI green and turns red the moment a fix lands, which is the cue to
-  // move that name into OPENS_CLEAN.
-  const OPENS_CLEAN = ["summarize", "report"];
-  const STILL_FAILING = ["check", "shape", "sane", "delta", "row"];
+  // The three steps whose values span several lines (KAM-165) fail today. `it.fails` keeps CI green and turns
+  // red the moment a fix lands, which is the cue to move that name into OPENS_CLEAN.
+  const OPENS_CLEAN = ["check", "sane", "summarize", "report"];
+  const STILL_FAILING = ["shape", "delta", "row"];
 
   it.each(OPENS_CLEAN)("opens %s with no error and nothing flagged invalid", opensClean);
   it.fails.each(STILL_FAILING)("opens %s with no error and nothing flagged invalid", opensClean);

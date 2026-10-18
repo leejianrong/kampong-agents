@@ -5,7 +5,7 @@ import {
   buildDataStepEdit,
   dataStepToEditInput,
   emptySchemaDraft,
-  expressionScopeFor,
+  expressionScopeForStepAt,
   listSteps,
   type ActionStepEditInput,
   type DataStepEditInput,
@@ -39,14 +39,9 @@ type Editing =
   | { key: string; kind: "action"; input: ActionStepEditInput }
   | { key: string; kind: "data"; input: DataStepEditInput };
 
-/** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable. */
-function scopeFor(spec: AgentSpec, refs: StepRef[], ref: StepRef): ExpressionScope | undefined {
-  if (spec.version !== "1.1") return undefined;
-  const local = ref.within.flatMap((name) => {
-    const parent = refs.find((r) => r.name === name)?.step;
-    return parent && "foreach" in parent ? [{ name: parent.foreach.as, fields: [] }] : [];
-  });
-  return expressionScopeFor(spec, { before: ref.name, ...(local.length > 0 && { local }) });
+/** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable and the body steps ahead of it. */
+function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
+  return spec.version === "1.1" ? expressionScopeForStepAt(spec, ref.path) : undefined;
 }
 
 export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
@@ -76,7 +71,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
       editing.kind === "action" && isAction(current)
         ? buildActionStepEdit(editing.input, current, spec.version)
         : editing.kind === "data" && isData(current)
-          ? buildDataStepEdit(editing.input, current, spec.version, scopeFor(spec, refs, current))
+          ? buildDataStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
           : { success: false as const, errors: ["The form does not match the step"] };
     if (!result.success) {
       setErrors(result.errors);
@@ -204,7 +199,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
             <ExpressionField
               label="Values (one per line, name: expression)"
               value={editing.input.set}
-              scope={scopeFor(spec, refs, current)}
+              scope={scopeFor(spec, current)}
               lines
               onChange={(set) => patchData({ set })}
             />
@@ -214,7 +209,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
               <ExpressionField
                 label="Assert (expression that must be true)"
                 value={editing.input.assert}
-                scope={scopeFor(spec, refs, current)}
+                scope={scopeFor(spec, current)}
                 onChange={(assert) => patchData({ assert })}
               />
               <label className="md3-field">
@@ -243,7 +238,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
               <ExpressionField
                 label="Key (expression)"
                 value={editing.input.key}
-                scope={scopeFor(spec, refs, current)}
+                scope={scopeFor(spec, current)}
                 onChange={(key) => patchData({ key })}
               />
               <label className="md3-field">

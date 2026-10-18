@@ -4,6 +4,7 @@ import {
   completeExpression,
   diagnoseExpression,
   expressionScopeFor,
+  expressionScopeForStepAt,
   type ExpressionScope,
 } from "../../src/expression-assist.js";
 
@@ -191,5 +192,102 @@ describe("completeExpression", () => {
     const looped = { ...scope(), local: [{ name: "item", fields: ["symbol"] }] };
     expect(completeExpression("it", 2, looped).options.map((o) => o.label)).toEqual(["item"]);
     expect(completeExpression("item.", 5, looped).options.map((o) => o.label)).toEqual(["symbol"]);
+  });
+});
+
+// KAM-164: inside a foreach body an expression may read the loop variable and the body steps ahead of it, which
+// the loader allows; the scope used to list only the top-level steps.
+describe("expressionScopeForStepAt", () => {
+  const LOOP = parseSpec(`version: "1.1"
+vars:
+  threshold:
+    type: number
+    default: 1
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  tools:
+    - name: t
+      action: http_request
+      method: GET
+      url: "https://x.example/"
+  workflow:
+    - step: first
+      type: transform
+      set:
+        n: "1"
+    - step: each
+      foreach:
+        items: "[1, 2]"
+        as: item
+        steps:
+          - step: fetch
+            type: tool
+            tool: t
+          - step: shape
+            type: transform
+            set:
+              latest: "fetch.x"
+              previous: "fetch.y"
+          - step: pick
+            branch:
+              if: "shape.latest > 1"
+              then:
+                - step: armed
+                  type: transform
+                  set:
+                    flag: "true"
+                - step: after_arm
+                  type: transform
+                  set:
+                    seen: "armed.flag"
+          - step: last_in_loop
+            type: transform
+            set:
+              z: "1"
+    - step: report
+      type: transform
+      set:
+        n: "1"
+`).spec!;
+  const at = (path: (string | number)[]) => expressionScopeForStepAt(LOOP, path);
+  const body = (i: number) => ["agent", "workflow", 1, "foreach", "steps", i];
+
+  it("gives a body step the loop variable and the body steps ahead of it, with their fields", () => {
+    expect(at(body(2)).local).toEqual([
+      { name: "item", fields: [] },
+      { name: "fetch", fields: [] },
+      { name: "shape", fields: ["latest", "previous"] },
+    ]);
+  });
+
+  it("includes the steps of an earlier arm, as the loader does", () => {
+    const inArm = [...body(2), "branch", "then", 1];
+    expect(at(inArm).local!.map((s) => s.name)).toEqual(["item", "fetch", "shape", "armed"]);
+  });
+
+  it("accepts a reference to an earlier sibling and still flags an unknown name", () => {
+    const s = at(body(2));
+    expect(diagnoseExpression("shape.latest > 1 and item", s)).toEqual([]);
+    expect(diagnoseExpression("nope.x", s)[0]!.message).toMatch(/"nope" is not something/);
+  });
+
+  it("offers the loop's siblings and the steps ahead of the loop, not the ones after it", () => {
+    const s = at(body(2));
+    const labels = completeExpression("", 0, s, { explicit: true }).options.map((o) => o.label);
+    expect(labels).toEqual(expect.arrayContaining(["item", "fetch", "shape", "first"]));
+    expect(labels).not.toContain("report");
+    expect(completeExpression("shape.", 6, s).options.map((o) => o.label)).toEqual([
+      "latest",
+      "previous",
+    ]);
+  });
+
+  it("leaves a top-level step as it was: no local names", () => {
+    const s = at(["agent", "workflow", 2]);
+    expect(s.local).toBeUndefined();
+    expect(s.ready!.map((x) => x.name)).toContain("first");
   });
 });
