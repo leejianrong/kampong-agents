@@ -12,6 +12,7 @@ import {
   type ExpressionScope,
   type AgentSpec,
   type PatchOp,
+  type SetRow,
   type StepRef,
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
@@ -63,6 +64,17 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
     setEditing((e) =>
       e && e.kind === "data" ? { ...e, input: { ...e.input, ...change } as DataStepEditInput } : e,
     );
+
+  const setRows = (change: (rows: SetRow[]) => SetRow[]) =>
+    setEditing((e) =>
+      e && e.kind === "data" && e.input.kind === "transform"
+        ? { ...e, input: { ...e.input, set: change(e.input.set) } }
+        : e,
+    );
+  const patchRow = (i: number, change: Partial<SetRow>) =>
+    setRows((rows) => rows.map((row, at) => (at === i ? { ...row, ...change } : row)));
+  const removeRow = (i: number) => setRows((rows) => rows.filter((_, at) => at !== i));
+  const addRow = () => setRows((rows) => [...rows, { name: "", expression: "" }]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -196,13 +208,39 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         >
           <span className="md3-title-small">{current.name}</span>
           {editing.input.kind === "transform" && (
-            <ExpressionField
-              label="Values (one per line, name: expression)"
-              value={editing.input.set}
-              scope={scopeFor(spec, current)}
-              lines
-              onChange={(set) => patchData({ set })}
-            />
+            <fieldset className="md3-fieldset">
+              <legend className="md3-label-large">Values</legend>
+              {editing.input.set.map((row, i) => (
+                <div key={i} className="md3-field">
+                  <label className="md3-field__label md3-label-large">
+                    {`Value ${i + 1} name`}
+                    <input
+                      className="md3-text-field"
+                      value={row.name}
+                      spellCheck={false}
+                      onChange={(e) => patchRow(i, { name: e.target.value })}
+                    />
+                  </label>
+                  <ExpressionField
+                    label={`Value ${i + 1} expression`}
+                    value={row.expression}
+                    scope={scopeFor(spec, current)}
+                    multiline
+                    onChange={(expression) => patchRow(i, { expression })}
+                  />
+                  <button
+                    type="button"
+                    className="md3-button md3-button-text"
+                    onClick={() => removeRow(i)}
+                  >
+                    {`Remove value ${i + 1}`}
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="md3-button md3-button-tonal" onClick={addRow}>
+                Add value
+              </button>
+            </fieldset>
           )}
           {editing.input.kind === "validate" && (
             <>

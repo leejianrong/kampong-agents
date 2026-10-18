@@ -21,6 +21,8 @@ export interface ExpressionFieldProps {
   onChange: (value: string) => void;
   scope?: ExpressionScope;
   lines?: boolean;
+  /** One expression that may span several lines: a textarea that grows with its text. */
+  multiline?: boolean;
   placeholder?: string;
 }
 
@@ -53,6 +55,7 @@ export function ExpressionField({
   onChange,
   scope,
   lines = false,
+  multiline = false,
   placeholder,
 }: ExpressionFieldProps) {
   const id = useId();
@@ -142,6 +145,7 @@ export function ExpressionField({
     placeholder,
     spellCheck: false,
     autoComplete: "off",
+    ...(multiline && { rows: Math.max(2, value.split("\n").length) }),
     "aria-invalid": problems.length > 0 || undefined,
     "aria-describedby": problems.length > 0 ? problemsId : undefined,
     ...(scope && {
@@ -170,7 +174,7 @@ export function ExpressionField({
       <label className="md3-field__label md3-label-large" htmlFor={id}>
         {label}
       </label>
-      {lines ? <textarea {...shared} /> : <input {...shared} />}
+      {lines || multiline ? <textarea {...shared} /> : <input {...shared} />}
       {showList && (
         <ul
           id={listId}

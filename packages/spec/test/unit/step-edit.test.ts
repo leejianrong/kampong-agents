@@ -352,20 +352,32 @@ agent:
     }
     expect(dataStepToEditInput(listSteps(spec)[1]!.step as never)).toEqual({
       kind: "transform",
-      set: "title: fetch.title\nn: vars.limit",
+      set: [
+        { name: "title", expression: "fetch.title" },
+        { name: "n", expression: "vars.limit" },
+      ],
     });
   });
 
   it("edits a transform's values and loads clean", () => {
     const r = run(
       "shape",
-      (i) => ({ ...i, set: "title: fetch.title\nlimit: vars.limit * 2" }) as never,
+      (i) =>
+        ({
+          ...i,
+          set: [
+            { name: "title", expression: "fetch.title" },
+            { name: "limit", expression: "vars.limit * 2" },
+          ],
+        }) as never,
     );
     expect(r.success).toBe(true);
     const text = (r as { text: string }).text;
     expect(parseSpec(text).errors).toEqual([]);
     expect(text).toContain("limit: vars.limit * 2");
+    expect(text).not.toContain("n: vars.limit\n");
     expect(text.startsWith("# data\n")).toBe(true);
+    expect(text).toContain("# the title");
   });
 
   it("edits validate and dedupe fields, and clears the message", () => {
@@ -390,14 +402,22 @@ agent:
       const r = run(name, change as never);
       return r.success ? [] : r.errors;
     };
-    expect(errs("shape", (i) => ({ ...i, set: "a: (" }))[0]).toMatch(/^a: /);
-    expect(errs("shape", (i) => ({ ...i, set: "a: nosuch.x" }))[0]).toMatch(
+    const one = (name: string, expression: string) => [{ name, expression }];
+    expect(errs("shape", (i) => ({ ...i, set: one("a", "(") }))[0]).toMatch(/^a: /);
+    expect(errs("shape", (i) => ({ ...i, set: one("a", "nosuch.x") }))[0]).toMatch(
       /not something an expression can read/,
     );
-    expect(errs("shape", (i) => ({ ...i, set: "a: vars.nope" }))[0]).toMatch(
+    expect(errs("shape", (i) => ({ ...i, set: one("a", "vars.nope") }))[0]).toMatch(
       /vars.nope is not declared/,
     );
-    expect(errs("shape", (i) => ({ ...i, set: "" }))[0]).toMatch(/at least one value/);
+    expect(errs("shape", (i) => ({ ...i, set: [] }))[0]).toMatch(/at least one value/);
+    expect(errs("shape", (i) => ({ ...i, set: one("", "1") }))).toEqual(["A value needs a name"]);
+    expect(errs("shape", (i) => ({ ...i, set: one("a", "  ") }))).toEqual([
+      "a needs an expression",
+    ]);
+    expect(errs("shape", (i) => ({ ...i, set: [...one("a", "1"), ...one("a", "2")] }))).toEqual([
+      '"a" is set twice',
+    ]);
     expect(errs("check", (i) => ({ ...i, assert: "" }))).toEqual([
       "A validate step needs an assertion",
     ]);
@@ -413,5 +433,87 @@ agent:
       success: false,
       errors: ['a validate step needs version "1.1"'],
     });
+  });
+});
+
+// KAM-165: a transform's values are rows, so an expression written over several lines (a `|-` block) is one
+// value, not several lines to re-parse, and an edit touches only the names that changed.
+describe("a transform with multi-line values", () => {
+  const SRC = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: fetch
+      action: fetch
+    - step: shape
+      type: transform
+      set:
+        latest: fetch.latest
+        total: |-
+          $sum([1,
+          2])
+        label: "'x'"
+`;
+  const load = () => {
+    const { doc, spec } = parseSpec(SRC);
+    return { doc, ref: listSteps(spec!)[1]! };
+  };
+
+  it("reads each value as one row, a block scalar included", () => {
+    const input = dataStepToEditInput(load().ref.step as never);
+    expect(input).toEqual({
+      kind: "transform",
+      set: [
+        { name: "latest", expression: "fetch.latest" },
+        { name: "total", expression: "$sum([1,\n2])" },
+        { name: "label", expression: "'x'" },
+      ],
+    });
+  });
+
+  it("saves an untouched step as no change, so the file stays byte-identical", () => {
+    const { doc, ref } = load();
+    const input = dataStepToEditInput(ref.step as never);
+    const r = buildDataStepEdit(input, ref as never, "1.1");
+    expect(r).toEqual({ success: true, patch: [] });
+    expect(toYamlString(doc)).toBe(SRC);
+  });
+
+  it("changes one value and leaves the others as written", () => {
+    const { doc, ref } = load();
+    const input = dataStepToEditInput(ref.step as never) as Extract<
+      DataStepEditInput,
+      { kind: "transform" }
+    >;
+    input.set[0]!.expression = "fetch.newest";
+    const r = buildDataStepEdit(input, ref as never, "1.1");
+    expect(r.success && r.patch).toEqual([
+      { op: "set", path: [...ref.path, "set", "latest"], value: "fetch.newest" },
+    ]);
+    applyPatch(doc, (r as { patch: never }).patch);
+    expect(toYamlString(doc)).toBe(SRC.replace("fetch.latest", "fetch.newest"));
+  });
+
+  it("writes a new multi-line value as a block and removes a deleted row", () => {
+    const { doc, ref } = load();
+    const input = dataStepToEditInput(ref.step as never) as Extract<
+      DataStepEditInput,
+      { kind: "transform" }
+    >;
+    input.set = [
+      ...input.set.filter((row) => row.name !== "label"),
+      { name: "more", expression: "$round(1,\n  2)" },
+    ];
+    const r = buildDataStepEdit(input, ref as never, "1.1");
+    expect(r.success).toBe(true);
+    applyPatch(doc, (r as { patch: never }).patch);
+    const text = toYamlString(doc);
+    expect(parseSpec(text).errors).toEqual([]);
+    expect(text).not.toContain("label");
+    expect(text).toContain("total: |-\n          $sum([1,\n          2])");
+    expect(text).toContain("more: |-\n          $round(1,\n            2)");
   });
 });
