@@ -345,4 +345,42 @@ describe("StepsPanel", () => {
       ]),
     );
   });
+
+  // KAM-167: plain visible labels, limits that can be edited, and a required toggle beside its property name.
+  it("shows plain labels and edits a string's max length", async () => {
+    const withSchema = spec("1.1", {
+      output_schema: {
+        type: "object",
+        required: ["summary"],
+        properties: { summary: { type: "string", description: "One line", maxLength: 280 } },
+      },
+    });
+    const { onPatch } = setup(withSchema);
+    click("Edit classify");
+    const shown = [...document.querySelectorAll(".md3-schema .md3-field__label")].map(
+      (el) => el.textContent,
+    );
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.some((text) => text?.includes("output_schema"))).toBe(false);
+    expect(
+      (screen.getByLabelText("output_schema.summary max length") as HTMLInputElement).value,
+    ).toBe("280");
+    expect(
+      (screen.getByLabelText("output_schema.summary required") as HTMLInputElement).checked,
+    ).toBe(true);
+    change("output_schema.summary max length", "120");
+    click("Save step");
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    expect(onPatch.mock.calls[0]![0]).toEqual([
+      {
+        op: "set",
+        path: ["agent", "workflow", 0, "output_schema"],
+        value: {
+          type: "object",
+          required: ["summary"],
+          properties: { summary: { type: "string", description: "One line", maxLength: 120 } },
+        },
+      },
+    ]);
+  });
 });
