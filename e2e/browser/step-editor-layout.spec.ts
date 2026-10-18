@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -10,8 +10,10 @@ import { expect, test } from "@playwright/test";
 
 const PORT = 4339;
 const V10_PORT = 4340;
+const UPGRADE_PORT = 4341;
 const URL = `http://127.0.0.1:${PORT}`;
 const V10_URL = `http://127.0.0.1:${V10_PORT}`;
+const UPGRADE_URL = `http://127.0.0.1:${UPGRADE_PORT}`;
 const servers: ChildProcess[] = [];
 let dir: string;
 
@@ -23,7 +25,7 @@ async function start(folder: string, port: number) {
       { stdio: "ignore" },
     ),
   );
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 160; i++) {
     try {
       if ((await fetch(`http://127.0.0.1:${port}`)).ok) return;
     } catch {
@@ -41,8 +43,13 @@ test.beforeAll(async () => {
   });
   mkdirSync(join(dir, "starter"));
   cpSync(join("examples", "agent.yaml"), join(dir, "starter", "agent.yaml"));
-  await start(join(dir, "market-etl"), PORT);
-  await start(join(dir, "starter"), V10_PORT);
+  mkdirSync(join(dir, "upgrade"));
+  cpSync(join("examples", "agent.yaml"), join(dir, "upgrade", "agent.yaml"));
+  await Promise.all([
+    start(join(dir, "market-etl"), PORT),
+    start(join(dir, "upgrade"), UPGRADE_PORT),
+    start(join(dir, "starter"), V10_PORT),
+  ]);
 });
 
 test.afterAll(() => {
@@ -112,13 +119,35 @@ for (const [button, what] of [
       const r = el.getBoundingClientRect();
       const parent = el.parentElement!.getBoundingClientRect();
       return {
-        children: el.children.length,
-        height: Math.round(r.height),
+        // The sentence is one paragraph; the banner may also hold an Upgrade button beside it (KAM-199).
+        paragraphs: el.querySelectorAll(":scope > p").length,
+        // The sentence runs across the card; the broken version was cut into columns tens of pixels wide.
+        textWidth: Math.round(el.querySelector(":scope > p")!.getBoundingClientRect().width),
         spills: el.scrollWidth > el.clientWidth || r.right > parent.right + 1,
       };
     });
-    expect(box.children).toBe(1);
+    expect(box.paragraphs).toBe(1);
     expect(box.spills).toBe(false);
-    expect(box.height).toBeLessThan(170);
+    expect(box.textWidth).toBeGreaterThan(250);
   });
 }
+
+// KAM-199: Upgrade to 1.1 from the notice. The preview shows the change, nothing is written until Upgrade, and
+// afterwards the file is 1.1 and the step can be edited.
+test("Upgrade to 1.1: preview, apply, and the step becomes editable", async ({ page }) => {
+  const file = join(dir, "upgrade", "agent.yaml");
+  await page.goto(UPGRADE_URL);
+  await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit greet" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Upgrade to 1.1…" }).click();
+  const diff = page.getByLabel("Changes to the YAML");
+  await expect(diff).toContainText('- version: "1.0"');
+  await expect(diff).toContainText('+ version: "1.1"');
+  expect(readFileSync(file, "utf8")).toContain('version: "1.0"'); // not written yet
+
+  await page.getByRole("button", { name: "Upgrade", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "need spec version" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit greet" })).toBeEnabled();
+  expect(readFileSync(file, "utf8")).toContain('version: "1.1"');
+});
