@@ -416,6 +416,36 @@ describe("App", () => {
     });
   });
 
+  describe("Edit steps (KAM-162)", () => {
+    it("opens from the toolbar and patches a step in place", async () => {
+      const applied: unknown[] = [];
+      const api = {
+        loadSpec: async () => ({
+          ...SPEC_RESPONSE,
+          spec: { ...SPEC_RESPONSE.spec, version: "1.1" },
+        }),
+        applyPatch: async (ops: unknown) => (applied.push(ops), { success: true }),
+        subscribeToEvents: () => () => {},
+        startRun: async () => ({ success: true }),
+        approveRun: async () => ({ success: true }),
+        subscribeToRunEvents: () => () => {},
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      render(<App api={api as any} />);
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      fireEvent.click(screen.getByRole("button", { name: "Edit greet" }));
+      fireEvent.change(screen.getByLabelText("Model", { exact: false }), {
+        target: { value: "m" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save step" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toEqual([
+        { op: "set", path: ["agent", "workflow", 0, "model"], value: "m" },
+      ]);
+    });
+  });
+
   describe("Expression fields (KAM-160)", () => {
     function open11(version: string) {
       const response = {

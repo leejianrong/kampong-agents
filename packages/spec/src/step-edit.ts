@@ -1,0 +1,279 @@
+import type { AgentSpec, WorkflowStep } from "./schema.js";
+import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
+import type { PatchOp } from "./mutate.js";
+
+// Editing a step that is already in the workflow, from the canvas (KAM-162, a slice of KAM-110): which steps
+// there are and where each sits in the file, and the form logic for an action step's per-step model settings and
+// its `output_schema`. Same shape as the other form helpers: text in, a validated value or messages out, then a
+// patch, so the rest of the file is left as it was. The checks are the loader's own rules for these fields.
+
+export interface StepRef {
+  name: string;
+  /** Where the step sits in the YAML, for a patch. */
+  path: (string | number)[];
+  /** `action`, a `type:` value, `foreach` or `branch`. */
+  kind: string;
+  /** Names of the foreach or branch steps it sits inside, outermost first. */
+  within: string[];
+  step: WorkflowStep;
+}
+
+function kindOf(step: WorkflowStep): string {
+  if ("foreach" in step) return "foreach";
+  if ("branch" in step) return "branch";
+  if ("stop" in step) return "stop";
+  if ("type" in step) return step.type;
+  return "action";
+}
+
+/** Every step in the workflow, in order, with a branch's arms and a foreach's body after their parent. */
+export function listSteps(spec: AgentSpec): StepRef[] {
+  const out: StepRef[] = [];
+  const walk = (list: readonly WorkflowStep[], path: (string | number)[], within: string[]) => {
+    list.forEach((step, i) => {
+      const here = [...path, i];
+      out.push({ name: step.step, path: here, kind: kindOf(step), within, step });
+      const inside = [...within, step.step];
+      if ("foreach" in step) {
+        walk(step.foreach.steps as WorkflowStep[], [...here, "foreach", "steps"], inside);
+      } else if ("branch" in step) {
+        const b = step.branch;
+        if ("if" in b) {
+          walk(b.then, [...here, "branch", "then"], inside);
+          if (b.else) walk(b.else, [...here, "branch", "else"], inside);
+        } else {
+          for (const [name, arm] of Object.entries(b.cases)) {
+            walk(arm, [...here, "branch", "cases", name], inside);
+          }
+          if (b.default) walk(b.default, [...here, "branch", "default"], inside);
+        }
+      }
+    });
+  };
+  walk(spec.agent.workflow, ["agent", "workflow"], []);
+  return out;
+}
+
+// ---- output_schema as a form ---------------------------------------------------------------------
+
+export type SchemaType = SchemaNode["type"];
+
+export interface SchemaDraft {
+  type: SchemaType;
+  description: string;
+  /** Allowed values, comma-separated (scalar types only). */
+  enum: string;
+  /** Object only. */
+  properties: { name: string; required: boolean; draft: SchemaDraft }[];
+  /** Array only. */
+  items?: SchemaDraft;
+  /** Keywords the form has no field for (minimum, pattern, ...): kept as they were. */
+  extra: Record<string, unknown>;
+}
+
+const HANDLED = new Set(["type", "description", "enum", "properties", "required", "items"]);
+
+export const emptySchemaDraft = (type: SchemaType = "string"): SchemaDraft => ({
+  type,
+  description: "",
+  enum: "",
+  properties: [],
+  extra: {},
+});
+
+export function schemaToDraft(node: SchemaNode): SchemaDraft {
+  const required = new Set(node.required ?? []);
+  return {
+    type: node.type,
+    description: node.description ?? "",
+    enum: (node.enum ?? []).join(", "),
+    properties: Object.entries(node.properties ?? {}).map(([name, child]) => ({
+      name,
+      required: required.has(name),
+      draft: schemaToDraft(child),
+    })),
+    ...(node.items && { items: schemaToDraft(node.items) }),
+    extra: Object.fromEntries(Object.entries(node).filter(([k]) => !HANDLED.has(k))),
+  };
+}
+
+const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function enumValues(
+  draft: SchemaDraft,
+  where: string,
+  errors: string[],
+): (string | number | boolean)[] | undefined {
+  const parts = draft.enum
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p !== "");
+  if (parts.length === 0) return undefined;
+  const out: (string | number | boolean)[] = [];
+  for (const part of parts) {
+    if (draft.type === "string") out.push(part);
+    else if (draft.type === "boolean" && (part === "true" || part === "false")) {
+      out.push(part === "true");
+    } else if (
+      (draft.type === "number" || draft.type === "integer") &&
+      part !== "" &&
+      Number.isFinite(Number(part))
+    ) {
+      out.push(Number(part));
+    } else errors.push(`${where}: enum value "${part}" is not a valid ${draft.type}`);
+  }
+  return out;
+}
+
+function nodeFromDraft(draft: SchemaDraft, where: string, errors: string[]): SchemaNode {
+  const node: Record<string, unknown> = { type: draft.type };
+  const description = draft.description.trim();
+  if (description) node.description = description;
+  if (draft.type === "object" || draft.type === "array") {
+    // enum on a container is meaningless, so it is not offered; a stale one is dropped.
+  } else {
+    const values = enumValues(draft, where, errors);
+    if (values) node.enum = values;
+  }
+  if (draft.type === "object") {
+    if (draft.properties.length === 0) {
+      errors.push(`${where}: an object must list its properties (open objects are not supported)`);
+    }
+    const names = new Set<string>();
+    const properties: Record<string, SchemaNode> = {};
+    const required: string[] = [];
+    for (const prop of draft.properties) {
+      const name = prop.name.trim();
+      const at = `${where}.${name || "(unnamed)"}`;
+      if (!NAME.test(name) || name === "__proto__") {
+        errors.push(
+          `${where}: "${name}" is not a valid property name: use letters, digits and underscores, not starting with a digit`,
+        );
+        continue;
+      }
+      if (names.has(name)) {
+        errors.push(`${where}: property "${name}" is listed more than once`);
+        continue;
+      }
+      names.add(name);
+      properties[name] = nodeFromDraft(prop.draft, at, errors);
+      if (prop.required) required.push(name);
+    }
+    node.properties = properties;
+    if (required.length > 0) node.required = required;
+  }
+  if (draft.type === "array") {
+    if (!draft.items) errors.push(`${where}: an array must declare its items`);
+    else node.items = nodeFromDraft(draft.items, `${where}[]`, errors);
+  }
+  // Keywords of another type (a stale minimum on a string, say) are left to the schema's own checks.
+  return { ...draft.extra, ...node } as unknown as SchemaNode;
+}
+
+export type SchemaResult =
+  { success: true; value: SchemaNode } | { success: false; errors: string[] };
+
+/**
+ * Builds the `output_schema` the form describes. `confidenceGate` is the step's own flag: the loader then
+ * requires a numeric, required `confidence` with no default.
+ */
+export function buildOutputSchema(draft: SchemaDraft, confidenceGate = false): SchemaResult {
+  const errors: string[] = [];
+  if (draft.type !== "object") {
+    return { success: false, errors: ['output_schema must describe an object (type: "object")'] };
+  }
+  const node = nodeFromDraft(draft, "output_schema", errors);
+  if (errors.length === 0) {
+    const parsed = schemaNodeSchema.safeParse(node);
+    if (!parsed.success) errors.push(...parsed.error.issues.map((i) => i.message));
+  }
+  if (confidenceGate && errors.length === 0) {
+    const confidence = node.properties?.confidence;
+    if (
+      (confidence?.type !== "number" && confidence?.type !== "integer") ||
+      !node.required?.includes("confidence") ||
+      confidence.default !== undefined
+    ) {
+      errors.push(
+        'a confidence_gate step with an output_schema must declare a numeric "confidence" property (0 to 1) that is required and has no default',
+      );
+    }
+  }
+  return errors.length > 0 ? { success: false, errors } : { success: true, value: node };
+}
+
+// ---- per-step model settings ---------------------------------------------------------------------
+
+export interface ActionStepEditInput {
+  /** Blank means the agent's own. */
+  instructions: string;
+  model: string;
+  /** As text; blank means the agent's own. */
+  temperature: string;
+  /** Undefined removes the step's output_schema. */
+  schema?: SchemaDraft;
+}
+
+export type ActionStepEditResult =
+  { success: true; patch: PatchOp[] } | { success: false; errors: string[] };
+
+type ActionStep = Extract<WorkflowStep, { action: string }>;
+
+export function actionStepToEditInput(step: ActionStep): ActionStepEditInput {
+  return {
+    instructions: step.instructions ?? "",
+    model: step.model ?? "",
+    temperature: step.temperature === undefined ? "" : String(step.temperature),
+    ...(step.output_schema && { schema: schemaToDraft(step.output_schema) }),
+  };
+}
+
+/** Validates the form for a spec of `version` and returns the patch that sets (or clears) each field. */
+export function buildActionStepEdit(
+  input: ActionStepEditInput,
+  step: { path: (string | number)[]; step: ActionStep },
+  version: string,
+): ActionStepEditResult {
+  const errors: string[] = [];
+  const instructions = input.instructions.trim();
+  const model = input.model.trim();
+  const temperatureText = input.temperature.trim();
+  let temperature: number | undefined;
+  if (temperatureText !== "") {
+    const n = Number(temperatureText);
+    if (!Number.isFinite(n) || n < 0 || n > 2) {
+      errors.push(`temperature "${temperatureText}" must be a number from 0 to 2`);
+    } else temperature = n;
+  }
+  let schema: SchemaNode | undefined;
+  if (input.schema) {
+    const built = buildOutputSchema(input.schema, step.step.confidence_gate === true);
+    if (built.success) schema = built.value;
+    else errors.push(...built.errors);
+  }
+  if (version !== "1.1") {
+    const used: [string, boolean][] = [
+      ["instructions", instructions !== ""],
+      ["model", model !== ""],
+      ["temperature", temperature !== undefined],
+      ["output_schema", schema !== undefined || input.schema !== undefined],
+    ];
+    for (const [field, on] of used) if (on) errors.push(`${field} needs version "1.1"`);
+  }
+  if (errors.length > 0) return { success: false, errors };
+
+  const patch: PatchOp[] = [];
+  const field = (name: string, value: unknown, before: unknown) => {
+    const at = [...step.path, name];
+    if (value === undefined) {
+      if (before !== undefined) patch.push({ op: "remove", path: at });
+    } else if (JSON.stringify(value) !== JSON.stringify(before)) {
+      patch.push({ op: "set", path: at, value });
+    }
+  };
+  field("instructions", instructions || undefined, step.step.instructions);
+  field("model", model || undefined, step.step.model);
+  field("temperature", temperature, step.step.temperature);
+  field("output_schema", schema, step.step.output_schema);
+  return { success: true, patch };
+}
