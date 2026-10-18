@@ -2,7 +2,7 @@ import type { AgentSpec, WorkflowStep } from "./schema.js";
 import { schemaNodeSchema, type SchemaNode } from "./schema-node.js";
 import type { PatchOp } from "./mutate.js";
 import { diagnoseExpression, type ExpressionScope } from "./expression-assist.js";
-import { parseExpression } from "./expression.js";
+import { parseExpression, templateExpressions } from "./expression.js";
 import { parseEvery } from "./schedule.js";
 
 // Editing a step that is already in the workflow, from the canvas (KAM-162, a slice of KAM-110): which steps
@@ -208,6 +208,8 @@ export function buildOutputSchema(draft: SchemaDraft, confidenceGate = false): S
 // ---- per-step model settings ---------------------------------------------------------------------
 
 export interface ActionStepEditInput {
+  /** The prompt template for the step, `{{ }}` references included. Blank means the step has none. */
+  query: string;
   /** Blank means the agent's own. */
   instructions: string;
   model: string;
@@ -224,6 +226,7 @@ type ActionStep = Extract<WorkflowStep, { action: string }>;
 
 export function actionStepToEditInput(step: ActionStep): ActionStepEditInput {
   return {
+    query: step.query ?? "",
     instructions: step.instructions ?? "",
     model: step.model ?? "",
     temperature: step.temperature === undefined ? "" : String(step.temperature),
@@ -236,8 +239,18 @@ export function buildActionStepEdit(
   input: ActionStepEditInput,
   step: { path: (string | number)[]; step: ActionStep },
   version: string,
+  scope?: ExpressionScope,
 ): ActionStepEditResult {
   const errors: string[] = [];
+  const query = input.query.trim();
+  // Each `{{ }}` in the prompt is an expression, checked as the loader checks it (when the form has a scope).
+  for (const { expression } of templateExpressions(query)) {
+    const parsed = parseExpression(expression);
+    if (!parsed.ok) for (const e of parsed.errors) errors.push(`query: ${e.message}`);
+    else if (scope) {
+      for (const d of diagnoseExpression(expression, scope)) errors.push(`query: ${d.message}`);
+    }
+  }
   const instructions = input.instructions.trim();
   const model = input.model.trim();
   const temperatureText = input.temperature.trim();
@@ -274,7 +287,13 @@ export function buildActionStepEdit(
       patch.push({ op: "set", path: at, value });
     }
   };
-  field("instructions", instructions || undefined, step.step.instructions);
+  // Compared trimmed, so a block scalar that ends in a newline is not rewritten when the text is untouched.
+  const text = (name: string, value: string, before: string | undefined) => {
+    if (value === (before ?? "").trim()) return;
+    field(name, value || undefined, before);
+  };
+  text("query", query, step.step.query);
+  text("instructions", instructions, step.step.instructions);
   field("model", model || undefined, step.step.model);
   field("temperature", temperature, step.step.temperature);
   field("output_schema", schema, step.step.output_schema);

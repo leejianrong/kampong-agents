@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSpec, toYamlString } from "../../src/parse.js";
-import { expressionScopeFor } from "../../src/expression-assist.js";
+import { expressionScopeFor, expressionScopeForStepAt } from "../../src/expression-assist.js";
 import { applyPatch } from "../../src/mutate.js";
 import {
   actionStepToEditInput,
@@ -198,6 +198,7 @@ describe("buildOutputSchema", () => {
 
 describe("buildActionStepEdit", () => {
   const input = (change: Partial<ActionStepEditInput> = {}): ActionStepEditInput => ({
+    query: "",
     instructions: "",
     model: "",
     temperature: "",
@@ -515,5 +516,75 @@ agent:
     expect(text).not.toContain("label");
     expect(text).toContain("total: |-\n          $sum([1,\n          2])");
     expect(text).toContain("more: |-\n          $round(1,\n            2)");
+  });
+});
+
+// KAM-166: an action step's `query` (its prompt template) is editable, checked like the loader checks it, and an
+// untouched prompt is never rewritten.
+describe("an action step's query", () => {
+  const SRC = `version: "1.1"
+vars:
+  limit:
+    type: number
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: fetch
+      action: fetch
+    - step: summarize
+      action: summarize
+      query: |
+        Summarize {{ fetch.title }}
+        in {{ vars.limit }} words.
+      instructions: |-
+        Be brief.
+`;
+  const load = () => {
+    const { doc, spec } = parseSpec(SRC);
+    return { doc, spec: spec!, ref: listSteps(spec!)[1]! };
+  };
+  const build = (change: (i: ActionStepEditInput) => ActionStepEditInput) => {
+    const { spec, ref } = load();
+    const input = change(actionStepToEditInput(ref.step as never));
+    return buildActionStepEdit(
+      input,
+      ref as never,
+      "1.1",
+      expressionScopeForStepAt(spec, ref.path),
+    );
+  };
+
+  it("reads the query, and saves an untouched step as no change even with a trailing newline", () => {
+    const { ref } = load();
+    expect(actionStepToEditInput(ref.step as never).query).toBe(
+      "Summarize {{ fetch.title }}\nin {{ vars.limit }} words.\n",
+    );
+    expect(build((i) => i)).toEqual({ success: true, patch: [] });
+  });
+
+  it("sets, changes and clears the query", () => {
+    const { ref } = load();
+    expect(build((i) => ({ ...i, query: "Summarize {{ fetch.title }}" }))).toEqual({
+      success: true,
+      patch: [{ op: "set", path: [...ref.path, "query"], value: "Summarize {{ fetch.title }}" }],
+    });
+    expect(build((i) => ({ ...i, query: "  " }))).toEqual({
+      success: true,
+      patch: [{ op: "remove", path: [...ref.path, "query"] }],
+    });
+  });
+
+  it("refuses a reference the loader refuses, and a syntax error, naming the field", () => {
+    const bad = build((i) => ({ ...i, query: "Hi {{ nosuch.x }} and {{ vars.nope }}" }));
+    expect(bad.success).toBe(false);
+    const errors = (bad as { errors: string[] }).errors;
+    expect(errors[0]).toMatch(/^query: .*nosuch/);
+    expect(errors[1]).toMatch(/^query: vars.nope is not declared/);
+    expect((build((i) => ({ ...i, query: "{{ ( }}" })) as { errors: string[] }).errors[0]).toMatch(
+      /^query: /,
+    );
   });
 });
