@@ -28,14 +28,70 @@ type StepKind =
   | "branch"
   | "stop";
 
+// KAM-176: what each kind does, in task words, shown under the picker when it is selected.
+const KIND_HELP: Record<StepKind, { label: string; what: string; example: string }> = {
+  action: {
+    label: "Action",
+    what: "Ask the model to do something and keep its answer.",
+    example: "Example: write a reply to the customer's email.",
+  },
+  tool: {
+    label: "Tool",
+    what: "Call one of the tools you added, such as a web request or a Slack message.",
+    example: "Example: post the reply to the support channel.",
+  },
+  approval: {
+    label: "Approval",
+    what: "Wait for a person to approve before the run goes on.",
+    example: "Example: let a manager check a refund before it is sent.",
+  },
+  condition: {
+    label: "Condition",
+    what: "Do this only if a condition is true, otherwise do something else (older specs).",
+    example: "Example: if the order is over 100, go to the approval step.",
+  },
+  transform: {
+    label: "Transform",
+    what: "Work out new values from earlier results, without asking the model.",
+    example: "Example: total = price * quantity.",
+  },
+  validate: {
+    label: "Validate",
+    what: "Check that the data looks right, and stop or skip the item if it does not.",
+    example: "Example: the email address must not be empty.",
+  },
+  dedupe: {
+    label: "Dedupe",
+    what: "Skip anything already handled within a time window.",
+    example: "Example: ignore a ticket seen in the last 24h.",
+  },
+  foreach: {
+    label: "Foreach",
+    what: "Repeat the steps inside for each item in a list.",
+    example: "Example: for each stock symbol, fetch its price.",
+  },
+  branch: {
+    label: "Branch",
+    what: "Choose between groups of steps: do this only if something is true, or pick by value.",
+    example: "Example: if the move is over 5%, send an alert; otherwise carry on.",
+  },
+  stop: {
+    label: "Stop",
+    what: "End the run here, with a reason.",
+    example: "Example: nothing new today, so stop.",
+  },
+};
+
 export interface WorkflowStepFormProps {
+  /** The spec's version. On "1.1" the older Condition kind is hidden: Branch does the same job. */
+  version?: string;
   /** Names in scope for the expression fields (KAM-160). Absent on a 1.0 spec, whose fields are plain text. */
   scope?: ExpressionScope;
   onSubmit: (step: WorkflowStep) => void;
   onCancel: () => void;
 }
 
-export function WorkflowStepForm({ scope, onSubmit, onCancel }: WorkflowStepFormProps) {
+export function WorkflowStepForm({ version, scope, onSubmit, onCancel }: WorkflowStepFormProps) {
   const [kind, setKind] = useState<StepKind>("action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
@@ -154,35 +210,28 @@ export function WorkflowStepForm({ scope, onSubmit, onCancel }: WorkflowStepForm
       <div className="md3-field">
         <span className="md3-field__label md3-label-large">Step kind</span>
         <div className="md3-segmented-button" role="group" aria-label="Step kind">
-          {(
-            [
-              ["action", "Action"],
-              ["tool", "Tool"],
-              ["approval", "Approval"],
-              ["condition", "Condition"],
-              ["transform", "Transform"],
-              ["validate", "Validate"],
-              ["dedupe", "Dedupe"],
-              ["foreach", "Foreach"],
-              ["branch", "Branch"],
-              ["stop", "Stop"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={kind === value}
-              className={
-                kind === value
-                  ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
-                  : "md3-segmented-button__segment"
-              }
-              onClick={() => setKind(value)}
-            >
-              {label}
-            </button>
-          ))}
+          {(Object.keys(KIND_HELP) as StepKind[])
+            .filter((value) => !(value === "condition" && version === "1.1"))
+            .map((value) => [value, KIND_HELP[value].label] as const)
+            .map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={kind === value}
+                className={
+                  kind === value
+                    ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
+                    : "md3-segmented-button__segment"
+                }
+                onClick={() => setKind(value)}
+              >
+                {label}
+              </button>
+            ))}
         </div>
+        <span className="md3-body-medium md3-field__hint" data-testid="step-kind-help">
+          {KIND_HELP[kind].what} {KIND_HELP[kind].example}
+        </span>
       </div>
 
       <label className="md3-field">
