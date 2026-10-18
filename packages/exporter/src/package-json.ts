@@ -34,12 +34,12 @@ import type { ExportComponent } from "./components.js";
 // lockfile actually resolves, so a version bump there (e.g. a security fix)
 // can't silently go stale here.
 export const ENGINE_DEPENDENCY_VERSIONS = {
-  "@ai-sdk/anthropic": "4.0.78",
-  "@ai-sdk/openai": "4.0.91",
-  "@mastra/core": "1.75.0",
-  ai: "7.0.137",
+  "@ai-sdk/anthropic": "4.0.80",
+  "@ai-sdk/openai": "4.0.94",
+  "@mastra/core": "1.77.0",
+  ai: "7.0.141",
   jsonata: "2.2.2",
-  zod: "4.6.5",
+  zod: "4.6.7",
 } as const;
 
 export const SERVER_DEPENDENCY_VERSIONS = {
