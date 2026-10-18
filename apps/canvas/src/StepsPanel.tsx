@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import { useAutoHeight } from "./useAutoHeight.js";
 import {
@@ -100,6 +100,13 @@ export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // Opening a form scrolls the panel back to the top: the Edit button sits in a list below the form, so a
+  // scrolled panel would leave the form (and its sticky Save row) above the fold.
+  const top = useRef<HTMLElement>(null);
+  const editingKey = editing?.key;
+  useEffect(() => {
+    if (editingKey !== undefined) top.current?.scrollIntoView?.({ block: "start" });
+  }, [editingKey]);
   const modern = spec.version === "1.1";
   const toolNames = (spec.agent.tools ?? []).map((t) => t.name);
   const keyOf = (ref: StepRef) => ref.path.join("/");
@@ -167,7 +174,7 @@ export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
   }
 
   return (
-    <section className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
+    <section ref={top} className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
       <p className="md3-body-small md3-field__hint">
         Edit a step in place: an action step's query, instructions, model, temperature and output
         schema, a transform, validate or dedupe step's expressions, a tool step's tool, a stop

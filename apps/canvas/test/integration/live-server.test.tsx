@@ -185,7 +185,7 @@ ops:
     await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
 
     fireEvent.click(screen.getByText("Add Tool"));
-    fireEvent.click(await screen.findByRole("button", { name: "Component" }, { timeout: 15000 }));
+    fireEvent.click(await screen.findByRole("button", { name: "Component" }));
     const form = screen.getByRole("form", { name: "Add Tool" });
     fireEvent.change(within(form).getByLabelText("Component"), {
       target: { value: "acme/tickets@1.0.0" },
