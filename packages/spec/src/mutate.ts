@@ -1,4 +1,4 @@
-import { isMap, type Document } from "yaml";
+import { isMap, isSeq, type Document } from "yaml";
 
 // The canvas write path (PLAN.md Shape S2/S1, ADR-0002) mutates the loaded
 // Document in place via setIn/addIn/deleteIn rather than rebuilding plain JS
@@ -30,6 +30,14 @@ export function applyPatch(doc: Document, ops: PatchOp[]): void {
           doc.contents.items.splice(at, 0, doc.createPair(first, op.value));
           continue;
         }
+      }
+      // A list the author wrote in flow style (`[a, b]`) stays in flow style when its items change.
+      const prior = doc.getIn(op.path, true);
+      if (isSeq(prior) && prior.flow && Array.isArray(op.value)) {
+        const node = doc.createNode(op.value);
+        if (isSeq(node)) node.flow = true;
+        doc.setIn(op.path, node);
+        continue;
       }
       doc.setIn(op.path, op.value);
     } else if (op.op === "add") {

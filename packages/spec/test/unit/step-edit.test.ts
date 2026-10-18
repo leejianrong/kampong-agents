@@ -656,3 +656,72 @@ agent:
     ).toEqual({ success: true, patch: [] });
   });
 });
+
+// KAM-168: saving a step edit changes only what was edited. The keys of an output_schema keep their order and a
+// list written in flow style stays one, so the git diff is the edit and nothing else.
+describe("saving an output schema keeps the author's layout", () => {
+  const SRC = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: s
+      action: write
+      output_schema:
+        type: object
+        required: [summary, direction]
+        properties:
+          summary:
+            type: string
+            description: "One sentence"
+            maxLength: 280
+          direction:
+            type: string
+            enum: [up, down]
+`;
+  const edit = (change: (draft: SchemaDraft) => void) => {
+    const { doc, spec } = parseSpec(SRC);
+    const ref = listSteps(spec!)[0]!;
+    const input = actionStepToEditInput(ref.step as never);
+    change(input.schema!);
+    const r = buildActionStepEdit(input, ref as never, "1.1");
+    expect(r.success).toBe(true);
+    applyPatch(doc, (r as { patch: never }).patch);
+    return { text: toYamlString(doc), patch: (r as { patch: unknown[] }).patch };
+  };
+
+  it("saves an untouched schema as no change", () => {
+    const { text, patch } = edit(() => {});
+    expect(patch).toEqual([]);
+    expect(text).toBe(SRC);
+  });
+
+  it("changes one limit and the rest of the file stays byte-identical", () => {
+    const { text } = edit((d) => {
+      d.properties[0]!.draft.maxLength = "120";
+    });
+    expect(text).toBe(SRC.replace("maxLength: 280", "maxLength: 120"));
+  });
+
+  it("keeps a flow list a flow list when its items change", () => {
+    const { text } = edit((d) => {
+      d.properties[1]!.draft.enum = "up, down, flat";
+      d.properties[1]!.required = false;
+    });
+    expect(text).toContain("enum: [up, down, flat]");
+    expect(text).toContain("required: [summary]");
+    expect(text.indexOf("required:")).toBeLessThan(text.indexOf("properties:"));
+  });
+
+  it("adds a property in place, after the others, leaving key order alone", () => {
+    const { text } = edit((d) => {
+      d.properties.push({ name: "score", required: true, draft: emptySchemaDraft("number") });
+    });
+    expect(text).toContain("required: [summary, direction, score]");
+    expect(text.indexOf("required:")).toBeLessThan(text.indexOf("properties:"));
+    expect(text).toContain("  score:\n");
+    expect(parseSpec(text).errors).toEqual([]);
+  });
+});

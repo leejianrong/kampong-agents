@@ -299,6 +299,29 @@ function canonical(value: unknown): string {
   );
 }
 
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * The smallest patch that turns `before` into `after` at `path`: a key that went is removed, a new one is set, a
+ * key in both is compared in turn, and a list or scalar that changed is set whole. Replacing the whole value
+ * instead would rewrite keys nobody touched (moving `required` below `properties`, say) and drop the style the
+ * author used for them.
+ */
+function diffPatch(path: (string | number)[], before: unknown, after: unknown): PatchOp[] {
+  if (canonical(before) === canonical(after)) return [];
+  if (!isPlainObject(before) || !isPlainObject(after)) return [{ op: "set", path, value: after }];
+  const ops: PatchOp[] = [];
+  for (const key of Object.keys(before)) {
+    if (!(key in after)) ops.push({ op: "remove", path: [...path, key] });
+  }
+  for (const [key, value] of Object.entries(after)) {
+    if (!(key in before)) ops.push({ op: "set", path: [...path, key], value });
+    else ops.push(...diffPatch([...path, key], before[key], value));
+  }
+  return ops;
+}
+
 /** Validates the form for a spec of `version` and returns the patch that sets (or clears) each field. */
 export function buildActionStepEdit(
   input: ActionStepEditInput,
@@ -361,7 +384,9 @@ export function buildActionStepEdit(
   text("instructions", instructions, step.step.instructions);
   field("model", model || undefined, step.step.model);
   field("temperature", temperature, step.step.temperature);
-  field("output_schema", schema, step.step.output_schema);
+  if (schema !== undefined && step.step.output_schema !== undefined) {
+    patch.push(...diffPatch([...step.path, "output_schema"], step.step.output_schema, schema));
+  } else field("output_schema", schema, step.step.output_schema);
   return { success: true, patch };
 }
 
