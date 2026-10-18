@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useAutoHeight } from "./useAutoHeight.js";
 import {
   actionStepToEditInput,
   buildActionStepEdit,
@@ -45,8 +46,37 @@ function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
   return spec.version === "1.1" ? expressionScopeForStepAt(spec, ref.path) : undefined;
 }
 
-/** A textarea shows its whole text, from a few lines up to a screenful, so a long prompt is not a 2-line peephole. */
-const rowsFor = (text: string) => Math.min(16, Math.max(4, text.split("\n").length));
+/** A text area for a prompt: as tall as its text, so a long one is not cut off. */
+function PromptField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  spellCheck,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  spellCheck?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useAutoHeight(ref, value);
+  return (
+    <label className="md3-field">
+      <span className="md3-body-small md3-field__label">{label}</span>
+      <textarea
+        ref={ref}
+        className="md3-text-field"
+        value={value}
+        rows={3}
+        placeholder={placeholder}
+        {...(spellCheck === false && { spellCheck: false })}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
 
 export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
   const refs = listSteps(spec);
@@ -124,30 +154,22 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         <form
           onSubmit={(e) => void submit(e)}
           aria-label={`Edit ${current.name}`}
-          className="md3-form"
+          className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Query</span>
-            <textarea
-              className="md3-text-field"
-              value={editing.input.query}
-              rows={rowsFor(editing.input.query)}
-              spellCheck={false}
-              placeholder="What this step asks the model; {{ step.field }} inserts a value"
-              onChange={(e) => patch({ query: e.target.value })}
-            />
-          </label>
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Instructions</span>
-            <textarea
-              className="md3-text-field"
-              value={editing.input.instructions}
-              rows={rowsFor(editing.input.instructions)}
-              placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
-              onChange={(e) => patch({ instructions: e.target.value })}
-            />
-          </label>
+          <PromptField
+            label="Query"
+            value={editing.input.query}
+            spellCheck={false}
+            placeholder="What this step asks the model; {{ step.field }} inserts a value"
+            onChange={(query) => patch({ query })}
+          />
+          <PromptField
+            label="Instructions"
+            value={editing.input.instructions}
+            placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
+            onChange={(instructions) => patch({ instructions })}
+          />
           <label className="md3-field">
             <span className="md3-body-small md3-field__label">Model</span>
             <input
@@ -219,37 +241,42 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         <form
           onSubmit={(e) => void submit(e)}
           aria-label={`Edit ${current.name}`}
-          className="md3-form"
+          className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
           {editing.input.kind === "transform" && (
             <fieldset className="md3-fieldset">
               <legend className="md3-label-large">Values</legend>
               {editing.input.set.map((row, i) => (
-                <div key={i} className="md3-field">
-                  <label className="md3-field__label md3-label-large">
-                    {`Value ${i + 1} name`}
-                    <input
-                      className="md3-text-field"
-                      value={row.name}
-                      spellCheck={false}
-                      onChange={(e) => patchRow(i, { name: e.target.value })}
-                    />
-                  </label>
+                <div key={i} className="md3-setrow">
+                  <div className="md3-setrow__head">
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">Name</span>
+                      <input
+                        className="md3-text-field"
+                        aria-label={`Value ${i + 1} name`}
+                        value={row.name}
+                        spellCheck={false}
+                        onChange={(e) => patchRow(i, { name: e.target.value })}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="md3-button md3-button-text"
+                      aria-label={`Remove value ${i + 1}`}
+                      onClick={() => removeRow(i)}
+                    >
+                      Remove
+                    </button>
+                  </div>
                   <ExpressionField
-                    label={`Value ${i + 1} expression`}
+                    label="Expression"
+                    accessibleName={`Value ${i + 1} expression`}
                     value={row.expression}
                     scope={scopeFor(spec, current)}
                     multiline
                     onChange={(expression) => patchRow(i, { expression })}
                   />
-                  <button
-                    type="button"
-                    className="md3-button md3-button-text"
-                    onClick={() => removeRow(i)}
-                  >
-                    {`Remove value ${i + 1}`}
-                  </button>
                 </div>
               ))}
               <button type="button" className="md3-button md3-button-tonal" onClick={addRow}>
