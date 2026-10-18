@@ -5,13 +5,17 @@ import {
   actionStepToEditInput,
   buildActionStepEdit,
   buildDataStepEdit,
+  buildSimpleStepEdit,
   dataStepToEditInput,
   emptySchemaDraft,
   expressionScopeForStepAt,
+  isSimpleStep,
   listSteps,
+  simpleStepToEditInput,
   type ActionStepEditInput,
   type DataStepEditInput,
   type ExpressionScope,
+  type SimpleStepEditInput,
   type AgentSpec,
   type PatchOp,
   type SetRow,
@@ -28,6 +32,8 @@ export interface StepsPanelProps {
   spec: AgentSpec;
   /** Applies a patch. Resolves false when the save failed, so the form stays open with its input. */
   onPatch: (ops: PatchOp[]) => Promise<boolean>;
+  /** Opens the tool at this index of `agent.tools` in the tool form. Without it the tool list is not shown. */
+  onEditTool?: (index: number) => void;
 }
 
 type ActionRef = StepRef & { step: Extract<StepRef["step"], { action: string }> };
@@ -37,10 +43,20 @@ type DataRef = StepRef & {
 };
 const isData = (ref: StepRef): ref is DataRef =>
   ref.kind === "transform" || ref.kind === "validate" || ref.kind === "dedupe";
+type SimpleRef = StepRef & { step: Parameters<typeof simpleStepToEditInput>[0] };
+const isSimple = (ref: StepRef): ref is SimpleRef => isSimpleStep(ref.step);
+
+/** Why a step has no Edit button, shown in its row. Only the kinds with no form need one. */
+const NOT_EDITABLE: Record<string, string> = {
+  foreach: "Loops are edited in the YAML for now",
+  branch: "Branches are edited in the YAML for now",
+  condition: "Condition steps are edited in the YAML",
+};
 
 type Editing =
   | { key: string; kind: "action"; input: ActionStepEditInput }
-  | { key: string; kind: "data"; input: DataStepEditInput };
+  | { key: string; kind: "data"; input: DataStepEditInput }
+  | { key: string; kind: "simple"; input: SimpleStepEditInput };
 
 /** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable and the body steps ahead of it. */
 function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
@@ -79,12 +95,13 @@ function PromptField({
   );
 }
 
-export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
+export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
   const refs = listSteps(spec);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const modern = spec.version === "1.1";
+  const toolNames = (spec.agent.tools ?? []).map((t) => t.name);
   const keyOf = (ref: StepRef) => ref.path.join("/");
   const current = editing && refs.find((r) => keyOf(r) === editing.key);
 
@@ -97,6 +114,13 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
   const patchData = (change: Record<string, string>) =>
     setEditing((e) =>
       e && e.kind === "data" ? { ...e, input: { ...e.input, ...change } as DataStepEditInput } : e,
+    );
+
+  const patchSimple = (change: Record<string, string>) =>
+    setEditing((e) =>
+      e && e.kind === "simple"
+        ? { ...e, input: { ...e.input, ...change } as SimpleStepEditInput }
+        : e,
     );
 
   const setRows = (change: (rows: SetRow[]) => SetRow[]) =>
@@ -118,7 +142,15 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         ? buildActionStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
         : editing.kind === "data" && isData(current)
           ? buildDataStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
-          : { success: false as const, errors: ["The form does not match the step"] };
+          : editing.kind === "simple" && isSimple(current)
+            ? buildSimpleStepEdit(
+                editing.input,
+                current,
+                spec.version,
+                toolNames,
+                scopeFor(spec, current),
+              )
+            : { success: false as const, errors: ["The form does not match the step"] };
     if (!result.success) {
       setErrors(result.errors);
       return;
@@ -138,7 +170,8 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
     <section className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
       <p className="md3-body-small md3-field__hint">
         Edit a step in place: an action step's query, instructions, model, temperature and output
-        schema, or a transform, validate or dedupe step's expressions.
+        schema, a transform, validate or dedupe step's expressions, a tool step's tool, a stop
+        step's reason and status, or an approval step's message.
       </p>
       {!modern && <VersionGate what="Per-step settings and an output schema" />}
 
@@ -341,6 +374,82 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         </form>
       )}
 
+      {editing && editing.kind === "simple" && current && isSimple(current) && (
+        <form
+          onSubmit={(e) => void submit(e)}
+          aria-label={`Edit ${current.name}`}
+          className="md3-form md3-form--fill"
+        >
+          <span className="md3-title-small">{current.name}</span>
+          {editing.input.kind === "tool" && (
+            <label className="md3-field">
+              <span className="md3-body-small md3-field__label">Tool</span>
+              <select
+                className="md3-text-field"
+                value={editing.input.tool}
+                onChange={(e) => patchSimple({ tool: e.target.value })}
+              >
+                {!toolNames.includes(editing.input.tool) && (
+                  <option value={editing.input.tool}>{editing.input.tool} (not defined)</option>
+                )}
+                {toolNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {editing.input.kind === "stop" && (
+            <>
+              <PromptField
+                label="Reason"
+                value={editing.input.reason}
+                spellCheck={false}
+                placeholder="Why the run ends here; {{ step.field }} inserts a value"
+                onChange={(reason) => patchSimple({ reason })}
+              />
+              <label className="md3-field">
+                <span className="md3-body-small md3-field__label">Status</span>
+                <select
+                  className="md3-text-field"
+                  value={editing.input.status}
+                  onChange={(e) => patchSimple({ status: e.target.value })}
+                >
+                  <option value="">Default (completed)</option>
+                  <option value="completed">completed</option>
+                  <option value="skipped">skipped</option>
+                </select>
+              </label>
+            </>
+          )}
+          {editing.input.kind === "approval" && (
+            <PromptField
+              label="Message"
+              value={editing.input.message}
+              spellCheck={false}
+              placeholder="Shown to the approver; {{ step.field }} inserts a value"
+              onChange={(message) => patchSimple({ message })}
+            />
+          )}
+          {errors.length > 0 && (
+            <ul role="alert" className="md3-error-list">
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          )}
+          <div className="md3-trust__actions">
+            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
+              Save step
+            </button>
+            <button type="button" className="md3-button md3-button-text" onClick={close}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
       <ul className="md3-doctor__list" data-testid="steps-list">
         {refs.map((ref) => (
           <li key={keyOf(ref)} className="md3-secrets__row">
@@ -352,11 +461,11 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
               </span>
             </span>
             <span className="md3-secrets__actions">
-              {(isAction(ref) || isData(ref)) && (
+              {(isAction(ref) || isData(ref) || isSimple(ref)) && (
                 <button
                   type="button"
                   className="md3-button md3-button-text"
-                  disabled={busy || editing !== null || !modern}
+                  disabled={busy || editing !== null || (!modern && !isSimple(ref))}
                   aria-label={`Edit ${ref.name}`}
                   onClick={() => {
                     setErrors([]);
@@ -367,21 +476,59 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
                             kind: "action",
                             input: actionStepToEditInput(ref.step),
                           }
-                        : {
-                            key: keyOf(ref),
-                            kind: "data",
-                            input: dataStepToEditInput((ref as DataRef).step),
-                          },
+                        : isSimple(ref)
+                          ? {
+                              key: keyOf(ref),
+                              kind: "simple",
+                              input: simpleStepToEditInput(ref.step),
+                            }
+                          : {
+                              key: keyOf(ref),
+                              kind: "data",
+                              input: dataStepToEditInput((ref as DataRef).step),
+                            },
                     );
                   }}
                 >
                   Edit
                 </button>
               )}
+              {NOT_EDITABLE[ref.kind] && (
+                <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
+              )}
             </span>
           </li>
         ))}
       </ul>
+
+      {onEditTool && (
+        <>
+          <span className="md3-title-small">Tools</span>
+          <ul className="md3-doctor__list" data-testid="tools-list">
+            {(spec.agent.tools ?? []).map((tool, index) => (
+              <li key={tool.name} className="md3-secrets__row">
+                <span className="md3-vars__name">
+                  <span className="md3-body-medium">{tool.name}</span>
+                  <span className="md3-body-small md3-field__hint">
+                    {tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
+                  </span>
+                </span>
+                <span className="md3-secrets__actions">
+                  <button
+                    type="button"
+                    className="md3-button md3-button-text"
+                    disabled={busy || editing !== null}
+                    aria-label={`Edit tool ${tool.name}`}
+                    onClick={() => onEditTool(index)}
+                  >
+                    Edit
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }

@@ -482,6 +482,15 @@ and replaces only the fields that changed, so comments elsewhere in the step sur
 carry a line under the title: a transform's value names, a validate's assertion (clipped) and `on_fail`, and a
 dedupe's key and `ttl`.
 
+A tool step opens with a picker over the agent's tools, a stop step with its `reason` and `status` (clearing a
+field removes it from the file), and an approval step with its `message`; these also work on a `"1.0"` spec except
+`stop`, which is 1.1 only. Loops, branches and condition steps have no form here yet and say so in their row. Below the
+steps, **Edit Steps** lists the agent's tools, each with an **Edit** button that opens the Add Tool form on the saved
+values. The tool's name, kind and (for a component) component and operation are fixed, because changing them is a
+rename or a different tool. A component's operation inputs show as fields; an input the form cannot show, or a
+component that is not installed, is edited as YAML. Fields the form has no control for (an HTTP tool's `failure_when`,
+`pace` and `retry`; `requires_approval` on a Slack or Gmail tool; an input the op does not declare) are kept as written.
+
 ### Condition step
 
 ```yaml

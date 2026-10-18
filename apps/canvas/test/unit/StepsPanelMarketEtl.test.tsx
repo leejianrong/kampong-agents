@@ -16,18 +16,38 @@ const SOURCE = readFileSync(
 describe("StepsPanel on the market-etl template", () => {
   afterEach(cleanup);
 
-  it("offers an Edit button for every transform, validate and action step", () => {
+  it("offers an Edit button for every step but the loop and the branch, which say why not", () => {
     const { spec, errors } = parseSpec(SOURCE);
     expect(errors).toEqual([]);
     render(<StepsPanel spec={spec!} onPatch={vi.fn(async () => true)} />);
-    expect(editable()).toEqual(["check", "shape", "sane", "delta", "row", "summarize", "report"]);
+    expect(editable()).toEqual([
+      "fetch",
+      "check",
+      "shape",
+      "sane",
+      "delta",
+      "row",
+      "write",
+      "summarize",
+      "alert",
+      "report",
+    ]);
+    expect(screen.getAllByText(/edited in the YAML for now/)).toHaveLength(2);
   });
 
   // KAM-164 (scope inside the loop) and KAM-165 (multi-line values) cleared the five that used to fail.
-  it.each(["check", "shape", "sane", "delta", "row", "summarize", "report"])(
-    "opens %s with no error and nothing flagged invalid",
-    opensClean,
-  );
+  it.each([
+    "fetch",
+    "check",
+    "shape",
+    "sane",
+    "delta",
+    "row",
+    "write",
+    "summarize",
+    "alert",
+    "report",
+  ])("opens %s with no error and nothing flagged invalid", opensClean);
 });
 
 function opensClean(name: string) {

@@ -41,7 +41,7 @@ const change = (label: string, value: string) =>
 describe("StepsPanel", () => {
   afterEach(cleanup);
 
-  it("lists every step, nested ones with their parent, and edits only action steps", () => {
+  it("lists every step, nested ones with their parent, and edits every kind that has a form, giving a reason for the rest", () => {
     setup();
     const list = screen.getByTestId("steps-list");
     expect(within(list).getByText("classify")).toBeTruthy();
@@ -49,8 +49,9 @@ describe("StepsPanel", () => {
     expect(within(list).getByText("action in each")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Edit classify" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Edit inner" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit pay" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit pay" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Edit each" })).toBeNull();
+    expect(within(list).getByText("Loops are edited in the YAML for now")).toBeTruthy();
   });
 
   it("opens a step with its values and saves a patch of only what changed", async () => {

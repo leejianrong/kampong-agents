@@ -7,6 +7,7 @@ import {
   setTriggerPatch,
   setVarPatch,
   specWarnings,
+  toolEditPatch,
   type AgentSpec,
   type ComponentCatalog,
   type Guardrails,
@@ -65,7 +66,8 @@ type OpenForm =
   | "variables"
   | "vars"
   | "trigger"
-  | "steps";
+  | "steps"
+  | "edit-tool";
 
 export function App({
   apiBaseUrl = "",
@@ -89,6 +91,8 @@ export function App({
   // KAN-1885: the installed components, fetched each time the tool form opens so a component added
   // while the canvas is running shows up without a reload. Undefined where the server offers none.
   const [catalog, setCatalog] = useState<ComponentCatalog | undefined>(undefined);
+  // KAM-175: the index in `agent.tools` of the tool open in the edit form.
+  const [editingTool, setEditingTool] = useState<number | null>(null);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
   // e.g. the spec file was deleted/renamed out from under a running
@@ -148,7 +152,7 @@ export function App({
   }, [api, refresh]);
 
   useEffect(() => {
-    if (openForm !== "tool" || !api.listComponents) return;
+    if ((openForm !== "tool" && openForm !== "edit-tool") || !api.listComponents) return;
     let cancelled = false;
     api
       .listComponents()
@@ -225,6 +229,16 @@ export function App({
       return;
     setOpenForm(null);
     await refresh();
+  }
+
+  async function handleEditTool(index: number, tool: Tool) {
+    const before = spec?.agent.tools?.[index];
+    if (!before) return;
+    const ops = toolEditPatch(["agent", "tools", index], before, tool);
+    if (ops.length > 0 && !(await applyPatchOrReportError(ops))) return;
+    setOpenForm(null);
+    setEditingTool(null);
+    if (ops.length > 0) await refresh();
   }
 
   async function handleAddWorkflowStep(step: WorkflowStep) {
@@ -440,6 +454,27 @@ export function App({
               />
             </Panel>
           )}
+          {openForm === "edit-tool" &&
+            spec &&
+            editingTool !== null &&
+            spec.agent.tools?.[editingTool] &&
+            // A component tool waits for the catalog, so its inputs open as fields and not as YAML.
+            (spec.agent.tools[editingTool].action !== "component" ||
+              catalog !== undefined ||
+              !api.listComponents) && (
+              <Panel title="Edit Tool" onClose={() => setOpenForm(null)}>
+                <ToolForm
+                  key={`${editingTool}:${spec.agent.tools[editingTool].name}`}
+                  initial={spec.agent.tools[editingTool]}
+                  components={catalog?.components}
+                  componentProblems={catalog?.problems}
+                  references={references}
+                  onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                  onSubmit={(tool) => void handleEditTool(editingTool, tool)}
+                  onCancel={() => setOpenForm(null)}
+                />
+              </Panel>
+            )}
           {openForm === "workflow" && (
             <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
               <WorkflowStepForm
@@ -484,7 +519,14 @@ export function App({
           )}
           {openForm === "steps" && spec && (
             <Panel title="Edit Steps" onClose={() => setOpenForm(null)}>
-              <StepsPanel spec={spec} onPatch={handlePatchSteps} />
+              <StepsPanel
+                spec={spec}
+                onPatch={handlePatchSteps}
+                onEditTool={(index) => {
+                  setEditingTool(index);
+                  setOpenForm("edit-tool");
+                }}
+              />
             </Panel>
           )}
           {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
