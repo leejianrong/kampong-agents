@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { VersionGate } from "./VersionGate.js";
 import { buildVarFromForm, varToFormInput, type SpecVar, type VarFormInput } from "@kampong/spec";
 
 // Spec vars (KAM-159, a slice of KAM-110): the `vars:` a spec declares, which `kampong run --var` and an
@@ -74,13 +75,7 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
         Inputs the spec declares under <code>vars:</code>. A run takes a value with{" "}
         <code>--var name=value</code>, and an expression reads it as <code>vars.name</code>.
       </p>
-      {!supported && (
-        <p role="status" className="md3-banner md3-banner--info">
-          Vars need spec version <code>"1.1"</code>. Change <code>version</code> in the YAML when
-          you are ready: 1.1 reads <code>{"{{ }}"}</code> references as expressions, which can
-          change what an existing 1.0 spec means.
-        </p>
-      )}
+      {!supported && <VersionGate what="Vars" />}
 
       {form && (
         <form onSubmit={(e) => void submit(e)} aria-label="Spec var" className="md3-form">

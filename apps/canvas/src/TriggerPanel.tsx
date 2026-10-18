@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { VersionGate } from "./VersionGate.js";
 import {
   buildTriggerFromForm,
   triggerToFormInput,
@@ -144,12 +145,7 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
         still runs with <code>kampong run</code> and Test Run.
       </p>
       {!modern && (
-        <p role="status" className="md3-banner md3-banner--info">
-          Schedule and poll triggers, and a webhook's auth, filter, map and response mode, need spec
-          version <code>"1.1"</code>. Change <code>version</code> in the YAML when you are ready:
-          1.1 reads <code>{"{{ }}"}</code> references as expressions, which can change what an
-          existing 1.0 spec means.
-        </p>
+        <VersionGate what="Schedule and poll triggers, and a webhook's auth, filter, map and response mode" />
       )}
 
       {form && (

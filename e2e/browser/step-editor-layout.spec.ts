@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -9,39 +9,44 @@ import { expect, test } from "@playwright/test";
 // Runs `kampong dev` on a copy of the market-etl template (a version 1.1 spec), separate from the hosted harness.
 
 const PORT = 4339;
+const V10_PORT = 4340;
 const URL = `http://127.0.0.1:${PORT}`;
-let server: ChildProcess;
+const V10_URL = `http://127.0.0.1:${V10_PORT}`;
+const servers: ChildProcess[] = [];
 let dir: string;
+
+async function start(folder: string, port: number) {
+  servers.push(
+    spawn(
+      process.execPath,
+      [join("packages", "cli", "dist", "cli.js"), "dev", folder, "--port", String(port)],
+      { stdio: "ignore" },
+    ),
+  );
+  for (let i = 0; i < 60; i++) {
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}`)).ok) return;
+    } catch {
+      // not listening yet
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`kampong dev did not start on ${port}`);
+}
 
 test.beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kampong-layout-"));
   cpSync(join("packages", "cli", "templates", "market-etl"), join(dir, "market-etl"), {
     recursive: true,
   });
-  server = spawn(
-    process.execPath,
-    [
-      join("packages", "cli", "dist", "cli.js"),
-      "dev",
-      join(dir, "market-etl"),
-      "--port",
-      String(PORT),
-    ],
-    { stdio: "ignore" },
-  );
-  for (let i = 0; i < 60; i++) {
-    try {
-      if ((await fetch(URL)).ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error("kampong dev did not start");
+  mkdirSync(join(dir, "starter"));
+  cpSync(join("examples", "agent.yaml"), join(dir, "starter", "agent.yaml"));
+  await start(join(dir, "market-etl"), PORT);
+  await start(join(dir, "starter"), V10_PORT);
 });
 
 test.afterAll(() => {
-  server?.kill();
+  for (const server of servers) server.kill();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -89,3 +94,31 @@ test("Save step can be scrolled to and clicked", async ({ page }) => {
   await expect(save).toBeInViewport();
   await save.click();
 });
+
+// KAM-198: on a version 1.0 spec each panel says what needs 1.1 as one paragraph in its card. It used to be cut
+// into flex columns that ran off the card.
+for (const [button, what] of [
+  ["Spec Vars", "Vars"],
+  ["Trigger", "Schedule and poll triggers"],
+  ["Edit Steps", "Per-step settings"],
+] as const) {
+  test(`${button}: the version 1.1 notice is one readable paragraph`, async ({ page }) => {
+    await page.goto(V10_URL);
+    await page.getByRole("button", { name: button, exact: true }).click();
+    const notice = page.getByRole("status").filter({ hasText: "need spec version" });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(what);
+    const box = await notice.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const parent = el.parentElement!.getBoundingClientRect();
+      return {
+        children: el.children.length,
+        height: Math.round(r.height),
+        spills: el.scrollWidth > el.clientWidth || r.right > parent.right + 1,
+      };
+    });
+    expect(box.children).toBe(1);
+    expect(box.spills).toBe(false);
+    expect(box.height).toBeLessThan(170);
+  });
+}
