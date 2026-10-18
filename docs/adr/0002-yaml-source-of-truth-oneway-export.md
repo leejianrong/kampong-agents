@@ -1,6 +1,6 @@
 # ADR-0002: YAML is the single lossless source of truth; code export is one-way
 
-- Status: Accepted
+- Status: Accepted. The "YAML is the source of truth" wording is superseded by ADR-0054; one-way TypeScript export stands.
 - Date: 2026-09-03
 - Deciders: Jian (product owner)
 

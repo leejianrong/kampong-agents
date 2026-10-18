@@ -2,9 +2,10 @@
 
 **Build an agent workflow once. Keep it as a file you can read, diff, and review.**
 
-Kampong Agents is a dev-first builder for single-agent workflows. You design an agent on a
-visual canvas, or hand-write its YAML in your editor, and either way there's exactly one
-artifact: an `AgentSpec` file that both views share. When the agent is ready, you can eject it
+Kampong Agents is a builder for agent workflows. You design one on a visual canvas, or hand-write
+its YAML in your editor, and either way there's exactly one definition: an `AgentSpec` that both
+views share. Locally that's a file you can commit; in the hosted product it's managed for you and
+you can import or export it as YAML whenever you like. When the agent is ready, you can eject it
 to a standalone TypeScript project that no longer depends on this tool at all.
 
 It runs locally. Nothing phones home, secrets stay in your environment, and a run can execute
@@ -18,7 +19,7 @@ the canvas rewrites the YAML, and every edit to the YAML re-renders the canvas.
 ```mermaid
 flowchart LR
   canvas["Visual canvas"]
-  spec["agent.yaml<br/>(the single source of truth)"]
+  spec["agent.yaml<br/>(the spec, as a file)"]
   editor["Your editor<br/>(Cursor, Claude Code, vim)"]
   export["Standalone<br/>TypeScript project"]
 

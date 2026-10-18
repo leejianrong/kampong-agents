@@ -4,6 +4,13 @@ Vertical increments. Each ends in something you can demonstrate. Slice 1 confron
 
 **Cross-cutting notes:** any frontend/UI work in any slice below (canvas app, property panels, guardrail controls, hosted V5 UI) uses Material Design 3 (`/material-design-3`) rather than ad hoc styling. The stack is React + Vite + `@xyflow/react` for the canvas, Fastify + SSE for the local server, and the `yaml` package for comment-preserving parsing (ADR-0007) — external editing (Cursor, agentic coding tools) is a first-class workflow, not an edge case (ADR-0008).
 
+## Direction update (2026-10-19)
+
+ADR-0053 and ADR-0054 reset the order of work for a non-technical first user with hosting as the business:
+editing foundation (step mutation API, click-to-edit canvas), hosted that runs spec 1.1, prompt-to-workflow
+(V8, promoted), trust features (replay by default, per-node status, undo and history), templates and onboarding,
+the enterprise self-host licence (V6), then billing. The board holds the cards; trust it for state.
+
 ## Status at a glance (2026-10-14)
 
 Cards live on the Pandan board "Kampong Agents" (id 26, key `KAM`), one epic per slice. Older text below

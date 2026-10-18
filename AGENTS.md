@@ -1,6 +1,8 @@
 # Kampong Agents — agent brief
 
-A dev-first, canvas-code-duality agent-workflow builder (single-agent, TypeScript on Mastra).
+An agent-workflow builder for people who can prompt an LLM but may not write code, with a hosted product as
+the business and a developer-friendly local mode (TypeScript on Mastra). ADR-0053 sets the first user and the
+business model.
 Deep context lives in `PLAN.md` (problem/scope/requirements), `SLICES.md` (build sequence and a
 status table), and `docs/adr/*.md` (decisions and why). This file is the fast start, not a
 replacement for reading those before you implement a slice.
@@ -27,11 +29,15 @@ claim it, and keep it in the active cycle (see KAM-150).
 
 ## Load-bearing conventions (don't re-litigate; see the ADR for the why)
 
-- **YAML is the single source of truth; canvas is bidirectional with it; code export is one-way.**
-  The canvas never reads generated TypeScript. (ADR-0002)
+- **The validated `AgentSpec` is the single truth; YAML is its canonical text form and the interchange format.**
+  Local mode edits `agent.yaml` on disk. Hosted mode keeps the spec as an internal document and offers
+  import/export of YAML; users are not asked to see a file. Local and hosted share one mutation layer and one
+  `SpecRepository` interface and must not drift (parity-tested). Code export is one-way, and the canvas never
+  reads generated TypeScript. (ADR-0054; the one-way export half of ADR-0002)
 - **TypeScript end to end, on Mastra.** No Python component. Mastra core is Apache 2.0; its `ee/`
   features are separately licensed, so build governance ourselves. (ADR-0003)
-- **Single-agent only.** Leave room for `sub_agents` in the schema; nothing assumes it's soon. (ADR-0001)
+- **One agent per spec today is a v1 scope limit, not positioning.** The schema leaves room for `sub_agents`;
+  multi-agent is open and unscheduled. Do not describe the product as single-agent. (ADR-0001, ADR-0053)
 - **No separate LLM gateway until hosted (V5).** A failed model call fails visibly; it is never silently
   retried on another provider. (ADR-0004)
 - **The canvas is a local web app served by the CLI, not a desktop app**, so the same UI serves hosted
@@ -40,10 +46,11 @@ claim it, and keep it in the active cycle (see KAM-150).
 - **Stack:** React + Vite + `@xyflow/react`; Fastify + SSE; the `yaml` package (not `js-yaml`) for
   comment-preserving parsing. No database for specs. The one local exception is the SQLite state store
   (`.kampong/state.db`, ADR-0028); the hosted server uses Postgres. (ADR-0007, ADR-0028)
-- **Hand-editing specs in Cursor or Claude Code is a primary workflow.** External changes auto-reload with
+- **Hand-editing specs in Cursor or Claude Code is supported in local mode**, for developers (the secondary
+  audience), and is not the primary story or guaranteed in hosted mode. External changes auto-reload with
   no prompt; the canvas prompts only on a genuine in-flight-mutation conflict. The published JSON Schema
   plus the `yaml-language-server` pragma is how external tools validate. The in-app YAML view stays a
-  light viewer. (ADR-0008)
+  light viewer. (ADR-0008, narrowed by ADR-0054)
 - **Spec versions:** `"1.0"` keeps the original `{step.field}` syntax and string conditions and must keep
   validating. New step kinds (`transform`, `validate`, `dedupe`, `foreach`, `branch`, `stop`), `vars`,
   schedule/webhook auth and `output_schema` are `"1.1"` only. Each carries its own YAML line in errors.
@@ -57,7 +64,11 @@ claim it, and keep it in the active cycle (see KAM-150).
   `mastra-projects/` goes through OpenRouter only (its ADR-0005).
 - **Frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation, state layers);
   see the `material-design-3` skill.
-- **Enterprise features (V6) are roadmap, not cut.** Don't build them early; don't assume they never come.
+- **First user: a non-technical person who can prompt an LLM.** Hosted is the business; a paid enterprise licence
+  to self-host (GitLab-style) is planned. Prompt-to-workflow is core to the main path, and hosted must run the
+  full spec. Pricing and the core's licence are not decided. (ADR-0053)
+- **Enterprise features (V6) are a planned revenue line (the self-host licence), not cut.** Sequence them after
+  hosted can run spec 1.1; don't assume they never come.
 
 ## Repo layout
 
@@ -112,7 +123,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0052).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0054).
 - Every bug or flake becomes a regression test before the fix.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 

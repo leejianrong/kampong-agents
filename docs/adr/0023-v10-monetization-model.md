@@ -1,6 +1,6 @@
 # ADR-0023: V10 monetization model — per-seat business pricing, free for individuals
 
-- Status: Accepted
+- Status: Accepted, with the pricing dimension reopened by ADR-0053 (per-seat and free-for-individuals are no longer settled; an enterprise self-host licence is added).
 - Date: 2026-09-18
 - Deciders: Jian (product owner)
 

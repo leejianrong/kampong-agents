@@ -1,6 +1,6 @@
 # ADR-0012: Scope evaluation and fallback approach for natural-language spec generation (V8)
 
-- Status: Proposed
+- Status: Proposed. ADR-0053 promotes prompt-to-workflow to the main path; accept or replace this ADR when that work starts.
 - Date: 2026-09-05
 - Deciders: Jian (product owner)
 
