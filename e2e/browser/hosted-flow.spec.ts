@@ -80,7 +80,7 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   const toolForm = page.getByRole("form", { name: "Add Tool" });
   await toolForm.getByLabel("Name").fill("lookup_customer");
   await toolForm.getByLabel("URL").fill("https://api.example.test/customers");
-  await toolForm.getByRole("button", { name: "Save Tool" }).click();
+  await toolForm.getByRole("button", { name: "Save tool" }).click();
   // The YAML preview (light viewer, ADR-0008) reflects the mutation.
   await expect(page.getByTestId("yaml-preview")).toContainText("lookup_customer");
 

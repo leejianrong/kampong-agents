@@ -193,9 +193,7 @@ export function ToolForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-card md3-form">
-      <h2 className="md3-title-medium">Add Tool</h2>
-
+    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-form md3-form--fill">
       {kindSwitcher}
 
       <label className="md3-field">
@@ -382,7 +380,7 @@ export function ToolForm({
       )}
       <div className="md3-form-actions">
         <button type="submit" className="md3-button md3-button-filled">
-          Save Tool
+          Save tool
         </button>
         <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
           Cancel

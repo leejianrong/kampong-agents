@@ -127,7 +127,6 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
   return (
     <section className="md3-doctor" aria-label="Trigger" data-testid="trigger-panel">
       <div className="md3-doctor__head">
-        <span className="md3-title-medium">Trigger</span>
         {(["webhook", "schedule", "poll"] as const).map((type) => (
           <button
             key={type}

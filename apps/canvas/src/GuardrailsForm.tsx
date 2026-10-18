@@ -35,8 +35,7 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Set Guardrails" className="md3-card md3-form">
-      <h2 className="md3-title-medium">Set Guardrails</h2>
+    <form onSubmit={handleSubmit} aria-label="Set Guardrails" className="md3-form md3-form--fill">
       <label className="md3-field">
         <span className="md3-field__label md3-label-large">Confidence threshold</span>
         <input
@@ -72,7 +71,7 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
       )}
       <div className="md3-form-actions">
         <button type="submit" className="md3-button md3-button-filled">
-          Save Guardrails
+          Save guardrails
         </button>
         <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
           Cancel

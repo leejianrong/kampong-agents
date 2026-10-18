@@ -19,7 +19,7 @@ describe("WorkflowStepForm", () => {
 
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "parse_request" } });
     fireEvent.change(screen.getByLabelText("Action"), { target: { value: "extract_entities" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({ step: "parse_request", action: "extract_entities" });
   });
@@ -31,7 +31,7 @@ describe("WorkflowStepForm", () => {
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "evaluate_policy" } });
     fireEvent.change(screen.getByLabelText("Action"), { target: { value: "check_knowledge" } });
     fireEvent.click(screen.getByLabelText("Requires confidence gate"));
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "evaluate_policy",
@@ -49,7 +49,7 @@ describe("WorkflowStepForm", () => {
     fireEvent.change(screen.getByLabelText(/^Instructions/), { target: { value: "Be brief." } });
     fireEvent.change(screen.getByLabelText(/^Model/), { target: { value: "small-one" } });
     fireEvent.change(screen.getByLabelText(/^Temperature/), { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "draft",
@@ -80,7 +80,7 @@ describe("WorkflowStepForm", () => {
     fireEvent.change(screen.getByLabelText("Else (target step id)"), {
       target: { value: "request_human_approval" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "handle_approval",
@@ -101,7 +101,7 @@ describe("WorkflowStepForm", () => {
       target: { value: "evaluation.eligible == true" },
     });
     // "then"/"else" left blank.
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toBeTruthy();
@@ -116,7 +116,7 @@ describe("WorkflowStepForm", () => {
 
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "lookup" } });
     fireEvent.change(screen.getByLabelText("Tool name"), { target: { value: "get_order" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({ step: "lookup", type: "tool", tool: "get_order" });
   });
@@ -130,7 +130,7 @@ describe("WorkflowStepForm", () => {
     fireEvent.change(screen.getByLabelText("Message (optional)"), {
       target: { value: "Approve this reply?" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "review",

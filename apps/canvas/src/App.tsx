@@ -29,6 +29,7 @@ import { StepsPanel } from "./StepsPanel.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
+import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
 import { YamlPreview } from "./YamlPreview.js";
 
@@ -399,36 +400,6 @@ export function App({
           )}
 
           <div className="md3-app__canvas-surface">
-            {openForm === "tool" && (
-              <div className="md3-app__overlay">
-                <ToolForm
-                  components={catalog?.components}
-                  componentProblems={catalog?.problems}
-                  references={references}
-                  onPinComponent={api.pinComponent ? handlePinComponent : undefined}
-                  onSubmit={(tool) => void handleAddTool(tool)}
-                  onCancel={() => setOpenForm(null)}
-                />
-              </div>
-            )}
-            {openForm === "workflow" && (
-              <div className="md3-app__overlay">
-                <WorkflowStepForm
-                  scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
-                  onSubmit={(step) => void handleAddWorkflowStep(step)}
-                  onCancel={() => setOpenForm(null)}
-                />
-              </div>
-            )}
-            {openForm === "guardrails" && (
-              <div className="md3-app__overlay">
-                <GuardrailsForm
-                  onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
-                  onCancel={() => setOpenForm(null)}
-                />
-              </div>
-            )}
-
             <Canvas graph={graph} layout={layout} />
           </div>
         </div>
@@ -436,49 +407,78 @@ export function App({
           {/* The run panel docks in the side pane (above the YAML) rather than
             floating over the canvas, so a run never covers the graph the user
             is watching. Toggling "Test Run" shows/hides it. */}
+          {openForm === "tool" && (
+            <Panel title="Add Tool" onClose={() => setOpenForm(null)}>
+              <ToolForm
+                components={catalog?.components}
+                componentProblems={catalog?.problems}
+                references={references}
+                onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                onSubmit={(tool) => void handleAddTool(tool)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </Panel>
+          )}
+          {openForm === "workflow" && (
+            <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
+              <WorkflowStepForm
+                scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
+                onSubmit={(step) => void handleAddWorkflowStep(step)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </Panel>
+          )}
+          {openForm === "guardrails" && (
+            <Panel title="Set Guardrails" onClose={() => setOpenForm(null)}>
+              <GuardrailsForm
+                onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
+                onCancel={() => setOpenForm(null)}
+              />
+            </Panel>
+          )}
           {openForm === "run" && (
-            <div className="md3-app__run-dock">
+            <Panel title="Test Run" onClose={() => setOpenForm(null)}>
               <RunPanel api={api} />
-            </div>
+            </Panel>
           )}
           {openForm === "vars" && spec && (
-            <div className="md3-app__run-dock">
+            <Panel title="Spec Vars" onClose={() => setOpenForm(null)}>
               <VarsPanel
                 version={spec.version}
                 vars={spec.vars}
                 onSave={handleSaveVar}
                 onRemove={handleRemoveVar}
               />
-            </div>
+            </Panel>
           )}
           {openForm === "trigger" && spec && (
-            <div className="md3-app__run-dock">
+            <Panel title="Trigger" onClose={() => setOpenForm(null)}>
               <TriggerPanel
                 version={spec.version}
                 trigger={spec.agent.trigger}
                 onSave={handleSaveTrigger}
                 onRemove={handleRemoveTrigger}
               />
-            </div>
+            </Panel>
           )}
           {openForm === "steps" && spec && (
-            <div className="md3-app__run-dock">
+            <Panel title="Edit Steps" onClose={() => setOpenForm(null)}>
               <StepsPanel spec={spec} onPatch={handlePatchSteps} />
-            </div>
+            </Panel>
           )}
           {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
-            <div className="md3-app__run-dock">
+            <Panel title="Variables" onClose={() => setOpenForm(null)}>
               <SecretsPanel
                 list={() => api.listSecrets!()}
                 save={(name, value) => api.setSecret!(name, value)}
                 remove={(name) => api.removeSecret!(name)}
               />
-            </div>
+            </Panel>
           )}
           {openForm === "checks" && api.runDoctor && (
-            <div className="md3-app__run-dock">
+            <Panel title="Checks" onClose={() => setOpenForm(null)}>
               <DoctorPanel run={(options) => api.runDoctor!(options)} />
-            </div>
+            </Panel>
           )}
           <YamlPreview source={source} />
         </div>

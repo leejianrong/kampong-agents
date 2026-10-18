@@ -118,7 +118,7 @@ describe("canvas against a real local server (no mocks)", () => {
     await fillAndSubmit(
       "Add Tool",
       { Name: "check_status", URL: "https://api.example.com/status" },
-      "Save Tool",
+      "Save tool",
     );
     await waitFor(() => {
       expect(readFileSync(specPath, "utf8")).toContain("check_status");
@@ -128,7 +128,7 @@ describe("canvas against a real local server (no mocks)", () => {
     await fillAndSubmit(
       "Add Workflow Step",
       { "Step ID": "evaluate_policy", Action: "check_knowledge" },
-      "Save Step",
+      "Save step",
     );
     await waitFor(() => {
       expect(readFileSync(specPath, "utf8")).toContain("evaluate_policy");
@@ -138,7 +138,7 @@ describe("canvas against a real local server (no mocks)", () => {
     await fillAndSubmit(
       "Set Guardrails",
       { "Confidence threshold": "0.9", "Fallback action": "escalate_to_human" },
-      "Save Guardrails",
+      "Save guardrails",
     );
     await waitFor(() => {
       expect(readFileSync(specPath, "utf8")).toContain("escalate_to_human");
@@ -193,7 +193,7 @@ ops:
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "make_ticket" } });
     fireEvent.change(within(form).getByLabelText(/^title/), { target: { value: "Broken login" } });
     fireEvent.change(within(form).getByLabelText("priority"), { target: { value: "2" } });
-    fireEvent.click(within(form).getByText("Save Tool"));
+    fireEvent.click(within(form).getByText("Save tool"));
 
     await waitFor(() => expect(readFileSync(specPath, "utf8")).toContain("make_ticket"));
     const parsed = parseSpec(readFileSync(specPath, "utf8"));
@@ -228,7 +228,7 @@ ops:
       target: { value: "check_knowledge" },
     });
     fireEvent.click(within(form).getByLabelText("Requires confidence gate"));
-    fireEvent.click(within(form).getByText("Save Step"));
+    fireEvent.click(within(form).getByText("Save step"));
     await waitFor(() => {
       expect(readFileSync(specPath, "utf8")).toContain("confidence_gate: true");
     });
@@ -248,7 +248,7 @@ ops:
     fireEvent.change(within(form).getByLabelText("Else (target step id)"), {
       target: { value: "request_human_approval" },
     });
-    fireEvent.click(within(form).getByText("Save Step"));
+    fireEvent.click(within(form).getByText("Save step"));
     await waitFor(() => {
       expect(readFileSync(specPath, "utf8")).toContain("type: condition");
     });
@@ -275,7 +275,7 @@ ops:
     await fillAndSubmit(
       "Add Tool",
       { Name: "check_status", URL: "https://api.example.com/status" },
-      "Save Tool",
+      "Save tool",
     );
 
     await waitFor(() => {
@@ -306,7 +306,7 @@ ops:
     await fillAndSubmit(
       "Add Workflow Step",
       { "Step ID": "evaluate_policy", Action: "check_knowledge" },
-      "Save Step",
+      "Save step",
     );
 
     await waitFor(() => {

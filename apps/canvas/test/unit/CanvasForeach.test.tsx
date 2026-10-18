@@ -85,7 +85,7 @@ describe("WorkflowStepForm foreach", () => {
     fireEvent.change(screen.getByLabelText("Body (one tool per line, step: tool)"), {
       target: { value: "fetch: fetch_price" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).toHaveBeenCalledWith({
       step: "each",
       foreach: {
@@ -107,7 +107,7 @@ describe("WorkflowStepForm foreach", () => {
       target: { value: "x" },
     });
     fireEvent.change(screen.getByLabelText("Loop variable"), { target: { value: "i" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText(/Add at least one body step/)).toBeTruthy();
   });

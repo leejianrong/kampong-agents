@@ -17,7 +17,7 @@ describe("WorkflowStepForm data steps", () => {
     fireEvent.change(screen.getByLabelText("Values (one per line, name: expression)"), {
       target: { value: "change: (a.close - a.open) / a.open * 100\nsize: $abs(a.close - a.open)" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "shape",
@@ -38,7 +38,7 @@ describe("WorkflowStepForm data steps", () => {
     const onFail = screen.getByLabelText("On fail") as HTMLSelectElement;
     expect([...onFail.options].map((o) => o.value)).toEqual(["fail", "skip"]);
     fireEvent.change(onFail, { target: { value: "skip" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       step: "check",
@@ -57,14 +57,14 @@ describe("WorkflowStepForm data steps", () => {
     fireEvent.change(screen.getByLabelText("Remember for (e.g. 24h, 7d)"), {
       target: { value: "24h" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Key (expression)"), {
       target: { value: "trigger.id" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).toHaveBeenCalledWith({
       step: "seen",
       type: "dedupe",

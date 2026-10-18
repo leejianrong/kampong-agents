@@ -686,15 +686,6 @@ select.md3-text-field {
   min-height: 0;
 }
 
-.md3-app__overlay {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  z-index: 6;
-  max-height: calc(100% - 2rem);
-  overflow: auto;
-}
-
 .md3-app__side-pane {
   flex: 1;
   display: flex;
@@ -702,18 +693,6 @@ select.md3-text-field {
   border-left: 1px solid var(--md-sys-color-outline-variant);
   min-width: 0;
   min-height: 0;
-}
-
-/* The Test Run panel, docked at the top of the side pane above the YAML view
-   (so a run never covers the canvas). Scrolls independently; the YAML view
-   below it takes the remaining height. */
-.md3-app__run-dock {
-  flex: none;
-  max-height: 60%;
-  overflow: auto;
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container-low);
 }
 
 /* ---- Hosted mode (KAN-1228): auth, workspace, spec list, BYOK, shell ---- */
@@ -1271,4 +1250,50 @@ select.md3-text-field {
 .md3-banner:has(+ .md3-upgrade),
 .md3-banner:has(.md3-button) {
   flex-wrap: wrap;
+}
+
+/* The tool panel dock (KAM-177): one container for every panel, in the side pane above the YAML view. The header
+   stays put, the body scrolls, and a form's Save and Cancel row sticks to the bottom of the body so it is
+   reachable however tall the form is. */
+
+.md3-panel {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 68%;
+  display: flex;
+  flex-direction: column;
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-panel__header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-panel__title {
+  margin: 0;
+}
+
+.md3-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.md3-panel__body .md3-form-actions,
+.md3-panel__body .md3-trust__actions {
+  position: sticky;
+  bottom: -0.75rem;
+  z-index: 1;
+  margin: 0 -0.75rem -0.75rem;
+  padding: 0.75rem;
+  background: var(--md-sys-color-surface-container-low);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
 }

@@ -53,7 +53,7 @@ function open(props: Partial<React.ComponentProps<typeof ToolForm>> = {}) {
   return onSubmit;
 }
 
-const save = () => fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+const save = () => fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
 describe("Component kind", () => {
   afterEach(() => cleanup());
@@ -75,7 +75,7 @@ describe("Component kind", () => {
     fireEvent.click(screen.getByRole("button", { name: "Component" }));
     expect(screen.getByRole("status").textContent).toMatch(/No components are installed/);
     expect(screen.getByText(/must live at acme\/x\/1\.0\.0/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Save Tool" }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole("button", { name: "Save tool" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
   });
