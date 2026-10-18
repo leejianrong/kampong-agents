@@ -453,6 +453,13 @@ kind and the line of the field.
 | `model`           | string   | no       | A different model of the same provider for this step. Version 1.1.           |
 | `temperature`     | number   | no       | Sampling temperature, 0 to 2. Version 1.1.                                    |
 
+On the canvas, **Edit Steps** lists every step (a branch's arms and a foreach's body included) and opens an action
+step in place: its instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
+editor with nested objects, arrays, enums and `required`. The form refuses what the loader refuses (an object with
+no properties, an array with no items, a `confidence_gate` step without a required numeric `confidence`), keywords
+the form has no field for (`minimum`, `pattern`, ...) are kept as written, and a save patches only the fields that
+changed. A `"1.0"` spec's steps are not editable this way, and the panel does not offer to upgrade.
+
 ### Condition step
 
 ```yaml

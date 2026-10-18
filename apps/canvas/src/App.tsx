@@ -10,6 +10,7 @@ import {
   type AgentSpec,
   type ComponentCatalog,
   type Guardrails,
+  type PatchOp,
   type SpecVar,
   type Tool,
   type Trigger,
@@ -24,6 +25,7 @@ import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
+import { StepsPanel } from "./StepsPanel.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -52,7 +54,16 @@ export interface AppProps {
 }
 
 type OpenForm =
-  "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables" | "vars" | "trigger";
+  | "tool"
+  | "workflow"
+  | "guardrails"
+  | "run"
+  | null
+  | "checks"
+  | "variables"
+  | "vars"
+  | "trigger"
+  | "steps";
 
 export function App({
   apiBaseUrl = "",
@@ -247,6 +258,12 @@ export function App({
     return true;
   }
 
+  async function handlePatchSteps(ops: PatchOp[]) {
+    if (!(await applyPatchOrReportError(ops))) return false;
+    await refresh();
+    return true;
+  }
+
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
     await refresh();
@@ -293,6 +310,12 @@ export function App({
             onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
           >
             Trigger
+          </button>
+          <button
+            className="md3-button md3-button-tonal"
+            onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
+          >
+            Edit Steps
           </button>
           <span className="md3-app__toolbar-spacer" />
           {api.listSecrets && (
@@ -424,6 +447,11 @@ export function App({
               onSave={handleSaveTrigger}
               onRemove={handleRemoveTrigger}
             />
+          </div>
+        )}
+        {openForm === "steps" && spec && (
+          <div className="md3-app__run-dock">
+            <StepsPanel spec={spec} onPatch={handlePatchSteps} />
           </div>
         )}
         {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
