@@ -238,6 +238,34 @@ function foreachLabel(node: SpecNode): ReactNode {
   );
 }
 
+// What a data step does, in a line under its title (KAM-152). Long expressions are cut so a node stays small.
+const clip = (text: string, n = 48) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
+
+function transformSummary(node: SpecNode): string {
+  const names = Object.keys((node.data.set as Record<string, string> | undefined) ?? {});
+  return names.length === 0 ? "" : clip(`sets ${names.join(", ")}`);
+}
+function validateSummary(node: SpecNode): string {
+  const on = node.data.on_fail === "skip" ? "skip" : "fail";
+  return `${clip(`asserts ${String(node.data.assert ?? "")}`)} · on fail ${on}`;
+}
+function dedupeSummary(node: SpecNode): string {
+  const once = (node.data.once ?? {}) as { key?: string; ttl?: string };
+  return clip(`once per ${once.key ?? "?"} for ${once.ttl ?? "?"}`);
+}
+
+function dataLabel(kind: string, step: string, summary: string): ReactNode {
+  if (summary === "") return `${kind}: ${step}`;
+  return (
+    <div>
+      <div className="md3-label-large">
+        {kind}: {step}
+      </div>
+      <div className="md3-foreach__meta">{summary}</div>
+    </div>
+  );
+}
+
 function nodeLabel(node: SpecNode): ReactNode {
   // Workflow nodes read their step kind from the data so the new first-class
   // tool/approval steps (KAN-1429) are distinguishable on the canvas; action
@@ -249,9 +277,9 @@ function nodeLabel(node: SpecNode): ReactNode {
     const step = String(node.data.step ?? node.id);
     if (node.data.type === "tool") return `Tool step: ${step}`;
     if (node.data.type === "approval") return `Approval: ${step}`;
-    if (node.data.type === "transform") return `Transform: ${step}`;
-    if (node.data.type === "validate") return `Validate: ${step}`;
-    if (node.data.type === "dedupe") return `Dedupe: ${step}`;
+    if (node.data.type === "transform") return dataLabel("Transform", step, transformSummary(node));
+    if (node.data.type === "validate") return dataLabel("Validate", step, validateSummary(node));
+    if (node.data.type === "dedupe") return dataLabel("Dedupe", step, dedupeSummary(node));
     return `Workflow: ${step}`;
   }
   const kind = KIND_LABEL[node.kind];

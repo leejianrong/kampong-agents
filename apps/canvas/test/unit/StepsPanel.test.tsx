@@ -178,4 +178,115 @@ describe("StepsPanel", () => {
     ).toBe(true);
     expect(screen.queryByRole("button", { name: /upgrade/i })).toBeNull();
   });
+
+  describe("data steps (KAM-152)", () => {
+    const dataSpec = (version = "1.1"): AgentSpec =>
+      ({
+        version,
+        vars: { limit: { type: "number" } },
+        agent: {
+          id: "a",
+          name: "A",
+          role: "R",
+          goal: "G",
+          workflow: [
+            { step: "fetch", action: "fetch" },
+            { step: "shape", type: "transform", set: { title: "fetch.title" } },
+            { step: "check", type: "validate", assert: "$exists(shape.title)", on_fail: "skip" },
+            { step: "once", type: "dedupe", once: { key: "shape.title", ttl: "24h" } },
+            {
+              step: "each",
+              foreach: {
+                items: "trigger.items",
+                as: "row",
+                steps: [{ step: "inner", type: "validate", assert: "row.ok" }],
+              },
+            },
+          ],
+        },
+      }) as unknown as AgentSpec;
+
+    it("offers Edit on transform, validate and dedupe steps, filled with their values", () => {
+      setup(dataSpec());
+      for (const name of ["shape", "check", "once", "inner"]) {
+        expect(screen.getByRole("button", { name: `Edit ${name}` })).toBeTruthy();
+      }
+      click("Edit shape");
+      expect((screen.getByLabelText("Values", { exact: false }) as HTMLTextAreaElement).value).toBe(
+        "title: fetch.title",
+      );
+    });
+
+    it("saves a transform's values as a patch", async () => {
+      const { onPatch } = setup(dataSpec());
+      click("Edit shape");
+      change("Values", "title: fetch.title\nmax: vars.limit");
+      click("Save step");
+      await waitFor(() =>
+        expect(onPatch).toHaveBeenCalledWith([
+          {
+            op: "set",
+            path: ["agent", "workflow", 1, "set"],
+            value: { title: "fetch.title", max: "vars.limit" },
+          },
+        ]),
+      );
+    });
+
+    it("checks expressions as you type and refuses an unknown name on save", () => {
+      const { onPatch } = setup(dataSpec());
+      click("Edit shape");
+      change("Values", "bad: vars.nope");
+      expect(screen.getByText(/vars.nope is not declared in vars/)).toBeTruthy();
+      click("Save step");
+      expect(screen.getByRole("alert").textContent).toContain("vars.nope is not declared");
+      expect(onPatch).not.toHaveBeenCalled();
+    });
+
+    it("saves validate and dedupe edits", async () => {
+      const { onPatch } = setup(dataSpec());
+      click("Edit check");
+      change("Assert", "$exists(shape.title) and true");
+      change("On fail", "fail");
+      click("Save step");
+      await waitFor(() =>
+        expect(onPatch).toHaveBeenCalledWith([
+          {
+            op: "set",
+            path: ["agent", "workflow", 2, "assert"],
+            value: "$exists(shape.title) and true",
+          },
+          { op: "set", path: ["agent", "workflow", 2, "on_fail"], value: "fail" },
+        ]),
+      );
+      click("Edit once");
+      change("TTL", "soon");
+      click("Save step");
+      expect(screen.getByRole("alert").textContent).toMatch(/^ttl: /);
+    });
+
+    it("lets a step in a foreach read the loop variable", async () => {
+      const { onPatch } = setup(dataSpec());
+      click("Edit inner");
+      change("Assert", "row.ok = true");
+      expect(screen.queryByText(/not something an expression can read/)).toBeNull();
+      click("Save step");
+      await waitFor(() =>
+        expect(onPatch).toHaveBeenCalledWith([
+          {
+            op: "set",
+            path: ["agent", "workflow", 4, "foreach", "steps", 0, "assert"],
+            value: "row.ok = true",
+          },
+        ]),
+      );
+    });
+
+    it("is gated on a 1.0 spec", () => {
+      setup(dataSpec("1.0"));
+      expect(
+        (screen.getByRole("button", { name: "Edit shape" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    });
+  });
 });

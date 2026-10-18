@@ -460,6 +460,12 @@ no properties, an array with no items, a `confidence_gate` step without a requir
 the form has no field for (`minimum`, `pattern`, ...) are kept as written, and a save patches only the fields that
 changed. A `"1.0"` spec's steps are not editable this way, and the panel does not offer to upgrade.
 
+A transform, validate or dedupe step opens the same way, with the expression fields that check syntax and names as
+you type (a step in a foreach can read its loop variable). A save is refused while an expression would not load,
+and replaces only the fields that changed, so comments elsewhere in the step survive. On the canvas these nodes
+carry a line under the title: a transform's value names, a validate's assertion (clipped) and `on_fail`, and a
+dedupe's key and `ttl`.
+
 ### Condition step
 
 ```yaml
