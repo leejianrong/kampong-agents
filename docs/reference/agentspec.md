@@ -113,7 +113,7 @@ An environment value is parsed as the declared type: a number must be finite, a 
 and a `${ENV_VAR}` default whose variable is unset or empty fails the run naming it; nothing is guessed.
 Var names are letters, digits and underscores.
 
-On the canvas, **Spec Vars** lists, adds, edits and removes them (not to be confused with **Variables**, which
+On the canvas, **Spec Vars** lists, adds, edits and removes them (not to be confused with **Secrets**, which
 holds credentials outside the spec). Adding the first var creates the `vars:` block above `agent:`, and removing
 the last takes the block with it. The panel is off for a `"1.0"` spec: 1.1 reads `{{ }}` references as
 expressions, so the panel asks you to upgrade first (see [Upgrading from the canvas](#upgrading-from-the-canvas)).

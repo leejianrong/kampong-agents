@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SecretStatusDto } from "./api.js";
 
-// Variables: set a credential once, by name, the way a CI settings page does. It is write-only. The
+// Secrets: set a credential once, by name, the way a CI settings page does. It is write-only. The
 // server never sends a value back, so this panel has nothing to show, copy or leak: only the name, where
 // it comes from, and a field to set or replace it. A spec holds `${NAME}` and nothing else.
 
@@ -62,7 +62,7 @@ export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
   const canSave = !busy && NAME.test(target) && value !== "";
 
   return (
-    <section className="md3-doctor" aria-label="Variables" data-testid="secrets-panel">
+    <section className="md3-doctor" aria-label="Secrets" data-testid="secrets-panel">
       <div className="md3-doctor__head">
         <button
           type="button"
@@ -70,7 +70,7 @@ export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
           disabled={busy || editing !== null}
           onClick={() => setEditing("")}
         >
-          Add variable
+          Add secret
         </button>
       </div>
       <p className="md3-body-small md3-field__hint">

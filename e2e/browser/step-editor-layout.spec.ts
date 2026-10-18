@@ -199,3 +199,41 @@ for (const size of [
     });
   }
 }
+
+// KAM-179: the toolbar's buttons are one height, stay inside the canvas column at any width the app supports (they
+// used to run under the side pane, so Test Run covered the open panel's title), and a button that opened a panel
+// shows as pressed. Panel content stays inside the pane too: the Trigger panel's three buttons wrap, not clip.
+for (const width of [1440, 1100, 900]) {
+  test(`toolbar at ${width}px: one height, inside the canvas column, no sideways scroll`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(URL);
+    await page.getByRole("button", { name: "Trigger", exact: true }).click();
+    const m = await page.evaluate(() => {
+      const pane = document.querySelector(".md3-app__canvas-pane")!.getBoundingClientRect();
+      const buttons = [...document.querySelectorAll(".md3-app__toolbar button")].map((b) =>
+        b.getBoundingClientRect(),
+      );
+      const panel = document.querySelector(".md3-panel")!.getBoundingClientRect();
+      const inside = [...document.querySelectorAll(".md3-panel__body button")].every(
+        (b) => b.getBoundingClientRect().right <= panel.right + 1,
+      );
+      return {
+        heights: [...new Set(buttons.map((r) => Math.round(r.height)))],
+        overruns: buttons.filter((r) => r.right > pane.right + 1).length,
+        hscroll: document.documentElement.scrollWidth > innerWidth,
+        panelButtonsInside: inside,
+      };
+    });
+    expect(m.heights).toHaveLength(1);
+    expect(m.overruns).toBe(0);
+    expect(m.hscroll).toBe(false);
+    expect(m.panelButtonsInside).toBe(true);
+    await expect(page.getByRole("button", { name: "Trigger", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("button", { name: "Secrets", exact: true })).toBeVisible();
+  });
+}

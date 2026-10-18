@@ -296,59 +296,80 @@ export function App({
               </button>
             )}
             <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
-            <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("tool")}>
-              Add Tool
-            </button>
-            <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("workflow")}>
-              Add Workflow Step
-            </button>
-            <button
-              className="md3-button md3-button-tonal"
-              onClick={() => setOpenForm("guardrails")}
-            >
-              Set Guardrails
-            </button>
-            <button
-              className="md3-button md3-button-tonal"
-              onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
-            >
-              Spec Vars
-            </button>
-            <button
-              className="md3-button md3-button-tonal"
-              onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
-            >
-              Trigger
-            </button>
-            <button
-              className="md3-button md3-button-tonal"
-              onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
-            >
-              Edit Steps
-            </button>
+            <div className="md3-toolbar__group" role="group" aria-label="Build">
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "tool"}
+                onClick={() => setOpenForm(openForm === "tool" ? null : "tool")}
+              >
+                Add Tool
+              </button>
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "workflow"}
+                onClick={() => setOpenForm(openForm === "workflow" ? null : "workflow")}
+              >
+                Add Workflow Step
+              </button>
+            </div>
+            <div className="md3-toolbar__group" role="group" aria-label="Configure">
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "guardrails"}
+                onClick={() => setOpenForm(openForm === "guardrails" ? null : "guardrails")}
+              >
+                Set Guardrails
+              </button>
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "vars"}
+                onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
+              >
+                Spec Vars
+              </button>
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "trigger"}
+                onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
+              >
+                Trigger
+              </button>
+              <button
+                className="md3-button md3-button-tonal"
+                aria-pressed={openForm === "steps"}
+                onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
+              >
+                Edit Steps
+              </button>
+            </div>
             <span className="md3-app__toolbar-spacer" />
-            {api.listSecrets && (
+            <div className="md3-toolbar__group" role="group" aria-label="Run">
+              {api.listSecrets && (
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "variables"}
+                  onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
+                >
+                  Secrets
+                </button>
+              )}
+              {api.runDoctor && (
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "checks"}
+                  onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
+                >
+                  Checks
+                </button>
+              )}
               <button
-                className="md3-button md3-button-text"
-                onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
+                className="md3-button md3-button-filled"
+                aria-pressed={openForm === "run"}
+                onClick={() => setOpenForm(openForm === "run" ? null : "run")}
               >
-                Variables
+                Test Run
               </button>
-            )}
-            {api.runDoctor && (
-              <button
-                className="md3-button md3-button-text"
-                onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
-              >
-                Checks
-              </button>
-            )}
-            <button
-              className="md3-button md3-button-filled"
-              onClick={() => setOpenForm(openForm === "run" ? null : "run")}
-            >
-              Test Run
-            </button>
+            </div>
           </div>
 
           {specError && (
@@ -467,7 +488,7 @@ export function App({
             </Panel>
           )}
           {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
-            <Panel title="Variables" onClose={() => setOpenForm(null)}>
+            <Panel title="Secrets" onClose={() => setOpenForm(null)}>
               <SecretsPanel
                 list={() => api.listSecrets!()}
                 save={(name, value) => api.setSecret!(name, value)}
