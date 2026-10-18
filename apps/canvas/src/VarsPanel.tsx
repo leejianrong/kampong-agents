@@ -3,7 +3,7 @@ import { VersionGate } from "./VersionGate.js";
 import { buildVarFromForm, varToFormInput, type SpecVar, type VarFormInput } from "@kampong/spec";
 
 // Spec vars (KAM-159, a slice of KAM-110): the `vars:` a spec declares, which `kampong run --var` and an
-// expression's `vars.name` read. Not the credentials in the Variables panel: those are `${ENV}` values kept
+// expression's `vars.name` read. Not the credentials in the Secrets panel: those are `${ENV}` values kept
 // outside the spec, these are the spec's own inputs. The form logic lives in packages/spec (buildVarFromForm),
 // so a var built here always validates; this only collects the text and sends the result as a patch.
 

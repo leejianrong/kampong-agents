@@ -74,7 +74,7 @@ export interface DoctorCheckDto {
   message: string;
 }
 
-/** One variable the Variables panel shows: a name and where it comes from, never a value. */
+/** One variable the Secrets panel shows: a name and where it comes from, never a value. */
 export interface SecretStatusDto {
   name: string;
   source: "saved" | "environment" | "unset";
@@ -122,7 +122,7 @@ export interface ApiClient {
    */
   runDoctor?(options?: { online?: boolean; probe?: boolean }): Promise<DoctorCheckDto[]>;
   /**
-   * Variables: set a credential by name; runs and checks use it at once. Write-only: no call returns a
+   * Secrets: set a credential by name; runs and checks use it at once. Write-only: no call returns a
    * value, only each name and whether it is set. Local server only.
    */
   listSecrets?(): Promise<SecretStatusDto[]>;

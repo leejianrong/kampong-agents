@@ -226,7 +226,7 @@ describe("App", () => {
       const calls = stub([{ name: "SLACK_BOT_TOKEN", source: "unset", referenced: true }]);
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Variables" }));
+      fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
       expect(await screen.findByText("SLACK_BOT_TOKEN")).toBeTruthy();
       expect(screen.getByText("Needed, not set")).toBeTruthy();
 
@@ -249,8 +249,8 @@ describe("App", () => {
       stub([]);
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Variables" }));
-      fireEvent.click(await screen.findByRole("button", { name: "Add variable" }));
+      fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Add secret" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "not valid" } });
       fireEvent.change(screen.getByLabelText("Value"), { target: { value: "v" } });
       expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(
