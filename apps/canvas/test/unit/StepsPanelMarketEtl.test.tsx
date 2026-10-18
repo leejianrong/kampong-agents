@@ -23,13 +23,11 @@ describe("StepsPanel on the market-etl template", () => {
     expect(editable()).toEqual(["check", "shape", "sane", "delta", "row", "summarize", "report"]);
   });
 
-  // The three steps whose values span several lines (KAM-165) fail today. `it.fails` keeps CI green and turns
-  // red the moment a fix lands, which is the cue to move that name into OPENS_CLEAN.
-  const OPENS_CLEAN = ["check", "sane", "summarize", "report"];
-  const STILL_FAILING = ["shape", "delta", "row"];
-
-  it.each(OPENS_CLEAN)("opens %s with no error and nothing flagged invalid", opensClean);
-  it.fails.each(STILL_FAILING)("opens %s with no error and nothing flagged invalid", opensClean);
+  // KAM-164 (scope inside the loop) and KAM-165 (multi-line values) cleared the five that used to fail.
+  it.each(["check", "shape", "sane", "delta", "row", "summarize", "report"])(
+    "opens %s with no error and nothing flagged invalid",
+    opensClean,
+  );
 });
 
 function opensClean(name: string) {

@@ -4,7 +4,6 @@ import type { PatchOp } from "./mutate.js";
 import { diagnoseExpression, type ExpressionScope } from "./expression-assist.js";
 import { parseExpression } from "./expression.js";
 import { parseEvery } from "./schedule.js";
-import { buildWorkflowStepFromForm } from "./workflow-form.js";
 
 // Editing a step that is already in the workflow, from the canvas (KAM-162, a slice of KAM-110): which steps
 // there are and where each sits in the file, and the form logic for an action step's per-step model settings and
@@ -284,21 +283,25 @@ export function buildActionStepEdit(
 
 // ---- transform, validate and dedupe steps (KAM-152) ----------------------------------------------
 
+/** One value a transform sets. The expression may span lines (a `|-` block in the file). */
+export interface SetRow {
+  name: string;
+  expression: string;
+}
+
 export type DataStepEditInput =
-  | { kind: "transform"; set: string }
+  | { kind: "transform"; set: SetRow[] }
   | { kind: "validate"; assert: string; onFail: "fail" | "skip"; message: string }
   | { kind: "dedupe"; key: string; ttl: string };
 
 type DataStep = Extract<WorkflowStep, { type: "transform" | "validate" | "dedupe" }>;
 
-/** The form's text for an existing data step. `set` is one `name: expression` per line. */
+/** The form's values for an existing data step. A transform's `set` is one row per value, in file order. */
 export function dataStepToEditInput(step: DataStep): DataStepEditInput {
   if (step.type === "transform") {
     return {
       kind: "transform",
-      set: Object.entries(step.set)
-        .map(([name, expression]) => `${name}: ${expression}`)
-        .join("\n"),
+      set: Object.entries(step.set).map(([name, expression]) => ({ name, expression })),
     };
   }
   if (step.type === "validate") {
@@ -315,7 +318,8 @@ export function dataStepToEditInput(step: DataStep): DataStepEditInput {
 /**
  * Validates the form and returns the patch for the fields that changed. Expressions get the loader's syntax check
  * and, when `scope` is given, its name check, so a step that would not load is not saved. A transform's `set` is
- * replaced whole, so a removed name goes with it.
+ * patched one name at a time, so the values left alone keep the style they were written in (a `|-` block stays one)
+ * and a removed row removes its name.
  */
 export function buildDataStepEdit(
   input: DataStepEditInput,
@@ -342,16 +346,25 @@ export function buildDataStepEdit(
   const existing = step.step;
 
   if (input.kind === "transform" && existing.type === "transform") {
-    const built = buildWorkflowStepFromForm({
-      kind: "transform",
-      step: existing.step,
-      set: input.set,
-    });
-    if (!built.success) errors.push(...(built.errors ?? []));
-    else {
-      const set = (built.step as { set: Record<string, string> }).set;
-      for (const [name, expression] of Object.entries(set)) check(expression, `${name}`);
-      put([...at, "set"], set, existing.set);
+    const rows = input.set.map((row) => ({
+      name: row.name.trim(),
+      expression: row.expression.trim(),
+    }));
+    if (rows.length === 0) errors.push("Add at least one value as name: expression");
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (row.name === "") errors.push("A value needs a name");
+      else if (seen.has(row.name)) errors.push(`"${row.name}" is set twice`);
+      else seen.add(row.name);
+      if (row.expression === "") errors.push(`${row.name || "A value"} needs an expression`);
+      else check(row.expression, row.name);
+    }
+    if (errors.length === 0) {
+      const before = existing.set;
+      for (const name of Object.keys(before)) {
+        if (!seen.has(name)) patch.push({ op: "remove", path: [...at, "set", name] });
+      }
+      for (const row of rows) put([...at, "set", row.name], row.expression, before[row.name]);
     }
   } else if (input.kind === "validate" && existing.type === "validate") {
     if (input.assert.trim() === "") errors.push("A validate step needs an assertion");

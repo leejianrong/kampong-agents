@@ -212,23 +212,22 @@ describe("StepsPanel", () => {
         expect(screen.getByRole("button", { name: `Edit ${name}` })).toBeTruthy();
       }
       click("Edit shape");
-      expect((screen.getByLabelText("Values", { exact: false }) as HTMLTextAreaElement).value).toBe(
-        "title: fetch.title",
+      expect((screen.getByLabelText("Value 1 name") as HTMLInputElement).value).toBe("title");
+      expect((screen.getByLabelText("Value 1 expression") as HTMLTextAreaElement).value).toBe(
+        "fetch.title",
       );
     });
 
     it("saves a transform's values as a patch", async () => {
       const { onPatch } = setup(dataSpec());
       click("Edit shape");
-      change("Values", "title: fetch.title\nmax: vars.limit");
+      click("Add value");
+      change("Value 2 name", "max");
+      change("Value 2 expression", "vars.limit");
       click("Save step");
       await waitFor(() =>
         expect(onPatch).toHaveBeenCalledWith([
-          {
-            op: "set",
-            path: ["agent", "workflow", 1, "set"],
-            value: { title: "fetch.title", max: "vars.limit" },
-          },
+          { op: "set", path: ["agent", "workflow", 1, "set", "max"], value: "vars.limit" },
         ]),
       );
     });
@@ -236,7 +235,7 @@ describe("StepsPanel", () => {
     it("checks expressions as you type and refuses an unknown name on save", () => {
       const { onPatch } = setup(dataSpec());
       click("Edit shape");
-      change("Values", "bad: vars.nope");
+      change("Value 1 expression", "vars.nope");
       expect(screen.getByText(/vars.nope is not declared in vars/)).toBeTruthy();
       click("Save step");
       expect(screen.getByRole("alert").textContent).toContain("vars.nope is not declared");
@@ -288,5 +287,45 @@ describe("StepsPanel", () => {
         (screen.getByRole("button", { name: "Edit shape" }) as HTMLButtonElement).disabled,
       ).toBe(true);
     });
+  });
+
+  // KAM-165: a transform's values are rows, so a multi-line expression is one value.
+  it("edits a transform one value at a time, a multi-line one included", async () => {
+    const withTransform = {
+      version: "1.1",
+      agent: {
+        id: "a",
+        name: "A",
+        role: "R",
+        goal: "G",
+        workflow: [
+          { step: "pull", action: "fetch" },
+          {
+            step: "shape",
+            type: "transform",
+            set: { latest: "pull.x", total: "$sum([1,\n2])" },
+          },
+        ],
+      },
+    } as unknown as AgentSpec;
+    const { onPatch } = setup(withTransform);
+    click("Edit shape");
+    expect((screen.getByLabelText("Value 2 expression") as HTMLTextAreaElement).value).toBe(
+      "$sum([1,\n2])",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelector(".md3-expression__problems")).toBeNull();
+    change("Value 1 expression", "pull.y");
+    click("Add value");
+    change("Value 3 name", "extra");
+    change("Value 3 expression", "1 + 1");
+    click("Remove value 2");
+    click("Save step");
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    expect(onPatch.mock.calls[0]![0]).toEqual([
+      { op: "remove", path: ["agent", "workflow", 1, "set", "total"] },
+      { op: "set", path: ["agent", "workflow", 1, "set", "latest"], value: "pull.y" },
+      { op: "set", path: ["agent", "workflow", 1, "set", "extra"], value: "1 + 1" },
+    ]);
   });
 });
