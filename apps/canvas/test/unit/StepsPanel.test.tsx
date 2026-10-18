@@ -371,15 +371,12 @@ describe("StepsPanel", () => {
     change("output_schema.summary max length", "120");
     click("Save step");
     await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    // KAM-168: only the limit that changed is patched, not the whole schema.
     expect(onPatch.mock.calls[0]![0]).toEqual([
       {
         op: "set",
-        path: ["agent", "workflow", 0, "output_schema"],
-        value: {
-          type: "object",
-          required: ["summary"],
-          properties: { summary: { type: "string", description: "One line", maxLength: 120 } },
-        },
+        path: ["agent", "workflow", 0, "output_schema", "properties", "summary", "maxLength"],
+        value: 120,
       },
     ]);
   });
