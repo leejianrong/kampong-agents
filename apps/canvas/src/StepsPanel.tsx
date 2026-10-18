@@ -45,6 +45,9 @@ function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
   return spec.version === "1.1" ? expressionScopeForStepAt(spec, ref.path) : undefined;
 }
 
+/** A textarea shows its whole text, from a few lines up to a screenful, so a long prompt is not a 2-line peephole. */
+const rowsFor = (text: string) => Math.min(16, Math.max(4, text.split("\n").length));
+
 export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
   const refs = listSteps(spec);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -81,7 +84,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
     if (!editing || !current) return;
     const result =
       editing.kind === "action" && isAction(current)
-        ? buildActionStepEdit(editing.input, current, spec.version)
+        ? buildActionStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
         : editing.kind === "data" && isData(current)
           ? buildDataStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
           : { success: false as const, errors: ["The form does not match the step"] };
@@ -106,8 +109,8 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         <span className="md3-title-medium">Steps</span>
       </div>
       <p className="md3-body-small md3-field__hint">
-        Edit a step in place: an action step's instructions, model, temperature and output schema,
-        or a transform, validate or dedupe step's expressions.
+        Edit a step in place: an action step's query, instructions, model, temperature and output
+        schema, or a transform, validate or dedupe step's expressions.
       </p>
       {!modern && (
         <p role="status" className="md3-banner md3-banner--info">
@@ -125,10 +128,22 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         >
           <span className="md3-title-small">{current.name}</span>
           <label className="md3-field">
+            <span className="md3-body-small md3-field__label">Query</span>
+            <textarea
+              className="md3-text-field"
+              value={editing.input.query}
+              rows={rowsFor(editing.input.query)}
+              spellCheck={false}
+              placeholder="What this step asks the model; {{ step.field }} inserts a value"
+              onChange={(e) => patch({ query: e.target.value })}
+            />
+          </label>
+          <label className="md3-field">
             <span className="md3-body-small md3-field__label">Instructions</span>
             <textarea
               className="md3-text-field"
               value={editing.input.instructions}
+              rows={rowsFor(editing.input.instructions)}
               placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
               onChange={(e) => patch({ instructions: e.target.value })}
             />
