@@ -5,7 +5,7 @@ import {
   templateExpressions,
   type ExpressionError,
 } from "./expression.js";
-import { EXPRESSION_ROOTS, nameProblem } from "./expression-names.js";
+import { EXPRESSION_ROOTS, ingressProblem, nameProblem } from "./expression-names.js";
 import type { SpecError } from "./parse.js";
 import type { AgentSpec, BodyStep, BranchStep, WorkflowStep } from "./schema.js";
 
@@ -262,12 +262,8 @@ export function validateSpecExpressions(
         return;
       }
       for (const [root] of expressionPaths(parsed.ast)) {
-        if (root !== undefined && root !== "trigger") {
-          report(
-            path,
-            `${where}: "${root}" is not available when a request arrives: it can read only trigger (trigger.headers, trigger.body, and the body's fields)`,
-          );
-        }
+        const problem = ingressProblem(root, where);
+        if (problem !== undefined) report(path, problem);
       }
     };
     if (trigger.when !== undefined)

@@ -360,6 +360,62 @@ describe("App", () => {
     });
   });
 
+  describe("Trigger panel (KAM-161)", () => {
+    const withTrigger = (version: string, trigger?: Record<string, unknown>) => ({
+      ...SPEC_RESPONSE,
+      spec: {
+        ...SPEC_RESPONSE.spec,
+        version,
+        agent: { ...SPEC_RESPONSE.spec.agent, ...(trigger && { trigger }) },
+      },
+    });
+    function appWith(response: unknown) {
+      const applied: unknown[] = [];
+      const api = {
+        loadSpec: async () => response,
+        applyPatch: async (ops: unknown) => (applied.push(ops), { success: true }),
+        subscribeToEvents: () => () => {},
+        startRun: async () => ({ success: true }),
+        approveRun: async () => ({ success: true }),
+        subscribeToRunEvents: () => () => {},
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      render(<App api={api as any} />);
+      return applied;
+    }
+
+    it("opens from the toolbar and sets agent.trigger", async () => {
+      const applied = appWith(withTrigger("1.1"));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add schedule" }));
+      fireEvent.change(screen.getByLabelText("Cron", { exact: false }), {
+        target: { value: "0 9 * * *" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toEqual([
+        { op: "set", path: ["agent", "trigger"], value: { type: "schedule", cron: "0 9 * * *" } },
+      ]);
+    });
+
+    it("removes an existing trigger", async () => {
+      const applied = appWith(withTrigger("1.1", { type: "webhook" }));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remove trigger" }));
+      await waitFor(() => expect(applied).toHaveLength(1));
+      expect(applied[0]).toEqual([{ op: "remove", path: ["agent", "trigger"] }]);
+    });
+
+    it("is gated on a 1.0 spec", async () => {
+      appWith(withTrigger("1.0"));
+      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      expect(screen.getByRole("status").textContent).toContain("need spec version");
+    });
+  });
+
   describe("Expression fields (KAM-160)", () => {
     function open11(version: string) {
       const response = {

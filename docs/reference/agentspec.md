@@ -122,6 +122,16 @@ expressions, so changing `version` is yours to do.
 
 Three kinds: `webhook`, `schedule` and `poll`.
 
+On the canvas, **Trigger** edits `agent.trigger` in place: pick a kind, fill the form, and the save is a patch
+that leaves the rest of the file as it was. The form applies the loader's own rules, so a trigger it builds
+always loads, and the errors name the field. A webhook takes its preset, authentication, response mode, `when`
+and `map`; `when` and `map` are expression fields that read only `trigger` (the check and completion say so, and
+`trigger.` lists `headers` and `body`). A schedule is a cron expression with a time zone, or an interval, and
+says what to do on overlap. A poll takes the component, op and arguments, `items` and the item `id` (syntax is
+checked; their names are the op's own), the dedupe rule and window. A secret is never typed in: a webhook names
+the environment variable that holds it, and a poll's `secrets` are `${ENV_VAR}` placeholders. On a `"1.0"` spec
+only a bare webhook is offered, and the panel does not offer to upgrade.
+
 ### `type: webhook`
 
 A POST to `/webhook` on `kampong serve` (or an exported project's `npm run serve`) starts a run, and its
