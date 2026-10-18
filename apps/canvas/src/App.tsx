@@ -27,6 +27,7 @@ import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
 import { StepsPanel } from "./StepsPanel.js";
+import type { RemoveOutcome } from "./DeleteControl.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -280,6 +281,39 @@ export function App({
     return true;
   }
 
+  // KAM-171: delete a step or tool by name through the operations API. A refusal is an answer to show (what
+  // still uses it), not an error banner, so it comes back as an outcome rather than setting `specError`.
+  async function handleRemove(
+    op: { op: "step.remove"; step: string } | { op: "tool.remove"; tool: string },
+  ): Promise<RemoveOutcome> {
+    try {
+      const result = await api.applyOps([op]);
+      if (result.success) {
+        await refresh();
+        return { success: true };
+      }
+      const errors = result.errors ?? [];
+      return {
+        success: false,
+        blocked: errors.some((e) => e.code === "has_references"),
+        references: errors.flatMap((e) => e.references ?? []),
+        messages: errors.map((e) =>
+          e.code === undefined
+            ? `Not deleted: the spec would no longer be valid (${e.message})`
+            : e.message,
+        ),
+      };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      return {
+        success: false,
+        blocked: false,
+        references: [],
+        messages: [err instanceof Error ? err.message : "Could not delete."],
+      };
+    }
+  }
+
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
     await refresh();
@@ -523,6 +557,7 @@ export function App({
               <StepsPanel
                 spec={spec}
                 onPatch={handlePatchSteps}
+                onRemove={handleRemove}
                 onEditTool={(index) => {
                   setEditingTool(index);
                   setOpenForm("edit-tool");
