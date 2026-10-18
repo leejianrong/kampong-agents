@@ -443,6 +443,7 @@ export function App({
           {openForm === "workflow" && (
             <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
               <WorkflowStepForm
+                version={spec?.version}
                 scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
                 onSubmit={(step) => void handleAddWorkflowStep(step)}
                 onCancel={() => setOpenForm(null)}
