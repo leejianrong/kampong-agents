@@ -16,7 +16,7 @@
     "@kampong/spec": "*",
     "@mastra/core": "^1.77.0",
     "ai": "^7.0.141",
-    "imapflow": "2.1.2",
+    "imapflow": "2.4.3",
     "jsonata": "2.2.2",
     "mailparser": "3.9.31",
     "zod": "^4.6.7"

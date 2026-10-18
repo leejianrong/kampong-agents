@@ -351,7 +351,7 @@ describe("kampong/gmail-imap through the op pipeline", () => {
     for (const slot of Object.values(manifest.auth?.slots ?? {}))
       expect(slot.hosts).toEqual(["imap.gmail.com:993"]);
     expect(manifest.kind === "module" && manifest.deps).toEqual({
-      imapflow: "2.1.2",
+      imapflow: "2.4.3",
       mailparser: "3.9.31",
     });
   });
