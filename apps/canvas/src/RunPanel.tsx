@@ -70,8 +70,7 @@ export function RunPanel({ api }: RunPanelProps) {
     starting || state?.status === "running" || state?.status === "awaiting_approval";
 
   return (
-    <div className="md3-card md3-stack" data-testid="run-panel">
-      <h2 className="md3-title-medium">Test run</h2>
+    <div className="md3-stack" data-testid="run-panel">
       <form onSubmit={(e) => void handleStart(e)} className="md3-form">
         <label className="md3-field">
           <span className="md3-field__label md3-label-large">Input</span>

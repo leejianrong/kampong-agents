@@ -61,7 +61,6 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
   return (
     <section className="md3-doctor" aria-label="Spec vars" data-testid="vars-panel">
       <div className="md3-doctor__head">
-        <span className="md3-title-medium">Spec vars</span>
         <button
           type="button"
           className="md3-button md3-button-tonal"

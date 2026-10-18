@@ -64,7 +64,6 @@ export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
   return (
     <section className="md3-doctor" aria-label="Variables" data-testid="secrets-panel">
       <div className="md3-doctor__head">
-        <span className="md3-title-medium">Variables</span>
         <button
           type="button"
           className="md3-button md3-button-tonal"

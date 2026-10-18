@@ -16,7 +16,7 @@ describe("ToolForm", () => {
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://api.example.com/orders/{{ classify.order_id }}" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       name: "get_order",
@@ -39,7 +39,7 @@ describe("ToolForm", () => {
     });
     fireEvent.change(screen.getByLabelText("Channel"), { target: { value: "#support" } });
     fireEvent.change(screen.getByLabelText("Text"), { target: { value: "{{ draft.text }}" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       name: "notify_support",
@@ -61,7 +61,7 @@ describe("ToolForm", () => {
     });
     fireEvent.change(screen.getByLabelText("Channel"), { target: { value: "#c" } });
     fireEvent.change(screen.getByLabelText("Text"), { target: { value: "hi" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toBeTruthy();
@@ -96,7 +96,7 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
       target: { value: '{"symbol": "{{ input }}"}' },
     });
     fireEvent.change(screen.getByLabelText("Response"), { target: { value: "text" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       name: "fetch_prices",
@@ -115,7 +115,7 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
     render(<ToolForm onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     fillBasics();
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       name: "fetch_prices",
@@ -131,7 +131,7 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
 
     fillBasics();
     fireEvent.change(screen.getByLabelText("Headers"), { target: { value: "nonsense" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/line 1/);
@@ -145,7 +145,7 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
     fireEvent.change(screen.getByLabelText("Method"), { target: { value: "POST" } });
     fireEvent.change(screen.getByLabelText("Body"), { target: { value: "json" } });
     fireEvent.change(screen.getByLabelText("Body content"), { target: { value: "{not json" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/JSON/i);
@@ -159,7 +159,7 @@ describe("ToolForm -- HTTP request fields (KAN-1845)", () => {
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization: Bearer literal" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/credential/);

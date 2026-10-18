@@ -93,7 +93,7 @@ describe("WorkflowStepForm branch and stop", () => {
     fireEvent.change(screen.getByLabelText("Else (optional, one tool per line)"), {
       target: { value: "escalate" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).toHaveBeenCalledWith({
       step: "route",
       branch: {
@@ -112,7 +112,7 @@ describe("WorkflowStepForm branch and stop", () => {
     fireEvent.change(screen.getByLabelText("If (expression that gives true or false)"), {
       target: { value: "x" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText(/Add at least one then step/)).toBeTruthy();
   });
@@ -124,7 +124,7 @@ describe("WorkflowStepForm branch and stop", () => {
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "halt" } });
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "nothing to do" } });
     fireEvent.change(screen.getByLabelText("Ends the run as"), { target: { value: "completed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save step" }));
     expect(onSubmit).toHaveBeenCalledWith({
       step: "halt",
       stop: { reason: "nothing to do", status: "completed" },

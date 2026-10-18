@@ -301,8 +301,7 @@ export function ComponentToolForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-card md3-form">
-      <h2 className="md3-title-medium">Add Tool</h2>
+    <form onSubmit={handleSubmit} aria-label="Add Tool" className="md3-form md3-form--fill">
       {header}
 
       {components.length === 0 ? (
@@ -492,7 +491,7 @@ export function ComponentToolForm({
           className="md3-button md3-button-filled"
           disabled={components.length === 0}
         >
-          Save Tool
+          Save tool
         </button>
         <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
           Cancel

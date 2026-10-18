@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // KAM-166/167 follow-up: the step editor's layout, checked in a real browser. jsdom has no layout, so a unit test
 // cannot see a prompt cut off mid-sentence or a form that stops short of its panel; both shipped once.
@@ -151,3 +151,51 @@ test("Upgrade to 1.1: preview, apply, and the step becomes editable", async ({ p
   await expect(page.getByRole("button", { name: "Edit greet" })).toBeEnabled();
   expect(readFileSync(file, "utf8")).toContain('version: "1.1"');
 });
+
+// KAM-177: every form docks in the side pane (never over the canvas) and its Save is in view without scrolling,
+// at the 1440x900 default and at 900x700, where the panel is short.
+const FORMS: { open: string; then?: (page: Page) => Promise<void>; save: string }[] = [
+  { open: "Add Tool", save: "Save tool" },
+  { open: "Add Workflow Step", save: "Save step" },
+  { open: "Set Guardrails", save: "Save guardrails" },
+  {
+    open: "Spec Vars",
+    then: (page) => page.getByRole("button", { name: "Add var" }).click(),
+    save: "Save var",
+  },
+  {
+    open: "Trigger",
+    then: (page) => page.getByRole("button", { name: /^Use webhook|^Add webhook/ }).click(),
+    save: "Save trigger",
+  },
+  {
+    open: "Edit Steps",
+    then: (page) => page.getByRole("button", { name: "Edit shape" }).click(),
+    save: "Save step",
+  },
+];
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 900, height: 700 },
+]) {
+  for (const form of FORMS) {
+    test(`${form.open} at ${size.width}x${size.height}: docked, and ${form.save} is in view`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(size);
+      await page.goto(URL);
+      await page.getByRole("button", { name: form.open, exact: true }).click();
+      await form.then?.(page);
+      const save = page.getByRole("button", { name: form.save });
+      await expect(save).toBeInViewport({ ratio: 1 });
+      // The panel sits in the side pane, to the right of the canvas, so it covers no node.
+      const geometry = await page.evaluate(() => {
+        const panel = document.querySelector(".md3-panel")!.getBoundingClientRect();
+        const canvas = document.querySelector(".md3-app__canvas-pane")!.getBoundingClientRect();
+        return { panelLeft: panel.left, canvasRight: canvas.right };
+      });
+      expect(geometry.panelLeft).toBeGreaterThanOrEqual(geometry.canvasRight - 1);
+    });
+  }
+}

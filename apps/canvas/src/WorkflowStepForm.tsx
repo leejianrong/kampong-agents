@@ -146,9 +146,11 @@ export function WorkflowStepForm({ scope, onSubmit, onCancel }: WorkflowStepForm
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add Workflow Step" className="md3-card md3-form">
-      <h2 className="md3-title-medium">Add Workflow Step</h2>
-
+    <form
+      onSubmit={handleSubmit}
+      aria-label="Add Workflow Step"
+      className="md3-form md3-form--fill"
+    >
       <div className="md3-field">
         <span className="md3-field__label md3-label-large">Step kind</span>
         <div className="md3-segmented-button" role="group" aria-label="Step kind">
@@ -484,7 +486,7 @@ export function WorkflowStepForm({ scope, onSubmit, onCancel }: WorkflowStepForm
       )}
       <div className="md3-form-actions">
         <button type="submit" className="md3-button md3-button-filled">
-          Save Step
+          Save step
         </button>
         <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
           Cancel

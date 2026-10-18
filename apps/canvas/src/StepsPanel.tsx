@@ -136,9 +136,6 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
 
   return (
     <section className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
-      <div className="md3-doctor__head">
-        <span className="md3-title-medium">Steps</span>
-      </div>
       <p className="md3-body-small md3-field__hint">
         Edit a step in place: an action step's query, instructions, model, temperature and output
         schema, or a transform, validate or dedupe step's expressions.
