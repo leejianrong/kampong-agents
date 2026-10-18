@@ -1186,3 +1186,35 @@ select.md3-text-field {
 .md3-schema__prop > .md3-button {
   align-self: flex-start;
 }
+
+/* The step editor lives in the wide side panel, so its fields fill it instead of stopping at 20rem, and its
+   groups keep a little air under their legends. */
+
+.md3-form--fill {
+  max-width: none;
+}
+
+.md3-schema__group > legend,
+.md3-fieldset > legend {
+  margin-bottom: 0.5rem;
+}
+
+.md3-setrow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-shape-corner-small, 0.5rem);
+  padding: 0.5rem;
+}
+
+.md3-setrow__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.md3-text-field[rows] {
+  resize: vertical;
+}

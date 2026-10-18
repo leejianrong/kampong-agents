@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useAutoHeight } from "./useAutoHeight.js";
 import {
   completeExpression,
   diagnoseExpression,
@@ -17,6 +18,8 @@ import {
 
 export interface ExpressionFieldProps {
   label: string;
+  /** The control's accessible name when the shown label is shorter ("Expression" for "Value 2 expression"). */
+  accessibleName?: string;
   value: string;
   onChange: (value: string) => void;
   scope?: ExpressionScope;
@@ -51,6 +54,7 @@ function piecesOf(value: string, lines: boolean): { pieces: Piece[]; malformed: 
 
 export function ExpressionField({
   label,
+  accessibleName,
   value,
   onChange,
   scope,
@@ -67,6 +71,7 @@ export function ExpressionField({
   const [explicit, setExplicit] = useState(false);
   const [active, setActive] = useState(0);
   const pendingCursor = useRef<number | null>(null);
+  useAutoHeight(input, value, multiline || lines);
 
   useLayoutEffect(() => {
     if (pendingCursor.current !== null && input.current) {
@@ -145,7 +150,8 @@ export function ExpressionField({
     placeholder,
     spellCheck: false,
     autoComplete: "off",
-    ...(multiline && { rows: Math.max(2, value.split("\n").length) }),
+    ...(multiline && { rows: 2 }),
+    ...(accessibleName && { "aria-label": accessibleName }),
     "aria-invalid": problems.length > 0 || undefined,
     "aria-describedby": problems.length > 0 ? problemsId : undefined,
     ...(scope && {
@@ -179,7 +185,7 @@ export function ExpressionField({
         <ul
           id={listId}
           role="listbox"
-          aria-label={`${label} suggestions`}
+          aria-label={`${accessibleName ?? label} suggestions`}
           className="md3-expression__list"
         >
           {options.map((option, i) => (
