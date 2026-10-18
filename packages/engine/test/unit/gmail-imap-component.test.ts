@@ -352,7 +352,7 @@ describe("kampong/gmail-imap through the op pipeline", () => {
       expect(slot.hosts).toEqual(["imap.gmail.com:993"]);
     expect(manifest.kind === "module" && manifest.deps).toEqual({
       imapflow: "2.4.3",
-      mailparser: "3.9.31",
+      mailparser: "3.9.39",
     });
   });
 });
