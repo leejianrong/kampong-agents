@@ -6,7 +6,7 @@ description: Read a Gmail inbox and write reply drafts over IMAP with an app pas
 license: Apache-2.0
 entry: ./index.mjs
 deps:
-  imapflow: 2.1.2
+  imapflow: 2.4.3
   mailparser: 3.9.31
 permissions:
   # Declared, not enforced: the sockets are opened by imapflow, not by ctx.fetch (ADR-0031).
