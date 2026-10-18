@@ -1,4 +1,4 @@
-import { nameProblem } from "./expression-names.js";
+import { ingressProblem, nameProblem } from "./expression-names.js";
 import { expressionPaths, parseExpression } from "./expression.js";
 import type { AgentSpec, WorkflowStep } from "./schema.js";
 
@@ -23,6 +23,12 @@ export interface ExpressionScope {
   local?: ScopeStep[];
   /** Fields a webhook's `map` puts on `trigger`, beyond `headers` and `body`. */
   trigger: string[];
+  /**
+   * Where the expression runs, when that is not a workflow step. `ingress` is a webhook's `when`/`map`, which run
+   * as the request arrives and read only `trigger`. `item` is a poll's `items`/`id`, which read the op's result
+   * and so have no names of the spec's to check or offer.
+   */
+  kind?: "ingress" | "item";
 }
 
 export interface ExpressionDiagnostic {
@@ -89,6 +95,19 @@ export function diagnoseExpression(source: string, scope: ExpressionScope): Expr
       ...(e.position !== undefined && { position: e.position }),
     }));
   }
+  if (scope.kind === "item") return [];
+  if (scope.kind === "ingress") {
+    const seen = new Set<string>();
+    const out: ExpressionDiagnostic[] = [];
+    for (const [root] of expressionPaths(parsed.ast)) {
+      const message = ingressProblem(root, "this expression");
+      if (message !== undefined && !seen.has(message)) {
+        seen.add(message);
+        out.push({ message });
+      }
+    }
+    return out;
+  }
   const names = {
     varNames: scope.vars.map((v) => v.name),
     stepNames: scope.steps.map((s) => s.name),
@@ -133,6 +152,7 @@ export function completeExpression(
   options: { explicit?: boolean } = {},
 ): { from: number; options: Completion[] } {
   const none = { from: cursor, options: [] };
+  if (scope.kind === "item") return none;
   const head = source.slice(0, cursor);
   if (insideString(head)) return none;
   const token = TOKEN.exec(head)![0];
@@ -151,7 +171,9 @@ export function completeExpression(
   if (parts.length === 0 && partial === "" && !options.explicit) return none;
 
   let candidates: Completion[] = [];
-  if (parts.length === 0) {
+  if (parts.length === 0 && scope.kind === "ingress") {
+    candidates = [{ label: "trigger", detail: "the request" }];
+  } else if (parts.length === 0) {
     candidates = [
       ...(scope.local ?? []).map((s) => ({ label: s.name, detail: "loop" })),
       { label: "trigger", detail: "what started the run" },

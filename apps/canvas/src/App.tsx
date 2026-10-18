@@ -2,7 +2,9 @@ import {
   specToGraph,
   expressionScopeFor,
   outputReferenceOptions,
+  removeTriggerPatch,
   removeVarPatch,
+  setTriggerPatch,
   setVarPatch,
   specWarnings,
   type AgentSpec,
@@ -10,6 +12,7 @@ import {
   type Guardrails,
   type SpecVar,
   type Tool,
+  type Trigger,
   type WorkflowStep,
 } from "@kampong/spec";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,6 +23,7 @@ import { SecretsPanel } from "./SecretsPanel.js";
 import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
+import { TriggerPanel } from "./TriggerPanel.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -47,7 +51,8 @@ export interface AppProps {
   onUnauthorized?: () => void;
 }
 
-type OpenForm = "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables" | "vars";
+type OpenForm =
+  "tool" | "workflow" | "guardrails" | "run" | null | "checks" | "variables" | "vars" | "trigger";
 
 export function App({
   apiBaseUrl = "",
@@ -242,6 +247,18 @@ export function App({
     return true;
   }
 
+  async function handleSaveTrigger(value: Trigger) {
+    if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
+    await refresh();
+    return true;
+  }
+
+  async function handleRemoveTrigger() {
+    if (!(await applyPatchOrReportError(removeTriggerPatch()))) return false;
+    await refresh();
+    return true;
+  }
+
   return (
     <div className="md3-app">
       <div className="md3-app__canvas-pane">
@@ -270,6 +287,12 @@ export function App({
             onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
           >
             Spec Vars
+          </button>
+          <button
+            className="md3-button md3-button-tonal"
+            onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
+          >
+            Trigger
           </button>
           <span className="md3-app__toolbar-spacer" />
           {api.listSecrets && (
@@ -390,6 +413,16 @@ export function App({
               vars={spec.vars}
               onSave={handleSaveVar}
               onRemove={handleRemoveVar}
+            />
+          </div>
+        )}
+        {openForm === "trigger" && spec && (
+          <div className="md3-app__run-dock">
+            <TriggerPanel
+              version={spec.version}
+              trigger={spec.agent.trigger}
+              onSave={handleSaveTrigger}
+              onRemove={handleRemoveTrigger}
             />
           </div>
         )}

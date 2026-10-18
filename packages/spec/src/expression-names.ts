@@ -12,6 +12,15 @@ export interface NameScope {
   local?: readonly string[];
 }
 
+/**
+ * A webhook's `when` and `map` run when the request arrives, before any step: they read only `trigger`.
+ * `root` is the leading name of a path that reads something else; `where` names the field in the message.
+ */
+export function ingressProblem(root: string | undefined, where: string): string | undefined {
+  if (root === undefined || root === "trigger") return undefined;
+  return `${where}: "${root}" is not available when a request arrives: it can read only trigger (trigger.headers, trigger.body, and the body's fields)`;
+}
+
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** The problem with reading `names` (the leading names of a path, as expressionPaths gives them), if any. */

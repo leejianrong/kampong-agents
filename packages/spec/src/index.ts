@@ -28,3 +28,4 @@ export * from "./warnings.js";
 export * from "./expression.js";
 export * from "./expression-names.js";
 export * from "./expression-assist.js";
+export * from "./trigger-form.js";
