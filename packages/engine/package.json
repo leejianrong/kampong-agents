@@ -11,14 +11,14 @@
     "generate:registry-index": "node scripts/generate-registry-index.mjs"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.78",
-    "@ai-sdk/openai": "^4.0.91",
+    "@ai-sdk/anthropic": "^4.0.80",
+    "@ai-sdk/openai": "^4.0.94",
     "@kampong/spec": "*",
-    "@mastra/core": "^1.75.0",
-    "ai": "^7.0.137",
+    "@mastra/core": "^1.77.0",
+    "ai": "^7.0.141",
     "imapflow": "2.1.2",
     "jsonata": "2.2.2",
     "mailparser": "3.9.31",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   }
 }
