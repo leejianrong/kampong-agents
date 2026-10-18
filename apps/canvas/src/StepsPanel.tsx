@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { VersionGate } from "./VersionGate.js";
 import { useAutoHeight } from "./useAutoHeight.js";
 import {
   actionStepToEditInput,
@@ -142,13 +143,7 @@ export function StepsPanel({ spec, onPatch }: StepsPanelProps) {
         Edit a step in place: an action step's query, instructions, model, temperature and output
         schema, or a transform, validate or dedupe step's expressions.
       </p>
-      {!modern && (
-        <p role="status" className="md3-banner md3-banner--info">
-          Per-step settings and an output schema need spec version <code>"1.1"</code>. Change{" "}
-          <code>version</code> in the YAML when you are ready: 1.1 reads <code>{"{{ }}"}</code>{" "}
-          references as expressions, which can change what an existing 1.0 spec means.
-        </p>
-      )}
+      {!modern && <VersionGate what="Per-step settings and an output schema" />}
 
       {editing && editing.kind === "action" && current && isAction(current) && (
         <form

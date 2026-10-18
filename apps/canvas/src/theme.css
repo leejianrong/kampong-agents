@@ -1218,3 +1218,8 @@ select.md3-text-field {
 .md3-text-field[rows] {
   resize: vertical;
 }
+
+.md3-banner__text {
+  margin: 0;
+  min-width: 0;
+}
