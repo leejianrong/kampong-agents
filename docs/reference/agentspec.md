@@ -33,6 +33,22 @@ The `version` decides how references and conditions are written. Nothing else ch
   provides (a mistyped `vars.thresold`, a step that does not exist), because such a reference does not
   fail at run time, it silently reads as empty.
 
+### Upgrading from the canvas
+
+On a `"1.0"` spec the panels that need 1.1 (Spec Vars, Trigger, Edit Steps) say so and offer **Upgrade to 1.1…**.
+It shows a line diff of exactly what would change and writes nothing until you press **Upgrade**. Changing
+`version` alone would silently change a spec, so the upgrade also rewrites the two constructs 1.1 reads differently,
+and lists each one:
+
+- a `{step.field}` placeholder in a tool becomes `{{ step.field }}` (1.1 leaves `{...}` as text);
+- a condition `step.field == "x"` becomes `step.field = "x"` (JSONata equality is `=`; `!=`, `>`, `>=`, `<`, `<=` are
+  unchanged).
+
+The result is loaded under the 1.1 rules first. If it would not load (a bare `{name}` placeholder, which 1.1 cannot
+resolve without the step's name, or a condition that is not in the old grammar), nothing is changed and the reasons
+are shown with their line numbers, so you fix them in the YAML and try again. The action is not offered in the hosted
+app, which does not run 1.1 specs yet.
+
 !!! note "Where a 1.1 spec runs"
 
     `kampong run`, `kampong dev` (the canvas test run), `kampong serve` and `kampong export` run a 1.1 spec.
@@ -100,7 +116,7 @@ Var names are letters, digits and underscores.
 On the canvas, **Spec Vars** lists, adds, edits and removes them (not to be confused with **Variables**, which
 holds credentials outside the spec). Adding the first var creates the `vars:` block above `agent:`, and removing
 the last takes the block with it. The panel is off for a `"1.0"` spec: 1.1 reads `{{ }}` references as
-expressions, so changing `version` is yours to do.
+expressions, so the panel asks you to upgrade first (see [Upgrading from the canvas](#upgrading-from-the-canvas)).
 
 ## `agent`
 
@@ -130,7 +146,7 @@ and `map`; `when` and `map` are expression fields that read only `trigger` (the 
 says what to do on overlap. A poll takes the component, op and arguments, `items` and the item `id` (syntax is
 checked; their names are the op's own), the dedupe rule and window. A secret is never typed in: a webhook names
 the environment variable that holds it, and a poll's `secrets` are `${ENV_VAR}` placeholders. On a `"1.0"` spec
-only a bare webhook is offered, and the panel does not offer to upgrade.
+only a bare webhook is offered, and the panel offers to [upgrade](#upgrading-from-the-canvas) the spec first.
 
 ### `type: webhook`
 
@@ -457,8 +473,8 @@ On the canvas, **Edit Steps** lists every step (a branch's arms and a foreach's 
 step in place: its instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
 editor with nested objects, arrays, enums and `required`. The form refuses what the loader refuses (an object with
 no properties, an array with no items, a `confidence_gate` step without a required numeric `confidence`), keywords
-the form has no field for (`minimum`, `pattern`, ...) are kept as written, and a save patches only the fields that
-changed. A `"1.0"` spec's steps are not editable this way, and the panel does not offer to upgrade.
+the form has no field for (`pattern`, `format`, `default`, ...) are kept as written, and a save patches only the fields that
+changed. A `"1.0"` spec's steps are not editable this way, and the panel offers to [upgrade](#upgrading-from-the-canvas) the spec first.
 
 A transform, validate or dedupe step opens the same way, with the expression fields that check syntax and names as
 you type (a step in a foreach can read its loop variable). A save is refused while an expression would not load,

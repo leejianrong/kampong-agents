@@ -29,6 +29,7 @@ import { StepsPanel } from "./StepsPanel.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
+import { UpgradeContext } from "./UpgradeContext.js";
 import { YamlPreview } from "./YamlPreview.js";
 
 // The canvas app's top-level orchestration (PLAN.md Shape S2). Owns the
@@ -276,200 +277,212 @@ export function App({
     return true;
   }
 
+  // KAM-199: only where the canvas can write a spec that then runs. The hosted server refuses a 1.1 spec.
+  const upgrade = providedApi === undefined ? { source, apply: handlePatchSteps } : null;
+
   return (
-    <div className="md3-app">
-      <div className="md3-app__canvas-pane">
-        <div className="md3-app__toolbar">
-          {onNavigateBack && (
-            <button
-              className="md3-button md3-button-text"
-              onClick={onNavigateBack}
-              data-testid="back-to-specs"
-            >
-              ← Specs
+    <UpgradeContext.Provider value={upgrade}>
+      <div className="md3-app">
+        <div className="md3-app__canvas-pane">
+          <div className="md3-app__toolbar">
+            {onNavigateBack && (
+              <button
+                className="md3-button md3-button-text"
+                onClick={onNavigateBack}
+                data-testid="back-to-specs"
+              >
+                ← Specs
+              </button>
+            )}
+            <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
+            <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("tool")}>
+              Add Tool
             </button>
-          )}
-          <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
-          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("tool")}>
-            Add Tool
-          </button>
-          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("workflow")}>
-            Add Workflow Step
-          </button>
-          <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("guardrails")}>
-            Set Guardrails
-          </button>
-          <button
-            className="md3-button md3-button-tonal"
-            onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
-          >
-            Spec Vars
-          </button>
-          <button
-            className="md3-button md3-button-tonal"
-            onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
-          >
-            Trigger
-          </button>
-          <button
-            className="md3-button md3-button-tonal"
-            onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
-          >
-            Edit Steps
-          </button>
-          <span className="md3-app__toolbar-spacer" />
-          {api.listSecrets && (
-            <button
-              className="md3-button md3-button-text"
-              onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
-            >
-              Variables
+            <button className="md3-button md3-button-tonal" onClick={() => setOpenForm("workflow")}>
+              Add Workflow Step
             </button>
-          )}
-          {api.runDoctor && (
             <button
-              className="md3-button md3-button-text"
-              onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
+              className="md3-button md3-button-tonal"
+              onClick={() => setOpenForm("guardrails")}
             >
-              Checks
+              Set Guardrails
             </button>
+            <button
+              className="md3-button md3-button-tonal"
+              onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
+            >
+              Spec Vars
+            </button>
+            <button
+              className="md3-button md3-button-tonal"
+              onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
+            >
+              Trigger
+            </button>
+            <button
+              className="md3-button md3-button-tonal"
+              onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
+            >
+              Edit Steps
+            </button>
+            <span className="md3-app__toolbar-spacer" />
+            {api.listSecrets && (
+              <button
+                className="md3-button md3-button-text"
+                onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
+              >
+                Variables
+              </button>
+            )}
+            {api.runDoctor && (
+              <button
+                className="md3-button md3-button-text"
+                onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
+              >
+                Checks
+              </button>
+            )}
+            <button
+              className="md3-button md3-button-filled"
+              onClick={() => setOpenForm(openForm === "run" ? null : "run")}
+            >
+              Test Run
+            </button>
+          </div>
+
+          {specError && (
+            <div
+              role="alert"
+              data-testid="spec-error-banner"
+              className="md3-banner md3-banner--error"
+            >
+              <span>{specError}</span>
+              <button className="md3-banner__action" onClick={() => void refresh()}>
+                Retry
+              </button>
+            </div>
           )}
-          <button
-            className="md3-button md3-button-filled"
-            onClick={() => setOpenForm(openForm === "run" ? null : "run")}
-          >
-            Test Run
-          </button>
+          {conflict && (
+            <div role="alert" data-testid="conflict-banner" className="md3-banner md3-banner--info">
+              <span>This spec changed externally while you were editing it.</span>
+              <button
+                className="md3-banner__action"
+                onClick={() => void refresh().then(() => setConflict(false))}
+              >
+                Reload
+              </button>
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div
+              role="status"
+              data-testid="spec-warnings"
+              className="md3-banner md3-banner--warning"
+            >
+              <ul className="md3-banner__errors">
+                {warnings.map((warning) => (
+                  <li key={warning.code}>{warning.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {errors.length > 0 && (
+            <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
+              <ul className="md3-banner__errors">
+                {errors.map((error, i) => (
+                  <li key={i}>
+                    {error.path.join(".")}: {error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="md3-app__canvas-surface">
+            {openForm === "tool" && (
+              <div className="md3-app__overlay">
+                <ToolForm
+                  components={catalog?.components}
+                  componentProblems={catalog?.problems}
+                  references={references}
+                  onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                  onSubmit={(tool) => void handleAddTool(tool)}
+                  onCancel={() => setOpenForm(null)}
+                />
+              </div>
+            )}
+            {openForm === "workflow" && (
+              <div className="md3-app__overlay">
+                <WorkflowStepForm
+                  scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
+                  onSubmit={(step) => void handleAddWorkflowStep(step)}
+                  onCancel={() => setOpenForm(null)}
+                />
+              </div>
+            )}
+            {openForm === "guardrails" && (
+              <div className="md3-app__overlay">
+                <GuardrailsForm
+                  onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
+                  onCancel={() => setOpenForm(null)}
+                />
+              </div>
+            )}
+
+            <Canvas graph={graph} layout={layout} />
+          </div>
         </div>
-
-        {specError && (
-          <div
-            role="alert"
-            data-testid="spec-error-banner"
-            className="md3-banner md3-banner--error"
-          >
-            <span>{specError}</span>
-            <button className="md3-banner__action" onClick={() => void refresh()}>
-              Retry
-            </button>
-          </div>
-        )}
-        {conflict && (
-          <div role="alert" data-testid="conflict-banner" className="md3-banner md3-banner--info">
-            <span>This spec changed externally while you were editing it.</span>
-            <button
-              className="md3-banner__action"
-              onClick={() => void refresh().then(() => setConflict(false))}
-            >
-              Reload
-            </button>
-          </div>
-        )}
-        {warnings.length > 0 && (
-          <div role="status" data-testid="spec-warnings" className="md3-banner md3-banner--warning">
-            <ul className="md3-banner__errors">
-              {warnings.map((warning) => (
-                <li key={warning.code}>{warning.message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {errors.length > 0 && (
-          <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
-            <ul className="md3-banner__errors">
-              {errors.map((error, i) => (
-                <li key={i}>
-                  {error.path.join(".")}: {error.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="md3-app__canvas-surface">
-          {openForm === "tool" && (
-            <div className="md3-app__overlay">
-              <ToolForm
-                components={catalog?.components}
-                componentProblems={catalog?.problems}
-                references={references}
-                onPinComponent={api.pinComponent ? handlePinComponent : undefined}
-                onSubmit={(tool) => void handleAddTool(tool)}
-                onCancel={() => setOpenForm(null)}
-              />
-            </div>
-          )}
-          {openForm === "workflow" && (
-            <div className="md3-app__overlay">
-              <WorkflowStepForm
-                scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
-                onSubmit={(step) => void handleAddWorkflowStep(step)}
-                onCancel={() => setOpenForm(null)}
-              />
-            </div>
-          )}
-          {openForm === "guardrails" && (
-            <div className="md3-app__overlay">
-              <GuardrailsForm
-                onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
-                onCancel={() => setOpenForm(null)}
-              />
-            </div>
-          )}
-
-          <Canvas graph={graph} layout={layout} />
-        </div>
-      </div>
-      <div className="md3-app__side-pane">
-        {/* The run panel docks in the side pane (above the YAML) rather than
+        <div className="md3-app__side-pane">
+          {/* The run panel docks in the side pane (above the YAML) rather than
             floating over the canvas, so a run never covers the graph the user
             is watching. Toggling "Test Run" shows/hides it. */}
-        {openForm === "run" && (
-          <div className="md3-app__run-dock">
-            <RunPanel api={api} />
-          </div>
-        )}
-        {openForm === "vars" && spec && (
-          <div className="md3-app__run-dock">
-            <VarsPanel
-              version={spec.version}
-              vars={spec.vars}
-              onSave={handleSaveVar}
-              onRemove={handleRemoveVar}
-            />
-          </div>
-        )}
-        {openForm === "trigger" && spec && (
-          <div className="md3-app__run-dock">
-            <TriggerPanel
-              version={spec.version}
-              trigger={spec.agent.trigger}
-              onSave={handleSaveTrigger}
-              onRemove={handleRemoveTrigger}
-            />
-          </div>
-        )}
-        {openForm === "steps" && spec && (
-          <div className="md3-app__run-dock">
-            <StepsPanel spec={spec} onPatch={handlePatchSteps} />
-          </div>
-        )}
-        {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
-          <div className="md3-app__run-dock">
-            <SecretsPanel
-              list={() => api.listSecrets!()}
-              save={(name, value) => api.setSecret!(name, value)}
-              remove={(name) => api.removeSecret!(name)}
-            />
-          </div>
-        )}
-        {openForm === "checks" && api.runDoctor && (
-          <div className="md3-app__run-dock">
-            <DoctorPanel run={(options) => api.runDoctor!(options)} />
-          </div>
-        )}
-        <YamlPreview source={source} />
+          {openForm === "run" && (
+            <div className="md3-app__run-dock">
+              <RunPanel api={api} />
+            </div>
+          )}
+          {openForm === "vars" && spec && (
+            <div className="md3-app__run-dock">
+              <VarsPanel
+                version={spec.version}
+                vars={spec.vars}
+                onSave={handleSaveVar}
+                onRemove={handleRemoveVar}
+              />
+            </div>
+          )}
+          {openForm === "trigger" && spec && (
+            <div className="md3-app__run-dock">
+              <TriggerPanel
+                version={spec.version}
+                trigger={spec.agent.trigger}
+                onSave={handleSaveTrigger}
+                onRemove={handleRemoveTrigger}
+              />
+            </div>
+          )}
+          {openForm === "steps" && spec && (
+            <div className="md3-app__run-dock">
+              <StepsPanel spec={spec} onPatch={handlePatchSteps} />
+            </div>
+          )}
+          {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
+            <div className="md3-app__run-dock">
+              <SecretsPanel
+                list={() => api.listSecrets!()}
+                save={(name, value) => api.setSecret!(name, value)}
+                remove={(name) => api.removeSecret!(name)}
+              />
+            </div>
+          )}
+          {openForm === "checks" && api.runDoctor && (
+            <div className="md3-app__run-dock">
+              <DoctorPanel run={(options) => api.runDoctor!(options)} />
+            </div>
+          )}
+          <YamlPreview source={source} />
+        </div>
       </div>
-    </div>
+    </UpgradeContext.Provider>
   );
 }

@@ -1223,3 +1223,52 @@ select.md3-text-field {
   margin: 0;
   min-width: 0;
 }
+
+/* The upgrade preview (KAM-199): a line diff, each line marked with + or - as well as colour. */
+
+.md3-upgrade {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.md3-upgrade__notes {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.md3-upgrade__diff {
+  margin: 0;
+  padding: 0.5rem;
+  overflow-x: auto;
+  font-family: var(--md-font-mono, ui-monospace, monospace);
+  font-size: var(--md-type-body-small-size);
+  line-height: 1.5;
+  background: var(--md-sys-color-surface-container-lowest);
+  border-radius: var(--md-shape-corner-small, 0.5rem);
+}
+
+.md3-upgrade__line {
+  display: block;
+  white-space: pre;
+}
+
+.md3-upgrade__line--add {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-upgrade__line--del {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.md3-banner:has(+ .md3-upgrade),
+.md3-banner:has(.md3-button) {
+  flex-wrap: wrap;
+}
