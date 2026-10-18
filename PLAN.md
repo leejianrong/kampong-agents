@@ -2,6 +2,14 @@
 
 Status: agreed · Milestone: MVP (v1) shipped; V9 shipped, V11 in progress (see `SLICES.md` for per-slice status)
 
+## Direction update (2026-10-19)
+
+The first user is now a non-technical person who can prompt an LLM, hosting is the business, and a paid
+enterprise self-host licence is planned (ADR-0053). The spec is the single truth, with YAML as its interchange
+form and the file in local mode only (ADR-0054). "Single-agent" below describes v1 scope, not positioning. The
+sections that follow keep their original wording as the record of the MVP plan; where they say "YAML is the
+single source of truth" or name a developer as the primary user, read them through these two ADRs.
+
 ## Problem
 
 Technical teams and agencies building AI agent workflows today have to choose between two bad options: a no-code canvas tool (Lindy, Gumloop, n8n) that locks their workflow logic into a proprietary platform with no real code underneath, or a code-first framework (LangGraph, Mastra, CrewAI) that gives them full control but no visual surface a non-technical teammate or client can look at, tweak, or approve. Neither lets a developer and a non-technical collaborator work on the _same_ artifact.

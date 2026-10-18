@@ -7,9 +7,11 @@ is shaped the way it is. The full set lives in `docs/adr/`; here they are groupe
 ## Shape of the product
 
 - [ADR-0001: Single-agent scope for v1](adr/0001-single-agent-scope-for-v1.md)
-- [ADR-0002: YAML as source of truth, one-way export](adr/0002-yaml-source-of-truth-oneway-export.md)
+- [ADR-0002: YAML as source of truth, one-way export](adr/0002-yaml-source-of-truth-oneway-export.md) (source-of-truth wording superseded by ADR-0054)
 - [ADR-0005: A local web app, not a desktop app](adr/0005-local-web-app-not-desktop.md)
-- [ADR-0008: External-edit-first workflow](adr/0008-external-edit-first-workflow.md)
+- [ADR-0008: External-edit-first workflow](adr/0008-external-edit-first-workflow.md) (local mode; narrowed by ADR-0054)
+- [ADR-0053: First user, business model, and agent count are not positioning](adr/0053-first-user-business-model-and-agent-count.md)
+- [ADR-0054: The spec is the truth; YAML is its interchange format](adr/0054-spec-is-internal-yaml-is-interchange.md)
 - [ADR-0021: Real-world workflows direction (V9)](adr/0021-real-world-workflows-direction.md)
 - [ADR-0022: Deployment model — two paths, one foundation](adr/0022-deployment-model-two-paths.md)
 - [ADR-0023: V10 monetization model](adr/0023-v10-monetization-model.md)

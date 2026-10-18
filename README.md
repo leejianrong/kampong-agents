@@ -10,7 +10,7 @@ to a standalone TypeScript project with no dependency on this tool.
 ```mermaid
 flowchart LR
   canvas["Visual canvas"]
-  spec["AgentSpec YAML\n(single source of truth)"]
+  spec["AgentSpec YAML\n(file locally, internal when hosted)"]
   external["Cursor / Claude Code / Codex\n(hand-edit directly)"]
   run["kampong run / serve\n(local engine)"]
   export["Eject: standalone\nTypeScript project"]
@@ -23,7 +23,7 @@ flowchart LR
 
 ## What you can build
 
-- **Single-agent workflows** with tools, guardrails and human approval (Slack or terminal).
+- **Agent workflows** with tools, guardrails and human approval (Slack or terminal). One agent per spec today.
 - **Unattended pipelines:** a `schedule`, `poll` or authenticated `webhook` trigger, `foreach` loops that survive
   bad items, `branch`/`stop`, `transform`/`validate`/`dedupe` data steps, structured model output.
 - **First-party connectors** for Slack, Gmail, GitHub, Supabase and Alpha Vantage, and a pinned,
@@ -91,7 +91,7 @@ If you run a machine-wide Traefik proxy, copy `docker-compose.override.yml.examp
 ## Contributing
 
 Issues and PRs are welcome. [`AGENTS.md`](./AGENTS.md) is the contributor and agent brief: commands,
-repo layout and the conventions that are intentional rather than oversights (YAML as source of truth,
+repo layout and the conventions that are intentional rather than oversights (the spec as the single truth with YAML as its interchange form,
 TypeScript on Mastra only, no telemetry by default). The design lives in [`PLAN.md`](./PLAN.md),
 [`SLICES.md`](./SLICES.md) and [`docs/adr/`](./docs/adr/).
 

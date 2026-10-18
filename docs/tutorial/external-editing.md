@@ -12,8 +12,9 @@ canvas with no import step, and external edits show up live.
 kampong dev ./my-specs --spec support-bot.yaml
 ```
 
-There's no "import" or "open project" step. The file on disk is the source of truth, and the
-canvas is a view of it.
+There's no "import" or "open project" step. In local mode the file on disk is the spec, and the
+canvas is a view of it. (The hosted product manages the spec for you and offers YAML import and
+export instead; this tutorial is about local mode.)
 
 ## Get validation and autocomplete for free
 
@@ -65,8 +66,8 @@ like any other source file.
 
 ## Recap
 
-- `kampong dev <dir>` renders any valid spec in a folder with no import step; the file on disk is
-  the source of truth.
+- `kampong dev <dir>` renders any valid spec in a folder with no import step; in local mode the file on disk
+  is the spec.
 - The `yaml-language-server` schema pragma gives validation, autocomplete, and hover docs in any
   YAML-aware editor, with no custom plugin.
 - External edits auto-reload the canvas silently; it prompts only on a genuine conflict with an

@@ -36,8 +36,10 @@ it hasn't seen before. The spec stays clean and hand-authorable.
 
 You can eject a spec to a standalone TypeScript project, but the door only opens outward. The
 canvas and CLI never read generated code, only the spec round-trips. Hand-edits to an exported
-project stay in that project. This keeps the model simple: there is exactly one source of truth,
-and it's the spec.
+project stay in that project. This keeps the model simple: there is exactly one definition of a
+workflow, and it's the spec. YAML is its text form: the file you edit in local mode, and the format
+you import and export in the hosted product, where the spec is stored for you.
+[ADR-0054](adr/0054-spec-is-internal-yaml-is-interchange.md)
 [ADR-0002](adr/0002-yaml-source-of-truth-oneway-export.md),
 [ADR-0010](adr/0010-exported-runtime-is-vendored-not-retemplated.md)
 
@@ -55,12 +57,13 @@ Two rules follow from taking "local-first" seriously:
 - **No telemetry by default, and no secrets in specs.** Nothing phones home unless you opt in.
   Specs reference `${ENV_VAR}` placeholders only, and real keys live in your environment.
 
-## One agent at a time, for now
+## How many agents
 
-v1 builds a single agent. There's no multi-agent org-chart orchestration yet. The spec schema
-leaves room for a `sub_agents` field later, but nothing today assumes it. The bet is to prove the
-single-agent design, run, and export loop before adding delegation.
-[ADR-0001](adr/0001-single-agent-scope-for-v1.md)
+A spec holds one agent today. That is a scope limit for this stage, not a design position, and
+there is no multi-agent orchestration yet. The schema leaves room for a `sub_agents` field, and
+multi-agent is open for later.
+[ADR-0001](adr/0001-single-agent-scope-for-v1.md),
+[ADR-0053](adr/0053-first-user-business-model-and-agent-count.md)
 
 ## The stack, briefly
 

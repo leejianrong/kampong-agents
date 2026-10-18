@@ -1,6 +1,6 @@
 # ADR-0008: Hand-editing in an external IDE or agentic coding tool is a first-class workflow
 
-- Status: Accepted
+- Status: Accepted for local mode. No longer the primary workflow (ADR-0054, ADR-0053).
 - Date: 2026-09-03
 - Deciders: Jian (product owner)
 

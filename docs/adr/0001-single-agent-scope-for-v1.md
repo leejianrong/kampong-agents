@@ -1,6 +1,6 @@
 # ADR-0001: Scope v1 to a single agent, not a multi-agent org chart
 
-- Status: Accepted
+- Status: Accepted as v1 scope. It is not positioning (ADR-0053).
 - Date: 2026-09-03
 - Deciders: Jian (product owner)
 
