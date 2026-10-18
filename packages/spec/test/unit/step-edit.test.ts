@@ -588,3 +588,71 @@ agent:
     );
   });
 });
+
+// KAM-167: length and range limits are fields of the schema editor, not keywords it merely carries along.
+describe("output schema limits", () => {
+  const draft = (over: Partial<SchemaDraft>, name = "n"): SchemaDraft => ({
+    ...emptySchemaDraft("object"),
+    properties: [{ name, required: false, draft: { ...emptySchemaDraft("string"), ...over } }],
+  });
+  const built = (d: SchemaDraft) => buildOutputSchema(d);
+
+  it("reads limits into the draft and writes them back, so maxLength survives", () => {
+    const node = {
+      type: "object" as const,
+      properties: { summary: { type: "string" as const, maxLength: 280, minLength: 1 } },
+    };
+    const d = schemaToDraft(node);
+    expect(d.properties[0]!.draft.maxLength).toBe("280");
+    expect(d.properties[0]!.draft.minLength).toBe("1");
+    expect(d.properties[0]!.draft.extra).toEqual({});
+    expect(built(d)).toEqual({ success: true, value: node });
+  });
+
+  it("sets minimum and maximum on a number and drops limits that do not fit the type", () => {
+    const r = built(draft({ type: "number", minimum: "0", maximum: "1", maxLength: "5" }));
+    expect(r).toEqual({
+      success: true,
+      value: { type: "object", properties: { n: { type: "number", minimum: 0, maximum: 1 } } },
+    });
+  });
+
+  it("names the field and the problem for a bad limit", () => {
+    expect(built(draft({ maxLength: "-2" }))).toEqual({
+      success: false,
+      errors: ['output_schema.n: maxLength "-2" must be a whole number, 0 or more'],
+    });
+    expect(built(draft({ type: "integer", minimum: "x" }))).toEqual({
+      success: false,
+      errors: ['output_schema.n: minimum "x" must be a number'],
+    });
+    expect(built(draft({ minLength: "9", maxLength: "3" }))).toEqual({
+      success: false,
+      errors: ["output_schema.n: minLength 9 is more than maxLength 3"],
+    });
+  });
+
+  it("does not rewrite a schema whose keys are only in another order", () => {
+    const src = `version: "1.1"
+agent:
+  id: a
+  name: A
+  role: R
+  goal: G
+  workflow:
+    - step: s
+      action: write
+      output_schema:
+        type: object
+        properties:
+          x:
+            maxLength: 10
+            type: string
+`;
+    const { spec } = parseSpec(src);
+    const ref = listSteps(spec!)[0]!;
+    expect(
+      buildActionStepEdit(actionStepToEditInput(ref.step as never), ref as never, "1.1"),
+    ).toEqual({ success: true, patch: [] });
+  });
+});

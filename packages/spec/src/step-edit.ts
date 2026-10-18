@@ -66,6 +66,11 @@ export interface SchemaDraft {
   description: string;
   /** Allowed values, comma-separated (scalar types only). */
   enum: string;
+  /** As text, blank for none. `minLength` and `maxLength` are for a string, `minimum` and `maximum` for a number. */
+  minLength: string;
+  maxLength: string;
+  minimum: string;
+  maximum: string;
   /** Object only. */
   properties: { name: string; required: boolean; draft: SchemaDraft }[];
   /** Array only. */
@@ -74,12 +79,27 @@ export interface SchemaDraft {
   extra: Record<string, unknown>;
 }
 
-const HANDLED = new Set(["type", "description", "enum", "properties", "required", "items"]);
+const HANDLED = new Set([
+  "type",
+  "description",
+  "enum",
+  "minLength",
+  "maxLength",
+  "minimum",
+  "maximum",
+  "properties",
+  "required",
+  "items",
+]);
 
 export const emptySchemaDraft = (type: SchemaType = "string"): SchemaDraft => ({
   type,
   description: "",
   enum: "",
+  minLength: "",
+  maxLength: "",
+  minimum: "",
+  maximum: "",
   properties: [],
   extra: {},
 });
@@ -90,6 +110,10 @@ export function schemaToDraft(node: SchemaNode): SchemaDraft {
     type: node.type,
     description: node.description ?? "",
     enum: (node.enum ?? []).join(", "),
+    minLength: node.minLength === undefined ? "" : String(node.minLength),
+    maxLength: node.maxLength === undefined ? "" : String(node.maxLength),
+    minimum: node.minimum === undefined ? "" : String(node.minimum),
+    maximum: node.maximum === undefined ? "" : String(node.maximum),
     properties: Object.entries(node.properties ?? {}).map(([name, child]) => ({
       name,
       required: required.has(name),
@@ -128,6 +152,20 @@ function enumValues(
   return out;
 }
 
+/** A limit field: blank is none, otherwise a number (a whole number of 0 or more when `whole`). */
+function limit(text: string, name: string, whole: boolean, where: string, errors: string[]) {
+  const t = text.trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  if (!Number.isFinite(n) || (whole && (!Number.isInteger(n) || n < 0))) {
+    errors.push(
+      `${where}: ${name} "${t}" must be ${whole ? "a whole number, 0 or more" : "a number"}`,
+    );
+    return undefined;
+  }
+  return n;
+}
+
 function nodeFromDraft(draft: SchemaDraft, where: string, errors: string[]): SchemaNode {
   const node: Record<string, unknown> = { type: draft.type };
   const description = draft.description.trim();
@@ -137,6 +175,24 @@ function nodeFromDraft(draft: SchemaDraft, where: string, errors: string[]): Sch
   } else {
     const values = enumValues(draft, where, errors);
     if (values) node.enum = values;
+  }
+  if (draft.type === "string") {
+    const min = limit(draft.minLength, "minLength", true, where, errors);
+    const max = limit(draft.maxLength, "maxLength", true, where, errors);
+    if (min !== undefined && max !== undefined && min > max) {
+      errors.push(`${where}: minLength ${min} is more than maxLength ${max}`);
+    }
+    if (min !== undefined) node.minLength = min;
+    if (max !== undefined) node.maxLength = max;
+  }
+  if (draft.type === "number" || draft.type === "integer") {
+    const min = limit(draft.minimum, "minimum", false, where, errors);
+    const max = limit(draft.maximum, "maximum", false, where, errors);
+    if (min !== undefined && max !== undefined && min > max) {
+      errors.push(`${where}: minimum ${min} is more than maximum ${max}`);
+    }
+    if (min !== undefined) node.minimum = min;
+    if (max !== undefined) node.maximum = max;
   }
   if (draft.type === "object") {
     if (draft.properties.length === 0) {
@@ -234,6 +290,15 @@ export function actionStepToEditInput(step: ActionStep): ActionStepEditInput {
   };
 }
 
+/** JSON with sorted keys, so two schemas that differ only in key order compare equal and an untouched one is not rewritten. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)))
+      : v,
+  );
+}
+
 /** Validates the form for a spec of `version` and returns the patch that sets (or clears) each field. */
 export function buildActionStepEdit(
   input: ActionStepEditInput,
@@ -283,7 +348,7 @@ export function buildActionStepEdit(
     const at = [...step.path, name];
     if (value === undefined) {
       if (before !== undefined) patch.push({ op: "remove", path: at });
-    } else if (JSON.stringify(value) !== JSON.stringify(before)) {
+    } else if (canonical(value) !== canonical(before)) {
       patch.push({ op: "set", path: at, value });
     }
   };
