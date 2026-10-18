@@ -7,7 +7,7 @@ license: Apache-2.0
 entry: ./index.mjs
 deps:
   imapflow: 2.4.3
-  mailparser: 3.9.31
+  mailparser: 3.9.39
 permissions:
   # Declared, not enforced: the sockets are opened by imapflow, not by ctx.fetch (ADR-0031).
   egress: [imap.gmail.com:993]
