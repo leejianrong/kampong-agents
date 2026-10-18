@@ -85,6 +85,83 @@ export function expressionScopeFor(
   };
 }
 
+const samePath = (a: readonly (string | number)[], b: readonly (string | number)[]) =>
+  a.length === b.length && a.every((part, i) => part === b[i]);
+
+/** The steps in a branch's arms, in the order the loader walks them. */
+function armLists(step: Extract<WorkflowStep, { branch: unknown }>) {
+  const b = step.branch;
+  if ("if" in b) {
+    return [
+      { key: ["branch", "then"], list: b.then as WorkflowStep[] },
+      ...(b.else ? [{ key: ["branch", "else"], list: b.else as WorkflowStep[] }] : []),
+    ];
+  }
+  return [
+    ...Object.entries(b.cases).map(([k, list]) => ({
+      key: ["branch", "cases", k],
+      list: list as WorkflowStep[],
+    })),
+    ...(b.default ? [{ key: ["branch", "default"], list: b.default as WorkflowStep[] }] : []),
+  ];
+}
+
+/**
+ * What a foreach body adds at the step at `target`, as the loader reads it (spec-expressions.ts): the loop's
+ * variable, then each body step before this one (the steps in an arm that came earlier included). A foreach
+ * inside a body starts its own list. `undefined` when the step is not inside a foreach.
+ */
+function loopLocalAt(
+  list: readonly WorkflowStep[],
+  listPath: (string | number)[],
+  target: readonly (string | number)[],
+  local: ScopeStep[] | undefined,
+): ScopeStep[] | undefined {
+  for (const [i, step] of list.entries()) {
+    const at = [...listPath, i];
+    if (samePath(at, target)) return local && [...local];
+    if ("branch" in step) {
+      for (const arm of armLists(step)) {
+        const found = loopLocalAt(arm.list, [...at, ...arm.key], target, local);
+        if (found) return found;
+      }
+    } else if ("foreach" in step) {
+      const inner: ScopeStep[] = [{ name: step.foreach.as, fields: [] }];
+      const found = loopLocalAt(
+        step.foreach.steps as WorkflowStep[],
+        [...at, "foreach", "steps"],
+        target,
+        inner,
+      );
+      if (found) return found;
+    }
+    local?.push({ name: step.step, fields: fieldsOf(step) });
+  }
+  return undefined;
+}
+
+/**
+ * The scope at the step whose position in the file is `path` (a StepRef's `path`). At the top level it is the
+ * scope before that step. Inside a foreach body it adds the loop variable and the body steps ahead of it, which
+ * the loader lets an expression read, and offers the top-level steps ahead of the loop, not the ones after it.
+ */
+export function expressionScopeForStepAt(
+  spec: AgentSpec,
+  path: readonly (string | number)[],
+): ExpressionScope {
+  const local = loopLocalAt(spec.agent.workflow, ["agent", "workflow"], path, undefined);
+  // Outside a loop the step is found by its own name; inside one it runs once per item, after every top-level
+  // step ahead of the loop, so the loop's own top-level step is the mark.
+  const at = (local ? path.slice(0, 3) : path).reduce<unknown>(
+    (node, part) => (node as Record<string | number, unknown> | undefined)?.[part],
+    spec,
+  ) as WorkflowStep | undefined;
+  return expressionScopeFor(spec, {
+    ...(at && { before: at.step }),
+    ...(local && { local }),
+  });
+}
+
 /** What is wrong with `source`, as the spec loader would say it. An empty field has no diagnostics. */
 export function diagnoseExpression(source: string, scope: ExpressionScope): ExpressionDiagnostic[] {
   if (source.trim() === "") return [];
