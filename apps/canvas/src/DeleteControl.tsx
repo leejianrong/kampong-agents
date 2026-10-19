@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { listSteps, type AgentSpec } from "@kampong/spec";
 
 // Delete a step or a tool from the Edit Steps list (KAM-171, ADR-0055). The server decides whether it can go:
@@ -37,6 +37,28 @@ export function describeReference(spec: AgentSpec, ref: RemoveReference): string
   return `${where}${in_}: ${ref.text}${line}`;
 }
 
+/** A refused rename in plain words, to show next to the name field. */
+export function renameErrorWords(
+  error: { code?: string; message: string },
+  noun: "step" | "tool",
+  to: string,
+): string {
+  switch (error.code) {
+    case "name_taken":
+      return `The name "${to}" is already used by another ${noun}. Pick a different name.`;
+    case "invalid_name":
+      return `"${to}" cannot be used as a name: ${error.message.replace(/^".*?" /, "")}`;
+    case "unrewritable":
+      return `One place that uses the old name cannot be updated automatically. Change it by hand, then rename. (${error.message})`;
+    case "stale":
+      return "The spec changed in the meantime. Close this and try again.";
+    case undefined:
+      return `The spec would no longer be valid with that name (${error.message}).`;
+    default:
+      return error.message;
+  }
+}
+
 interface RowProps {
   spec: AgentSpec;
   noun: "step" | "tool";
@@ -50,7 +72,13 @@ interface RowProps {
   onRemove?: () => Promise<RemoveOutcome>;
   /** The row's other buttons (Edit), shown before Delete. */
   children?: ReactNode;
+  /** Omitted: the row has no Rename button (KAM-172). Resolves with messages when the name is refused. */
+  onRename?: (to: string) => Promise<RenameOutcome>;
+  /** How many places use this name today, for "3 places will be updated". */
+  usedIn?: number;
 }
+
+export type RenameOutcome = { success: true } | { success: false; messages: string[] };
 
 /** A row of the steps or tools list with its Delete button, the confirm, and the list of what blocks it. */
 export function DeletableRow({
@@ -62,8 +90,40 @@ export function DeletableRow({
   disabled,
   onRemove,
   children,
+  onRename,
+  usedIn = 0,
 }: RowProps) {
   const [stage, setStage] = useState<"idle" | "confirm" | "busy" | "failed">("idle");
+  const [renaming, setRenaming] = useState<{
+    draft: string;
+    errors: string[];
+    busy: boolean;
+  } | null>(null);
+
+  // The docked panel is short at 900x700: keep the form, its message and its buttons in view when it opens
+  // and when a refusal adds a line.
+  const renameForm = useRef<HTMLFormElement>(null);
+  const shown = renaming !== null;
+  const errorCount = renaming?.errors.length ?? 0;
+  useEffect(() => {
+    if (shown) renameForm.current?.scrollIntoView?.({ block: "nearest" });
+  }, [shown, errorCount]);
+
+  async function saveRename(event: React.FormEvent) {
+    event.preventDefault();
+    if (!onRename || !renaming) return;
+    const to = renaming.draft.trim();
+    if (to === name) {
+      setRenaming(null);
+      return;
+    }
+    setRenaming({ ...renaming, busy: true });
+    const result = await onRename(to);
+    // On success the spec reloads with the new name (and the row with it); on a refusal the input stays.
+    setRenaming(
+      result.success ? null : { draft: renaming.draft, errors: result.messages, busy: false },
+    );
+  }
   const [outcome, setOutcome] = useState<Extract<RemoveOutcome, { success: false }> | null>(null);
 
   async function confirm() {
@@ -91,6 +151,17 @@ export function DeletableRow({
       </span>
       <span className="md3-secrets__actions">
         {children}
+        {onRename && (
+          <button
+            type="button"
+            className="md3-button md3-button-text"
+            disabled={disabled || stage !== "idle" || renaming !== null}
+            aria-label={`Rename ${noun} ${name}`}
+            onClick={() => setRenaming({ draft: name, errors: [], busy: false })}
+          >
+            Rename
+          </button>
+        )}
         {onRemove && (
           <button
             type="button"
@@ -103,6 +174,51 @@ export function DeletableRow({
           </button>
         )}
       </span>
+      {renaming && (
+        <form
+          ref={renameForm}
+          onSubmit={(e) => void saveRename(e)}
+          aria-label={`Rename ${noun} ${name}?`}
+          className="md3-delete"
+        >
+          <label className="md3-field">
+            <span className="md3-body-small md3-field__label">New name</span>
+            <input
+              className="md3-text-field"
+              value={renaming.draft}
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={renaming.errors.length > 0}
+              onChange={(e) => setRenaming({ ...renaming, draft: e.target.value, errors: [] })}
+            />
+          </label>
+          <span className="md3-body-small md3-field__hint">
+            {usedIn === 0
+              ? `Nothing else uses this ${noun}'s name.`
+              : `${usedIn} ${usedIn === 1 ? "place" : "places"} will be updated to the new name.`}
+          </span>
+          {renaming.errors.length > 0 && (
+            <ul role="alert" className="md3-error-list">
+              {renaming.errors.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          )}
+          <span className="md3-delete__actions">
+            <button type="submit" className="md3-button md3-button-filled" disabled={renaming.busy}>
+              Rename {noun}
+            </button>
+            <button
+              type="button"
+              className="md3-button md3-button-text"
+              disabled={renaming.busy}
+              onClick={() => setRenaming(null)}
+            >
+              Cancel
+            </button>
+          </span>
+        </form>
+      )}
       {(stage === "confirm" || stage === "busy") && (
         <div role="group" aria-label={`Delete ${noun} ${name}?`} className="md3-delete">
           <span className="md3-body-small">
