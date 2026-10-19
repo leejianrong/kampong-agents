@@ -320,4 +320,81 @@ ops:
     // not blanked out.
     expect(screen.getByText(/Trigger: Refund Agent/)).toBeTruthy();
   });
+
+  // KAM-171 (ADR-0055): delete a step or tool from the Edit Steps list, against the real server.
+  describe("deleting from the Edit Steps list", () => {
+    const WITH_READER = `version: "1.1"
+agent:
+  id: refund-agent
+  name: "Refund Agent"
+  role: "Support"
+  goal: "Handle refunds."
+  tools:
+    - name: lookup
+      action: http_request
+      method: GET
+      url: "https://api.example.com/x"
+  workflow:
+    - step: parse_request
+      action: extract_entities
+    - step: reply
+      action: "answer using {{ parse_request.text }}"
+    - step: call
+      type: tool
+      tool: lookup
+`;
+
+    async function openSteps() {
+      render(<App apiBaseUrl={baseUrl} />);
+      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      await waitFor(() => screen.getByTestId("steps-list"));
+    }
+
+    it("deletes a step nothing reads, after a confirm, and the file and list follow", async () => {
+      await startServer(WITH_READER);
+      await openSteps();
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete step reply" }));
+      const confirm = screen.getByRole("group", { name: "Delete step reply?" });
+      fireEvent.click(within(confirm).getByRole("button", { name: "Delete step" }));
+
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "Delete step reply" })).toBeNull(),
+      );
+      const written = readFileSync(specPath, "utf8");
+      expect(written).not.toContain("step: reply");
+      expect(parseSpec(written).errors).toEqual([]);
+    });
+
+    it("shows what reads a step first and keeps it; a tool a step uses is blocked the same way", async () => {
+      await startServer(WITH_READER);
+      await openSteps();
+      const before = readFileSync(specPath, "utf8");
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete step parse_request" }));
+      fireEvent.click(
+        within(screen.getByRole("group", { name: "Delete step parse_request?" })).getByRole(
+          "button",
+          { name: "Delete step" },
+        ),
+      );
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain('1 place uses step "parse_request"');
+      expect(alert.textContent).toContain('step "reply"');
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+      fireEvent.click(within(alert).getByRole("button", { name: "OK" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete tool lookup" }));
+      fireEvent.click(
+        within(screen.getByRole("group", { name: "Delete tool lookup?" })).getByRole("button", {
+          name: "Delete tool",
+        }),
+      );
+      const blocked = await screen.findByRole("alert");
+      expect(blocked.textContent).toContain('1 place uses tool "lookup"');
+      expect(blocked.textContent).toContain('step "call"');
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+    });
+  });
 });

@@ -23,6 +23,7 @@ import {
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
 import { SchemaEditor } from "./SchemaEditor.js";
+import { DeletableRow, type RemoveOutcome } from "./DeleteControl.js";
 
 // Edit a step that is already in the workflow (KAM-162, a slice of KAM-110). Lists every step, nested ones
 // included, and opens the one chosen in place. The form logic is in packages/spec (step-edit.ts), so what is
@@ -34,6 +35,16 @@ export interface StepsPanelProps {
   onPatch: (ops: PatchOp[]) => Promise<boolean>;
   /** Opens the tool at this index of `agent.tools` in the tool form. Without it the tool list is not shown. */
   onEditTool?: (index: number) => void;
+  /** Deletes a step or a tool through `ApiClient.applyOps`. Without it the rows have no Delete button. */
+  onRemove?: (
+    op: { op: "step.remove"; step: string } | { op: "tool.remove"; tool: string },
+  ) => Promise<RemoveOutcome>;
+}
+
+/** "and the 2 steps inside it" for a loop or branch, so the confirm says what else goes. */
+function insideCount(refs: StepRef[], ref: StepRef): string | undefined {
+  const n = refs.filter((r) => r.within.includes(ref.name)).length;
+  return n > 0 ? `and the ${n} step${n === 1 ? "" : "s"} inside it` : undefined;
 }
 
 type ActionRef = StepRef & { step: Extract<StepRef["step"], { action: string }> };
@@ -95,7 +106,7 @@ function PromptField({
   );
 }
 
-export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
+export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelProps) {
   const refs = listSteps(spec);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -459,52 +470,52 @@ export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
 
       <ul className="md3-doctor__list" data-testid="steps-list">
         {refs.map((ref) => (
-          <li key={keyOf(ref)} className="md3-secrets__row">
-            <span className="md3-vars__name">
-              <span className="md3-body-medium">{ref.name}</span>
-              <span className="md3-body-small md3-field__hint">
-                {ref.kind}
-                {ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}
-              </span>
-            </span>
-            <span className="md3-secrets__actions">
-              {(isAction(ref) || isData(ref) || isSimple(ref)) && (
-                <button
-                  type="button"
-                  className="md3-button md3-button-text"
-                  disabled={busy || editing !== null || (!modern && !isSimple(ref))}
-                  aria-label={`Edit ${ref.name}`}
-                  onClick={() => {
-                    setErrors([]);
-                    setEditing(
-                      isAction(ref)
+          <DeletableRow
+            key={keyOf(ref)}
+            spec={spec}
+            noun="step"
+            name={ref.name}
+            hint={`${ref.kind}${ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}`}
+            extra={insideCount(refs, ref)}
+            disabled={busy || editing !== null}
+            onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
+          >
+            {(isAction(ref) || isData(ref) || isSimple(ref)) && (
+              <button
+                type="button"
+                className="md3-button md3-button-text"
+                disabled={busy || editing !== null || (!modern && !isSimple(ref))}
+                aria-label={`Edit ${ref.name}`}
+                onClick={() => {
+                  setErrors([]);
+                  setEditing(
+                    isAction(ref)
+                      ? {
+                          key: keyOf(ref),
+                          kind: "action",
+                          input: actionStepToEditInput(ref.step),
+                        }
+                      : isSimple(ref)
                         ? {
                             key: keyOf(ref),
-                            kind: "action",
-                            input: actionStepToEditInput(ref.step),
+                            kind: "simple",
+                            input: simpleStepToEditInput(ref.step),
                           }
-                        : isSimple(ref)
-                          ? {
-                              key: keyOf(ref),
-                              kind: "simple",
-                              input: simpleStepToEditInput(ref.step),
-                            }
-                          : {
-                              key: keyOf(ref),
-                              kind: "data",
-                              input: dataStepToEditInput((ref as DataRef).step),
-                            },
-                    );
-                  }}
-                >
-                  Edit
-                </button>
-              )}
-              {NOT_EDITABLE[ref.kind] && (
-                <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
-              )}
-            </span>
-          </li>
+                        : {
+                            key: keyOf(ref),
+                            kind: "data",
+                            input: dataStepToEditInput((ref as DataRef).step),
+                          },
+                  );
+                }}
+              >
+                Edit
+              </button>
+            )}
+            {NOT_EDITABLE[ref.kind] && (
+              <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
+            )}
+          </DeletableRow>
         ))}
       </ul>
 
@@ -513,25 +524,25 @@ export function StepsPanel({ spec, onPatch, onEditTool }: StepsPanelProps) {
           <span className="md3-title-small">Tools</span>
           <ul className="md3-doctor__list" data-testid="tools-list">
             {(spec.agent.tools ?? []).map((tool, index) => (
-              <li key={tool.name} className="md3-secrets__row">
-                <span className="md3-vars__name">
-                  <span className="md3-body-medium">{tool.name}</span>
-                  <span className="md3-body-small md3-field__hint">
-                    {tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
-                  </span>
-                </span>
-                <span className="md3-secrets__actions">
-                  <button
-                    type="button"
-                    className="md3-button md3-button-text"
-                    disabled={busy || editing !== null}
-                    aria-label={`Edit tool ${tool.name}`}
-                    onClick={() => onEditTool(index)}
-                  >
-                    Edit
-                  </button>
-                </span>
-              </li>
+              <DeletableRow
+                key={tool.name}
+                spec={spec}
+                noun="tool"
+                name={tool.name}
+                hint={tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
+                disabled={busy || editing !== null}
+                onRemove={onRemove && (() => onRemove({ op: "tool.remove", tool: tool.name }))}
+              >
+                <button
+                  type="button"
+                  className="md3-button md3-button-text"
+                  disabled={busy || editing !== null}
+                  aria-label={`Edit tool ${tool.name}`}
+                  onClick={() => onEditTool(index)}
+                >
+                  Edit
+                </button>
+              </DeletableRow>
             ))}
           </ul>
         </>
