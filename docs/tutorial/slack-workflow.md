@@ -94,7 +94,7 @@ the message.
 
 ## What you built
 
-This is the whole workflow in YAML. You can edit it in the YAML panel, or in any editor, and the
+This is the whole workflow in YAML. You can open it in the `</>` drawer (read only) and edit it in any editor, and the
 canvas updates.
 
 ```yaml

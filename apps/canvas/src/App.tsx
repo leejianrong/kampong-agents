@@ -46,6 +46,16 @@ import { UpgradeContext } from "./UpgradeContext.js";
 import { ImportPanel } from "./ImportPanel.js";
 import { YamlPreview } from "./YamlPreview.js";
 
+const YAML_DRAWER_KEY = "kampong.yamlDrawer";
+
+function readYamlDrawer(): boolean {
+  try {
+    return localStorage.getItem(YAML_DRAWER_KEY) === "open";
+  } catch {
+    return false;
+  }
+}
+
 // The canvas app's top-level orchestration (PLAN.md Shape S2). Owns the
 // fetch-on-mount + SSE-subscribe lifecycle; ADR-0008's auto-reload-by-
 // default lives here as the difference between a silent "reload" refetch
@@ -449,6 +459,26 @@ export function App({
     return true;
   }
 
+  // KAM-202: the read-only YAML viewer is a drawer for developers, closed by default and remembered.
+  const [yamlOpen, setYamlOpen] = useState(readYamlDrawer);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YAML_DRAWER_KEY, yamlOpen ? "open" : "closed");
+    } catch {
+      // storage can be blocked; the drawer still works for this visit
+    }
+  }, [yamlOpen]);
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === "KeyY") {
+        event.preventDefault();
+        setYamlOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // KAM-199: only where the canvas can write a spec that then runs. The hosted server refuses a 1.1 spec.
   const upgrade = providedApi === undefined ? { source, apply: handlePatchSteps } : null;
 
@@ -515,6 +545,17 @@ export function App({
             </div>
             <span className="md3-app__toolbar-spacer" />
             <div className="md3-toolbar__group" role="group" aria-label="Run">
+              <button
+                className="md3-button md3-button-tonal md3-toolbar__code"
+                aria-pressed={yamlOpen}
+                aria-label="For developers: show YAML"
+                aria-keyshortcuts="Alt+Y"
+                title="For developers: show the spec as YAML (Alt+Y)"
+                data-testid="yaml-drawer-toggle"
+                onClick={() => setYamlOpen(!yamlOpen)}
+              >
+                {"</>"}
+              </button>
               {api.listSecrets && (
                 <button
                   className="md3-button md3-button-tonal"
@@ -726,11 +767,13 @@ export function App({
               />
             </Panel>
           )}
-          <YamlPreview
-            source={source}
-            onDownload={downloadAsFile}
-            onImport={() => setOpenForm("import")}
-          />
+          {yamlOpen && (
+            <YamlPreview
+              source={source}
+              onDownload={downloadAsFile}
+              onImport={() => setOpenForm("import")}
+            />
+          )}
         </div>
       </div>
     </UpgradeContext.Provider>
