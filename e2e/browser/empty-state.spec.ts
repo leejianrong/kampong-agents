@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 // valid spec with the schema pragma, a workflow with no steps shows its own empty state, and a broken YAML file
 // says which line to fix and that saves are paused. Real browser, real `kampong dev`, at 1440x900 and 900x700.
 
-const PORT = 4348;
+const PORT = 4361;
 const URL = `http://127.0.0.1:${PORT}`;
 let server: ChildProcess;
 let dir: string;
