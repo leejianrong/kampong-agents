@@ -2,6 +2,8 @@ import {
   specToGraph,
   expressionScopeFor,
   addTargets,
+  insertionMarker,
+  workflowStepNames,
   outputReferenceOptions,
   removeTriggerPatch,
   removeVarPatch,
@@ -102,6 +104,14 @@ export function App({
   const [catalog, setCatalog] = useState<ComponentCatalog | undefined>(undefined);
   // KAM-175: the index in `agent.tools` of the tool open in the edit form.
   const [editingTool, setEditingTool] = useState<number | null>(null);
+  // KAM-173: where the step in the Add form will land (drawn on the canvas), and the node to pan to and flash
+  // after an add.
+  const [placement, setPlacement] = useState<{
+    holder?: string;
+    steps: string[];
+    index?: number;
+  } | null>(null);
+  const [focus, setFocus] = useState<{ id: string; nonce: number } | undefined>(undefined);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
   // e.g. the spec file was deleted/renamed out from under a running
@@ -188,6 +198,13 @@ export function App({
   );
 
   const graph = useMemo(() => (spec ? specToGraph(spec) : { nodes: [], edges: [] }), [spec]);
+  const marker = useMemo(
+    () =>
+      openForm === "workflow" && placement
+        ? insertionMarker(graph, placement.holder, placement.steps, placement.index)
+        : undefined,
+    [openForm, placement, graph],
+  );
 
   async function applyPatchOrReportError(ops: Parameters<ApiClient["applyPatch"]>[0]) {
     try {
@@ -252,6 +269,9 @@ export function App({
 
   // A step added inside a foreach body or a branch arm goes in at a place, by name (ADR-0055). A refusal (an
   // approval or a nested loop in a body, a name already used) comes back as plain messages for the form to show.
+  const flashStep = (step: WorkflowStep) =>
+    setFocus({ id: `workflow:${step.step}`, nonce: Date.now() });
+
   async function handleAddStepAt(place: Place, step: WorkflowStep): Promise<string[] | void> {
     try {
       const result = await api.applyOps([
@@ -273,6 +293,7 @@ export function App({
       }
       return [err instanceof Error ? err.message : "Failed to save the change."];
     }
+    flashStep(step);
     setOpenForm(null);
     await refresh();
   }
@@ -280,6 +301,7 @@ export function App({
   async function handleAddWorkflowStep(step: WorkflowStep) {
     if (!(await applyPatchOrReportError([{ op: "add", path: ["agent", "workflow"], value: step }])))
       return;
+    flashStep(step);
     setOpenForm(null);
     await refresh();
   }
@@ -557,7 +579,7 @@ export function App({
           )}
 
           <div className="md3-app__canvas-surface">
-            <Canvas graph={graph} layout={layout} />
+            <Canvas graph={graph} layout={layout} marker={marker} focus={focus} />
           </div>
         </div>
         <div className="md3-app__side-pane">
@@ -603,6 +625,8 @@ export function App({
                 version={spec?.version}
                 scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
                 targets={spec ? addTargets(spec) : []}
+                workflowSteps={spec ? workflowStepNames(spec) : []}
+                onPlacementChange={setPlacement}
                 onSubmit={(step, place) =>
                   place === undefined ? handleAddWorkflowStep(step) : handleAddStepAt(place, step)
                 }

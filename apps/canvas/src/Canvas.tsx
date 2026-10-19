@@ -3,12 +3,13 @@ import {
   BackgroundVariant,
   Controls,
   ReactFlow,
+  useReactFlow,
   type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useMemo, type ReactNode } from "react";
-import type { SpecGraph, SpecNode } from "@kampong/spec";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { InsertionMarker, SpecGraph, SpecNode } from "@kampong/spec";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
 // Workflow -> Guardrails"). Node color roles map to Material Design 3
@@ -31,6 +32,42 @@ import type { SpecGraph, SpecNode } from "@kampong/spec";
 export interface CanvasProps {
   graph: SpecGraph;
   layout: Record<string, { x: number; y: number }>;
+  /** Where the step being added will land (KAM-173): drawn as a dashed placeholder beside a node. */
+  marker?: InsertionMarker;
+  /** A node to pan into view and flash, as after an add (KAM-173). A new `nonce` repeats it. */
+  focus?: { id: string; nonce: number };
+}
+
+const MARKER_ID = "insertion-marker";
+const FLASH_MS = 2200;
+
+/** Pans to the focused node once it is on the canvas, and flashes it. Rendered inside <ReactFlow>. */
+function FocusNode({
+  focus,
+  onDone,
+}: {
+  focus: { id: string; nonce: number };
+  onDone: () => void;
+}) {
+  const flow = useReactFlow();
+  useEffect(() => {
+    let tries = 0;
+    const go = () => {
+      if (!flow.getNode(focus.id)) {
+        // The graph refreshes after the save; wait for the node to arrive.
+        if (tries++ < 20) timer = setTimeout(go, 100);
+        return;
+      }
+      void flow.fitView({ nodes: [{ id: focus.id }], duration: 400, maxZoom: 1.2, padding: 0.6 });
+    };
+    let timer = setTimeout(go, 0);
+    const done = setTimeout(onDone, FLASH_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(done);
+    };
+  }, [flow, focus.id, focus.nonce, onDone]);
+  return null;
 }
 
 const KIND_LABEL: Record<SpecNode["kind"], string> = {
@@ -40,21 +77,45 @@ const KIND_LABEL: Record<SpecNode["kind"], string> = {
   guardrails: "Guardrails",
 };
 
-export function Canvas({ graph, layout }: CanvasProps) {
+export function Canvas({ graph, layout, marker, focus }: CanvasProps) {
+  // The focused node keeps its flash for a moment, then goes back to normal.
+  const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
+  useEffect(() => setFlashed(focus ?? null), [focus]);
   // Stable node/edge object identity across re-renders (App.tsx re-renders
   // on unrelated state, e.g. opening a form) -- @xyflow/react is a
   // controlled component and recreating fresh node/edge objects on every
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
   const nodes: Node[] = useMemo(
-    () =>
-      graph.nodes.map((node) => ({
+    () => [
+      ...graph.nodes.map((node) => ({
         id: node.id,
         position: layout[node.id] ?? { x: 0, y: 0 },
         data: { label: nodeLabel(node) },
-        className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}`,
+        className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
+          flashed?.id === node.id ? " md3-node--flash" : ""
+        }`,
       })),
-    [graph, layout],
+      ...(marker
+        ? [
+            {
+              id: MARKER_ID,
+              position: {
+                x: (layout[marker.anchor] ?? { x: 0, y: 0 }).x,
+                y:
+                  (layout[marker.anchor] ?? { x: 0, y: 0 }).y +
+                  (marker.side === "above" ? -48 : 70),
+              },
+              data: { label: marker.label },
+              className: "md3-node md3-node--marker",
+              draggable: false,
+              selectable: false,
+              connectable: false,
+            },
+          ]
+        : []),
+    ],
+    [graph, layout, marker, flashed],
   );
 
   const edges: Edge[] = useMemo(
@@ -73,6 +134,7 @@ export function Canvas({ graph, layout }: CanvasProps) {
       <ReactFlow nodes={nodes} edges={edges} fitView>
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls />
+        {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
       </ReactFlow>
     </div>
   );

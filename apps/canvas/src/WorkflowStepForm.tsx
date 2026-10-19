@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   buildWorkflowStepFromForm,
+  positionChoices,
   type AddTarget,
   type ExpressionScope,
   type Place,
@@ -98,6 +99,16 @@ export interface WorkflowStepFormProps {
    * a branch's arm. With any, the form offers "Add to".
    */
   targets?: AddTarget[];
+  /** The names of the steps at the top of the workflow, for "After <step>". Omit to leave the Position choice out. */
+  workflowSteps?: string[];
+  /**
+   * Called when the chosen list or position changes, so the canvas can show where the step will land: the loop or
+   * branch it goes in (none for the workflow), the names already in that list, and the index (none for the end).
+   * Called with null when the form closes.
+   */
+  onPlacementChange?: (
+    placement: { holder?: string; steps: string[]; index?: number } | null,
+  ) => void;
   /**
    * Receives the built step and, for a loop body or an arm, its place. May answer with messages to show in the
    * form (a refused save), or nothing.
@@ -110,12 +121,28 @@ export function WorkflowStepForm({
   version,
   scope: workflowScope,
   targets = [],
+  workflowSteps,
+  onPlacementChange,
   onSubmit,
   onCancel,
 }: WorkflowStepFormProps) {
   const [targetId, setTargetId] = useState("");
   const target = targets.find((t) => t.id === targetId);
   const scope = target ? target.scope : workflowScope;
+  const [position, setPosition] = useState("end");
+  const listSteps = target ? target.steps : (workflowSteps ?? []);
+  const choices = positionChoices(target ? target.where : "the workflow", listSteps);
+  const chosen = choices.find((c) => c.value === position) ?? choices[0]!;
+  const holder = target && typeof target.place.in === "object" ? target.place.in.step : undefined;
+  useEffect(() => {
+    onPlacementChange?.({
+      ...(holder !== undefined && { holder }),
+      steps: listSteps,
+      ...(chosen.index !== undefined && { index: chosen.index }),
+    });
+    // The names are joined so a new array of the same names is not a change.
+  }, [holder, listSteps.join("\u0000"), chosen.index]);
+  useEffect(() => () => onPlacementChange?.(null), []);
   const [kind, setKind] = useState<StepKind>("action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
@@ -232,7 +259,12 @@ export function WorkflowStepForm({
       setErrors(result.errors ?? ["Invalid workflow step"]);
       return;
     }
-    const refused = await (target ? onSubmit(result.step, target.place) : onSubmit(result.step));
+    const place: Place | undefined = target
+      ? { ...target.place, ...(chosen.index !== undefined && { index: chosen.index }) }
+      : chosen.index !== undefined
+        ? { in: "workflow", index: chosen.index }
+        : undefined;
+    const refused = await (place ? onSubmit(result.step, place) : onSubmit(result.step));
     if (Array.isArray(refused) && refused.length > 0) setErrors(refused);
   }
 
@@ -275,12 +307,32 @@ export function WorkflowStepForm({
           <select
             className="md3-text-field"
             value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
+            onChange={(e) => {
+              setTargetId(e.target.value);
+              setPosition("end");
+            }}
           >
-            <option value="">The workflow (at the end)</option>
+            <option value="">The workflow</option>
             {targets.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.label}, at the end
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {(targets.length > 0 || workflowSteps !== undefined) && (
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Position</span>
+          <select
+            className="md3-text-field"
+            value={chosen.value}
+            onChange={(e) => setPosition(e.target.value)}
+          >
+            {choices.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </select>

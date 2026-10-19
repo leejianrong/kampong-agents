@@ -486,7 +486,11 @@ A foreach's body steps are nodes of their own on the canvas, set in from the loo
 (loop, each body step, then the step after the loop). A foreach opens in **Edit Steps** with its `items`, loop
 variable, `concurrency` and `on_error` (`fail`, `continue` or `retry`; an `on_error: goto` is left as written).
 **Add Workflow Step** has an **Add to** choice: pick a loop, or an arm of a branch (`then`, `else`, a case or the
-`default`), to add a step of any kind at the end of it. An `else` or `default` that is not there yet is created. An
+`default`), to add a step of any kind there, and a **Position** choice in plain words and step names (_At the end
+of each_symbol_, _At the start of anomaly (else)_, _After fetch_). While you choose, the canvas shows a dashed
+"New step goes here" marker beside the node the step will land next to, and after the save the new node is panned
+into view and flashed. Underneath it is a `step.insert` at a place with an `index`, the same call on the local and
+the hosted server. An `else` or `default` that is not there yet is created. An
 approval in a loop, a nested foreach, or a step after a stop is refused by the spec, and the form shows that message.
 
 A branch's arms are nodes of their own the same way: each arm step is set in from its branch and marked with the arm
