@@ -37,6 +37,7 @@ class FakeEventSource {
 
 describe("App", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ ok: true, status: 200, json: async () => SPEC_RESPONSE }) as Response),
@@ -58,12 +59,51 @@ describe("App", () => {
     expect(screen.getByText(/Workflow: greet/)).toBeTruthy();
   });
 
-  it("shows the raw YAML source in the preview panel", async () => {
+  it("keeps the YAML in a drawer for developers, closed until opened (KAM-202)", async () => {
     render(<App />);
+    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    expect(screen.queryByTestId("yaml-preview")).toBeNull();
 
-    await waitFor(() => {
-      expect(screen.getByTestId("yaml-preview").textContent).toContain("agent:");
+    const toggle = screen.getByTestId("yaml-drawer-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    const preview = screen.getByTestId("yaml-preview");
+    expect(preview.textContent).toContain("agent:");
+    // The scroll region is reachable by keyboard.
+    expect(preview.getAttribute("tabindex")).toBe("0");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("yaml-preview")).toBeNull();
+  });
+
+  it("toggles the YAML drawer with Alt+Y and remembers it across a reload", async () => {
+    const first = render(<App />);
+    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    fireEvent.keyDown(window, { code: "KeyY", altKey: true });
+    expect(screen.getByTestId("yaml-preview")).toBeTruthy();
+    first.unmount();
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("yaml-preview")).toBeTruthy());
+    fireEvent.keyDown(window, { code: "KeyY", altKey: true });
+    expect(screen.queryByTestId("yaml-preview")).toBeNull();
+  });
+
+  it("still works when browser storage throws", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
     });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    expect(screen.queryByTestId("yaml-preview")).toBeNull();
+    fireEvent.click(screen.getByTestId("yaml-drawer-toggle"));
+    expect(screen.getByTestId("yaml-preview")).toBeTruthy();
   });
 
   it("shows a warning banner when the spec declares knowledge_base, which nothing executes (KAN-1831)", async () => {

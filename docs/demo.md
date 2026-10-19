@@ -82,7 +82,7 @@ node packages/cli/dist/cli.js dev workspace
 ```
 
 Open <http://localhost:4310>. You see the trigger, the two tools and the five workflow steps
-(`classify`, `lookup`, `draft`, `review`, `send`). The YAML panel on the right is the same file.
+(`classify`, `lookup`, `draft`, `review`, `send`). Open the `</>` drawer (Alt+Y) to see the same file as YAML.
 
 Click **Test Run** and paste:
 

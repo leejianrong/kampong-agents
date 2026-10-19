@@ -73,6 +73,8 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
+    // Import and Download live in the "For developers" drawer (KAM-202).
+    await page.getByTestId("yaml-drawer-toggle").click();
     await expect(page.getByTestId("yaml-preview")).toContainText("first_agent");
 
     // The actions sit quietly in the YAML view's header, inside the viewport.

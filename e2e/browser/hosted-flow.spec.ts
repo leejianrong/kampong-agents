@@ -81,7 +81,8 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   await toolForm.getByLabel("Name").fill("lookup_customer");
   await toolForm.getByLabel("URL").fill("https://api.example.test/customers");
   await toolForm.getByRole("button", { name: "Save tool" }).click();
-  // The YAML preview (light viewer, ADR-0008) reflects the mutation.
+  // The YAML preview (light viewer, ADR-0008) sits in the "For developers" drawer (KAM-202) and reflects the mutation.
+  await page.getByTestId("yaml-drawer-toggle").click();
   await expect(page.getByTestId("yaml-preview")).toContainText("lookup_customer");
 
   // 9. Run it. The condition routes to the requires_approval tool, so the run

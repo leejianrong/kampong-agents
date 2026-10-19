@@ -1388,3 +1388,33 @@ select.md3-text-field {
   flex-wrap: wrap;
   gap: 0.25rem;
 }
+
+/* "For developers" YAML drawer (KAM-202): the canvas takes the full width until a panel or the drawer opens.
+   The side pane then has a fixed share, so a form gets room at 900px and a wide screen alike. */
+.md3-app__canvas-pane {
+  flex: 1 1 0;
+}
+
+.md3-app__side-pane {
+  flex: 0 0 clamp(22rem, 40%, 36rem);
+}
+
+.md3-app__side-pane > .md3-panel:last-child {
+  max-height: none;
+  flex: 1 1 auto;
+  border-bottom: none;
+}
+
+.md3-yaml-panel__header .md3-title-small {
+  white-space: nowrap;
+}
+
+.md3-toolbar__code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  min-width: 2.5rem;
+}
+
+/* Nothing docked: no pane, no border, the canvas keeps the width. */
+.md3-app__side-pane:empty {
+  display: none;
+}

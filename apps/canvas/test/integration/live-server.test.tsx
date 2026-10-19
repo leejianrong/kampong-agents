@@ -104,6 +104,7 @@ describe("canvas against a real local server (no mocks)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Trigger: Externally Authored Agent/)).toBeTruthy();
     });
+    fireEvent.click(screen.getByTestId("yaml-drawer-toggle"));
     expect(screen.getByTestId("yaml-preview").textContent).toContain(
       "Written entirely outside the app",
     );

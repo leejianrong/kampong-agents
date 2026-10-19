@@ -114,7 +114,7 @@ made outside the canvas changes it too. Hosted, it is the spec's version. Send i
 ## Export and import (YAML)
 
 YAML is the interchange format ([ADR-0054](../adr/0054-spec-is-internal-yaml-is-interchange.md)). The
-canvas offers **Download as file** and **Import from file** in the header of its YAML view, in both modes.
+canvas offers **Download as file** and **Import from file** in the header of its YAML view, in both modes. The YAML view is a read-only "For developers" drawer, closed by default; open it with the `</>` toolbar button or Alt+Y, and the choice is remembered in the browser.
 
 - **Export** needs no new endpoint: it is the `source` that `GET /api/spec` (local) and
   `GET /api/specs/:id` (hosted) already return, which is the stored text as it is. A downloaded file
