@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useState } from "react";
 import {
   buildWorkflowStepFromForm,
@@ -676,21 +677,8 @@ export function WorkflowStepForm({
         </>
       )}
 
-      {errors.length > 0 && (
-        <ul role="alert" className="md3-error-list">
-          {errors.map((error) => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      )}
-      <div className="md3-form-actions">
-        <button type="submit" className="md3-button md3-button-filled">
-          Save step
-        </button>
-        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <PanelError messages={errors} />
+      <PanelFooter save="Save step" onCancel={onCancel} />
     </form>
   );
 }

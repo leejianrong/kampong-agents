@@ -152,7 +152,7 @@ test("Upgrade to 1.1: preview, apply, and the step becomes editable", async ({ p
   expect(readFileSync(file, "utf8")).toContain('version: "1.1"');
 });
 
-// KAM-177: every form docks in the side pane (never over the canvas) and its Save is in view without scrolling,
+// KAM-177/178: every panel docks in the side pane (never over the canvas) and its Save is in view without scrolling,
 // at the 1440x900 default and at 900x700, where the panel is short.
 const FORMS: { open: string; then?: (page: Page) => Promise<void>; save: string }[] = [
   { open: "Add Tool", save: "Save tool" },
@@ -173,6 +173,13 @@ const FORMS: { open: string; then?: (page: Page) => Promise<void>; save: string 
     then: (page) => page.getByRole("button", { name: "Edit shape" }).click(),
     save: "Save step",
   },
+  {
+    open: "Secrets",
+    then: (page) => page.getByRole("button", { name: "Add secret" }).click(),
+    save: "Save",
+  },
+  { open: "Checks", save: "Run checks" },
+  { open: "Test Run", save: "Run" },
 ];
 
 for (const size of [
@@ -187,7 +194,7 @@ for (const size of [
       await page.goto(URL);
       await page.getByRole("button", { name: form.open, exact: true }).click();
       await form.then?.(page);
-      const save = page.getByRole("button", { name: form.save });
+      const save = page.getByRole("button", { name: form.save, exact: true });
       await expect(save).toBeInViewport({ ratio: 1 });
       // The panel sits in the side pane, to the right of the canvas, so it covers no node.
       const geometry = await page.evaluate(() => {

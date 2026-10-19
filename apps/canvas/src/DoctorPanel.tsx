@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import type { DoctorCheckDto } from "./api.js";
 
@@ -79,35 +80,20 @@ export function DoctorPanel({ run }: DoctorPanelProps) {
           <p className="md3-body-medium">
             Send each credential this spec uses to the service it belongs to?
           </p>
-          <div className="md3-trust__actions">
-            <button
-              type="button"
-              className="md3-button md3-button-filled"
-              autoFocus
-              disabled={busy}
-              onClick={() => {
-                setConfirmingProbe(false);
-                void go({ online: true, probe: true });
-              }}
-            >
-              Send and check
-            </button>
-            <button
-              type="button"
-              className="md3-button md3-button-text"
-              onClick={() => setConfirmingProbe(false)}
-            >
-              Cancel
-            </button>
-          </div>
+          <PanelFooter
+            save="Send and check"
+            autoFocus
+            disabled={busy}
+            onSave={() => {
+              setConfirmingProbe(false);
+              void go({ online: true, probe: true });
+            }}
+            onCancel={() => setConfirmingProbe(false)}
+          />
         </div>
       )}
 
-      {error && (
-        <p role="alert" className="md3-banner md3-banner--error">
-          {error}
-        </p>
-      )}
+      {error && <PanelError messages={[error]} />}
       {checks && (
         <>
           <p className="md3-body-medium" role="status" data-testid="doctor-summary">

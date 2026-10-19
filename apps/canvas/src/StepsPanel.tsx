@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useRef, useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import { useAutoHeight } from "./useAutoHeight.js";
@@ -334,21 +335,8 @@ export function StepsPanel({
               </button>
             )}
           </fieldset>
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save step
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
       )}
 
@@ -446,21 +434,8 @@ export function StepsPanel({
               </label>
             </>
           )}
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save step
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
       )}
 
@@ -488,21 +463,8 @@ export function StepsPanel({
           <p className="md3-body-small md3-field__hint">
             The arms are the steps below it in this list: edit, delete or add to them there.
           </p>
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save step
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
       )}
 
@@ -573,21 +535,8 @@ export function StepsPanel({
               )}
             </>
           )}
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save step
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
       )}
 
@@ -649,21 +598,8 @@ export function StepsPanel({
               onChange={(message) => patchSimple({ message })}
             />
           )}
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save step
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
       )}
 

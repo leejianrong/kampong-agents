@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComponentTrust, type PinResult } from "./ComponentTrust.js";
 import {
@@ -517,25 +518,12 @@ export function ComponentToolForm({
         </>
       )}
 
-      {errors.length > 0 && (
-        <ul role="alert" className="md3-error-list">
-          {errors.map((error, i) => (
-            <li key={i}>{error}</li>
-          ))}
-        </ul>
-      )}
-      <div className="md3-form-actions">
-        <button
-          type="submit"
-          className="md3-button md3-button-filled"
-          disabled={components.length === 0 && !editing}
-        >
-          Save tool
-        </button>
-        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <PanelError messages={errors} />
+      <PanelFooter
+        save="Save tool"
+        disabled={components.length === 0 && !editing}
+        onCancel={onCancel}
+      />
     </form>
   );
 }

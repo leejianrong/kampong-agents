@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import { buildVarFromForm, varToFormInput, type SpecVar, type VarFormInput } from "@kampong/spec";
@@ -139,21 +140,8 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
               onChange={(e) => patch({ description: e.target.value })}
             />
           </label>
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save var
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save var" disabled={busy} onCancel={close} />
         </form>
       )}
 
