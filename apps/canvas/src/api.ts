@@ -74,10 +74,20 @@ async function postOps(
   ops: SpecOp[],
   baseRevision: string | undefined,
 ): Promise<ApplyOpsResponse> {
-  const res = await fetch(
-    url,
-    jsonInit({ ops, ...(baseRevision !== undefined && { baseRevision }) }, { method: "PUT" }),
-  );
+  return putSpecChange(url, { ops, ...(baseRevision !== undefined && { baseRevision }) });
+}
+
+/** Sends a whole spec text to the import endpoint (KAM-207). Same answers as `postOps`. */
+async function putSource(
+  url: string,
+  source: string,
+  baseRevision: string | undefined,
+): Promise<ApplyOpsResponse> {
+  return putSpecChange(url, { source, ...(baseRevision !== undefined && { baseRevision }) });
+}
+
+async function putSpecChange(url: string, payload: object): Promise<ApplyOpsResponse> {
+  const res = await fetch(url, jsonInit(payload, { method: "PUT" }));
   if (res.status === 422 || res.status === 409) {
     const body = (await res.json()) as ApplyOpsResponse;
     return { ...body, ...(res.status === 409 && { stale: true }) };
@@ -163,6 +173,12 @@ export interface ApiClient {
    * conditional on the spec not having changed (`stale: true` otherwise).
    */
   applyOps(ops: SpecOp[], options?: { baseRevision?: string }): Promise<ApplyOpsResponse>;
+  /**
+   * Import (ADR-0054, KAM-207): replaces the whole spec with this YAML text if it validates. A refusal
+   * resolves with `success: false` and the errors, with line numbers, and nothing is written. Export is the
+   * `source` that `loadSpec` already returns.
+   */
+  replaceSource(source: string, options?: { baseRevision?: string }): Promise<ApplyOpsResponse>;
   /**
    * Subscribes to out-of-band spec-change events. Only the local server has a
    * file watcher (ADR-0008); the hosted client returns a no-op unsubscribe,
@@ -277,6 +293,10 @@ export function createApiClient(baseUrl = ""): ApiClient {
 
     async applyOps(ops, options): Promise<ApplyOpsResponse> {
       return postOps(`${baseUrl}/api/spec`, ops, options?.baseRevision);
+    },
+
+    async replaceSource(source, options): Promise<ApplyOpsResponse> {
+      return putSource(`${baseUrl}/api/spec/source`, source, options?.baseRevision);
     },
 
     async listComponents(): Promise<ComponentCatalog> {
@@ -606,6 +626,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     loadSpec: wrap(c.loadSpec.bind(c)),
     applyPatch: wrap(c.applyPatch.bind(c)),
     applyOps: wrap(c.applyOps.bind(c)),
+    replaceSource: wrap(c.replaceSource.bind(c)),
     subscribeToEvents: c.subscribeToEvents.bind(c),
     startRun: c.startRun.bind(c),
     approveRun: c.approveRun.bind(c),
@@ -654,6 +675,10 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
 
     async applyOps(ops, options): Promise<ApplyOpsResponse> {
       return postOps(`${baseUrl}/api/specs/${specId}`, ops, options?.baseRevision);
+    },
+
+    async replaceSource(source, options): Promise<ApplyOpsResponse> {
+      return putSource(`${baseUrl}/api/specs/${specId}/source`, source, options?.baseRevision);
     },
 
     subscribeToEvents(): () => void {

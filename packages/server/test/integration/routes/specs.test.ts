@@ -298,6 +298,58 @@ agent:
       });
     });
 
+    // KAM-207 (ADR-0054): import replaces the stored text; the text read back is the text exported.
+    describe("import", () => {
+      const putSource = (cookie: string, specId: string, payload: unknown) =>
+        app.inject({
+          method: "PUT",
+          url: `/api/specs/${specId}/source`,
+          headers: { cookie },
+          payload: payload as object,
+        });
+      const NEW_SOURCE = VALID_SPEC.replace("Greet visitors.", "Greet visitors warmly, always.");
+
+      it("replaces the stored text byte for byte, and import(export) changes nothing", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const specId = (await createSpec(cookie, "greeter")).json().id;
+
+        const imported = await putSource(cookie, specId, { source: NEW_SOURCE });
+        expect(imported.statusCode).toBe(200);
+        expect(imported.json()).toMatchObject({ success: true, revision: "2" });
+        const read = await app.inject({
+          method: "GET",
+          url: `/api/specs/${specId}`,
+          headers: { cookie },
+        });
+        expect(read.json().source).toBe(NEW_SOURCE);
+
+        const again = await putSource(cookie, specId, { source: read.json().source });
+        expect(again.json().revision).toBe("2");
+      });
+
+      it("refuses an invalid file with line numbers and a stale revision with 409, writing nothing", async () => {
+        const { cookie } = await newUserWithWorkspace();
+        const specId = (await createSpec(cookie, "greeter")).json().id;
+
+        const bad = await putSource(cookie, specId, {
+          source: VALID_SPEC.replace("id: greeter", "id: [unclosed"),
+        });
+        expect(bad.statusCode).toBe(422);
+        expect(bad.json().errors[0].line).toBeGreaterThan(0);
+        expect((await putSource(cookie, specId, {})).statusCode).toBe(400);
+
+        await putSource(cookie, specId, { source: NEW_SOURCE });
+        const stale = await putSource(cookie, specId, { source: VALID_SPEC, baseRevision: "1" });
+        expect(stale.statusCode).toBe(409);
+        const read = await app.inject({
+          method: "GET",
+          url: `/api/specs/${specId}`,
+          headers: { cookie },
+        });
+        expect(read.json().source).toBe(NEW_SOURCE);
+      });
+    });
+
     it("returns 404 for a spec id that does not exist in the workspace", async () => {
       const { cookie } = await newUserWithWorkspace();
       const response = await app.inject({

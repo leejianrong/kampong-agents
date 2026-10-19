@@ -2,6 +2,7 @@ import type { LayoutMap } from "../../src/layout.js";
 import type { SpecOp } from "../../src/ops.js";
 import {
   evaluateOps,
+  evaluateReplace,
   persistLayoutMoves,
   type ApplyOpsResult,
   type SpecRepository,
@@ -38,6 +39,20 @@ export class MemoryRepository implements SpecRepository {
 
   async applyPatchAndSave(ops: PatchOp[]) {
     return this.applyOpsAndSave(ops);
+  }
+
+  async replaceSourceAndSave(
+    source: string,
+    options: { baseRevision?: string } = {},
+  ): Promise<ApplyOpsResult> {
+    const revision = String(this.version);
+    const result = evaluateReplace({ source: this.source, revision }, source, options.baseRevision);
+    if (!result.success) return "stale" in result ? { ...result } : { ...result, revision };
+    if (result.source !== this.source) {
+      this.source = result.source;
+      this.version += 1;
+    }
+    return { ...result, revision: String(this.version) };
   }
 
   async applyOpsAndSave(

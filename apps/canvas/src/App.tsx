@@ -43,6 +43,7 @@ import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
 import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
+import { ImportPanel } from "./ImportPanel.js";
 import { YamlPreview } from "./YamlPreview.js";
 
 // The canvas app's top-level orchestration (PLAN.md Shape S2). Owns the
@@ -78,7 +79,8 @@ type OpenForm =
   | "vars"
   | "trigger"
   | "steps"
-  | "edit-tool";
+  | "edit-tool"
+  | "import";
 
 export function App({
   apiBaseUrl = "",
@@ -424,6 +426,17 @@ export function App({
     }
   }
 
+  // KAM-207: export is the spec's own text, as it is stored, so what is downloaded runs under `kampong run`,
+  // `kampong serve` and `kampong export` exactly as it is on screen.
+  function downloadAsFile() {
+    const url = URL.createObjectURL(new Blob([source], { type: "text/yaml" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${spec?.agent.id ?? "agent"}.yaml`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
     await refresh();
@@ -696,7 +709,28 @@ export function App({
               <DoctorPanel run={(options) => api.runDoctor!(options)} />
             </Panel>
           )}
-          <YamlPreview source={source} />
+          {openForm === "import" && (
+            <Panel title="Import from file" onClose={() => setOpenForm(null)}>
+              <ImportPanel
+                hasContent={
+                  spec
+                    ? spec.agent.workflow.length > 0 || (spec.agent.tools?.length ?? 0) > 0
+                    : source.trim() !== ""
+                }
+                hosted={providedApi !== undefined}
+                replace={(text) => api.replaceSource(text)}
+                onImported={() => {
+                  setOpenForm(null);
+                  void refresh();
+                }}
+              />
+            </Panel>
+          )}
+          <YamlPreview
+            source={source}
+            onDownload={downloadAsFile}
+            onImport={() => setOpenForm("import")}
+          />
         </div>
       </div>
     </UpgradeContext.Provider>

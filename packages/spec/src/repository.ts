@@ -90,6 +90,16 @@ export interface SpecRepository {
   applyOpsAndSave(ops: SpecOp[], options?: { baseRevision?: string }): Promise<ApplyOpsResult>;
 
   /**
+   * Import (ADR-0054): replaces the whole spec text with `source` if it validates, byte for byte, so the
+   * author's comments and formatting are kept as given. An invalid source writes nothing and comes back as
+   * errors with line numbers. Same `baseRevision` rule as `applyOpsAndSave`.
+   */
+  replaceSourceAndSave(
+    source: string,
+    options?: { baseRevision?: string },
+  ): Promise<ApplyOpsResult>;
+
+  /**
    * Lists the specs visible in this repository's configured scope.
    *
    * This means genuinely different things per implementation, on purpose:
@@ -149,6 +159,31 @@ export function evaluateOps(
     return staleResult(current.source, current.revision);
   }
   return applyOpsToSource(current.source, ops);
+}
+
+/**
+ * The pure core of `replaceSourceAndSave`: the `baseRevision` check, then the new text validated as a spec.
+ * The text is kept exactly as given (nothing is re-serialised), so an import then an export is the same file.
+ */
+export function evaluateReplace(
+  current: { source: string; revision: string },
+  source: string,
+  baseRevision?: string,
+): EvaluatedOps {
+  if (baseRevision !== undefined && baseRevision !== current.revision) {
+    return staleResult(current.source, current.revision);
+  }
+  const parsed = parseSpec(source);
+  if (!parsed.success) {
+    return { success: false, errors: parsed.errors, source: current.source };
+  }
+  return {
+    success: true,
+    source,
+    spec: parsed.spec,
+    changes: { renamed: [], removed: [], rewrote: 0 },
+    layoutMoves: [],
+  };
 }
 
 /** The refusal for a write made against an out-of-date revision. */

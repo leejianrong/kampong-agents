@@ -111,6 +111,32 @@ Codes: `step_not_found`, `tool_not_found`, `slot_not_found`, `ambiguous_step`, `
 made outside the canvas changes it too. Hosted, it is the spec's version. Send it back as
 `baseRevision` to make a write conditional.
 
+## Export and import (YAML)
+
+YAML is the interchange format ([ADR-0054](../adr/0054-spec-is-internal-yaml-is-interchange.md)). The
+canvas offers **Download as file** and **Import from file** in the header of its YAML view, in both modes.
+
+- **Export** needs no new endpoint: it is the `source` that `GET /api/spec` (local) and
+  `GET /api/specs/:id` (hosted) already return, which is the stored text as it is. A downloaded file
+  runs under `kampong run`, `kampong serve` and `kampong export`.
+- **Import** replaces the whole spec with the text given, if it validates:
+
+| Mode   | Endpoint                      |
+| ------ | ----------------------------- |
+| Local  | `PUT /api/spec/source`        |
+| Hosted | `PUT /api/specs/:id/source`   |
+
+```jsonc
+{ "source": "version: \"1.1\"\nagent: ...", "baseRevision": "a1b2c3d4" }   // baseRevision optional
+```
+
+The answers are the same as for operations: `200` with `{ success, spec, revision }`, `422` with
+`errors` (each with a `line`) and nothing written, `409` for a stale `baseRevision`, and `400` when
+`source` is missing. The text is stored exactly as given, so `import(export(spec))` is the same file
+and the same revision. In the hosted product the canvas notes that comments in the file may not be
+kept, because hosted storage is not guaranteed to keep them (ADR-0054). The canvas checks a chosen
+file with the same validator first and asks for confirmation before replacing a spec that has content.
+
 ## From TypeScript
 
 `@kampong/spec` exports `applyOpsToSource(source, ops)` (pure, no I/O), `findReferences(source,
