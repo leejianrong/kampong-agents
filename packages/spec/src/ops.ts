@@ -76,10 +76,13 @@ export interface OpChanges {
 }
 
 /** A layout key to rename, or to drop when `to` is null (ADR-0006 keys: `workflow:<step>`, `tool:<name>`). */
-export interface LayoutMove {
-  from: string;
-  to: string | null;
-}
+export type LayoutMove =
+  | { from: string; to: string | null }
+  /**
+   * The top-level steps were reordered: the node ids (`workflow:<step>`) in the old and the new order. Each
+   * node takes the vertical position of the one that held its place, so the column reads in run order.
+   */
+  | { reorder: { before: string[]; after: string[] } };
 
 export type ApplyOpsToSourceResult =
   | {
@@ -107,7 +110,19 @@ export function isPatchOp(op: SpecOp): op is PatchOp {
 /** Applies layout renames and drops, leaving every other node where it was. */
 export function applyLayoutMoves(layout: LayoutMap, moves: readonly LayoutMove[]): LayoutMap {
   const next: LayoutMap = { ...layout };
-  for (const { from, to } of moves) {
+  for (const move of moves) {
+    if ("reorder" in move) {
+      const { before, after } = move.reorder;
+      const slots = before.map((id) => next[id]?.y);
+      if (before.length !== after.length || slots.some((y) => y === undefined)) continue;
+      const held = new Map(after.map((id, i) => [id, slots[i]!]));
+      for (const [id, y] of held) {
+        const node = next[id];
+        if (node) next[id] = { ...node, y };
+      }
+      continue;
+    }
+    const { from, to } = move;
     const at = next[from];
     if (at === undefined) continue;
     delete next[from];
@@ -439,6 +454,11 @@ function applySemantic(
     if (placed) return placed;
     const from = seqAt(ctx.doc, entry.list);
     if (!from) return fail("slot_not_found", "the step is not in a list", opIndex, entry.path);
+    const topNames = (r: unknown) =>
+      walkRawSteps(r)
+        .filter((e) => e.list.length === WORKFLOW_PATH.length)
+        .map((e) => `workflow:${e.name}`);
+    const topBefore = topNames(raw);
     const [node] = from.items.splice(entry.index, 1);
     // The target is found again now that the list has one fewer item: `index` is the final position.
     const after = resolvePlace(ctx.doc.toJS(), op.to, opIndex);
@@ -451,6 +471,12 @@ function applySemantic(
       return fail("slot_not_found", "the list to move into is not a list", opIndex, after.listPath);
     into.items.splice(index, 0, node);
     ctx.moves.push(opIndex);
+    const topAfter = topNames(ctx.doc.toJS());
+    const sameSet =
+      topBefore.length === topAfter.length && topBefore.every((id) => topAfter.includes(id));
+    if (sameSet && topBefore.some((id, i) => id !== topAfter[i])) {
+      ctx.layoutMoves.push({ reorder: { before: topBefore, after: topAfter } });
+    }
     return undefined;
   }
 

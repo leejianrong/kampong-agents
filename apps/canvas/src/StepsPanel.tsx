@@ -23,11 +23,18 @@ import {
   type AgentSpec,
   type PatchOp,
   type SetRow,
+  type Place,
+  type Slot,
   type StepRef,
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
 import { SchemaEditor } from "./SchemaEditor.js";
-import { DeletableRow, type RemoveOutcome, type RenameOutcome } from "./DeleteControl.js";
+import {
+  DeletableRow,
+  type MoveOutcome,
+  type RemoveOutcome,
+  type RenameOutcome,
+} from "./DeleteControl.js";
 
 // Edit a step that is already in the workflow (KAM-162, a slice of KAM-110). Lists every step, nested ones
 // included, and opens the one chosen in place. The form logic is in packages/spec (step-edit.ts), so what is
@@ -49,6 +56,36 @@ export interface StepsPanelProps {
       | { op: "step.rename"; step: string; to: string }
       | { op: "tool.rename"; tool: string; to: string },
   ) => Promise<RenameOutcome>;
+  /** Moves a step one place up or down in its own list, through `ApiClient.applyOps`. Without it there are no Move buttons. */
+  onMove?: (op: { op: "step.move"; step: string; to: Place }) => Promise<MoveOutcome>;
+}
+
+/** The list a step sits in, as the `place` the move operation takes, and where it is in that list. */
+function listOf(
+  refs: StepRef[],
+  ref: StepRef,
+): { place: Place["in"]; index: number; length: number } {
+  const listPath = ref.path.slice(0, -1);
+  const index = ref.path[ref.path.length - 1] as number;
+  const length = refs.filter(
+    (r) => r.path.length === ref.path.length && listPath.every((seg, i) => r.path[i] === seg),
+  ).length;
+  if (listPath.length === 2) return { place: "workflow", index, length };
+  // [..., parent index, "foreach", "steps"] or [..., parent index, "branch", "then" | "else" | "default" | "cases", key?]
+  // The container is the nearest "foreach" / "branch" segment from the end (a nested one has earlier ones).
+  const at = Math.max(listPath.lastIndexOf("foreach"), listPath.lastIndexOf("branch"));
+  const parentPath = listPath.slice(0, at);
+  const parent = refs.find(
+    (r) => r.path.length === parentPath.length && parentPath.every((seg, i) => r.path[i] === seg),
+  );
+  const rest = listPath.slice(at);
+  const slot: Slot = rest[0] === "foreach" ? "steps" : (rest[1] as Slot);
+  const key = slot === "cases" ? String(rest[2]) : undefined;
+  return {
+    place: { step: parent?.name ?? "", slot, ...(key !== undefined && { key }) },
+    index,
+    length,
+  };
 }
 
 /** How many places read this step or tool by name (one per field), for "3 places will be updated". */
@@ -123,7 +160,14 @@ function PromptField({
   );
 }
 
-export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: StepsPanelProps) {
+export function StepsPanel({
+  spec,
+  onPatch,
+  onEditTool,
+  onRemove,
+  onRename,
+  onMove,
+}: StepsPanelProps) {
   const refs = listSteps(spec);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -577,7 +621,8 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
       <ul className="md3-doctor__list" data-testid="steps-list">
         {refs.map((ref) => (
           <DeletableRow
-            key={keyOf(ref)}
+            // Keyed by name, so a moved step's row (and the focus on its button) moves with it.
+            key={`${ref.name}#${refs.slice(0, refs.indexOf(ref)).filter((r) => r.name === ref.name).length}`}
             spec={spec}
             noun="step"
             name={ref.name}
@@ -587,6 +632,22 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
             onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
             onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
             usedIn={usedIn(spec, { step: ref.name })}
+            move={
+              onMove &&
+              (() => {
+                const { place, index, length } = listOf(refs, ref);
+                return {
+                  canUp: index > 0,
+                  canDown: index < length - 1,
+                  run: (direction) =>
+                    onMove({
+                      op: "step.move",
+                      step: ref.name,
+                      to: { in: place, index: direction === "up" ? index - 1 : index + 1 },
+                    }),
+                };
+              })()
+            }
           >
             {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref)) && (
               <button

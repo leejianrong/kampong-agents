@@ -662,6 +662,52 @@ describe("requests", () => {
     expect(errors[0]!.opIndex).toBe(1);
   });
 
+  it("a top-level move asks for the nodes to swap their vertical slots; a move into a body does not", () => {
+    const up = ok(F11, [{ op: "step.move", step: "send", to: { in: "workflow", index: 0 } }]);
+    expect(up.layoutMoves).toEqual([
+      {
+        reorder: {
+          before: [
+            "workflow:fetch",
+            "workflow:gate",
+            "workflow:report",
+            "workflow:each_alert",
+            "workflow:send",
+          ],
+          after: [
+            "workflow:send",
+            "workflow:fetch",
+            "workflow:gate",
+            "workflow:report",
+            "workflow:each_alert",
+          ],
+        },
+      },
+    ]);
+    const layout = {
+      "workflow:fetch": { x: 5, y: 0 },
+      "workflow:gate": { x: 5, y: 120 },
+      "workflow:report": { x: 5, y: 240 },
+      "workflow:each_alert": { x: 5, y: 360 },
+      "workflow:send": { x: 5, y: 480 },
+    };
+    expect(applyLayoutMoves(layout, up.layoutMoves)).toEqual({
+      "workflow:send": { x: 5, y: 0 },
+      "workflow:fetch": { x: 5, y: 120 },
+      "workflow:gate": { x: 5, y: 240 },
+      "workflow:report": { x: 5, y: 360 },
+      "workflow:each_alert": { x: 5, y: 480 },
+    });
+    const into = ok(F11, [
+      { op: "step.move", step: "send", to: { in: { step: "each_alert", slot: "steps" } } },
+    ]);
+    expect(into.layoutMoves).toEqual([]);
+    // A layout that does not hold every node is left alone.
+    expect(applyLayoutMoves({ "workflow:fetch": { x: 1, y: 1 } }, up.layoutMoves)).toEqual({
+      "workflow:fetch": { x: 1, y: 1 },
+    });
+  });
+
   it("applies layout renames and drops to a layout, leaving other nodes", () => {
     const layout = {
       "workflow:fetch": { x: 1, y: 2 },

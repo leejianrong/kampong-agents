@@ -76,6 +76,43 @@ interface RowProps {
   onRename?: (to: string) => Promise<RenameOutcome>;
   /** How many places use this name today, for "3 places will be updated". */
   usedIn?: number;
+  /** Omitted: no Move up / Move down buttons (KAM-174). */
+  move?: MoveControl;
+}
+
+export type MoveOutcome = { success: true } | { success: false; messages: string[] };
+
+/** Move up and down within the step's own list; the run order is the list order (KAM-174). */
+export interface MoveControl {
+  canUp: boolean;
+  canDown: boolean;
+  run: (direction: "up" | "down") => Promise<MoveOutcome>;
+}
+
+/**
+ * A refused move in plain words. The server names each pair as "<reader> reads <step>" inside parentheses
+ * (`breaks_references`); a scope refusal from the validator is passed on after a short lead-in.
+ */
+export function moveErrorWords(error: { code?: string; message: string }): string[] {
+  if (error.code === "breaks_references") {
+    const pairs = /\(([^)]*)\)/.exec(error.message)?.[1]?.split(", ") ?? [];
+    const words = pairs.flatMap((pair) => {
+      const [reader, writer] = pair.split(" reads ");
+      return reader && writer
+        ? [`"${reader}" reads "${writer}", so "${writer}" has to stay before it.`]
+        : [];
+    });
+    if (words.length > 0) return words;
+    return [
+      `Moving it there would put a step where it cannot see something it needs: ${error.message}`,
+    ];
+  }
+  if (error.code === "stale")
+    return ["The spec changed in the meantime. Close this and try again."];
+  if (error.code === undefined) {
+    return [`The spec would no longer be valid after the move (${error.message}).`];
+  }
+  return [error.message];
 }
 
 export type RenameOutcome = { success: true } | { success: false; messages: string[] };
@@ -92,7 +129,17 @@ export function DeletableRow({
   children,
   onRename,
   usedIn = 0,
+  move,
 }: RowProps) {
+  const [moveErrors, setMoveErrors] = useState<string[]>([]);
+  const [moving, setMoving] = useState(false);
+  async function runMove(direction: "up" | "down") {
+    if (!move) return;
+    setMoving(true);
+    const result = await move.run(direction);
+    setMoving(false);
+    setMoveErrors(result.success ? [] : result.messages);
+  }
   const [stage, setStage] = useState<"idle" | "confirm" | "busy" | "failed">("idle");
   const [renaming, setRenaming] = useState<{
     draft: string;
@@ -151,6 +198,30 @@ export function DeletableRow({
       </span>
       <span className="md3-secrets__actions">
         {children}
+        {move && (
+          <>
+            <button
+              type="button"
+              className="md3-button md3-button-text"
+              disabled={disabled || moving || !move.canUp}
+              title={move.canUp ? undefined : "Already first in its list"}
+              aria-label={`Move ${noun} ${name} up`}
+              onClick={() => void runMove("up")}
+            >
+              Up
+            </button>
+            <button
+              type="button"
+              className="md3-button md3-button-text"
+              disabled={disabled || moving || !move.canDown}
+              title={move.canDown ? undefined : "Already last in its list"}
+              aria-label={`Move ${noun} ${name} down`}
+              onClick={() => void runMove("down")}
+            >
+              Down
+            </button>
+          </>
+        )}
         {onRename && (
           <button
             type="button"
@@ -174,6 +245,23 @@ export function DeletableRow({
           </button>
         )}
       </span>
+      {moveErrors.length > 0 && (
+        <div role="alert" className="md3-delete">
+          <p className="md3-body-small">"{name}" was not moved:</p>
+          <ul className="md3-error-list">
+            {moveErrors.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="md3-button md3-button-text"
+            onClick={() => setMoveErrors([])}
+          >
+            OK
+          </button>
+        </div>
+      )}
       {renaming && (
         <form
           ref={renameForm}
