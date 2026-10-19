@@ -29,7 +29,13 @@ import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
 import { StepsPanel } from "./StepsPanel.js";
-import { renameErrorWords, type RemoveOutcome, type RenameOutcome } from "./DeleteControl.js";
+import {
+  moveErrorWords,
+  renameErrorWords,
+  type MoveOutcome,
+  type RemoveOutcome,
+  type RenameOutcome,
+} from "./DeleteControl.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -370,6 +376,32 @@ export function App({
     }
   }
 
+  // KAM-174: move a step one place within its list. A move that would put a step before one it reads is
+  // refused with the list of reads, which the row shows in words.
+  async function handleMove(op: {
+    op: "step.move";
+    step: string;
+    to: Place;
+  }): Promise<MoveOutcome> {
+    try {
+      const result = await api.applyOps([op]);
+      if (result.success) {
+        await refresh();
+        return { success: true };
+      }
+      return {
+        success: false,
+        messages: (result.errors ?? []).flatMap((e) => moveErrorWords(e)),
+      };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      return {
+        success: false,
+        messages: [err instanceof Error ? err.message : "Could not move the step."],
+      };
+    }
+  }
+
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
     await refresh();
@@ -618,6 +650,7 @@ export function App({
                 onPatch={handlePatchSteps}
                 onRemove={handleRemove}
                 onRename={handleRename}
+                onMove={handleMove}
                 onEditTool={(index) => {
                   setEditingTool(index);
                   setOpenForm("edit-tool");

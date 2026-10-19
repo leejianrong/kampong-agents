@@ -467,4 +467,54 @@ agent:
       expect(readFileSync(specPath, "utf8")).toBe(before);
     });
   });
+
+  // KAM-174: move a step up or down from the Edit Steps list, against the real server.
+  describe("moving from the Edit Steps list", () => {
+    const SOURCE = `version: "1.1"
+agent:
+  id: refund-agent
+  name: "Refund Agent"
+  role: "Support"
+  goal: "Handle refunds."
+  workflow:
+    - step: parse
+      action: extract_entities
+    - step: reply
+      action: "answer using {{ parse.text }}"
+    - step: log
+      type: transform
+      set:
+        n: parse.id
+`;
+
+    async function openSteps() {
+      render(<App apiBaseUrl={baseUrl} />);
+      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      await waitFor(() => screen.getByTestId("steps-list"));
+    }
+
+    it("reorders the file and the node positions, and refuses a move that breaks a read", async () => {
+      await startServer(SOURCE);
+      await openSteps();
+      const layout = JSON.parse(readFileSync(layoutPath, "utf8"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Move step log up" }));
+      await waitFor(() =>
+        expect(readFileSync(specPath, "utf8").indexOf("step: log")).toBeLessThan(
+          readFileSync(specPath, "utf8").indexOf("step: reply"),
+        ),
+      );
+      const after = JSON.parse(readFileSync(layoutPath, "utf8"));
+      expect(after["workflow:log"].y).toBe(layout["workflow:reply"].y);
+      expect(after["workflow:reply"].y).toBe(layout["workflow:log"].y);
+
+      const before = readFileSync(specPath, "utf8");
+      fireEvent.click(screen.getByRole("button", { name: "Move step parse down" }));
+      await waitFor(() => screen.getByRole("alert"));
+      // `parse` is read by both steps after it, so it has to stay ahead of them.
+      expect(screen.getByRole("alert").textContent).toContain("has to stay before it");
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+    });
+  });
 });

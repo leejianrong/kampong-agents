@@ -60,7 +60,9 @@ Rules that apply to every operation:
 - **Remove** is refused while anything outside the removed steps still reads it (`has_references`).
   Remove the readers in the same request and it goes through.
 - **Move** is refused when it would put a step before one it reads, or out of the branch arm or
-  loop that can see it (`breaks_references`).
+  loop that can see it (`breaks_references`). When top-level steps change order, their nodes swap
+  vertical positions in the layout so the canvas column reads in run order. The canvas offers this as
+  Up and Down on each step row, moving one place within the step's own list.
 
 ## Responses
 
