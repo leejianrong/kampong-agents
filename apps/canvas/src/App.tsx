@@ -1,6 +1,8 @@
 import {
   specToGraph,
   expressionScopeFor,
+  expressionScopeForLoopBody,
+  listSteps,
   outputReferenceOptions,
   removeTriggerPatch,
   removeVarPatch,
@@ -240,6 +242,33 @@ export function App({
     setOpenForm(null);
     setEditingTool(null);
     if (ops.length > 0) await refresh();
+  }
+
+  // A step added inside a foreach goes in by name at the end of its body (ADR-0055). A refusal (an approval or a
+  // nested loop in a body, a name already used) comes back as plain messages for the form to show.
+  async function handleAddLoopBodyStep(loop: string, step: WorkflowStep): Promise<string[] | void> {
+    try {
+      const result = await api.applyOps([
+        {
+          op: "step.insert",
+          place: { in: { step: loop, slot: "steps" } },
+          step: step as unknown as Record<string, unknown>,
+        },
+      ]);
+      if (!result.success) {
+        return (result.errors ?? [])
+          .map((e) => e.message)
+          .concat(result.stale ? ["The spec changed; reload and try again."] : []);
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      return [err instanceof Error ? err.message : "Failed to save the change."];
+    }
+    setOpenForm(null);
+    await refresh();
   }
 
   async function handleAddWorkflowStep(step: WorkflowStep) {
@@ -514,7 +543,19 @@ export function App({
               <WorkflowStepForm
                 version={spec?.version}
                 scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
-                onSubmit={(step) => void handleAddWorkflowStep(step)}
+                loops={
+                  spec
+                    ? listSteps(spec)
+                        .filter((r) => r.kind === "foreach")
+                        .map((r) => r.name)
+                    : []
+                }
+                scopeForLoop={(loop) => expressionScopeForLoopBody(spec!, loop)}
+                onSubmit={(step, loop) =>
+                  loop === undefined
+                    ? handleAddWorkflowStep(step)
+                    : handleAddLoopBodyStep(loop, step)
+                }
                 onCancel={() => setOpenForm(null)}
               />
             </Panel>

@@ -482,6 +482,12 @@ and replaces only the fields that changed, so comments elsewhere in the step sur
 carry a line under the title: a transform's value names, a validate's assertion (clipped) and `on_fail`, and a
 dedupe's key and `ttl`.
 
+A foreach's body steps are nodes of their own on the canvas, set in from the loop and joined in run order
+(loop, each body step, then the step after the loop). A foreach opens in **Edit Steps** with its `items`, loop
+variable, `concurrency` and `on_error` (`fail`, `continue` or `retry`; an `on_error: goto` is left as written).
+**Add Workflow Step** has an **Add to** choice: pick a loop to add a step of any kind at the end of its body. An
+approval or a nested foreach is refused by the spec, and the form shows that message.
+
 A tool step opens with a picker over the agent's tools, a stop step with its `reason` and `status` (clearing a
 field removes it from the file), and an approval step with its `message`; these also work on a `"1.0"` spec except
 `stop`, which is 1.1 only. Loops, branches and condition steps have no form here yet and say so in their row. Below the

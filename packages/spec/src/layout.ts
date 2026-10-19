@@ -52,14 +52,17 @@ export function withAutoLayout(
   for (const { id, column } of nodes) {
     const existing = layout[id];
     if (!existing) continue;
-    maxYByColumn[column] = Math.max(maxYByColumn[column] ?? -SPACING.y, existing.y);
+    const row = Math.floor(column);
+    maxYByColumn[row] = Math.max(maxYByColumn[row] ?? -SPACING.y, existing.y);
   }
 
   for (const { id, column } of nodes) {
     if (next[id]) continue;
-    const y = (maxYByColumn[column] ?? -SPACING.y) + SPACING.y;
+    // Rows are counted per whole column, so a foreach's indented body steps follow their loop down the same rows.
+    const row = Math.floor(column);
+    const y = (maxYByColumn[row] ?? -SPACING.y) + SPACING.y;
     next[id] = { x: column * SPACING.x, y };
-    maxYByColumn[column] = y;
+    maxYByColumn[row] = y;
   }
   return next;
 }

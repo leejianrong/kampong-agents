@@ -87,11 +87,31 @@ export interface WorkflowStepFormProps {
   version?: string;
   /** Names in scope for the expression fields (KAM-160). Absent on a 1.0 spec, whose fields are plain text. */
   scope?: ExpressionScope;
-  onSubmit: (step: WorkflowStep) => void;
+  /**
+   * The foreach steps a new step can go inside (KAM-153). With any, the form offers "Add to": the workflow, or the
+   * end of one of these loops.
+   */
+  loops?: string[];
+  /** What an expression can read at the end of a loop's body: the loop variable and the body so far. */
+  scopeForLoop?: (loop: string) => ExpressionScope;
+  /**
+   * Receives the built step and, for a loop body, the loop's name. May answer with messages to show in the form
+   * (a refused save), or nothing.
+   */
+  onSubmit: (step: WorkflowStep, loop?: string) => void | string[] | Promise<void | string[]>;
   onCancel: () => void;
 }
 
-export function WorkflowStepForm({ version, scope, onSubmit, onCancel }: WorkflowStepFormProps) {
+export function WorkflowStepForm({
+  version,
+  scope: workflowScope,
+  loops = [],
+  scopeForLoop,
+  onSubmit,
+  onCancel,
+}: WorkflowStepFormProps) {
+  const [loop, setLoop] = useState("");
+  const scope = loop !== "" && scopeForLoop ? scopeForLoop(loop) : workflowScope;
   const [kind, setKind] = useState<StepKind>("action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
@@ -126,7 +146,7 @@ export function WorkflowStepForm({ version, scope, onSubmit, onCancel }: Workflo
   const [stopStatus, setStopStatus] = useState<"skipped" | "completed">("skipped");
   const [errors, setErrors] = useState<string[]>([]);
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     let result;
     if (kind === "branch") {
@@ -198,12 +218,13 @@ export function WorkflowStepForm({ version, scope, onSubmit, onCancel }: Workflo
       setErrors(result.errors ?? ["Invalid workflow step"]);
       return;
     }
-    onSubmit(result.step);
+    const refused = await (loop === "" ? onSubmit(result.step) : onSubmit(result.step, loop));
+    if (Array.isArray(refused) && refused.length > 0) setErrors(refused);
   }
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={(e) => void handleSubmit(e)}
       aria-label="Add Workflow Step"
       className="md3-form md3-form--fill"
     >
@@ -233,6 +254,20 @@ export function WorkflowStepForm({ version, scope, onSubmit, onCancel }: Workflo
           {KIND_HELP[kind].what} {KIND_HELP[kind].example}
         </span>
       </div>
+
+      {loops.length > 0 && (
+        <label className="md3-field">
+          <span className="md3-field__label md3-label-large">Add to</span>
+          <select className="md3-text-field" value={loop} onChange={(e) => setLoop(e.target.value)}>
+            <option value="">The workflow (at the end)</option>
+            {loops.map((name) => (
+              <option key={name} value={name}>
+                Inside {name} (at the end of its body)
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="md3-field">
         <span className="md3-field__label md3-label-large">Step ID</span>
