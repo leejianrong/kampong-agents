@@ -53,7 +53,7 @@ export function Canvas({ graph, layout }: CanvasProps) {
         id: node.id,
         position: positions.get(node.id) ?? { x: 0, y: 0 },
         data: { label: nodeLabel(node) },
-        className: `md3-node md3-node--${node.kind}`,
+        className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}`,
       })),
     [graph, positions],
   );
@@ -78,8 +78,9 @@ export function Canvas({ graph, layout }: CanvasProps) {
   );
 }
 
-// A foreach node lists its nested steps, so it is taller than the 120px a row of the auto layout allows. The
+// A branch node lists its arms' steps, so it is taller than the 120px a row of the auto layout allows. The
 // nodes below it in the same column are moved down for display only; the sidecar layout is not touched.
+// (A foreach's body steps are nodes of their own, KAM-153, so a foreach needs no extra room.)
 const NESTED_STEP_HEIGHT = 22;
 
 interface NestedStep {
@@ -88,11 +89,6 @@ interface NestedStep {
   foreach?: unknown;
   branch?: unknown;
   stop?: unknown;
-}
-
-function nestedSteps(node: SpecNode): NestedStep[] {
-  const foreach = node.data.foreach as { steps?: NestedStep[] } | undefined;
-  return foreach?.steps ?? [];
 }
 
 // A branch node (KAN-1859) shows each arm under a heading: then / else, or each case and the default.
@@ -125,11 +121,9 @@ function branchArms(node: SpecNode): Arm[] {
   ];
 }
 
-// How many 22px lines a node's nested content needs: a foreach's steps, or a branch's arm headings and steps.
+// How many 22px lines a node's nested content needs: a branch's arm headings and steps.
 function nestedRows(node: SpecNode): number {
-  return (
-    nestedSteps(node).length + branchArms(node).reduce((n, arm) => n + 1 + arm.steps.length, 0)
-  );
+  return branchArms(node).reduce((n, arm) => n + 1 + arm.steps.length, 0);
 }
 
 function withNestedRoom(
@@ -140,7 +134,9 @@ function withNestedRoom(
   const column = new Map<number, SpecNode[]>();
   for (const node of graph.nodes) {
     positions.set(node.id, layout[node.id] ?? { x: 0, y: 0 });
-    column.set(node.column, [...(column.get(node.column) ?? []), node]);
+    // Whole column: a foreach's indented body steps share the rows of the column they sit in.
+    const whole = Math.floor(node.column);
+    column.set(whole, [...(column.get(whole) ?? []), node]);
   }
   for (const nodes of column.values()) {
     let extra = 0;
@@ -215,6 +211,7 @@ function foreachLabel(node: SpecNode): ReactNode {
     as: string;
     concurrency?: number;
     on_error?: string | { retry?: { n: number } };
+    steps?: unknown[];
   };
   const policy =
     typeof loop.on_error === "object" && loop.on_error?.retry
@@ -227,13 +224,10 @@ function foreachLabel(node: SpecNode): ReactNode {
         over {loop.items} as {loop.as} &middot; on_error {policy}
         {loop.concurrency !== undefined && <> &middot; concurrency {loop.concurrency}</>}
       </div>
-      <ol className="md3-foreach__steps">
-        {nestedSteps(node).map((inner) => (
-          <li key={inner.step}>
-            {kindLabel(inner)}: {inner.step}
-          </li>
-        ))}
-      </ol>
+      <div className="md3-foreach__meta">
+        {(loop.steps ?? []).length} {(loop.steps ?? []).length === 1 ? "step" : "steps"} inside,
+        below
+      </div>
     </div>
   );
 }
@@ -267,6 +261,18 @@ function dataLabel(kind: string, step: string, summary: string): ReactNode {
 }
 
 function nodeLabel(node: SpecNode): ReactNode {
+  const label = ownLabel(node);
+  if (!node.parent) return label;
+  // A foreach body step says which loop it is in, so the grouping reads even when the nodes are dragged apart.
+  return (
+    <div>
+      <div>{label}</div>
+      <div className="md3-foreach__meta">in {node.parent.replace(/^workflow:/, "")}</div>
+    </div>
+  );
+}
+
+function ownLabel(node: SpecNode): ReactNode {
   // Workflow nodes read their step kind from the data so the new first-class
   // tool/approval steps (KAN-1429) are distinguishable on the canvas; action
   // and condition steps keep the existing "Workflow: <step>" label.

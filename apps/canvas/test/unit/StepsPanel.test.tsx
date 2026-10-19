@@ -50,8 +50,7 @@ describe("StepsPanel", () => {
     expect(screen.getByRole("button", { name: "Edit classify" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Edit inner" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Edit pay" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Edit each" })).toBeNull();
-    expect(within(list).getByText("Loops are edited in the YAML for now")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit each" })).toBeTruthy();
   });
 
   it("opens a step with its values and saves a patch of only what changed", async () => {

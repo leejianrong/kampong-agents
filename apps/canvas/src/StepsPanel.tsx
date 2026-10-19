@@ -5,6 +5,9 @@ import {
   actionStepToEditInput,
   buildActionStepEdit,
   buildDataStepEdit,
+  buildForEachEdit,
+  forEachToEditInput,
+  type ForEachEditInput,
   buildSimpleStepEdit,
   dataStepToEditInput,
   emptySchemaDraft,
@@ -56,10 +59,11 @@ const isData = (ref: StepRef): ref is DataRef =>
   ref.kind === "transform" || ref.kind === "validate" || ref.kind === "dedupe";
 type SimpleRef = StepRef & { step: Parameters<typeof simpleStepToEditInput>[0] };
 const isSimple = (ref: StepRef): ref is SimpleRef => isSimpleStep(ref.step);
+type ForEachRef = StepRef & { step: Extract<StepRef["step"], { foreach: unknown }> };
+const isForEach = (ref: StepRef): ref is ForEachRef => ref.kind === "foreach";
 
 /** Why a step has no Edit button, shown in its row. Only the kinds with no form need one. */
 const NOT_EDITABLE: Record<string, string> = {
-  foreach: "Loops are edited in the YAML for now",
   branch: "Branches are edited in the YAML for now",
   condition: "Condition steps are edited in the YAML",
 };
@@ -67,7 +71,8 @@ const NOT_EDITABLE: Record<string, string> = {
 type Editing =
   | { key: string; kind: "action"; input: ActionStepEditInput }
   | { key: string; kind: "data"; input: DataStepEditInput }
-  | { key: string; kind: "simple"; input: SimpleStepEditInput };
+  | { key: string; kind: "simple"; input: SimpleStepEditInput }
+  | { key: string; kind: "foreach"; input: ForEachEditInput };
 
 /** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable and the body steps ahead of it. */
 function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
@@ -134,6 +139,8 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
       e && e.kind === "data" ? { ...e, input: { ...e.input, ...change } as DataStepEditInput } : e,
     );
 
+  const patchLoop = (change: Partial<ForEachEditInput>) =>
+    setEditing((e) => (e && e.kind === "foreach" ? { ...e, input: { ...e.input, ...change } } : e));
   const patchSimple = (change: Record<string, string>) =>
     setEditing((e) =>
       e && e.kind === "simple"
@@ -168,7 +175,9 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
                 toolNames,
                 scopeFor(spec, current),
               )
-            : { success: false as const, errors: ["The form does not match the step"] };
+            : editing.kind === "foreach" && isForEach(current)
+              ? buildForEachEdit(editing.input, current, spec.version, scopeFor(spec, current))
+              : { success: false as const, errors: ["The form does not match the step"] };
     if (!result.success) {
       setErrors(result.errors);
       return;
@@ -392,6 +401,91 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
         </form>
       )}
 
+      {editing && editing.kind === "foreach" && current && isForEach(current) && (
+        <form
+          onSubmit={(e) => void submit(e)}
+          aria-label={`Edit ${current.name}`}
+          className="md3-form md3-form--fill"
+        >
+          <span className="md3-title-small">{current.name}</span>
+          <ExpressionField
+            label="Items (expression that gives a list)"
+            value={editing.input.items}
+            scope={scopeFor(spec, current)}
+            onChange={(items) => patchLoop({ items })}
+          />
+          <label className="md3-field">
+            <span className="md3-body-small md3-field__label">Loop variable</span>
+            <input
+              className="md3-text-field"
+              value={editing.input.as}
+              spellCheck={false}
+              onChange={(e) => patchLoop({ as: e.target.value })}
+            />
+          </label>
+          <label className="md3-field">
+            <span className="md3-body-small md3-field__label">Concurrency</span>
+            <input
+              className="md3-text-field"
+              value={editing.input.concurrency}
+              placeholder="1 to 32 (blank runs one at a time)"
+              autoComplete="off"
+              onChange={(e) => patchLoop({ concurrency: e.target.value })}
+            />
+          </label>
+          {editing.input.onError === "keep" ? (
+            <p className="md3-body-small md3-field__hint">
+              This loop sends a failed item to another step (on_error goto). That is edited in the
+              YAML.
+            </p>
+          ) : (
+            <>
+              <label className="md3-field">
+                <span className="md3-body-small md3-field__label">On error</span>
+                <select
+                  className="md3-text-field"
+                  value={editing.input.onError}
+                  onChange={(e) =>
+                    patchLoop({ onError: e.target.value as ForEachEditInput["onError"] })
+                  }
+                >
+                  <option value="">Default (fail)</option>
+                  <option value="fail">fail</option>
+                  <option value="continue">continue</option>
+                  <option value="retry">retry</option>
+                </select>
+              </label>
+              {editing.input.onError === "retry" && (
+                <label className="md3-field">
+                  <span className="md3-body-small md3-field__label">Retries</span>
+                  <input
+                    className="md3-text-field"
+                    value={editing.input.retries}
+                    autoComplete="off"
+                    onChange={(e) => patchLoop({ retries: e.target.value })}
+                  />
+                </label>
+              )}
+            </>
+          )}
+          {errors.length > 0 && (
+            <ul role="alert" className="md3-error-list">
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          )}
+          <div className="md3-trust__actions">
+            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
+              Save step
+            </button>
+            <button type="button" className="md3-button md3-button-text" onClick={close}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
       {editing && editing.kind === "simple" && current && isSimple(current) && (
         <form
           onSubmit={(e) => void submit(e)}
@@ -480,7 +574,7 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
             disabled={busy || editing !== null}
             onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
           >
-            {(isAction(ref) || isData(ref) || isSimple(ref)) && (
+            {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref)) && (
               <button
                 type="button"
                 className="md3-button md3-button-text"
@@ -501,11 +595,17 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
                             kind: "simple",
                             input: simpleStepToEditInput(ref.step),
                           }
-                        : {
-                            key: keyOf(ref),
-                            kind: "data",
-                            input: dataStepToEditInput((ref as DataRef).step),
-                          },
+                        : isForEach(ref)
+                          ? {
+                              key: keyOf(ref),
+                              kind: "foreach",
+                              input: forEachToEditInput(ref.step),
+                            }
+                          : {
+                              key: keyOf(ref),
+                              kind: "data",
+                              input: dataStepToEditInput((ref as DataRef).step),
+                            },
                   );
                 }}
               >

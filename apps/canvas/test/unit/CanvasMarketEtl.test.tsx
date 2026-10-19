@@ -35,19 +35,10 @@ describe("the market-etl template on the canvas", () => {
     expect(screen.getByText("Foreach: each_symbol")).toBeTruthy();
     expect(screen.getByText(/over vars\.symbols as symbol/)).toBeTruthy();
     expect(screen.getByText(/on_error continue/)).toBeTruthy();
-    const items = [...document.querySelectorAll(".md3-foreach__steps li")].map(
-      (li) => li.textContent,
+    const items = [...document.querySelectorAll(".md3-node--nested")].map((node) =>
+      node.getAttribute("data-id")?.replace("workflow:", ""),
     );
-    expect(items.map((text) => text?.split(":")[1]?.trim())).toEqual([
-      "fetch",
-      "check",
-      "shape",
-      "sane",
-      "delta",
-      "row",
-      "write",
-      "anomaly",
-    ]);
+    expect(items).toEqual(["fetch", "check", "shape", "sane", "delta", "row", "write", "anomaly"]);
     expect(screen.getByText(/report/)).toBeTruthy();
   });
 });

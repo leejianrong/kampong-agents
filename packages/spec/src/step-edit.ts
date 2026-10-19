@@ -582,3 +582,109 @@ export function buildSimpleStepEdit(
   }
   return errors.length > 0 ? { success: false, errors } : { success: true, patch };
 }
+
+// ---- foreach steps (KAM-153) ---------------------------------------------------------------------
+
+export interface ForEachEditInput {
+  items: string;
+  as: string;
+  /** As text; blank means the engine's default. */
+  concurrency: string;
+  /** Blank leaves `on_error` out. `keep` is a `goto` policy, which the form has no field for and does not touch. */
+  onError: "" | "fail" | "continue" | "retry" | "keep";
+  /** The `n` of a retry policy, as text. */
+  retries: string;
+}
+
+type ForEachStepOf = Extract<WorkflowStep, { foreach: unknown }>;
+
+export function forEachToEditInput(step: ForEachStepOf): ForEachEditInput {
+  const policy = step.foreach.on_error;
+  const retrying = typeof policy === "object" && "retry" in policy;
+  return {
+    items: step.foreach.items,
+    as: step.foreach.as,
+    concurrency: step.foreach.concurrency === undefined ? "" : String(step.foreach.concurrency),
+    onError:
+      policy === undefined
+        ? ""
+        : policy === "fail" || policy === "continue"
+          ? policy
+          : retrying
+            ? "retry"
+            : "keep",
+    retries: retrying ? String(policy.retry.n) : "3",
+  };
+}
+
+/**
+ * Validates the form and returns the patch for the fields that changed: the loop's `items`, `as`, `concurrency` and
+ * `on_error`. The body is not touched (it is edited step by step). The loader's own checks (a reserved loop name,
+ * say) run again on save, and a refusal is shown with the form open.
+ */
+export function buildForEachEdit(
+  input: ForEachEditInput,
+  step: { path: (string | number)[]; step: ForEachStepOf },
+  version: string,
+  scope?: ExpressionScope,
+): ActionStepEditResult {
+  const errors: string[] = [];
+  if (version !== "1.1") errors.push('a foreach step needs version "1.1"');
+  const items = input.items.trim();
+  if (items === "") errors.push("A foreach step needs the list it loops over");
+  else {
+    const parsed = parseExpression(items);
+    if (!parsed.ok) for (const e of parsed.errors) errors.push(`items: ${e.message}`);
+    else if (scope) {
+      for (const d of diagnoseExpression(items, scope)) errors.push(`items: ${d.message}`);
+    }
+  }
+  const as = input.as.trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(as)) {
+    errors.push(
+      `"${as}" is not a valid name for the loop variable: use letters, digits and underscores, not starting with a digit`,
+    );
+  }
+  let concurrency: number | undefined;
+  const concurrencyText = input.concurrency.trim();
+  if (concurrencyText !== "") {
+    const n = Number(concurrencyText);
+    if (!Number.isInteger(n) || n < 1 || n > 32) {
+      errors.push(`concurrency "${concurrencyText}" must be a whole number from 1 to 32`);
+    } else concurrency = n;
+  }
+  let retries = 0;
+  if (input.onError === "retry") {
+    retries = Number(input.retries.trim());
+    if (!Number.isInteger(retries) || retries < 1 || retries > 10) {
+      errors.push(`retries "${input.retries.trim()}" must be a whole number from 1 to 10`);
+    }
+  }
+  if (errors.length > 0) return { success: false, errors };
+
+  const loop = step.step.foreach;
+  const at = [...step.path, "foreach"];
+  const patch: PatchOp[] = [];
+  if (items !== loop.items) patch.push({ op: "set", path: [...at, "items"], value: items });
+  if (as !== loop.as) patch.push({ op: "set", path: [...at, "as"], value: as });
+  if (concurrency === undefined) {
+    if (loop.concurrency !== undefined) patch.push({ op: "remove", path: [...at, "concurrency"] });
+  } else if (concurrency !== loop.concurrency) {
+    patch.push({ op: "set", path: [...at, "concurrency"], value: concurrency });
+  }
+  const before = loop.on_error;
+  if (input.onError === "") {
+    if (before !== undefined) patch.push({ op: "remove", path: [...at, "on_error"] });
+  } else if (input.onError === "fail" || input.onError === "continue") {
+    if (before !== input.onError) {
+      patch.push({ op: "set", path: [...at, "on_error"], value: input.onError });
+    }
+  } else if (input.onError === "retry") {
+    if (typeof before === "object" && "retry" in before) {
+      if (before.retry.n !== retries) {
+        patch.push({ op: "set", path: [...at, "on_error", "retry", "n"], value: retries });
+      }
+    } else patch.push({ op: "set", path: [...at, "on_error"], value: { retry: { n: retries } } });
+  }
+  return { success: true, patch };
+}

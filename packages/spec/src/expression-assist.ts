@@ -283,3 +283,20 @@ export function completeExpression(
     ),
   };
 }
+
+/**
+ * The scope for a step about to be added at the end of the foreach named `loop` (KAM-153): the loop's variable
+ * and the body steps already there, and the top-level steps ahead of the loop.
+ */
+export function expressionScopeForLoopBody(spec: AgentSpec, loop: string): ExpressionScope {
+  const step = flatten(spec.agent.workflow).find((s) => s.step === loop && "foreach" in s);
+  if (!step || !("foreach" in step)) return expressionScopeFor(spec);
+  const body = step.foreach.steps as WorkflowStep[];
+  return expressionScopeFor(spec, {
+    before: loop,
+    local: [
+      { name: step.foreach.as, fields: [] },
+      ...body.map((s) => ({ name: s.step, fields: fieldsOf(s) })),
+    ],
+  });
+}

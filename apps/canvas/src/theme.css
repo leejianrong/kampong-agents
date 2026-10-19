@@ -1340,3 +1340,10 @@ select.md3-text-field {
   flex-wrap: wrap;
   gap: 0.25rem;
 }
+
+/* A foreach body step (KAM-153) is a node of its own, set in from the loop and drawn with a dashed edge so it
+   reads as part of that loop. */
+.md3-node--nested {
+  border-style: dashed !important;
+  border-left-width: 4px !important;
+}
