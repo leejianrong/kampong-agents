@@ -29,7 +29,7 @@ import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
 import { StepsPanel } from "./StepsPanel.js";
-import type { RemoveOutcome } from "./DeleteControl.js";
+import { renameErrorWords, type RemoveOutcome, type RenameOutcome } from "./DeleteControl.js";
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -343,6 +343,33 @@ export function App({
     }
   }
 
+  // KAM-172: rename a step or tool; every place that uses the name is rewritten in the same save, and the
+  // server moves the layout entry, so the node keeps its position. A refusal comes back as words for the form.
+  async function handleRename(
+    op:
+      | { op: "step.rename"; step: string; to: string }
+      | { op: "tool.rename"; tool: string; to: string },
+  ): Promise<RenameOutcome> {
+    const noun = op.op === "step.rename" ? "step" : "tool";
+    try {
+      const result = await api.applyOps([op]);
+      if (result.success) {
+        await refresh();
+        return { success: true };
+      }
+      return {
+        success: false,
+        messages: (result.errors ?? []).map((e) => renameErrorWords(e, noun, op.to)),
+      };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      return {
+        success: false,
+        messages: [err instanceof Error ? err.message : "Could not rename."],
+      };
+    }
+  }
+
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
     await refresh();
@@ -599,6 +626,7 @@ export function App({
                 spec={spec}
                 onPatch={handlePatchSteps}
                 onRemove={handleRemove}
+                onRename={handleRename}
                 onEditTool={(index) => {
                   setEditingTool(index);
                   setOpenForm("edit-tool");

@@ -397,4 +397,74 @@ agent:
       expect(readFileSync(specPath, "utf8")).toBe(before);
     });
   });
+
+  // KAM-172 (ADR-0055): rename from the Edit Steps list, against the real server.
+  describe("renaming from the Edit Steps list", () => {
+    const SOURCE = `version: "1.1"
+agent:
+  id: refund-agent
+  name: "Refund Agent"
+  role: "Support"
+  goal: "Handle refunds."
+  tools:
+    - name: lookup
+      action: http_request
+      method: GET
+      url: "https://api.example.com/{parse_request.id}"
+  workflow:
+    - step: parse_request
+      action: extract_entities
+    - step: reply
+      action: "answer using {{ parse_request.text }}"
+    - step: call
+      type: tool
+      tool: lookup
+`;
+
+    async function openSteps() {
+      render(<App apiBaseUrl={baseUrl} />);
+      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      await waitFor(() => screen.getByTestId("steps-list"));
+    }
+    const rename = (button: string, to: string, submit: string) => {
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      fireEvent.change(screen.getByLabelText("New name"), { target: { value: to } });
+      fireEvent.click(screen.getByRole("button", { name: submit }));
+    };
+
+    it("rewrites every use in one save and keeps the node where it was", async () => {
+      await startServer(SOURCE);
+      await openSteps();
+      const layoutBefore = JSON.parse(readFileSync(layoutPath, "utf8"));
+      const at = layoutBefore["workflow:parse_request"];
+      expect(at).toBeDefined();
+
+      rename("Rename step parse_request", "read_order", "Rename step");
+
+      await waitFor(() => screen.getByRole("button", { name: "Rename step read_order" }));
+      const written = readFileSync(specPath, "utf8");
+      expect(written).toBe(SOURCE.replaceAll("parse_request", "read_order"));
+      expect(parseSpec(written).errors).toEqual([]);
+      const layoutAfter = JSON.parse(readFileSync(layoutPath, "utf8"));
+      expect(layoutAfter["workflow:read_order"]).toEqual(at);
+      expect(layoutAfter["workflow:parse_request"]).toBeUndefined();
+    });
+
+    it("renames a tool a step uses, and refuses a name that is taken, keeping the input", async () => {
+      await startServer(SOURCE);
+      await openSteps();
+
+      rename("Rename tool lookup", "find_order", "Rename tool");
+      await waitFor(() => screen.getByRole("button", { name: "Rename tool find_order" }));
+      expect(readFileSync(specPath, "utf8")).toBe(SOURCE.replaceAll("lookup", "find_order"));
+
+      const before = readFileSync(specPath, "utf8");
+      rename("Rename step reply", "call", "Rename step");
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain('The name "call" is already used by another step');
+      expect((screen.getByLabelText("New name") as HTMLInputElement).value).toBe("call");
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+    });
+  });
 });

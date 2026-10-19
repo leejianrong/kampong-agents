@@ -14,6 +14,7 @@ import {
   expressionScopeForStepAt,
   isSimpleStep,
   listSteps,
+  occurrencesFor,
   simpleStepToEditInput,
   type ActionStepEditInput,
   type DataStepEditInput,
@@ -26,7 +27,7 @@ import {
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
 import { SchemaEditor } from "./SchemaEditor.js";
-import { DeletableRow, type RemoveOutcome } from "./DeleteControl.js";
+import { DeletableRow, type RemoveOutcome, type RenameOutcome } from "./DeleteControl.js";
 
 // Edit a step that is already in the workflow (KAM-162, a slice of KAM-110). Lists every step, nested ones
 // included, and opens the one chosen in place. The form logic is in packages/spec (step-edit.ts), so what is
@@ -42,6 +43,17 @@ export interface StepsPanelProps {
   onRemove?: (
     op: { op: "step.remove"; step: string } | { op: "tool.remove"; tool: string },
   ) => Promise<RemoveOutcome>;
+  /** Renames a step or a tool and rewrites what uses it, through `ApiClient.applyOps`. Without it there is no Rename button. */
+  onRename?: (
+    op:
+      | { op: "step.rename"; step: string; to: string }
+      | { op: "tool.rename"; tool: string; to: string },
+  ) => Promise<RenameOutcome>;
+}
+
+/** How many places read this step or tool by name (one per field), for "3 places will be updated". */
+function usedIn(spec: AgentSpec, query: { step: string } | { tool: string }): number {
+  return new Set(occurrencesFor(spec, query).map((o) => JSON.stringify(o.path))).size;
 }
 
 /** "and the 2 steps inside it" for a loop or branch, so the confirm says what else goes. */
@@ -111,7 +123,7 @@ function PromptField({
   );
 }
 
-export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelProps) {
+export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: StepsPanelProps) {
   const refs = listSteps(spec);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -573,6 +585,8 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
             extra={insideCount(refs, ref)}
             disabled={busy || editing !== null}
             onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
+            onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
+            usedIn={usedIn(spec, { step: ref.name })}
           >
             {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref)) && (
               <button
@@ -632,6 +646,10 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove }: StepsPanelPr
                 hint={tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
                 disabled={busy || editing !== null}
                 onRemove={onRemove && (() => onRemove({ op: "tool.remove", tool: tool.name }))}
+                onRename={
+                  onRename && ((to) => onRename({ op: "tool.rename", tool: tool.name, to }))
+                }
+                usedIn={usedIn(spec, { tool: tool.name })}
               >
                 <button
                   type="button"
