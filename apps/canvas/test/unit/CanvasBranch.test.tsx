@@ -65,12 +65,27 @@ describe("Canvas branch node", () => {
     render(<Canvas graph={graph} layout={layout} />);
     expect(screen.getByText("Branch: route")).toBeTruthy();
     expect(screen.getByText("switch trigger.kind")).toBeTruthy();
-    const headings = [...document.querySelectorAll(".md3-branch__arm")].map((h) => h.textContent);
-    expect(headings).toEqual(["case bug", "case dup", "default"]);
-    const items = [...document.querySelectorAll(".md3-foreach__steps li")].map(
-      (li) => li.textContent,
+    // Each arm step is a node of its own (KAM-154), marked with its branch and arm.
+    expect(screen.getByText("Tool step: answer")).toBeTruthy();
+    expect(screen.getByText("Stop: ignore")).toBeTruthy();
+    expect(screen.getByText("Branch: nested")).toBeTruthy();
+    const nested = [...document.querySelectorAll(".md3-node--nested")].map((n) =>
+      n.getAttribute("data-id"),
     );
-    expect(items).toEqual(["Tool step: answer", "Stop: ignore", "Branch: nested"]);
+    expect(nested).toEqual([
+      "workflow:answer",
+      "workflow:ignore",
+      "workflow:nested",
+      "workflow:deep",
+    ]);
+    expect(screen.getByText("in route · case bug")).toBeTruthy();
+    expect(screen.getByText("in nested · then")).toBeTruthy();
+    // Edges leave the branch labelled with the arm they take.
+    expect(graph.edges.filter((e) => e.source === "workflow:route").map((e) => e.label)).toEqual([
+      "case bug",
+      "case dup",
+      "default",
+    ]);
     expect(screen.getByText("Stop: halt")).toBeTruthy();
     expect(screen.getByText(/ends the run as completed: all done/)).toBeTruthy();
   });

@@ -688,3 +688,51 @@ export function buildForEachEdit(
   }
   return { success: true, patch };
 }
+
+// ---- branch steps (KAM-154) ----------------------------------------------------------------------
+
+/** A branch's own field: the `if` condition or the `switch` value. Its arms are edited as steps of their own. */
+export interface BranchEditInput {
+  mode: "if" | "switch";
+  expression: string;
+}
+
+type BranchStepOf = Extract<WorkflowStep, { branch: unknown }>;
+
+export function branchToEditInput(step: BranchStepOf): BranchEditInput {
+  const b = step.branch;
+  return "if" in b ? { mode: "if", expression: b.if } : { mode: "switch", expression: b.switch };
+}
+
+export function buildBranchEdit(
+  input: BranchEditInput,
+  step: { path: (string | number)[]; step: BranchStepOf },
+  version: string,
+  scope?: ExpressionScope,
+): ActionStepEditResult {
+  const errors: string[] = [];
+  if (version !== "1.1") errors.push('a branch step needs version "1.1"');
+  const expression = input.expression.trim();
+  if (expression === "") {
+    errors.push(input.mode === "if" ? "A branch needs a condition" : "A switch needs a value");
+  } else {
+    const parsed = parseExpression(expression);
+    if (!parsed.ok) for (const e of parsed.errors) errors.push(`${input.mode}: ${e.message}`);
+    else if (scope) {
+      for (const d of diagnoseExpression(expression, scope)) {
+        errors.push(`${input.mode}: ${d.message}`);
+      }
+    }
+  }
+  const b = step.step.branch;
+  if ((input.mode === "if") !== "if" in b) errors.push("The form does not match the step");
+  if (errors.length > 0) return { success: false, errors };
+  const before = "if" in b ? b.if : b.switch;
+  return {
+    success: true,
+    patch:
+      expression === before
+        ? []
+        : [{ op: "set", path: [...step.path, "branch", input.mode], value: expression }],
+  };
+}

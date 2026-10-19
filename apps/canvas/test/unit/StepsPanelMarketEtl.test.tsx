@@ -16,7 +16,7 @@ const SOURCE = readFileSync(
 describe("StepsPanel on the market-etl template", () => {
   afterEach(cleanup);
 
-  it("offers an Edit button for every step but the branch, which says why not", () => {
+  it("offers an Edit button for every step of the template", () => {
     const { spec, errors } = parseSpec(SOURCE);
     expect(errors).toEqual([]);
     render(<StepsPanel spec={spec!} onPatch={vi.fn(async () => true)} />);
@@ -29,11 +29,12 @@ describe("StepsPanel on the market-etl template", () => {
       "delta",
       "row",
       "write",
+      "anomaly",
       "summarize",
       "alert",
       "report",
     ]);
-    expect(screen.getAllByText(/edited in the YAML for now/)).toHaveLength(1);
+    expect(screen.queryByText(/edited in the YAML/)).toBeNull();
   });
 
   // KAM-164 (scope inside the loop) and KAM-165 (multi-line values) cleared the five that used to fail.
@@ -45,6 +46,7 @@ describe("StepsPanel on the market-etl template", () => {
     "delta",
     "row",
     "write",
+    "anomaly",
     "summarize",
     "alert",
     "report",

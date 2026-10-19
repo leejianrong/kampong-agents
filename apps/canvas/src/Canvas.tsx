@@ -46,16 +46,15 @@ export function Canvas({ graph, layout }: CanvasProps) {
   // controlled component and recreating fresh node/edge objects on every
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
-  const positions = useMemo(() => withNestedRoom(graph, layout), [graph, layout]);
   const nodes: Node[] = useMemo(
     () =>
       graph.nodes.map((node) => ({
         id: node.id,
-        position: positions.get(node.id) ?? { x: 0, y: 0 },
+        position: layout[node.id] ?? { x: 0, y: 0 },
         data: { label: nodeLabel(node) },
         className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}`,
       })),
-    [graph, positions],
+    [graph, layout],
   );
 
   const edges: Edge[] = useMemo(
@@ -64,6 +63,7 @@ export function Canvas({ graph, layout }: CanvasProps) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
+        ...(edge.label !== undefined && { label: edge.label }),
       })),
     [graph],
   );
@@ -78,96 +78,6 @@ export function Canvas({ graph, layout }: CanvasProps) {
   );
 }
 
-// A branch node lists its arms' steps, so it is taller than the 120px a row of the auto layout allows. The
-// nodes below it in the same column are moved down for display only; the sidecar layout is not touched.
-// (A foreach's body steps are nodes of their own, KAM-153, so a foreach needs no extra room.)
-const NESTED_STEP_HEIGHT = 22;
-
-interface NestedStep {
-  step: string;
-  type?: string;
-  foreach?: unknown;
-  branch?: unknown;
-  stop?: unknown;
-}
-
-// A branch node (KAN-1859) shows each arm under a heading: then / else, or each case and the default.
-interface Arm {
-  heading: string;
-  steps: NestedStep[];
-}
-
-function branchArms(node: SpecNode): Arm[] {
-  const b = node.data.branch as
-    | {
-        if?: string;
-        then?: NestedStep[];
-        else?: NestedStep[];
-        switch?: string;
-        cases?: Record<string, NestedStep[]>;
-        default?: NestedStep[];
-      }
-    | undefined;
-  if (!b) return [];
-  if (b.if !== undefined) {
-    return [
-      { heading: "then", steps: b.then ?? [] },
-      ...(b.else ? [{ heading: "else", steps: b.else }] : []),
-    ];
-  }
-  return [
-    ...Object.entries(b.cases ?? {}).map(([value, steps]) => ({ heading: `case ${value}`, steps })),
-    ...(b.default ? [{ heading: "default", steps: b.default }] : []),
-  ];
-}
-
-// How many 22px lines a node's nested content needs: a branch's arm headings and steps.
-function nestedRows(node: SpecNode): number {
-  return branchArms(node).reduce((n, arm) => n + 1 + arm.steps.length, 0);
-}
-
-function withNestedRoom(
-  graph: SpecGraph,
-  layout: Record<string, { x: number; y: number }>,
-): Map<string, { x: number; y: number }> {
-  const positions = new Map<string, { x: number; y: number }>();
-  const column = new Map<number, SpecNode[]>();
-  for (const node of graph.nodes) {
-    positions.set(node.id, layout[node.id] ?? { x: 0, y: 0 });
-    // Whole column: a foreach's indented body steps share the rows of the column they sit in.
-    const whole = Math.floor(node.column);
-    column.set(whole, [...(column.get(whole) ?? []), node]);
-  }
-  for (const nodes of column.values()) {
-    let extra = 0;
-    for (const node of [...nodes].sort((a, b) => positions.get(a.id)!.y - positions.get(b.id)!.y)) {
-      const at = positions.get(node.id)!;
-      positions.set(node.id, { x: at.x, y: at.y + extra });
-      extra += nestedRows(node) * NESTED_STEP_HEIGHT;
-    }
-  }
-  return positions;
-}
-
-const STEP_LABEL: Record<string, string> = {
-  tool: "Tool step",
-  approval: "Approval",
-  transform: "Transform",
-  validate: "Validate",
-  dedupe: "Dedupe",
-};
-
-const kindLabel = (inner: NestedStep): string =>
-  inner.foreach !== undefined
-    ? "Foreach"
-    : inner.branch !== undefined
-      ? "Branch"
-      : inner.stop !== undefined
-        ? "Stop"
-        : inner.type === "condition"
-          ? "Workflow"
-          : (STEP_LABEL[inner.type ?? ""] ?? "Workflow");
-
 function branchLabel(node: SpecNode): ReactNode {
   const b = node.data.branch as { if?: string; switch?: string };
   return (
@@ -176,18 +86,7 @@ function branchLabel(node: SpecNode): ReactNode {
       <div className="md3-foreach__meta">
         {b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`}
       </div>
-      {branchArms(node).map((arm) => (
-        <div key={arm.heading}>
-          <div className="md3-foreach__meta md3-branch__arm">{arm.heading}</div>
-          <ol className="md3-foreach__steps">
-            {arm.steps.map((inner) => (
-              <li key={inner.step}>
-                {kindLabel(inner)}: {inner.step}
-              </li>
-            ))}
-          </ol>
-        </div>
-      ))}
+      <div className="md3-foreach__meta">its arms are the steps below, labelled on the lines</div>
     </div>
   );
 }
@@ -267,7 +166,10 @@ function nodeLabel(node: SpecNode): ReactNode {
   return (
     <div>
       <div>{label}</div>
-      <div className="md3-foreach__meta">in {node.parent.replace(/^workflow:/, "")}</div>
+      <div className="md3-foreach__meta">
+        in {node.parent.replace(/^workflow:/, "")}
+        {node.arm !== undefined && <> &middot; {node.arm}</>}
+      </div>
     </div>
   );
 }

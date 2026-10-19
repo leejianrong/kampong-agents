@@ -102,6 +102,14 @@ export interface WorkflowBranchStepFormInput {
   then: string;
   /** Optional: blank means nothing happens when the condition is false. */
   else?: string;
+  /**
+   * A switch branch instead of if/else (KAM-154): when `switch` is set, `if`, `then` and `else` are ignored. `cases`
+   * is one `value: step: tool` (or `value: tool`) per line, a value repeated for more steps in one case; `default` is
+   * `step: tool` lines, blank for none.
+   */
+  switch?: string;
+  cases?: string;
+  default?: string;
 }
 
 export interface WorkflowStopStepFormInput {
@@ -160,6 +168,31 @@ function parseBodyLines(text: string): { steps: unknown[]; errors: string[] } {
   };
 }
 
+function parseCaseLines(text: string): {
+  cases: Record<string, unknown[]>;
+  errors: string[];
+} {
+  const cases: Record<string, unknown[]> = {};
+  const errors: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const colon = line.indexOf(":");
+    const value = colon === -1 ? "" : line.slice(0, colon).trim();
+    const rest = colon === -1 ? "" : line.slice(colon + 1).trim();
+    if (value === "" || rest === "") {
+      errors.push(`"${line}" is not "value: step: tool"`);
+      continue;
+    }
+    const body = parseBodyLines(rest);
+    (cases[value] ??= []).push(...body.steps);
+  }
+  if (errors.length === 0 && Object.keys(cases).length === 0) {
+    errors.push("Add at least one case as value: step: tool");
+  }
+  return { cases, errors };
+}
+
 export interface WorkflowStepFormResult {
   success: boolean;
   step?: WorkflowStep;
@@ -168,7 +201,15 @@ export interface WorkflowStepFormResult {
 
 export function buildWorkflowStepFromForm(input: WorkflowStepFormInput): WorkflowStepFormResult {
   let candidate: unknown;
-  if (input.kind === "branch") {
+  if (input.kind === "branch" && input.switch !== undefined) {
+    const { cases, errors } = parseCaseLines(input.cases ?? "");
+    if (errors.length > 0) return { success: false, errors };
+    const other = input.default?.trim() ? parseBodyLines(input.default) : undefined;
+    candidate = {
+      step: input.step,
+      branch: { switch: input.switch, cases, ...(other && { default: other.steps }) },
+    };
+  } else if (input.kind === "branch") {
     const then = parseBodyLines(input.then);
     if (then.errors.length > 0) {
       return {

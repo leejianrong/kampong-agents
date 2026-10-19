@@ -7,6 +7,9 @@ import {
   buildDataStepEdit,
   buildForEachEdit,
   forEachToEditInput,
+  branchToEditInput,
+  buildBranchEdit,
+  type BranchEditInput,
   type ForEachEditInput,
   buildSimpleStepEdit,
   dataStepToEditInput,
@@ -73,10 +76,11 @@ type SimpleRef = StepRef & { step: Parameters<typeof simpleStepToEditInput>[0] }
 const isSimple = (ref: StepRef): ref is SimpleRef => isSimpleStep(ref.step);
 type ForEachRef = StepRef & { step: Extract<StepRef["step"], { foreach: unknown }> };
 const isForEach = (ref: StepRef): ref is ForEachRef => ref.kind === "foreach";
+type BranchRef = StepRef & { step: Extract<StepRef["step"], { branch: unknown }> };
+const isBranch = (ref: StepRef): ref is BranchRef => ref.kind === "branch";
 
 /** Why a step has no Edit button, shown in its row. Only the kinds with no form need one. */
 const NOT_EDITABLE: Record<string, string> = {
-  branch: "Branches are edited in the YAML for now",
   condition: "Condition steps are edited in the YAML",
 };
 
@@ -84,7 +88,8 @@ type Editing =
   | { key: string; kind: "action"; input: ActionStepEditInput }
   | { key: string; kind: "data"; input: DataStepEditInput }
   | { key: string; kind: "simple"; input: SimpleStepEditInput }
-  | { key: string; kind: "foreach"; input: ForEachEditInput };
+  | { key: string; kind: "foreach"; input: ForEachEditInput }
+  | { key: string; kind: "branch"; input: BranchEditInput };
 
 /** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable and the body steps ahead of it. */
 function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
@@ -189,7 +194,9 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
               )
             : editing.kind === "foreach" && isForEach(current)
               ? buildForEachEdit(editing.input, current, spec.version, scopeFor(spec, current))
-              : { success: false as const, errors: ["The form does not match the step"] };
+              : editing.kind === "branch" && isBranch(current)
+                ? buildBranchEdit(editing.input, current, spec.version, scopeFor(spec, current))
+                : { success: false as const, errors: ["The form does not match the step"] };
     if (!result.success) {
       setErrors(result.errors);
       return;
@@ -413,6 +420,48 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
         </form>
       )}
 
+      {editing && editing.kind === "branch" && current && isBranch(current) && (
+        <form
+          onSubmit={(e) => void submit(e)}
+          aria-label={`Edit ${current.name}`}
+          className="md3-form md3-form--fill"
+        >
+          <span className="md3-title-small">{current.name}</span>
+          <ExpressionField
+            label={
+              editing.input.mode === "if"
+                ? "If (expression that gives true or false)"
+                : "Switch on (expression that gives the value)"
+            }
+            value={editing.input.expression}
+            scope={scopeFor(spec, current)}
+            onChange={(expression) =>
+              setEditing((e) =>
+                e && e.kind === "branch" ? { ...e, input: { ...e.input, expression } } : e,
+              )
+            }
+          />
+          <p className="md3-body-small md3-field__hint">
+            The arms are the steps below it in this list: edit, delete or add to them there.
+          </p>
+          {errors.length > 0 && (
+            <ul role="alert" className="md3-error-list">
+              {errors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          )}
+          <div className="md3-trust__actions">
+            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
+              Save step
+            </button>
+            <button type="button" className="md3-button md3-button-text" onClick={close}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
       {editing && editing.kind === "foreach" && current && isForEach(current) && (
         <form
           onSubmit={(e) => void submit(e)}
@@ -588,7 +637,7 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
             onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
             usedIn={usedIn(spec, { step: ref.name })}
           >
-            {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref)) && (
+            {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref) || isBranch(ref)) && (
               <button
                 type="button"
                 className="md3-button md3-button-text"
@@ -615,11 +664,17 @@ export function StepsPanel({ spec, onPatch, onEditTool, onRemove, onRename }: St
                               kind: "foreach",
                               input: forEachToEditInput(ref.step),
                             }
-                          : {
-                              key: keyOf(ref),
-                              kind: "data",
-                              input: dataStepToEditInput((ref as DataRef).step),
-                            },
+                          : isBranch(ref)
+                            ? {
+                                key: keyOf(ref),
+                                kind: "branch",
+                                input: branchToEditInput(ref.step),
+                              }
+                            : {
+                                key: keyOf(ref),
+                                kind: "data",
+                                input: dataStepToEditInput((ref as DataRef).step),
+                              },
                   );
                 }}
               >
