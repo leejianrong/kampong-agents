@@ -1,6 +1,8 @@
 import {
   specToGraph,
   expressionScopeFor,
+  hasEmptyWorkflow,
+  isBlankSource,
   addTargets,
   insertionMarker,
   workflowStepNames,
@@ -22,8 +24,9 @@ import {
   type WorkflowStep,
 } from "@kampong/spec";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, createApiClient, type ApiClient } from "./api.js";
+import { ApiError, createApiClient, type ApiClient, type SpecErrorDto } from "./api.js";
 import { Canvas } from "./Canvas.js";
+import { EmptyState } from "./EmptyState.js";
 import { DoctorPanel } from "./DoctorPanel.js";
 import { SecretsPanel } from "./SecretsPanel.js";
 import type { PinResult } from "./ComponentTrust.js";
@@ -45,6 +48,16 @@ import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
 import { ImportPanel } from "./ImportPanel.js";
 import { YamlPreview } from "./YamlPreview.js";
+
+// KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
+// canvas keeps showing the last version that was valid.
+function errorSummary(errors: { line?: number }[], hasLastValid: boolean): string {
+  const line = errors.find((e) => e.line !== undefined)?.line;
+  const fix = line !== undefined ? `fix line ${line}` : "fix the errors below";
+  return hasLastValid
+    ? `Showing the last valid version; ${fix}. Saves are paused until then.`
+    : `This spec cannot be shown yet; ${fix}. Saves are paused until then.`;
+}
 
 const YAML_DRAWER_KEY = "kampong.yamlDrawer";
 
@@ -107,7 +120,7 @@ export function App({
   const [spec, setSpec] = useState<AgentSpec | null>(null);
   const [source, setSource] = useState("");
   const [layout, setLayout] = useState<Record<string, { x: number; y: number }>>({});
-  const [errors, setErrors] = useState<{ path: (string | number)[]; message: string }[]>([]);
+  const [errors, setErrors] = useState<SpecErrorDto[]>([]);
   // KAN-1831: a valid spec can still declare fields nothing executes (knowledge_base today).
   const [warnings, setWarnings] = useState<ReturnType<typeof specWarnings>>([]);
   const [openForm, setOpenForm] = useState<OpenForm>(null);
@@ -133,17 +146,33 @@ export function App({
   // own banner rather than silently blanking the canvas or closing a form
   // dialog as though the save had succeeded.
   const [specError, setSpecError] = useState<string | null>(null);
+  // KAM-196: the spec file does not exist yet. A new workflow, not an error.
+  const [missing, setMissing] = useState(false);
+  // False until the first load answers, so the "new workflow" state does not flash before the spec arrives.
+  const [loaded, setLoaded] = useState(false);
+  const [startingBlank, setStartingBlank] = useState(false);
+  const [startBlankError, setStartBlankError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const result = await api.loadSpec();
       setSpecError(null);
+      setLoaded(true);
+      setMissing(result.missing === true);
       setErrors(result.errors ?? []);
       setSource(result.source);
       setLayout(result.layout);
       if (result.success && result.spec) {
         setSpec(result.spec as AgentSpec);
         setWarnings(specWarnings(result.spec as AgentSpec));
+      } else if (
+        result.missing ||
+        isBlankSource(result.source) ||
+        hasEmptyWorkflow(result.source)
+      ) {
+        // Nothing to draw: drop the last spec so the empty state shows, not a stale canvas.
+        setSpec(null);
+        setWarnings([]);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -208,6 +237,51 @@ export function App({
     () => (spec && catalog ? outputReferenceOptions(spec, catalog.components) : []),
     [spec, catalog],
   );
+
+  // KAM-196: what to show when there is nothing to draw. A missing or empty file is a new workflow; a workflow
+  // with no steps asks for the first one. Neither is an error.
+  const emptyKind: "new" | "steps" | null = !loaded
+    ? null
+    : missing || isBlankSource(source)
+      ? "new"
+      : hasEmptyWorkflow(source)
+        ? "steps"
+        : null;
+
+  // Why a test run cannot start, in words, or undefined when it can.
+  const parseErrorLine = errors.find((e) => e.line !== undefined)?.line;
+  const runBlockedReason =
+    emptyKind === "new"
+      ? "There is no workflow yet. Start blank or choose a template first."
+      : emptyKind === "steps"
+        ? "This workflow has no steps yet. Add a step first."
+        : errors.length > 0
+          ? `The workflow has an error${parseErrorLine ? ` on line ${parseErrorLine}` : ""}, so it cannot run yet. Fix it first.`
+          : undefined;
+
+  async function handleStartBlank() {
+    if (startingBlank) return;
+    setStartingBlank(true);
+    setStartBlankError(null);
+    try {
+      const result = await api.startBlank();
+      if (!result.success) {
+        setStartBlankError(
+          (result.errors ?? []).map((e) => e.message).join("; ") || "Could not start blank.",
+        );
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      setStartBlankError(err instanceof Error ? err.message : "Could not start blank.");
+    } finally {
+      setStartingBlank(false);
+    }
+  }
 
   const graph = useMemo(() => (spec ? specToGraph(spec) : { nodes: [], edges: [] }), [spec]);
   const marker = useMemo(
@@ -497,52 +571,56 @@ export function App({
               </button>
             )}
             <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
-            <div className="md3-toolbar__group" role="group" aria-label="Build">
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "tool"}
-                onClick={() => setOpenForm(openForm === "tool" ? null : "tool")}
-              >
-                Add Tool
-              </button>
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "workflow"}
-                onClick={() => setOpenForm(openForm === "workflow" ? null : "workflow")}
-              >
-                Add Workflow Step
-              </button>
-            </div>
-            <div className="md3-toolbar__group" role="group" aria-label="Configure">
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "guardrails"}
-                onClick={() => setOpenForm(openForm === "guardrails" ? null : "guardrails")}
-              >
-                Set Guardrails
-              </button>
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "vars"}
-                onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
-              >
-                Spec Vars
-              </button>
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "trigger"}
-                onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
-              >
-                Trigger
-              </button>
-              <button
-                className="md3-button md3-button-tonal"
-                aria-pressed={openForm === "steps"}
-                onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
-              >
-                Edit Steps
-              </button>
-            </div>
+            {emptyKind !== "new" && (
+              <div className="md3-toolbar__group" role="group" aria-label="Build">
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "tool"}
+                  onClick={() => setOpenForm(openForm === "tool" ? null : "tool")}
+                >
+                  Add Tool
+                </button>
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "workflow"}
+                  onClick={() => setOpenForm(openForm === "workflow" ? null : "workflow")}
+                >
+                  Add Workflow Step
+                </button>
+              </div>
+            )}
+            {emptyKind !== "new" && (
+              <div className="md3-toolbar__group" role="group" aria-label="Configure">
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "guardrails"}
+                  onClick={() => setOpenForm(openForm === "guardrails" ? null : "guardrails")}
+                >
+                  Set Guardrails
+                </button>
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "vars"}
+                  onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
+                >
+                  Spec Vars
+                </button>
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "trigger"}
+                  onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
+                >
+                  Trigger
+                </button>
+                <button
+                  className="md3-button md3-button-tonal"
+                  aria-pressed={openForm === "steps"}
+                  onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
+                >
+                  Edit Steps
+                </button>
+              </div>
+            )}
             <span className="md3-app__toolbar-spacer" />
             <div className="md3-toolbar__group" role="group" aria-label="Run">
               <button
@@ -620,20 +698,39 @@ export function App({
               </ul>
             </div>
           )}
-          {errors.length > 0 && (
+          {errors.length > 0 && emptyKind === null && (
             <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
-              <ul className="md3-banner__errors">
-                {errors.map((error, i) => (
-                  <li key={i}>
-                    {error.path.join(".")}: {error.message}
-                  </li>
-                ))}
-              </ul>
+              <div>
+                <p className="md3-title-small" data-testid="spec-errors-summary">
+                  {errorSummary(errors, spec !== null)}
+                </p>
+                <ul className="md3-banner__errors">
+                  {errors.map((error, i) => (
+                    <li key={i}>
+                      {error.path.length > 0 && `${error.path.join(".")}: `}
+                      {error.message}
+                      {error.line !== undefined && ` (line ${error.line})`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
           <div className="md3-app__canvas-surface">
-            <Canvas graph={graph} layout={layout} marker={marker} focus={focus} />
+            {emptyKind === null ? (
+              <Canvas graph={graph} layout={layout} marker={marker} focus={focus} />
+            ) : (
+              <EmptyState
+                kind={emptyKind}
+                busy={startingBlank}
+                error={startBlankError}
+                onStartBlank={() => void handleStartBlank()}
+                onAddStep={() => setOpenForm("workflow")}
+                // KAM-216: the template gallery plugs in here (`templates={<TemplateGallery ... />}`).
+                templates={undefined}
+              />
+            )}
           </div>
         </div>
         <div className="md3-app__side-pane">
@@ -698,7 +795,7 @@ export function App({
           )}
           {openForm === "run" && (
             <Panel title="Test Run" onClose={() => setOpenForm(null)}>
-              <RunPanel api={api} />
+              <RunPanel api={api} blockedReason={runBlockedReason} />
             </Panel>
           )}
           {openForm === "vars" && spec && (

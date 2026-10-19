@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -142,16 +142,31 @@ describe("createDevServer", () => {
       unlinkSync(specPath);
     });
 
-    it("GET /api/spec returns a clean 404 instead of a raw ENOENT 500", async () => {
+    // KAM-196: a missing spec is a new workflow, not an error.
+    it("GET /api/spec answers 200 with missing: true instead of an error", async () => {
       const response = await app.inject({ method: "GET", url: "/api/spec" });
 
-      expect(response.statusCode).toBe(404);
+      expect(response.statusCode).toBe(200);
       const body = response.json();
+      expect(body.missing).toBe(true);
       expect(body.success).toBe(false);
-      expect(typeof body.error).toBe("string");
-      expect(body.error).not.toContain("ENOENT");
-      expect(body.error).not.toContain(dir);
-      expect(body.error).not.toContain(specPath);
+      expect(body.errors).toEqual([]);
+      expect(body.source).toBe("");
+      expect(JSON.stringify(body)).not.toContain(dir);
+    });
+
+    it("POST /api/spec/blank creates the file: valid, with the schema pragma, and loads afterwards", async () => {
+      const response = await app.inject({ method: "POST", url: "/api/spec/blank" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().success).toBe(true);
+      const onDisk = readFileSync(specPath, "utf8");
+      expect(onDisk.split("\n")[0]).toMatch(
+        /^# yaml-language-server: \$schema=\S+agent-spec\.v1\.0\.schema\.json$/,
+      );
+      const loaded = (await app.inject({ method: "GET", url: "/api/spec" })).json();
+      expect(loaded.success).toBe(true);
+      expect(loaded.missing).toBeUndefined();
     });
 
     it("PUT /api/spec returns a clean 404 instead of a raw ENOENT 500 and does not mask it in a finally block", async () => {
@@ -168,6 +183,45 @@ describe("createDevServer", () => {
       expect(body.error).not.toContain("ENOENT");
       expect(body.error).not.toContain(dir);
       expect(body.error).not.toContain(specPath);
+    });
+  });
+  describe("starting a new workflow (KAM-196)", () => {
+    it("POST /api/spec/blank refuses to overwrite a spec that has content", async () => {
+      const response = await app.inject({ method: "POST", url: "/api/spec/blank" });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().success).toBe(false);
+      expect(readFileSync(specPath, "utf8")).toBe(VALID_SOURCE);
+    });
+
+    it("POST /api/spec/blank fills a file that exists but is empty", async () => {
+      writeFileSync(specPath, "\n");
+      const response = await app.inject({ method: "POST", url: "/api/spec/blank" });
+
+      expect(response.statusCode).toBe(200);
+      expect(readFileSync(specPath, "utf8")).toContain('version: "1.0"');
+    });
+
+    it("PUT /api/spec/source creates a missing file (a template choice or an import into a new folder)", async () => {
+      unlinkSync(specPath);
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/spec/source",
+        payload: { source: VALID_SOURCE },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(readFileSync(specPath, "utf8")).toBe(VALID_SOURCE);
+    });
+
+    it("a file that exists but cannot be read is still a real error", async () => {
+      unlinkSync(specPath);
+      mkdirSync(specPath); // a directory where the file should be: EISDIR
+      const response = await app.inject({ method: "GET", url: "/api/spec" });
+
+      expect(response.statusCode).toBe(500);
+      expect(response.json().success).toBe(false);
+      expect(response.json().missing).toBeUndefined();
     });
   });
 });

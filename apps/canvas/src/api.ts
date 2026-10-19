@@ -19,6 +19,7 @@
 // erased at build time, is the safe way to share these shapes without
 // pulling a Node-only package into the browser bundle.
 import type { PendingApproval, RunEvent, RunState } from "@kampong/engine";
+import { blankSpecSource } from "@kampong/spec";
 import type { ComponentCatalog, OpChanges, OpErrorCode, SpecOp, SpecSummary } from "@kampong/spec";
 
 export interface SpecErrorDto {
@@ -30,6 +31,8 @@ export interface SpecErrorDto {
 
 export interface LoadSpecResponse {
   success: boolean;
+  /** KAM-196: there is no spec yet (a new workflow, not an error). `source` is "" and the file appears on first save. */
+  missing?: boolean;
   spec?: Record<string, unknown>;
   errors: SpecErrorDto[];
   layout: Record<string, { x: number; y: number }>;
@@ -180,6 +183,12 @@ export interface ApiClient {
    */
   replaceSource(source: string, options?: { baseRevision?: string }): Promise<ApplyOpsResponse>;
   /**
+   * "Start blank" from the empty state (KAM-196): writes the minimal valid spec. Refused (`success: false`)
+   * if the spec already has content. Local mode creates the file; hosted writes the same text through
+   * `replaceSource`.
+   */
+  startBlank(): Promise<ApplyOpsResponse>;
+  /**
    * Subscribes to out-of-band spec-change events. Only the local server has a
    * file watcher (ADR-0008); the hosted client returns a no-op unsubscribe,
    * so App's auto-reload/conflict paths simply never fire in hosted mode.
@@ -297,6 +306,20 @@ export function createApiClient(baseUrl = ""): ApiClient {
 
     async replaceSource(source, options): Promise<ApplyOpsResponse> {
       return putSource(`${baseUrl}/api/spec/source`, source, options?.baseRevision);
+    },
+
+    async startBlank(): Promise<ApplyOpsResponse> {
+      const res = await fetch(`${baseUrl}/api/spec/blank`, jsonInit({}));
+      if (res.ok || res.status === 409 || res.status === 422) {
+        const body = (await res.json()) as ApplyOpsResponse & { error?: string };
+        return body.success || body.errors
+          ? body
+          : { ...body, errors: [{ path: [], message: body.error ?? "Could not start blank." }] };
+      }
+      throw new ApiError(
+        await errorMessageFor(res, `Failed to start a blank workflow (HTTP ${res.status}).`),
+        res.status,
+      );
     },
 
     async listComponents(): Promise<ComponentCatalog> {
@@ -627,6 +650,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     applyPatch: wrap(c.applyPatch.bind(c)),
     applyOps: wrap(c.applyOps.bind(c)),
     replaceSource: wrap(c.replaceSource.bind(c)),
+    startBlank: wrap(c.startBlank.bind(c)),
     subscribeToEvents: c.subscribeToEvents.bind(c),
     startRun: c.startRun.bind(c),
     approveRun: c.approveRun.bind(c),
@@ -679,6 +703,10 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
 
     async replaceSource(source, options): Promise<ApplyOpsResponse> {
       return putSource(`${baseUrl}/api/specs/${specId}/source`, source, options?.baseRevision);
+    },
+
+    async startBlank(): Promise<ApplyOpsResponse> {
+      return this.replaceSource(blankSpecSource());
     },
 
     subscribeToEvents(): () => void {

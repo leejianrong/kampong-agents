@@ -17,6 +17,14 @@ operation fails, nothing is written. Design and reasons: [ADR-0055](../adr/0055-
 }
 ```
 
+## Loading a spec that does not exist yet (local)
+
+`GET /api/spec` answers `200` with `{ "success": false, "missing": true, "errors": [], "source": "" }`
+when the spec file does not exist: a new workflow, not an error. `POST /api/spec/blank` then writes
+the minimal valid spec (with the schema pragma) and answers `409` if the file already has content.
+`PUT /api/spec/source` also creates a missing file, which is how a template choice is saved. A file
+that exists but cannot be read is still a `500`. Hosted specs always exist, so they have no such state.
+
 ## Operations
 
 `set`, `add` and `remove` edit a field at an index path (`["agent", "workflow", 2, "action"]`) and

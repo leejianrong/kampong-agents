@@ -66,6 +66,9 @@ kampong export agent.yaml ./out         # standalone TypeScript project: cd ./ou
 kampong doctor agent.yaml               # preflight: components, credentials, fixtures
 ```
 
+Run `kampong dev` in an empty folder and the canvas opens a "Start a new workflow" screen; **Start blank**
+creates `agent.yaml` then.
+
 Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command
 reference, the `AgentSpec` schema and a step-by-step tutorial are in [`docs/`](./docs/index.md), a
 [Zensical](https://zensical.org) site (`uvx zensical build`, or `uvx zensical serve` to preview).
