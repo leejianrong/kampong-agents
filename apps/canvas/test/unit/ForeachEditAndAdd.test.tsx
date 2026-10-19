@@ -81,6 +81,8 @@ const TARGETS = [
     id: "each/steps",
     label: "Inside each (the loop's body)",
     place: PLACE,
+    where: "each",
+    steps: ["a", "b"],
     scope: { vars: [], steps: [], trigger: [] },
   },
 ];
