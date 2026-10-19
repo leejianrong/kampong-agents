@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import {
@@ -315,21 +316,8 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
             </>
           )}
 
-          {errors.length > 0 && (
-            <ul role="alert" className="md3-error-list">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          )}
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={busy}>
-              Save trigger
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={close}>
-              Cancel
-            </button>
-          </div>
+          <PanelError messages={errors} />
+          <PanelFooter save="Save trigger" disabled={busy} onCancel={close} />
         </form>
       )}
 

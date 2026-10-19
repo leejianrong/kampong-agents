@@ -1288,15 +1288,45 @@ select.md3-text-field {
   padding: 0.75rem;
 }
 
-.md3-panel__body .md3-form-actions,
-.md3-panel__body .md3-trust__actions {
+/* The one footer (KAM-178): Save then Cancel, pinned to the bottom of the body whatever the form's height. */
+.md3-panel__footer {
   position: sticky;
   bottom: -0.75rem;
   z-index: 1;
-  margin: 0 -0.75rem -0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem -0.75rem -0.75rem;
   padding: 0.75rem;
   background: var(--md-sys-color-surface-container-low);
   border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+/* The one error box (KAM-178): error container colours, a list of problems, an optional sentence above. */
+.md3-panel__error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font-size: var(--md-type-body-small-size);
+  line-height: var(--md-type-body-small-line);
+}
+
+.md3-panel__error p {
+  margin: 0;
+}
+
+.md3-panel__error-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
 }
 
 /* The toolbar (KAM-179): buttons are grouped (Build, Configure, Run), all one height with labels that never wrap,

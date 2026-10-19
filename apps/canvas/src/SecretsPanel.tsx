@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useState } from "react";
 import type { SecretStatusDto } from "./api.js";
 
@@ -78,11 +79,7 @@ export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
         They can be set and replaced but never shown again.
       </p>
 
-      {error && (
-        <p role="alert" className="md3-banner md3-banner--error">
-          {error}
-        </p>
-      )}
+      {error && <PanelError messages={[error]} />}
 
       {editing !== null && (
         <form
@@ -120,14 +117,7 @@ export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
               onChange={(e) => setValue(e.target.value)}
             />
           </label>
-          <div className="md3-trust__actions">
-            <button type="submit" className="md3-button md3-button-filled" disabled={!canSave}>
-              Save
-            </button>
-            <button type="button" className="md3-button md3-button-text" onClick={finishEditing}>
-              Cancel
-            </button>
-          </div>
+          <PanelFooter save="Save" disabled={!canSave} onCancel={finishEditing} />
         </form>
       )}
 

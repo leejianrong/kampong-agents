@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import { parseSpec } from "@kampong/spec";
 import type { ApplyOpsResponse } from "./api.js";
@@ -95,19 +96,12 @@ export function ImportPanel({ hasContent, hosted, replace, onImported }: ImportP
       </label>
 
       {errors.length > 0 && (
-        <div role="alert">
-          <p className="md3-body-small">
-            This file cannot be imported. Nothing was changed. Fix these and choose it again:
-          </p>
-          <ul className="md3-error-list">
-            {errors.map((e, i) => (
-              <li key={i}>
-                {e.line !== undefined ? `Line ${e.line}: ` : ""}
-                {e.message}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <PanelError
+          intro="This file cannot be imported. Nothing was changed. Fix these and choose it again:"
+          messages={errors.map(
+            (e) => `${e.line !== undefined ? `Line ${e.line}: ` : ""}${e.message}`,
+          )}
+        />
       )}
 
       {file && !confirming && (
@@ -115,16 +109,11 @@ export function ImportPanel({ hasContent, hosted, replace, onImported }: ImportP
           <p className="md3-body-small">
             {file.name} is valid ({file.summary}).
           </p>
-          <div className="md3-trust__actions">
-            <button
-              type="button"
-              className="md3-button md3-button-filled"
-              disabled={busy}
-              onClick={() => (hasContent ? setConfirming(true) : void run())}
-            >
-              Import
-            </button>
-          </div>
+          <PanelFooter
+            save="Import"
+            disabled={busy}
+            onSave={() => (hasContent ? setConfirming(true) : void run())}
+          />
         </>
       )}
 
@@ -134,24 +123,12 @@ export function ImportPanel({ hasContent, hosted, replace, onImported }: ImportP
             Replace the current spec with {file.name}? The current steps, tools and settings are
             replaced by the ones in the file.
           </p>
-          <div className="md3-trust__actions">
-            <button
-              type="button"
-              className="md3-button md3-button-filled"
-              disabled={busy}
-              onClick={() => void run()}
-            >
-              Replace the current spec
-            </button>
-            <button
-              type="button"
-              className="md3-button md3-button-text"
-              disabled={busy}
-              onClick={() => setConfirming(false)}
-            >
-              Cancel
-            </button>
-          </div>
+          <PanelFooter
+            save="Replace the current spec"
+            disabled={busy}
+            onSave={() => void run()}
+            onCancel={() => setConfirming(false)}
+          />
         </div>
       )}
     </div>

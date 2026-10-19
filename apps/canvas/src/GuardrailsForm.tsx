@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import { buildGuardrailsFromForm, type FallbackAction, type Guardrails } from "@kampong/spec";
 
@@ -62,21 +63,8 @@ export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
           ))}
         </select>
       </label>
-      {errors.length > 0 && (
-        <ul role="alert" className="md3-error-list">
-          {errors.map((error) => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      )}
-      <div className="md3-form-actions">
-        <button type="submit" className="md3-button md3-button-filled">
-          Save guardrails
-        </button>
-        <button type="button" className="md3-button md3-button-text" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <PanelError messages={errors} />
+      <PanelFooter save="Save guardrails" onCancel={onCancel} />
     </form>
   );
 }

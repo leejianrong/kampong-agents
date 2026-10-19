@@ -1,3 +1,4 @@
+import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useRef, useState } from "react";
 import type { ApiClient } from "./api.js";
 import type { RunState } from "./api.js";
@@ -80,16 +81,10 @@ export function RunPanel({ api }: RunPanelProps) {
             onChange={(e) => setInput(e.target.value)}
           />
         </label>
-        <button type="submit" className="md3-button md3-button-filled" disabled={isRunning}>
-          Run
-        </button>
+        <PanelFooter save="Run" disabled={isRunning} />
       </form>
 
-      {error && (
-        <div role="alert" data-testid="run-error" className="md3-banner md3-banner--error">
-          {error}
-        </div>
-      )}
+      {error && <PanelError messages={[error]} testId="run-error" />}
 
       {state && (
         <>
@@ -114,9 +109,7 @@ export function RunPanel({ api }: RunPanelProps) {
             </pre>
           )}
           {(state.status === "rejected" || state.status === "failed") && (
-            <div role="alert" data-testid="run-halted" className="md3-banner md3-banner--error">
-              Run {state.status}: {state.error}
-            </div>
+            <PanelError messages={[`Run ${state.status}: ${state.error}`]} testId="run-halted" />
           )}
         </>
       )}
