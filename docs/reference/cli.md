@@ -33,6 +33,14 @@ kampong dev [dir] [options]
 Requires a build first (`npm run build`), because it serves the compiled canvas assets. Stop it
 with Ctrl+C.
 
+**No spec yet is a new workflow, not an error.** In an empty folder (or with `--spec` naming a file
+that does not exist) the canvas opens an empty state with **Start blank**. Choosing it writes a valid
+minimal spec with the `yaml-language-server` schema pragma; until then nothing is written. A file
+that exists but cannot be read is still reported as an error. A spec with `workflow: []` shows
+"This workflow has no steps yet" with an **Add step** button, and Test Run says why it cannot start.
+While the YAML is broken, the canvas keeps the last valid version, names the line to fix and says
+saves are paused.
+
 ## `kampong run`
 
 Runs a spec against the execution engine with no server and no browser. Designed to run fully

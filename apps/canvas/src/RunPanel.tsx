@@ -13,9 +13,11 @@ import { ApprovalModal } from "./ApprovalModal.js";
 
 export interface RunPanelProps {
   api: ApiClient;
+  /** KAM-196: why a run cannot start right now (no workflow, no steps, a spec error). Shown instead of the Run button. */
+  blockedReason?: string;
 }
 
-export function RunPanel({ api }: RunPanelProps) {
+export function RunPanel({ api, blockedReason }: RunPanelProps) {
   const [input, setInput] = useState("");
   const [state, setState] = useState<RunState | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -81,9 +83,10 @@ export function RunPanel({ api }: RunPanelProps) {
             onChange={(e) => setInput(e.target.value)}
           />
         </label>
-        <PanelFooter save="Run" disabled={isRunning} />
+        <PanelFooter save="Run" disabled={isRunning || blockedReason !== undefined} />
       </form>
 
+      {blockedReason && <PanelError messages={[blockedReason]} testId="run-blocked" />}
       {error && <PanelError messages={[error]} testId="run-error" />}
 
       {state && (

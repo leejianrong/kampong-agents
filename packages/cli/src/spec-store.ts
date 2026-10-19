@@ -76,6 +76,16 @@ export class SpecStore implements SpecRepository {
     return readFileSync(this.specPath, "utf8");
   }
 
+  /** The file's text, or "" when there is no file yet (KAM-196). Any other read failure still throws. */
+  async readSourceOrBlank(): Promise<string> {
+    try {
+      return await this.readSource();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
+      throw err;
+    }
+  }
+
   async readLayout(): Promise<LayoutMap> {
     if (!existsSync(this.layoutPath)) return {};
     return parseLayout(readFileSync(this.layoutPath, "utf8"));
@@ -127,13 +137,17 @@ export class SpecStore implements SpecRepository {
     source: string,
     options: { baseRevision?: string } = {},
   ): Promise<ApplyOpsResult> {
-    const current = await this.readSource();
+    // KAM-196: a missing file is a new workflow, so a first import or template choice creates it.
+    const current = await this.readSourceOrBlank();
     const revision = revisionOf(current);
     const result = evaluateReplace({ source: current, revision }, source, options.baseRevision);
     if (!result.success) {
       return "stale" in result ? { ...result } : { ...result, revision };
     }
-    if (result.source !== current) writeFileSync(this.specPath, result.source);
+    if (result.source !== current) {
+      mkdirSync(dirname(this.specPath), { recursive: true });
+      writeFileSync(this.specPath, result.source);
+    }
     return { ...result, revision: revisionOf(result.source) };
   }
 

@@ -23,6 +23,7 @@ export * from "./workflow-form.js";
 export * from "./vars-form.js";
 export * from "./json-schema.js";
 export * from "./pragma.js";
+export * from "./blank.js";
 export * from "./references.js";
 export * from "./ops.js";
 export * from "./repository.js";

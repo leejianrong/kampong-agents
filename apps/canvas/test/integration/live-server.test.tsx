@@ -322,6 +322,45 @@ ops:
     expect(screen.getByText(/Trigger: Refund Agent/)).toBeTruthy();
   });
 
+  // KAM-196: a folder with no spec is a new workflow, and the file appears when it is chosen.
+  it("opens the empty state on a folder with no spec, and Start blank writes a valid spec with the pragma (KAM-196)", async () => {
+    app = createDevServer({ specPath, layoutPath });
+    baseUrl = await app.listen({ port: 0, host: "127.0.0.1" });
+    render(<App apiBaseUrl={baseUrl} />);
+
+    await waitFor(() => expect(screen.getByTestId("empty-state")).toBeTruthy());
+    expect(screen.queryByTestId("spec-error-banner")).toBeNull();
+    expect(screen.queryByTestId("spec-errors")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("start-blank"));
+
+    await waitFor(() => expect(screen.queryByTestId("empty-state")).toBeNull());
+    const onDisk = readFileSync(specPath, "utf8");
+    expect(onDisk.split("\n")[0]).toMatch(/^# yaml-language-server: \$schema=/);
+    expect(parseSpec(onDisk).success).toBe(true);
+    expect(screen.getByText(/Workflow: answer/)).toBeTruthy();
+  });
+
+  it("adds the first step to a workflow: [] from the empty state (KAM-196)", async () => {
+    await startServer(
+      'version: "1.0"\nagent:\n  id: a\n  name: "A"\n  role: "r"\n  goal: "g"\n  workflow: []\n',
+    );
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => expect(screen.getByTestId("empty-state")).toBeTruthy());
+    expect(screen.queryByTestId("spec-errors")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("empty-add-step"));
+    await fillAndSubmit(
+      "Add Workflow Step",
+      { "Step ID": "first", Action: "check_knowledge" },
+      "Save step",
+    );
+
+    await waitFor(() => expect(screen.queryByTestId("empty-state")).toBeNull());
+    expect(parseSpec(readFileSync(specPath, "utf8")).success).toBe(true);
+    expect(screen.getByText(/Workflow: first/)).toBeTruthy();
+  });
+
   // KAM-171 (ADR-0055): delete a step or tool from the Edit Steps list, against the real server.
   describe("deleting from the Edit Steps list", () => {
     const WITH_READER = `version: "1.1"

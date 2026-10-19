@@ -1,7 +1,16 @@
 import { basename, dirname, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import { loadWithLayout, type AgentSpec, type SpecOp, type SpecRepository } from "@kampong/spec";
+import {
+  blankSpecSource,
+  DEFAULT_SCHEMA_PATH,
+  isBlankSource,
+  loadWithLayout,
+  type AgentSpec,
+  type SpecOp,
+  type SpecRepository,
+} from "@kampong/spec";
 import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore } from "./spec-store.js";
@@ -30,6 +39,23 @@ function shownSpecPath(specPath: string): string {
   // own name in that case.
   const rel = relative(process.cwd(), specPath);
   return rel.startsWith("..") ? basename(specPath) : rel;
+}
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+// The JSON Schema ships beside the spec package; the pragma wants a path from the spec file to it. Resolved
+// when needed (not at import), and a runtime that cannot give a file URL falls back to the default path.
+function schemaPragmaPath(specPath: string): string {
+  try {
+    const schemaFile = fileURLToPath(
+      new URL("../../spec/schemas/agent-spec.v1.0.schema.json", import.meta.url),
+    );
+    return relative(dirname(specPath), schemaFile).split("\\").join("/");
+  } catch {
+    return DEFAULT_SCHEMA_PATH;
+  }
 }
 
 function specFileErrorResponse(
@@ -105,7 +131,8 @@ export function createDevServer({
   // interface (and the shared `loadWithLayout` helper), so this is the one
   // place that would need to change to point `kampong dev` at a different
   // `SpecRepository` implementation later.
-  const store: SpecRepository = new SpecStore(specPath, layoutPath);
+  const fileStore = new SpecStore(specPath, layoutPath);
+  const store: SpecRepository = fileStore;
 
   // KAN-1901: these endpoints can pin a component and send credentials to a service, so a page the author
   // happens to visit must not be able to reach them. DNS rebinding makes such a page same-origin with
@@ -159,6 +186,11 @@ export function createDevServer({
     try {
       return await loadWithLayout(store);
     } catch (err) {
+      // KAM-196: no spec file is a new workflow, not an error. The canvas shows its empty state; the file is
+      // created on the first save (or on "Start blank"). Anything else that stops a read is still an error.
+      if (isNotFound(err)) {
+        return { success: false, missing: true, errors: [], layout: {}, source: "" };
+      }
       const { status, body } = specFileErrorResponse(err, specPath);
       reply.code(status);
       return body;
@@ -277,6 +309,40 @@ export function createDevServer({
     },
   );
 
+  // KAM-196: "Start blank". Writes the minimal valid spec (with the schema pragma) when there is no spec yet or
+  // the file is empty, and refuses to touch one that has content. The template gallery (KAM-216) plugs in next
+  // to this: choosing a template is a PUT /api/spec/source with that template's text.
+  app.post("/api/spec/blank", async (_request, reply) => {
+    watcher.beginMutation();
+    try {
+      const current = await fileStore.readSourceOrBlank();
+      if (!isBlankSource(current)) {
+        watcher.endMutation();
+        reply.code(409);
+        return {
+          success: false,
+          error: "This workflow already has content, so it was not replaced.",
+        };
+      }
+      const source = blankSpecSource({
+        schemaPath: schemaPragmaPath(specPath),
+      });
+      const result = await fileStore.replaceSourceAndSave(source);
+      if (!result.success) {
+        watcher.endMutation();
+        reply.code(422);
+        return { success: false, errors: result.errors };
+      }
+      watcher.endMutation(result.source);
+      return { success: true, spec: result.spec, revision: result.revision };
+    } catch (err) {
+      watcher.endMutation();
+      const { status, body } = specFileErrorResponse(err, specPath);
+      reply.code(status);
+      return body;
+    }
+  });
+
   // KAM-207 (ADR-0054): import. Replaces the spec file with the text given if it validates; an invalid text
   // is a 422 with line-numbered errors and the file is untouched.
   app.put<{ Body: { source?: unknown; baseRevision?: string } }>(
@@ -362,7 +428,19 @@ export function createDevServer({
   });
 
   app.post<{ Body: { input: string } }>("/api/runs", async (request, reply) => {
-    const { success, spec, errors } = await loadWithLayout(store);
+    let loaded;
+    try {
+      loaded = await loadWithLayout(store);
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+      reply.code(422);
+      return {
+        success: false,
+        errors: [],
+        error: "There is no workflow to run yet: choose a template or start blank first.",
+      };
+    }
+    const { success, spec, errors } = loaded;
     if (!success || !spec) {
       reply.code(422);
       return { success: false, errors };
