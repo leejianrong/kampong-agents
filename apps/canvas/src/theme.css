@@ -1374,3 +1374,17 @@ select.md3-text-field {
     box-shadow: 0 0 0 4px var(--md-sys-color-primary);
   }
 }
+
+/* Download / Import in the YAML view's header (KAM-207): quiet text buttons beside the title. */
+.md3-yaml-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.md3-yaml-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

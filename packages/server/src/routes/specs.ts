@@ -129,4 +129,45 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
       }
     },
   );
+
+  // KAM-207 (ADR-0054): import. Replaces the stored text with the text given if it validates; an invalid
+  // text is a 422 with line-numbered errors and nothing is written.
+  app.put<{ Params: { id: string }; Body: { source?: unknown; baseRevision?: string } }>(
+    "/api/specs/:id/source",
+    async (request, reply) => {
+      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      if (!ctx) return reply;
+
+      const source = request.body?.source;
+      if (typeof source !== "string") {
+        return reply
+          .code(400)
+          .send({ success: false, error: "Request body must include a `source` string." });
+      }
+
+      try {
+        const result = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
+          new PgSpecRepository(tx, ctx.workspaceId, request.params.id).replaceSourceAndSave(
+            source,
+            {
+              baseRevision: request.body?.baseRevision,
+            },
+          ),
+        );
+        if (!result.success) {
+          return reply
+            .code(result.stale ? 409 : 422)
+            .send({ success: false, errors: result.errors, revision: result.revision });
+        }
+        return { success: true, spec: result.spec, revision: result.revision };
+      } catch (err) {
+        if (err instanceof SpecNotFoundError) {
+          return reply
+            .code(404)
+            .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
+        }
+        throw err;
+      }
+    },
+  );
 }

@@ -1,6 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
   evaluateOps,
+  evaluateReplace,
+  type EvaluatedOps,
   persistLayoutMoves,
   staleResult,
   type ApplyOpsResult,
@@ -99,6 +101,21 @@ export class PgSpecRepository implements SpecRepository {
     ops: SpecOp[],
     options: { baseRevision?: string } = {},
   ): Promise<ApplyOpsResult> {
+    return this.writeEvaluated((current) => evaluateOps(current, ops, options.baseRevision));
+  }
+
+  /** Import: replaces the stored text with `source` as given if it validates (ADR-0054, KAM-207). */
+  async replaceSourceAndSave(
+    source: string,
+    options: { baseRevision?: string } = {},
+  ): Promise<ApplyOpsResult> {
+    return this.writeEvaluated((current) => evaluateReplace(current, source, options.baseRevision));
+  }
+
+  /** The locked read, the evaluation, and the version-checked write both write paths share. */
+  private async writeEvaluated(
+    evaluate: (current: { source: string; revision: string }) => EvaluatedOps,
+  ): Promise<ApplyOpsResult> {
     const [row] = await this.db
       .select({ yamlSource: specs.yamlSource, version: specs.version })
       .from(specs)
@@ -108,7 +125,7 @@ export class PgSpecRepository implements SpecRepository {
       throw new SpecNotFoundError(this.specId, this.workspaceId);
     }
     const revision = String(row.version);
-    const result = evaluateOps({ source: row.yamlSource, revision }, ops, options.baseRevision);
+    const result = evaluate({ source: row.yamlSource, revision });
     if (!result.success) {
       return "stale" in result ? { ...result } : { ...result, revision };
     }

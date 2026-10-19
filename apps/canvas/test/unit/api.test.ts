@@ -196,6 +196,33 @@ describe("createApiClient", () => {
     });
   });
 
+  // KAM-207 (ADR-0054): import sends the whole text to the source endpoint; a refusal resolves with its errors.
+  it("replaceSource PUTs the text to /api/spec/source and resolves a 422 with its line-numbered errors", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      fakeResponse(200, { success: true, revision: "r2" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      await createApiClient("http://h").replaceSource("version: x", { baseRevision: "r1" }),
+    ).toEqual({
+      success: true,
+      revision: "r2",
+    });
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://h/api/spec/source");
+    expect(fetchMock.mock.calls[0]![1].method).toBe("PUT");
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body as string)).toEqual({
+      source: "version: x",
+      baseRevision: "r1",
+    });
+
+    const errors = [{ path: [], message: "bad", line: 3 }];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => fakeResponse(422, { success: false, errors })),
+    );
+    expect(await createApiClient().replaceSource("x")).toEqual({ success: false, errors });
+  });
+
   it("listComponents reads /api/components", async () => {
     const body = { components: [], problems: ["x"] };
     const fetchMock = vi.fn(async (_url: string) => fakeResponse(200, body));

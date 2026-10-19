@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, dirname, extname } from "node:path";
 import {
   evaluateOps,
+  evaluateReplace,
   loadWithLayout as loadWithLayoutShared,
   parseLayout,
   persistLayoutMoves,
@@ -121,6 +122,21 @@ export class SpecStore implements SpecRepository {
    * changes it too and a stale `baseRevision` is refused. The spec is written first and the layout second;
    * a crash between them leaves a layout key `loadWithLayout` repairs.
    */
+  /** Import: the file is replaced with `source` as given if it validates (ADR-0054, KAM-207). */
+  async replaceSourceAndSave(
+    source: string,
+    options: { baseRevision?: string } = {},
+  ): Promise<ApplyOpsResult> {
+    const current = await this.readSource();
+    const revision = revisionOf(current);
+    const result = evaluateReplace({ source: current, revision }, source, options.baseRevision);
+    if (!result.success) {
+      return "stale" in result ? { ...result } : { ...result, revision };
+    }
+    if (result.source !== current) writeFileSync(this.specPath, result.source);
+    return { ...result, revision: revisionOf(result.source) };
+  }
+
   async applyOpsAndSave(
     ops: SpecOp[],
     options: { baseRevision?: string } = {},

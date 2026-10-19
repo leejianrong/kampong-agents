@@ -150,6 +150,7 @@ describe("createHostedSpecClient", () => {
         "GET /api/specs/s1": () =>
           jsonResponse(200, { success: true, spec: {}, errors: [], layout: {}, source: "" }),
         "PUT /api/specs/s1": () => jsonResponse(200, { success: true, spec: {} }),
+        "PUT /api/specs/s1/source": () => jsonResponse(200, { success: true, spec: {} }),
         "POST /api/specs/s1/runs": start,
       }),
     );
@@ -160,6 +161,8 @@ describe("createHostedSpecClient", () => {
     await expect(
       client.applyOps([{ op: "step.remove", step: "a" }], { baseRevision: "1" }),
     ).resolves.toMatchObject({ success: true });
+    // KAM-207: import goes to the spec's own source endpoint.
+    await expect(client.replaceSource("version: x")).resolves.toMatchObject({ success: true });
     await client.startRun("hello");
     expect(start).toHaveBeenCalledOnce();
   });

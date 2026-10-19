@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import * as fixtures from "../fixtures.js";
+import * as branchFixtures from "../fixtures-branch.js";
+import * as foreachFixtures from "../fixtures-foreach.js";
 import type { LayoutMap } from "../../src/layout.js";
 import type { SpecOp } from "../../src/ops.js";
 import { parseSpec } from "../../src/parse.js";
@@ -225,6 +229,79 @@ agent:
   },
 ];
 
+/**
+ * KAM-207 (ADR-0054): import and export. Export is the stored text; import replaces it with the text given,
+ * byte for byte, if it validates. `import(export(spec))` must give the same spec and the same text, for every
+ * fixture and for the market-etl template, in every repository.
+ */
+const ALL_FIXTURES: Record<string, string> = Object.fromEntries(
+  Object.entries({ ...fixtures, ...branchFixtures, ...foreachFixtures }).filter(
+    ([, value]) => typeof value === "string",
+  ) as [string, string][],
+);
+
+const IMPORT_FIXTURES: Record<string, string> = {
+  ...ALL_FIXTURES,
+  "market-etl template": readFileSync(
+    new URL("../../../cli/templates/market-etl/agent.yaml", import.meta.url),
+    "utf8",
+  ),
+};
+
+function runImportTests(createRepository: () => Promise<SpecRepository>): void {
+  describe("import and export (ADR-0054)", () => {
+    for (const [name, text] of Object.entries(IMPORT_FIXTURES)) {
+      it(`${name}: import then export gives the same text, and importing the export changes nothing`, async () => {
+        const repo = await createRepository();
+        const expected = parseSpec(text);
+        expect(expected.errors).toEqual([]);
+
+        const imported = await repo.replaceSourceAndSave(text);
+        expect(imported.success).toBe(true);
+        if (imported.success) expect(imported.spec).toEqual(expected.spec);
+        const exported = await repo.readSource();
+        expect(exported).toBe(text);
+
+        const again = await repo.replaceSourceAndSave(exported);
+        expect(again.success).toBe(true);
+        expect(await repo.readSource()).toBe(text);
+        if (imported.success && again.success) expect(again.revision).toBe(imported.revision);
+        expect(parseSpec(await repo.readSource()).spec).toEqual(expected.spec);
+      });
+    }
+
+    it("an invalid import is refused with line-numbered errors and writes nothing", async () => {
+      const repo = await createRepository();
+      const bad = CONTRACT_FIXTURE_SOURCE.replace("id: greeter", "id: [unclosed");
+      const result = await repo.replaceSourceAndSave(bad);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.errors.length).toBeGreaterThan(0);
+        expect(result.errors[0]!.line).toBeDefined();
+        expect(result.stale).toBeUndefined();
+      }
+      const invalid = CONTRACT_FIXTURE_SOURCE.replace("step: greet\n", 'step: ""\n');
+      const second = await repo.replaceSourceAndSave(invalid);
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.errors[0]!.line).toBeDefined();
+      expect(await repo.readSource()).toBe(CONTRACT_FIXTURE_SOURCE);
+    });
+
+    it("refuses an import made against a stale revision", async () => {
+      const repo = await createRepository();
+      const start = await repo.applyOpsAndSave([]);
+      if (!start.success) throw new Error("the fixture should apply an empty request");
+      await repo.applyOpsAndSave([{ op: "set", path: ["agent", "goal"], value: "Changed" }]);
+      const stale = await repo.replaceSourceAndSave(CONTRACT_FIXTURE_SOURCE, {
+        baseRevision: start.revision,
+      });
+      expect(stale.success).toBe(false);
+      if (!stale.success) expect(stale.stale).toBe(true);
+      expect(await repo.readSource()).toContain("Changed");
+    });
+  });
+}
+
 function runOpSequences(createRepository: () => Promise<SpecRepository>): void {
   describe("operation sequences (ADR-0055)", () => {
     for (const c of OP_SEQUENCES) {
@@ -311,6 +388,7 @@ export function runSpecRepositoryContractTests({
   createRepository,
 }: RepositoryContractOptions): void {
   runOpSequences(createRepository);
+  runImportTests(createRepository);
 
   describe("SpecRepository contract", () => {
     it("readSource returns the seeded spec source, byte for byte", async () => {

@@ -292,6 +292,7 @@ describe("App", () => {
         loadSpec: async () => SPEC_RESPONSE,
         applyPatch: async () => ({ success: true }),
         applyOps: async () => ({ success: true }),
+        replaceSource: async () => ({ success: true }),
         subscribeToEvents: () => () => {},
         startRun: async () => ({ success: true }),
         approveRun: async () => ({ success: true }),

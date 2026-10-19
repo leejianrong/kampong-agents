@@ -277,6 +277,36 @@ export function createDevServer({
     },
   );
 
+  // KAM-207 (ADR-0054): import. Replaces the spec file with the text given if it validates; an invalid text
+  // is a 422 with line-numbered errors and the file is untouched.
+  app.put<{ Body: { source?: unknown; baseRevision?: string } }>(
+    "/api/spec/source",
+    async (request, reply) => {
+      if (typeof request.body?.source !== "string") {
+        reply.code(400);
+        return { success: false, error: "Request body must include a `source` string." };
+      }
+      watcher.beginMutation();
+      try {
+        const result = await store.replaceSourceAndSave(request.body.source, {
+          baseRevision: request.body.baseRevision,
+        });
+        if (!result.success) {
+          watcher.endMutation();
+          reply.code(result.stale ? 409 : 422);
+          return { success: false, errors: result.errors, revision: result.revision };
+        }
+        watcher.endMutation(result.source);
+        return { success: true, spec: result.spec, revision: result.revision };
+      } catch (err) {
+        watcher.endMutation();
+        const { status, body } = specFileErrorResponse(err, specPath);
+        reply.code(status);
+        return body;
+      }
+    },
+  );
+
   app.put<{ Body: { ops: SpecOp[]; baseRevision?: string } }>(
     "/api/spec",
     async (request, reply) => {
