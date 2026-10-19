@@ -62,10 +62,16 @@ export interface StepsPanelProps {
   ) => Promise<RenameOutcome>;
   /** Moves a step one place up or down in its own list, through `ApiClient.applyOps`. Without it there are no Move buttons. */
   onMove?: (op: { op: "step.move"; step: string; to: Place }) => Promise<MoveOutcome>;
+  /**
+   * Inspector mode (KAM-211): show only the edit form of the step with this name, opened straight away, and
+   * none of the list. `onDone` is called when the form is saved or cancelled.
+   */
+  only?: string;
+  onDone?: () => void;
 }
 
 /** The list a step sits in, as the `place` the move operation takes, and where it is in that list. */
-function listOf(
+export function listOf(
   refs: StepRef[],
   ref: StepRef,
 ): { place: Place["in"]; index: number; length: number } {
@@ -129,6 +135,17 @@ type Editing =
   | { key: string; kind: "foreach"; input: ForEachEditInput }
   | { key: string; kind: "branch"; input: BranchEditInput };
 
+/** The form state that opens a step's editor, or null for a kind with no form. */
+function editingFor(ref: StepRef): Editing | null {
+  const key = ref.path.join("/");
+  if (isAction(ref)) return { key, kind: "action", input: actionStepToEditInput(ref.step) };
+  if (isSimple(ref)) return { key, kind: "simple", input: simpleStepToEditInput(ref.step) };
+  if (isForEach(ref)) return { key, kind: "foreach", input: forEachToEditInput(ref.step) };
+  if (isBranch(ref)) return { key, kind: "branch", input: branchToEditInput(ref.step) };
+  if (isData(ref)) return { key, kind: "data", input: dataStepToEditInput(ref.step) };
+  return null;
+}
+
 /** What an expression in this step can read: the spec's vars, trigger and steps, plus a foreach's loop variable and the body steps ahead of it. */
 function scopeFor(spec: AgentSpec, ref: StepRef): ExpressionScope | undefined {
   return spec.version === "1.1" ? expressionScopeForStepAt(spec, ref.path) : undefined;
@@ -173,9 +190,14 @@ export function StepsPanel({
   onRemove,
   onRename,
   onMove,
+  only,
+  onDone,
 }: StepsPanelProps) {
   const refs = listSteps(spec);
-  const [editing, setEditing] = useState<Editing | null>(null);
+  const target = only === undefined ? undefined : refs.find((r) => r.name === only);
+  const [editing, setEditing] = useState<Editing | null>(() =>
+    target && (spec.version === "1.1" || isSimple(target)) ? editingFor(target) : null,
+  );
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   // Opening a form scrolls the panel back to the top: the Edit button sits in a list below the form, so a
@@ -193,6 +215,7 @@ export function StepsPanel({
   const close = () => {
     setEditing(null);
     setErrors([]);
+    onDone?.();
   };
   const patch = (change: Partial<ActionStepEditInput>) =>
     setEditing((e) => (e && e.kind === "action" ? { ...e, input: { ...e.input, ...change } } : e));
@@ -259,11 +282,18 @@ export function StepsPanel({
 
   return (
     <section ref={top} className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
-      <p className="md3-body-small md3-field__hint">
-        Edit a step in place: an action step's query, instructions, model, temperature and output
-        schema, a transform, validate or dedupe step's expressions, a tool step's tool, a stop
-        step's reason and status, or an approval step's message.
-      </p>
+      {only === undefined && (
+        <p className="md3-body-small md3-field__hint">
+          Edit a step in place: an action step's query, instructions, model, temperature and output
+          schema, a transform, validate or dedupe step's expressions, a tool step's tool, a stop
+          step's reason and status, or an approval step's message.
+        </p>
+      )}
+      {only !== undefined && target && !editing && modern && (
+        <p className="md3-body-small md3-field__hint" data-testid="step-not-editable">
+          {NOT_EDITABLE[target.kind] ?? "This step cannot be edited in a form here."}
+        </p>
+      )}
       {!modern && <VersionGate what="Per-step settings and an output schema" />}
 
       {editing && editing.kind === "action" && current && isAction(current) && (
@@ -603,89 +633,65 @@ export function StepsPanel({
         </form>
       )}
 
-      <ul className="md3-doctor__list" data-testid="steps-list">
-        {refs.map((ref) => (
-          <DeletableRow
-            // Keyed by name, so a moved step's row (and the focus on its button) moves with it.
-            key={`${ref.name}#${refs.slice(0, refs.indexOf(ref)).filter((r) => r.name === ref.name).length}`}
-            spec={spec}
-            noun="step"
-            name={ref.name}
-            hint={`${ref.kind}${ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}`}
-            extra={insideCount(refs, ref)}
-            disabled={busy || editing !== null}
-            onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
-            onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
-            usedIn={usedIn(spec, { step: ref.name })}
-            move={
-              onMove &&
-              (() => {
-                const { place, index, length } = listOf(refs, ref);
-                return {
-                  canUp: index > 0,
-                  canDown: index < length - 1,
-                  run: (direction) =>
-                    onMove({
-                      op: "step.move",
-                      step: ref.name,
-                      to: { in: place, index: direction === "up" ? index - 1 : index + 1 },
-                    }),
-                };
-              })()
-            }
-          >
-            {(isAction(ref) || isData(ref) || isSimple(ref) || isForEach(ref) || isBranch(ref)) && (
-              <button
-                type="button"
-                className="md3-button md3-button-text"
-                disabled={busy || editing !== null || (!modern && !isSimple(ref))}
-                aria-label={`Edit ${ref.name}`}
-                onClick={() => {
-                  setErrors([]);
-                  setEditing(
-                    isAction(ref)
-                      ? {
-                          key: keyOf(ref),
-                          kind: "action",
-                          input: actionStepToEditInput(ref.step),
-                        }
-                      : isSimple(ref)
-                        ? {
-                            key: keyOf(ref),
-                            kind: "simple",
-                            input: simpleStepToEditInput(ref.step),
-                          }
-                        : isForEach(ref)
-                          ? {
-                              key: keyOf(ref),
-                              kind: "foreach",
-                              input: forEachToEditInput(ref.step),
-                            }
-                          : isBranch(ref)
-                            ? {
-                                key: keyOf(ref),
-                                kind: "branch",
-                                input: branchToEditInput(ref.step),
-                              }
-                            : {
-                                key: keyOf(ref),
-                                kind: "data",
-                                input: dataStepToEditInput((ref as DataRef).step),
-                              },
-                  );
-                }}
-              >
-                Edit
-              </button>
-            )}
-            {NOT_EDITABLE[ref.kind] && (
-              <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
-            )}
-          </DeletableRow>
-        ))}
-      </ul>
+      {only === undefined && (
+        <ul className="md3-doctor__list" data-testid="steps-list">
+          {refs.map((ref) => (
+            <DeletableRow
+              // Keyed by name, so a moved step's row (and the focus on its button) moves with it.
+              key={`${ref.name}#${refs.slice(0, refs.indexOf(ref)).filter((r) => r.name === ref.name).length}`}
+              spec={spec}
+              noun="step"
+              name={ref.name}
+              hint={`${ref.kind}${ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}`}
+              extra={insideCount(refs, ref)}
+              disabled={busy || editing !== null}
+              onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
+              onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
+              usedIn={usedIn(spec, { step: ref.name })}
+              move={
+                onMove &&
+                (() => {
+                  const { place, index, length } = listOf(refs, ref);
+                  return {
+                    canUp: index > 0,
+                    canDown: index < length - 1,
+                    run: (direction) =>
+                      onMove({
+                        op: "step.move",
+                        step: ref.name,
+                        to: { in: place, index: direction === "up" ? index - 1 : index + 1 },
+                      }),
+                  };
+                })()
+              }
+            >
+              {(isAction(ref) ||
+                isData(ref) ||
+                isSimple(ref) ||
+                isForEach(ref) ||
+                isBranch(ref)) && (
+                <button
+                  type="button"
+                  className="md3-button md3-button-text"
+                  disabled={busy || editing !== null || (!modern && !isSimple(ref))}
+                  aria-label={`Edit ${ref.name}`}
+                  onClick={() => {
+                    setErrors([]);
+                    setEditing(editingFor(ref));
+                  }}
+                >
+                  Edit
+                </button>
+              )}
+              {NOT_EDITABLE[ref.kind] && (
+                <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
+              )}
+            </DeletableRow>
+          ))}
+        </ul>
+      )}
 
-      {onEditTool && (
+      {only === undefined && onEditTool && (
         <>
           <span className="md3-title-small">Tools</span>
           <ul className="md3-doctor__list" data-testid="tools-list">

@@ -140,7 +140,8 @@ export function DeletableRow({
     setMoving(false);
     setMoveErrors(result.success ? [] : result.messages);
   }
-  const [stage, setStage] = useState<"idle" | "confirm" | "busy" | "failed">("idle");
+  const remove = useRemoveFlow(onRemove);
+  const { stage } = remove;
   const [renaming, setRenaming] = useState<{
     draft: string;
     errors: string[];
@@ -171,25 +172,6 @@ export function DeletableRow({
       result.success ? null : { draft: renaming.draft, errors: result.messages, busy: false },
     );
   }
-  const [outcome, setOutcome] = useState<Extract<RemoveOutcome, { success: false }> | null>(null);
-
-  async function confirm() {
-    if (!onRemove) return;
-    setStage("busy");
-    const result = await onRemove();
-    if (result.success) {
-      setStage("idle"); // the row is gone once the spec reloads
-      return;
-    }
-    setOutcome(result);
-    setStage("failed");
-  }
-
-  const close = () => {
-    setStage("idle");
-    setOutcome(null);
-  };
-
   return (
     <li className="md3-secrets__row">
       <span className="md3-vars__name">
@@ -239,7 +221,7 @@ export function DeletableRow({
             className="md3-button md3-button-text"
             disabled={disabled || stage !== "idle"}
             aria-label={`Delete ${noun} ${name}`}
-            onClick={() => setStage("confirm")}
+            onClick={remove.start}
           >
             Delete
           </button>
@@ -307,6 +289,65 @@ export function DeletableRow({
           </span>
         </form>
       )}
+      <RemovePrompt spec={spec} noun={noun} name={name} extra={extra} flow={remove} />
+    </li>
+  );
+}
+
+export interface RemoveFlow {
+  stage: "idle" | "confirm" | "busy" | "failed";
+  setStage: (stage: RemoveFlow["stage"]) => void;
+  outcome: Extract<RemoveOutcome, { success: false }> | null;
+  /** Shows the confirm. */
+  start: () => void;
+  confirm: () => Promise<void>;
+  close: () => void;
+}
+
+/** The delete flow of KAM-171 (confirm, then the server decides, a refusal lists what uses the name), shared by the row's Delete button and the node inspector's. */
+export function useRemoveFlow(onRemove?: () => Promise<RemoveOutcome>): RemoveFlow {
+  const [stage, setStage] = useState<RemoveFlow["stage"]>("idle");
+  const [outcome, setOutcome] = useState<RemoveFlow["outcome"]>(null);
+
+  async function confirm() {
+    if (!onRemove) return;
+    setStage("busy");
+    const result = await onRemove();
+    if (result.success) {
+      setStage("idle"); // the row is gone once the spec reloads
+      return;
+    }
+    setOutcome(result);
+    setStage("failed");
+  }
+
+  const close = () => {
+    setStage("idle");
+    setOutcome(null);
+  };
+
+  return { stage, setStage, outcome, start: () => setStage("confirm"), confirm, close };
+}
+
+/** The confirm and the refusal of a delete: what goes, and when the server refuses, the places that still use it. */
+export function RemovePrompt({
+  spec,
+  noun,
+  name,
+  extra,
+  flow,
+  autoFocusConfirm,
+}: {
+  spec: AgentSpec;
+  noun: "step" | "tool";
+  name: string;
+  extra?: string | undefined;
+  flow: RemoveFlow;
+  autoFocusConfirm?: boolean;
+}) {
+  const { stage, outcome, confirm, close } = flow;
+  return (
+    <>
       {(stage === "confirm" || stage === "busy") && (
         <div role="group" aria-label={`Delete ${noun} ${name}?`} className="md3-delete">
           <span className="md3-body-small">
@@ -317,6 +358,7 @@ export function DeletableRow({
               type="button"
               className="md3-button md3-button-filled"
               disabled={stage === "busy"}
+              autoFocus={autoFocusConfirm}
               onClick={() => void confirm()}
             >
               Delete {noun}
@@ -364,6 +406,6 @@ export function DeletableRow({
           </button>
         </div>
       )}
-    </li>
+    </>
   );
 }

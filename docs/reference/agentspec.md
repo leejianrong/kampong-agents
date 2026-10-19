@@ -469,6 +469,26 @@ kind and the line of the field.
 | `model`           | string   | no       | A different model of the same provider for this step. Version 1.1.           |
 | `temperature`     | number   | no       | Sampling temperature, 0 to 2. Version 1.1.                                    |
 
+#### Selecting a node on the canvas
+
+Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the
+toolbar: the step forms of **Edit Steps** for every kind of step (action, tool, approval, transform, validate,
+dedupe, stop, foreach, branch, including a foreach's body steps and a branch's arms), the tool form for a tool node,
+the **Trigger** form for the trigger node and the guardrails form for the guardrails node. A condition step, or a
+step on a `"1.0"` spec, has no form; its panel says so and still offers Delete and Duplicate. Each node has an
+accessible name (for example "Transform step scratch, in loop") and a focus ring, and the selected node is outlined.
+
+| Key | What it does |
+| --- | --- |
+| `Esc` | Closes the panel and puts focus back on the node. Closes the delete confirm first when it is open. |
+| `Delete` | Deletes the selected step or tool after the usual confirm (outside a text field). A step or tool that something still uses is refused and the places are listed. |
+| `Ctrl+D` / `Cmd+D` | Duplicates the selected step or tool as `<name>_copy` (then `_copy2`...). The copy sits right after the original in the same list, a copied foreach or branch gets new names for the steps inside it, and the copy is selected. |
+
+The panel also has **Duplicate** and **Delete** buttons. Clicking another node, the empty canvas or a toolbar button
+while a form has input you have not saved asks first ("Keep editing" or "Discard changes"); saving or cancelling
+closes the panel without asking. Selecting a node replaces any toolbar panel, and a toolbar button replaces the node's
+panel. **Duplicate** and **Delete** are not offered on the trigger and guardrails nodes.
+
 On the canvas, **Edit Steps** lists every step (a branch's arms and a foreach's body included) and opens an action
 step in place: its instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
 editor with nested objects, arrays, enums and `required`. The form refuses what the loader refuses (an object with

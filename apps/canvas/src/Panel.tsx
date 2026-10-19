@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 // The one container every tool panel docks in (KAM-177): a fixed header with the title and a Close action, and a
 // body that scrolls on its own. Panels sit in the side pane above the YAML view, never over the canvas, so no node
@@ -9,14 +9,28 @@ import type { ReactNode } from "react";
 export interface PanelProps {
   title: string;
   onClose: () => void;
+  /** Extra header buttons before Close (the inspector's Duplicate and Delete, KAM-211). */
+  actions?: ReactNode;
+  /** For the inspector, which moves focus to the panel and is found by tests. */
+  panelRef?: Ref<HTMLElement>;
+  testId?: string;
+  nodeId?: string;
   children: ReactNode;
 }
 
-export function Panel({ title, onClose, children }: PanelProps) {
+export function Panel({ title, onClose, actions, panelRef, testId, nodeId, children }: PanelProps) {
   return (
-    <section className="md3-panel" aria-label={title}>
+    <section
+      ref={panelRef}
+      className="md3-panel"
+      aria-label={title}
+      tabIndex={-1}
+      data-testid={testId}
+      data-node={nodeId}
+    >
       <header className="md3-panel__header">
         <h2 className="md3-title-medium md3-panel__title">{title}</h2>
+        {actions}
         <button
           type="button"
           className="md3-button md3-button-text"

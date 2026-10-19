@@ -1473,4 +1473,56 @@ select.md3-text-field {
 
 .md3-empty-state__card .md3-banner {
   margin: 0;
+
+/* Node selection and focus (KAM-211). The selected node keeps the primary outline xyflow draws through
+   --xy-node-boxshadow-selected and takes the M3 pressed-strength state layer (12% primary); hover is 8%. The
+   focus ring is separate from the selected outline, so a focused-but-unselected node and a selected node read
+   differently and both stay visible in forced-colors mode. */
+.md3-flow-wrap .react-flow__node.md3-node:not(.md3-node--marker) {
+  cursor: pointer;
+}
+
+.md3-flow-wrap .react-flow__node.md3-node:not(.md3-node--marker):hover {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent),
+    color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent)
+  );
+}
+
+.md3-flow-wrap .react-flow__node.md3-node.selected {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent),
+    color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent)
+  );
+  box-shadow: 0 0 0 2px var(--md-sys-color-primary);
+}
+
+.md3-flow-wrap .react-flow__node.md3-node:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
+.md3-panel__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.md3-panel:focus {
+  outline: none;
+}
+
+.md3-inspector__prompts:empty {
+  display: none;
+}
+
+.md3-inspector__discard {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+@media (forced-colors: active) {
+  .md3-flow-wrap .react-flow__node.md3-node.selected {
+    outline: 3px solid Highlight;
+  }
 }
