@@ -485,8 +485,17 @@ dedupe's key and `ttl`.
 A foreach's body steps are nodes of their own on the canvas, set in from the loop and joined in run order
 (loop, each body step, then the step after the loop). A foreach opens in **Edit Steps** with its `items`, loop
 variable, `concurrency` and `on_error` (`fail`, `continue` or `retry`; an `on_error: goto` is left as written).
-**Add Workflow Step** has an **Add to** choice: pick a loop to add a step of any kind at the end of its body. An
-approval or a nested foreach is refused by the spec, and the form shows that message.
+**Add Workflow Step** has an **Add to** choice: pick a loop, or an arm of a branch (`then`, `else`, a case or the
+`default`), to add a step of any kind at the end of it. An `else` or `default` that is not there yet is created. An
+approval in a loop, a nested foreach, or a step after a stop is refused by the spec, and the form shows that message.
+
+A branch's arms are nodes of their own the same way: each arm step is set in from its branch and marked with the arm
+it is in, the branch leads to the first step of each arm on a line labelled `then`, `else`, `case <value>` or
+`default`, and every arm that does not end in a stop leads on to the next step (a missing `else`, or no matching
+case, goes straight on). A branch opens in **Edit Steps** with its `if` condition or its `switch` value; its arms
+are edited, deleted and added to as steps. In the Add form, **Branch on** a value builds a `switch`: one
+`value: step: tool` line per step (repeat a value for more steps in a case) and an optional default. Adding a new
+case to an existing switch is done in the YAML for now.
 
 A tool step opens with a picker over the agent's tools, a stop step with its `reason` and `status` (clearing a
 field removes it from the file), and an approval step with its `message`; these also work on a `"1.0"` spec except

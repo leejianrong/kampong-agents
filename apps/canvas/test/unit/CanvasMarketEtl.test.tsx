@@ -38,7 +38,19 @@ describe("the market-etl template on the canvas", () => {
     const items = [...document.querySelectorAll(".md3-node--nested")].map((node) =>
       node.getAttribute("data-id")?.replace("workflow:", ""),
     );
-    expect(items).toEqual(["fetch", "check", "shape", "sane", "delta", "row", "write", "anomaly"]);
+    // The branch's then arm (summarize, alert) is nodes too, in run order after the branch.
+    expect(items).toEqual([
+      "fetch",
+      "check",
+      "shape",
+      "sane",
+      "delta",
+      "row",
+      "write",
+      "anomaly",
+      "summarize",
+      "alert",
+    ]);
     expect(screen.getByText(/report/)).toBeTruthy();
   });
 });

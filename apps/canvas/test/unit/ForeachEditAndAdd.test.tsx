@@ -75,25 +75,35 @@ describe("StepsPanel: editing a foreach", () => {
   });
 });
 
+const PLACE = { in: { step: "each", slot: "steps" as const } };
+const TARGETS = [
+  {
+    id: "each/steps",
+    label: "Inside each (the loop's body)",
+    place: PLACE,
+    scope: { vars: [], steps: [], trigger: [] },
+  },
+];
+
 describe("WorkflowStepForm: Add to a loop", () => {
   afterEach(cleanup);
 
   it("offers the loops, and hands the step and the loop to onSubmit", async () => {
     const onSubmit = vi.fn(async () => undefined);
-    render(<WorkflowStepForm loops={["each"]} onSubmit={onSubmit} onCancel={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each" } });
+    render(<WorkflowStepForm targets={TARGETS} onSubmit={onSubmit} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each/steps" } });
     click("Stop");
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "halt" } });
     click("Save step");
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith({ step: "halt", stop: { status: "skipped" } }, "each"),
+      expect(onSubmit).toHaveBeenCalledWith({ step: "halt", stop: { status: "skipped" } }, PLACE),
     );
   });
 
   it("shows what the save refused", async () => {
     const onSubmit = vi.fn(async () => ["an approval cannot go in a loop"]);
-    render(<WorkflowStepForm loops={["each"]} onSubmit={onSubmit} onCancel={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each" } });
+    render(<WorkflowStepForm targets={TARGETS} onSubmit={onSubmit} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each/steps" } });
     click("Approval");
     fireEvent.change(screen.getByLabelText("Step ID"), { target: { value: "ask" } });
     click("Save step");
@@ -144,7 +154,7 @@ describe("App: adding a step inside a foreach", () => {
       expect(screen.getByRole("button", { name: "Add Workflow Step" })).toBeTruthy(),
     );
     click("Add Workflow Step");
-    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each_symbol" } });
+    fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each_symbol/steps" } });
   };
 
   it("sends a step.insert at the loop's body", async () => {

@@ -1,8 +1,7 @@
 import {
   specToGraph,
   expressionScopeFor,
-  expressionScopeForLoopBody,
-  listSteps,
+  addTargets,
   outputReferenceOptions,
   removeTriggerPatch,
   removeVarPatch,
@@ -14,6 +13,7 @@ import {
   type ComponentCatalog,
   type Guardrails,
   type PatchOp,
+  type Place,
   type SpecVar,
   type Tool,
   type Trigger,
@@ -244,14 +244,14 @@ export function App({
     if (ops.length > 0) await refresh();
   }
 
-  // A step added inside a foreach goes in by name at the end of its body (ADR-0055). A refusal (an approval or a
-  // nested loop in a body, a name already used) comes back as plain messages for the form to show.
-  async function handleAddLoopBodyStep(loop: string, step: WorkflowStep): Promise<string[] | void> {
+  // A step added inside a foreach body or a branch arm goes in at a place, by name (ADR-0055). A refusal (an
+  // approval or a nested loop in a body, a name already used) comes back as plain messages for the form to show.
+  async function handleAddStepAt(place: Place, step: WorkflowStep): Promise<string[] | void> {
     try {
       const result = await api.applyOps([
         {
           op: "step.insert",
-          place: { in: { step: loop, slot: "steps" } },
+          place,
           step: step as unknown as Record<string, unknown>,
         },
       ]);
@@ -570,18 +570,9 @@ export function App({
               <WorkflowStepForm
                 version={spec?.version}
                 scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
-                loops={
-                  spec
-                    ? listSteps(spec)
-                        .filter((r) => r.kind === "foreach")
-                        .map((r) => r.name)
-                    : []
-                }
-                scopeForLoop={(loop) => expressionScopeForLoopBody(spec!, loop)}
-                onSubmit={(step, loop) =>
-                  loop === undefined
-                    ? handleAddWorkflowStep(step)
-                    : handleAddLoopBodyStep(loop, step)
+                targets={spec ? addTargets(spec) : []}
+                onSubmit={(step, place) =>
+                  place === undefined ? handleAddWorkflowStep(step) : handleAddStepAt(place, step)
                 }
                 onCancel={() => setOpenForm(null)}
               />

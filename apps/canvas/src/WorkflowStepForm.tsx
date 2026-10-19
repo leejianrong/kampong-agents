@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { buildWorkflowStepFromForm, type ExpressionScope, type WorkflowStep } from "@kampong/spec";
+import {
+  buildWorkflowStepFromForm,
+  type AddTarget,
+  type ExpressionScope,
+  type Place,
+  type WorkflowStep,
+} from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
 
 // The "Add Workflow Step" affordance -- same structured, zero-LLM-calls
@@ -88,30 +94,28 @@ export interface WorkflowStepFormProps {
   /** Names in scope for the expression fields (KAM-160). Absent on a 1.0 spec, whose fields are plain text. */
   scope?: ExpressionScope;
   /**
-   * The foreach steps a new step can go inside (KAM-153). With any, the form offers "Add to": the workflow, or the
-   * end of one of these loops.
+   * Places a new step can go besides the end of the workflow (KAM-153, KAM-154): the end of a foreach's body or of
+   * a branch's arm. With any, the form offers "Add to".
    */
-  loops?: string[];
-  /** What an expression can read at the end of a loop's body: the loop variable and the body so far. */
-  scopeForLoop?: (loop: string) => ExpressionScope;
+  targets?: AddTarget[];
   /**
-   * Receives the built step and, for a loop body, the loop's name. May answer with messages to show in the form
-   * (a refused save), or nothing.
+   * Receives the built step and, for a loop body or an arm, its place. May answer with messages to show in the
+   * form (a refused save), or nothing.
    */
-  onSubmit: (step: WorkflowStep, loop?: string) => void | string[] | Promise<void | string[]>;
+  onSubmit: (step: WorkflowStep, place?: Place) => void | string[] | Promise<void | string[]>;
   onCancel: () => void;
 }
 
 export function WorkflowStepForm({
   version,
   scope: workflowScope,
-  loops = [],
-  scopeForLoop,
+  targets = [],
   onSubmit,
   onCancel,
 }: WorkflowStepFormProps) {
-  const [loop, setLoop] = useState("");
-  const scope = loop !== "" && scopeForLoop ? scopeForLoop(loop) : workflowScope;
+  const [targetId, setTargetId] = useState("");
+  const target = targets.find((t) => t.id === targetId);
+  const scope = target ? target.scope : workflowScope;
   const [kind, setKind] = useState<StepKind>("action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
@@ -142,6 +146,11 @@ export function WorkflowStepForm({
   const [branchIf, setBranchIf] = useState("");
   const [branchThen, setBranchThen] = useState("");
   const [branchElse, setBranchElse] = useState("");
+  // A switch branch (KAM-154): the value it reads, the cases, and an optional default.
+  const [branchMode, setBranchMode] = useState<"if" | "switch">("if");
+  const [branchSwitch, setBranchSwitch] = useState("");
+  const [branchCases, setBranchCases] = useState("");
+  const [branchDefault, setBranchDefault] = useState("");
   const [stopReason, setStopReason] = useState("");
   const [stopStatus, setStopStatus] = useState<"skipped" | "completed">("skipped");
   const [errors, setErrors] = useState<string[]>([]);
@@ -156,6 +165,11 @@ export function WorkflowStepForm({
         if: branchIf,
         then: branchThen,
         else: branchElse,
+        ...(branchMode === "switch" && {
+          switch: branchSwitch,
+          cases: branchCases,
+          default: branchDefault,
+        }),
       });
     } else if (kind === "stop") {
       result = buildWorkflowStepFromForm({
@@ -218,7 +232,7 @@ export function WorkflowStepForm({
       setErrors(result.errors ?? ["Invalid workflow step"]);
       return;
     }
-    const refused = await (loop === "" ? onSubmit(result.step) : onSubmit(result.step, loop));
+    const refused = await (target ? onSubmit(result.step, target.place) : onSubmit(result.step));
     if (Array.isArray(refused) && refused.length > 0) setErrors(refused);
   }
 
@@ -255,14 +269,18 @@ export function WorkflowStepForm({
         </span>
       </div>
 
-      {loops.length > 0 && (
+      {targets.length > 0 && (
         <label className="md3-field">
           <span className="md3-field__label md3-label-large">Add to</span>
-          <select className="md3-text-field" value={loop} onChange={(e) => setLoop(e.target.value)}>
+          <select
+            className="md3-text-field"
+            value={targetId}
+            onChange={(e) => setTargetId(e.target.value)}
+          >
             <option value="">The workflow (at the end)</option>
-            {loops.map((name) => (
-              <option key={name} value={name}>
-                Inside {name} (at the end of its body)
+            {targets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}, at the end
               </option>
             ))}
           </select>
@@ -508,32 +526,77 @@ export function WorkflowStepForm({
 
       {kind === "branch" && (
         <>
-          <ExpressionField
-            label="If (expression that gives true or false)"
-            value={branchIf}
-            onChange={setBranchIf}
-            scope={scope}
-          />
           <label className="md3-field">
-            <span className="md3-field__label md3-label-large">
-              Then (one tool per line, step: tool)
-            </span>
-            <textarea
+            <span className="md3-field__label md3-label-large">Branch on</span>
+            <select
               className="md3-text-field"
-              value={branchThen}
-              onChange={(e) => setBranchThen(e.target.value)}
-            />
+              value={branchMode}
+              onChange={(e) => setBranchMode(e.target.value as "if" | "switch")}
+            >
+              <option value="if">A condition (then / else)</option>
+              <option value="switch">A value (one arm per case)</option>
+            </select>
           </label>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">
-              Else (optional, one tool per line)
-            </span>
-            <textarea
-              className="md3-text-field"
-              value={branchElse}
-              onChange={(e) => setBranchElse(e.target.value)}
-            />
-          </label>
+          {branchMode === "if" ? (
+            <>
+              <ExpressionField
+                label="If (expression that gives true or false)"
+                value={branchIf}
+                onChange={setBranchIf}
+                scope={scope}
+              />
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  Then (one tool per line, step: tool)
+                </span>
+                <textarea
+                  className="md3-text-field"
+                  value={branchThen}
+                  onChange={(e) => setBranchThen(e.target.value)}
+                />
+              </label>
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  Else (optional, one tool per line)
+                </span>
+                <textarea
+                  className="md3-text-field"
+                  value={branchElse}
+                  onChange={(e) => setBranchElse(e.target.value)}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <ExpressionField
+                label="Switch on (expression that gives the value)"
+                value={branchSwitch}
+                onChange={setBranchSwitch}
+                scope={scope}
+              />
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  Cases (one per line, value: step: tool)
+                </span>
+                <textarea
+                  className="md3-text-field"
+                  placeholder={"bug: reply_bug: reply\nbilling: reply_billing: reply"}
+                  value={branchCases}
+                  onChange={(e) => setBranchCases(e.target.value)}
+                />
+              </label>
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  Default (optional, one tool per line)
+                </span>
+                <textarea
+                  className="md3-text-field"
+                  value={branchDefault}
+                  onChange={(e) => setBranchDefault(e.target.value)}
+                />
+              </label>
+            </>
+          )}
         </>
       )}
 
