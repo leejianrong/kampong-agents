@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { parseSpec, type PatchOp, type SpecOp } from "@kampong/spec";
+import { applyOpsToSource, parseSpec, type PatchOp, type SpecOp } from "@kampong/spec";
+import type { RemoveOutcome } from "../../src/DeleteControl.js";
 import { App } from "../../src/App.js";
 import { StepsPanel } from "../../src/StepsPanel.js";
 import { WorkflowStepForm } from "../../src/WorkflowStepForm.js";
@@ -170,5 +171,55 @@ describe("App: adding a step inside a foreach", () => {
     click("Save step");
     expect((await screen.findByRole("alert")).textContent).toContain("approval cannot go");
     expect(screen.getByRole("form", { name: "Add Workflow Step" })).toBeTruthy();
+  });
+});
+
+describe("StepsPanel: Delete on a foreach body step (market-etl)", () => {
+  afterEach(cleanup);
+
+  // Runs the real ops layer on the template, as the server would.
+  function setup() {
+    const { spec } = parseSpec(SOURCE);
+    let source = SOURCE;
+    const onRemove = vi.fn(async (op: SpecOp): Promise<RemoveOutcome> => {
+      const res = applyOpsToSource(source, [op]);
+      if (res.success) {
+        source = res.source;
+        return { success: true };
+      }
+      return {
+        success: false,
+        blocked: res.errors.some((e) => e.code === "has_references"),
+        messages: res.errors.map((e) => e.message),
+        references: res.errors.flatMap((e) => e.references ?? []),
+      };
+    });
+    render(<StepsPanel spec={spec!} onPatch={vi.fn(async () => true)} onRemove={onRemove} />);
+    return { onRemove, now: () => source };
+  }
+  const confirm = (name: string) => {
+    click(`Delete step ${name}`);
+    fireEvent.click(
+      within(screen.getByRole("group", { name: `Delete step ${name}?` })).getByRole("button", {
+        name: "Delete step",
+      }),
+    );
+  };
+
+  it("deletes a body step nothing reads, and the spec stays valid", async () => {
+    const { onRemove, now } = setup();
+    confirm("alert");
+    await waitFor(() => expect(onRemove).toHaveBeenCalledTimes(1));
+    expect(now()).not.toContain("tool: post_alert");
+    expect(parseSpec(now()).errors).toEqual([]);
+  });
+
+  it("blocks a body step a later body step reads, and lists the readers", async () => {
+    const { now } = setup();
+    confirm("shape");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("cannot be deleted yet");
+    expect(alert.textContent).toContain('step "delta"');
+    expect(now()).toBe(SOURCE);
   });
 });
