@@ -182,6 +182,13 @@ ops:
 `,
     );
     await startServer(MINIMAL_SPEC);
+    // KAM-226: the first catalog request scans and hashes every first-party component, which costs
+    // ~100-200ms idle and several times that under load. Pay for it here, awaited, so the form's own fetch is a cache hit
+    // and the findByRole below measures the render, not the cold scan.
+    const catalog = (await (await fetch(`${baseUrl}/api/components`)).json()) as {
+      components: { id: string; version: string }[];
+    };
+    expect(catalog.components.map((c) => `${c.id}@${c.version}`)).toContain("acme/tickets@1.0.0");
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
 
