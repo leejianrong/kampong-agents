@@ -145,12 +145,18 @@ function ActionMenu({ items }: { items: ActionDescriptor[] }) {
               role="menuitem"
               className="md3-menu__item"
               title={item.title}
+              aria-keyshortcuts={item.shortcut}
               onClick={() => {
                 setOpen(false);
                 item.run();
               }}
             >
               {item.label}
+              {item.shortcut && (
+                <span className="md3-menu__shortcut md3-label-small" aria-hidden="true">
+                  {item.shortcut}
+                </span>
+              )}
             </button>
           ))}
         </div>

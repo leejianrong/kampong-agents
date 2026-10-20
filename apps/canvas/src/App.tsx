@@ -62,6 +62,7 @@ import { YamlPreview } from "./YamlPreview.js";
 import { buildActions, type OpenForm } from "./actions.js";
 import { TopBar, type SaveState } from "./TopBar.js";
 import { StatusBar } from "./StatusBar.js";
+import { CommandPalette } from "./CommandPalette.js";
 import { buildYamlSourceMap, nodeAtLine } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
@@ -721,6 +722,24 @@ export function App({
     return rows;
   };
 
+  // KAM-215: Ctrl/Cmd+K opens the command palette from anywhere, including a text field.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  function goToNode(id: string) {
+    const asks = unsavedInput() && id !== selected;
+    requestSelect(id);
+    if (!asks) setFocus({ id, nonce: Date.now() });
+  }
+
   const saveState: SaveState = specError ? "failed" : errors.length > 0 ? "paused" : "saved";
   const actions = buildActions({
     openForm,
@@ -732,6 +751,7 @@ export function App({
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
     toggleYaml: () => setYamlOpen((open) => !open),
     download: downloadAsFile,
+    openPalette: () => setPaletteOpen(true),
   });
 
   // KAM-199: only where the canvas can write a spec that then runs. The hosted server refuses a 1.1 spec.
@@ -1058,6 +1078,14 @@ export function App({
           </div>
         </div>
         <StatusBar actions={actions} />
+        {paletteOpen && (
+          <CommandPalette
+            actions={actions}
+            nodes={graph.nodes}
+            onGoTo={goToNode}
+            onClose={() => setPaletteOpen(false)}
+          />
+        )}
       </div>
     </UpgradeContext.Provider>
   );
