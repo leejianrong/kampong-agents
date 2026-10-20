@@ -26,7 +26,7 @@ SLACK_BOT_TOKEN=xoxb-...
 ```
 
 A spec never contains a secret, only the name of the variable. You can also set the values from the
-canvas instead of editing `.env`: click **Secrets**, then **Set** next to `SLACK_BOT_TOKEN` and
+canvas instead of editing `.env`: click **Secrets** in the status bar, then **Set** next to `SLACK_BOT_TOKEN` and
 paste the token. It is saved on your machine, takes effect immediately, and is never shown again.
 
 !!! note "After editing `.env`, recreate the container"
@@ -43,7 +43,7 @@ below changes that YAML, and you can read it at any point.
 
 A tool describes something the agent can do. It does nothing until a workflow step uses it.
 
-1. Click **Add Tool**.
+1. Open the **⋮** menu in the top bar and click **Add tool** (or **+ Tool** under the step palette).
 2. Set **Tool kind** to **Slack**.
 3. **Name**: `post_to_slack`.
 4. **Token (env reference)**: `${SLACK_BOT_TOKEN}`. This is the variable name, not the token.
@@ -56,7 +56,7 @@ A tool node appears on the canvas and a `tools:` entry appears in the YAML.
 
 ## 2. Add an approval step
 
-1. Click **Add Workflow Step**.
+1. Choose the step kind in the palette on the left, or open the **⋮** menu and click **Add step**.
 2. Set **Step kind** to **Approval**.
 3. **Step ID**: `review`.
 4. **Message**: `Post this to Slack? {{ greet.text }}`.
@@ -67,7 +67,7 @@ run ends and nothing is posted.
 
 ## 3. Add the tool step
 
-1. Click **Add Workflow Step**.
+1. Choose the step kind in the palette on the left, or open the **⋮** menu and click **Add step**.
 2. Set **Step kind** to **Tool**.
 3. **Step ID**: `send`.
 4. **Tool name**: `post_to_slack`.
@@ -77,13 +77,13 @@ Steps run in the order they appear, so the workflow is now `greet`, then `review
 
 ## 4. Check your setup
 
-Click **Checks**, turn on **Also check credentials**, and run the checks. The panel lists each
+Click **Checks** in the status bar, turn on **Also check credentials**, and run the checks. The panel lists each
 variable the spec needs by name, and it asks Slack whether the token is accepted. It never
 displays a value. Fix anything marked as failing before you run.
 
 ## 5. Run it
 
-1. Click **Test Run**.
+1. Click **Run** in the top bar.
 2. In **Input**, type something for the model to answer, for example
    `Write a two-line welcome for new support customers.`
 3. Click **Run**.

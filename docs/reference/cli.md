@@ -37,7 +37,7 @@ with Ctrl+C.
 that does not exist) the canvas opens an empty state with **Start blank**. Choosing it writes a valid
 minimal spec with the `yaml-language-server` schema pragma; until then nothing is written. A file
 that exists but cannot be read is still reported as an error. A spec with `workflow: []` shows
-"This workflow has no steps yet" with an **Add step** button, and Test Run says why it cannot start.
+"This workflow has no steps yet" with an **Add step** button, and Run says why it cannot start.
 While the YAML is broken, the canvas keeps the last valid version, names the line to fix and says
 saves are paused.
 

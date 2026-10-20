@@ -10,6 +10,8 @@ import type { StepKind } from "./stepKinds.js";
 export interface NodePaletteProps {
   version?: string;
   onChoose: (kind: StepKind) => void;
+  /** Opens the Add Tool form: a tool is not a step, so it has its own button under the step list. */
+  onAddTool?: () => void;
 }
 
 const NARROW = 1100;
@@ -24,7 +26,7 @@ function isTyping(target: EventTarget | null): boolean {
   );
 }
 
-export function NodePalette({ version, onChoose }: NodePaletteProps) {
+export function NodePalette({ version, onChoose, onAddTool }: NodePaletteProps) {
   const [open, setOpen] = useState(() => window.innerWidth >= NARROW);
   const search = useRef<HTMLInputElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -99,6 +101,15 @@ export function NodePalette({ version, onChoose }: NodePaletteProps) {
         onChoose={onChoose}
         onEscape={() => search.current?.blur()}
       />
+      {onAddTool && (
+        <button
+          type="button"
+          className="md3-button md3-button-tonal md3-palette__tool"
+          onClick={onAddTool}
+        >
+          + Tool
+        </button>
+      )}
       <p className="md3-body-small md3-field__hint">
         A step is added at the end of the workflow; you choose its place on the next screen. To add
         one between two steps, use the + on the line between them.

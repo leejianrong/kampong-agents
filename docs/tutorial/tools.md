@@ -15,7 +15,7 @@ agent:
       extract: "order.status"
 ```
 
-On the canvas, **Add Tool** opens a structured form for exactly these fields, with no code and no
+On the canvas, **Add tool** (in the top bar's menu, or **+ Tool** under the step palette) opens a structured form for exactly these fields, with no code and no
 LLM call to set it up:
 
 ![The Add Tool form open on the canvas](../assets/img/canvas-add-tool.png)

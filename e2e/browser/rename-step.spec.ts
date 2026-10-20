@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-172: Rename on the step and tool rows of Edit Steps, in a real browser against `kampong dev`. Every use of
 // the name is rewritten in one save; a name that is taken is refused next to the field with the input kept.
@@ -84,7 +85,7 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
-    await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+    await openPanel(page, "Edit Steps");
 
     // A taken name: refused in words, next to the field, input kept, file untouched.
     await page.getByRole("button", { name: "Rename step parse", exact: true }).click();

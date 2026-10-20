@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.js";
+import { chooseFromMenu } from "./menu.js";
 
 // @xyflow/react uses ResizeObserver internally, which jsdom doesn't implement.
 beforeAll(() => {
@@ -181,7 +182,7 @@ describe("App", () => {
       stubFetch(async () => ({ ok: true, status: 200, json: async () => CATALOG }) as Response);
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect(screen.getByLabelText("Component")).toBeTruthy();
       expect(screen.getByLabelText("id")).toBeTruthy();
@@ -193,7 +194,7 @@ describe("App", () => {
       );
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect(screen.getByText(/Could not list components: nope/)).toBeTruthy();
     });
@@ -223,7 +224,7 @@ describe("App", () => {
       );
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Add Tool" }));
+      chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect((await screen.findByTestId("pin-state")).textContent).toBe("Not pinned");
       fireEvent.click(screen.getByRole("button", { name: /review and pin/i }));
@@ -266,7 +267,7 @@ describe("App", () => {
       const calls = stub([{ name: "SLACK_BOT_TOKEN", source: "unset", referenced: true }]);
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Secrets/ }));
       expect(await screen.findByText("SLACK_BOT_TOKEN")).toBeTruthy();
       expect(screen.getByText("Needed, not set")).toBeTruthy();
 
@@ -289,7 +290,7 @@ describe("App", () => {
       stub([]);
       render(<App />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Secrets" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Secrets/ }));
       fireEvent.click(await screen.findByRole("button", { name: "Add secret" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "not valid" } });
       fireEvent.change(screen.getByLabelText("Value"), { target: { value: "v" } });
@@ -368,7 +369,7 @@ describe("App", () => {
     it("opens from the toolbar and saves the first var as a vars block", async () => {
       const applied = appWith(withVersion("1.1"));
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       fireEvent.click(screen.getByRole("button", { name: "Add var" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "symbols" } });
       fireEvent.change(screen.getByLabelText("Type"), { target: { value: "list" } });
@@ -389,7 +390,7 @@ describe("App", () => {
     it("adds to an existing block and removes the last var along with the block", async () => {
       const applied = appWith(withVersion("1.1", { only: { type: "string" } }));
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       fireEvent.click(screen.getByRole("button", { name: "Remove only" }));
       await waitFor(() => expect(applied).toHaveLength(1));
       expect(applied[0]).toEqual([{ op: "remove", path: ["vars"] }]);
@@ -398,7 +399,7 @@ describe("App", () => {
     it("is gated on a 1.0 spec", async () => {
       appWith(withVersion("1.0"));
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Spec Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       expect(screen.getByRole("status").textContent).toContain("Vars need spec version");
     });
   });
@@ -476,7 +477,7 @@ describe("App", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       render(<App api={api as any} />);
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      chooseFromMenu("Edit Steps");
       fireEvent.click(screen.getByRole("button", { name: "Edit greet" }));
       fireEvent.change(screen.getByLabelText("Model"), {
         target: { value: "m" },
@@ -514,7 +515,7 @@ describe("App", () => {
     it("checks a new step's expressions against the spec's vars on a 1.1 spec", async () => {
       open11("1.1");
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Add Workflow Step" }));
+      chooseFromMenu("Add Workflow Step");
       fireEvent.click(screen.getByRole("button", { name: "Validate" }));
       const field = screen.getByLabelText("Assert (expression that must be true)");
       fireEvent.change(field, { target: { value: "vars.threshhold > 1" } });
@@ -528,7 +529,7 @@ describe("App", () => {
     it("leaves them plain on a 1.0 spec", async () => {
       open11("1.0");
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Add Workflow Step" }));
+      chooseFromMenu("Add Workflow Step");
       fireEvent.click(screen.getByRole("button", { name: "Condition" }));
       fireEvent.change(screen.getByLabelText("If (condition)"), { target: { value: "vars.x" } });
       expect(screen.queryByText(/Problem:/)).toBeNull();

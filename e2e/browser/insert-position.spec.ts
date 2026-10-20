@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-173: choose where a new step goes, in a real browser against `kampong dev`: "Add to" a loop and "Position"
 // after a named step, a marker on the canvas while choosing, then the step is at that place in the file and its
@@ -83,7 +84,7 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
-    await page.getByRole("button", { name: "Add Workflow Step", exact: true }).click();
+    await openPanel(page, "Add Workflow Step");
     await page.getByLabel("Add to").selectOption("each_symbol/steps");
     // Positions are words and step names.
     await expect(page.getByLabel("Position").locator("option")).toHaveText([
@@ -122,7 +123,7 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
-    await page.getByRole("button", { name: "Add Workflow Step", exact: true }).click();
+    await openPanel(page, "Add Workflow Step");
     await page.getByLabel("Add to").selectOption("each_symbol/steps");
     await page.getByLabel("Position").selectOption({ label: "At the start of each_symbol" });
     await page.getByRole("button", { name: "Approval", exact: true }).click();

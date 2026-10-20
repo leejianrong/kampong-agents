@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentSpec, ComponentCatalogEntry, PatchOp } from "@kampong/spec";
 import { App } from "../../src/App.js";
 import { StepsPanel } from "../../src/StepsPanel.js";
+import { chooseFromMenu } from "./menu.js";
 
 // KAM-175: tool steps, stop steps and the tools themselves can be edited from the Edit Steps panel. The patch
 // logic is tested in packages/spec (tool-edit.test.ts); this covers the rows, the forms and the wiring.
@@ -197,8 +198,8 @@ describe("App: editing a tool", () => {
     return applied;
   }
   const openTool = async (name: string) => {
-    await waitFor(() => expect(screen.getByRole("button", { name: "Edit Steps" })).toBeTruthy());
-    click("Edit Steps");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy());
+    chooseFromMenu("Edit Steps");
     click(`Edit tool ${name}`);
   };
 

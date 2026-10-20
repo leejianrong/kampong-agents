@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { TOOL_APPROVAL_SPEC } from "./harness/fixtures.js";
+import { openPanel } from "./harness/bars.js";
 
 // Browser E2E (KAN-1228 follow-up): the whole hosted flow driven through the
 // real canvas UI in a headless browser -- sign up, create a workspace, store a
@@ -76,7 +77,7 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   await shot(page, "04-canvas-editor");
 
   // 8. Edit the spec on the canvas: add a tool via the structured form.
-  await page.getByRole("button", { name: "Add Tool" }).click();
+  await openPanel(page, "Add Tool");
   const toolForm = page.getByRole("form", { name: "Add Tool" });
   await toolForm.getByLabel("Name").fill("lookup_customer");
   await toolForm.getByLabel("URL").fill("https://api.example.test/customers");

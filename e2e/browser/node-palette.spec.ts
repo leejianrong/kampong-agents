@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-213: the step palette (left rail, search, `/`) and the "+" on a line, in a real browser against
 // `kampong dev`. A step is inserted between two others, inside a foreach and into a branch arm, and the file
@@ -216,7 +217,7 @@ for (const size of [
     });
 
     test("the toolbar button still opens the plain form", async ({ page }) => {
-      await page.getByRole("button", { name: "Add Workflow Step", exact: true }).click();
+      await openPanel(page, "Add Workflow Step");
       await expect(page.getByRole("button", { name: "Action", exact: true })).toHaveAttribute(
         "aria-pressed",
         "true",

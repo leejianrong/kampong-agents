@@ -32,7 +32,7 @@ agent:
       confidence_gate: true
 ```
 
-On the canvas, **Set Guardrails** opens a form for the same two fields:
+On the canvas, **Guardrails** in the status bar opens a form for the same two fields:
 
 ![The Set Guardrails form on the canvas](../assets/img/canvas-guardrails.png)
 
