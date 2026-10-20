@@ -63,7 +63,8 @@ import { buildActions, type OpenForm } from "./actions.js";
 import { TopBar, type SaveState } from "./TopBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { CommandPalette } from "./CommandPalette.js";
-import { buildYamlSourceMap, nodeAtLine } from "./yamlSourceMap.js";
+import { Snackbar } from "./Snackbar.js";
+import { buildYamlSourceMap, changedNode, nodeAtLine, type LineRange } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
 // canvas keeps showing the last version that was valid.
@@ -118,6 +119,24 @@ interface InsertRequest {
 // The forms whose typed input is worth a question before the selection moves on (KAM-211).
 const KEEP_INPUT_FORMS: OpenForm[] = ["tool", "workflow", "guardrails", "edit-tool"];
 
+// KAM-182: the panels that list things and edit one at a time. Switching to another panel does not ask: the panel
+// stays mounted out of sight with its draft, and is as you left it when you come back. Closing one that has typed
+// input (Esc, Close) asks, because that is what throws the draft away. Every other form asks before it is left.
+const DRAFT_FORMS: OpenForm[] = ["vars", "trigger", "steps", "variables"];
+
+// KAM-181: how long the changed lines stay marked and the toast stays up.
+const SAVE_FEEDBACK_MS = 4000;
+
+function describeChange(id: string, range: LineRange, source: string): string {
+  const [kind, ...rest] = id.split(":");
+  const name = rest.join(":");
+  if (kind === "workflow") return `step ${name}`;
+  if (kind === "tool") return `tool ${name}`;
+  if (kind === "guardrails") return "guardrails";
+  const first = source.split("\n")[range.start - 1] ?? "";
+  return first.trimStart().startsWith("trigger:") ? "trigger" : "agent details";
+}
+
 export function App({
   apiBaseUrl = "",
   api: providedApi,
@@ -154,10 +173,22 @@ export function App({
   // and the move (another node, the empty canvas, a toolbar button) waiting on "discard your changes?".
   const [selected, setSelected] = useState<string | null>(null);
   const [pending, setPending] = useState<
-    { select: string | null } | { form: OpenForm | null } | { insert: InsertRequest } | null
+    | { select: string | null }
+    | { form: OpenForm | null; drop?: OpenForm }
+    | { insert: InsertRequest }
+    | null
   >(null);
   const [insert, setInsert] = useState<InsertRequest | undefined>(undefined);
   const dirty = useRef(false);
+  // KAM-182: draft panels that have been opened (kept mounted), and which of them had something typed in.
+  const [kept, setKept] = useState<OpenForm[]>([]);
+  const typedIn = useRef(new Set<OpenForm>());
+  const sidePane = useRef<HTMLDivElement>(null);
+  // KAM-181: a save was just made (so the next different source is its result), and the feedback for it.
+  const savedAt = useRef(0);
+  const sourceRef = useRef("");
+  const [toast, setToast] = useState<{ text: string; nonce: number } | null>(null);
+  const [changed, setChanged] = useState<{ range: LineRange; nonce: number } | null>(null);
   const returnFocusTo = useRef<string | null>(null);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
@@ -175,6 +206,21 @@ export function App({
   const [startingBlank, setStartingBlank] = useState(false);
   const [startBlankError, setStartBlankError] = useState<string | null>(null);
 
+  // KAM-181: confirm a save and show what it changed: a toast, the node flashed, the YAML lines marked.
+  function announceSave(before: string, after: string) {
+    const nonce = Date.now();
+    const hit = changedNode(before, after);
+    if (!hit) {
+      setToast({ text: "Saved.", nonce });
+      return;
+    }
+    setFocus({ id: hit.id, nonce });
+    setChanged({ range: hit.range, nonce });
+    setToast({ text: `Saved: ${describeChange(hit.id, hit.range, after)}.`, nonce });
+  }
+  const announceRef = useRef(announceSave);
+  announceRef.current = announceSave;
+
   const refresh = useCallback(async () => {
     try {
       const result = await api.loadSpec();
@@ -182,6 +228,18 @@ export function App({
       setLoaded(true);
       setMissing(result.missing === true);
       setErrors(result.errors ?? []);
+      const before = sourceRef.current;
+      sourceRef.current = result.source;
+      if (
+        result.success &&
+        savedAt.current > 0 &&
+        Date.now() - savedAt.current < 10_000 &&
+        before !== "" &&
+        before !== result.source
+      ) {
+        savedAt.current = 0;
+        announceRef.current(before, result.source);
+      }
       setSource(result.source);
       setLayout(result.layout);
       if (result.success && result.spec) {
@@ -330,6 +388,7 @@ export function App({
       setSpecError(err instanceof Error ? err.message : "Failed to save the change.");
       return false;
     }
+    savedAt.current = Date.now();
     return true;
   }
 
@@ -396,6 +455,7 @@ export function App({
           .map((e) => e.message)
           .concat(result.stale ? ["The spec changed; reload and try again."] : []);
       }
+      savedAt.current = Date.now();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onUnauthorized?.();
@@ -456,6 +516,7 @@ export function App({
     try {
       const result = await api.applyOps([op]);
       if (result.success) {
+        savedAt.current = Date.now();
         await refresh();
         return { success: true };
       }
@@ -492,6 +553,7 @@ export function App({
     try {
       const result = await api.applyOps([op]);
       if (result.success) {
+        savedAt.current = Date.now();
         await refresh();
         return { success: true };
       }
@@ -518,6 +580,7 @@ export function App({
     try {
       const result = await api.applyOps([op]);
       if (result.success) {
+        savedAt.current = Date.now();
         await refresh();
         return { success: true };
       }
@@ -560,9 +623,48 @@ export function App({
 
   // The toolbar buttons open their own form in the same pane; they ask first too.
   function toolbarForm(next: OpenForm | null) {
+    if (next === null && openForm !== null) return requestClose();
     if (selected !== null && unsavedInput()) setPending({ form: next });
     else setOpenForm(next);
   }
+
+  // KAM-182: has this draft panel got typed input that is still in an open form? Typing marks it; a save or a
+  // Cancel removes the form from the panel, which makes it clean again.
+  const draftIsDirty = (form: OpenForm) => {
+    if (!typedIn.current.has(form)) return false;
+    const open = sidePane.current?.querySelector(`[data-testid="draft-${form}"] form`) != null;
+    if (!open) typedIn.current.delete(form);
+    return open;
+  };
+
+  // Close, or Esc, on a toolbar panel. A clean one closes at once; one with typed input asks first, and "Discard"
+  // is what drops a draft panel's draft (a plain switch to another panel keeps it).
+  function requestClose() {
+    if (openForm === null) return;
+    if (pending) {
+      setPending(null);
+      return;
+    }
+    if (DRAFT_FORMS.includes(openForm)) {
+      if (draftIsDirty(openForm)) setPending({ form: null, drop: openForm });
+      else setOpenForm(null);
+    } else if (unsavedInput()) setPending({ form: null });
+    else setOpenForm(null);
+  }
+  const escape = useRef({ requestClose, active: false });
+  escape.current = {
+    requestClose,
+    active: selected === null && openForm !== null,
+  };
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented || !escape.current.active) return;
+      event.preventDefault();
+      escape.current.requestClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // KAM-213: open Add Workflow Step with a kind chosen (and, from a "+", the place), asking first if the form or
   // inspector in the pane has typed input.
@@ -600,9 +702,34 @@ export function App({
     else if ("insert" in move) applyInsert(move.insert);
     else {
       setPending(null);
+      const drop = move.drop;
+      if (drop !== undefined) {
+        typedIn.current.delete(drop);
+        setKept((list) => list.filter((f) => f !== drop));
+      }
       setOpenForm(move.form);
     }
   }
+
+  // KAM-182: a draft panel, once opened, stays mounted (hidden when another panel is on show).
+  useEffect(() => {
+    if (openForm !== null && DRAFT_FORMS.includes(openForm)) {
+      setKept((list) => (list.includes(openForm) ? list : [...list, openForm]));
+    }
+  }, [openForm]);
+  const shows = (form: OpenForm) => openForm === form || kept.includes(form);
+
+  // KAM-181: the changed lines and the toast clear on their own.
+  useEffect(() => {
+    if (!changed) return;
+    const timer = setTimeout(() => setChanged(null), SAVE_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [changed]);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), SAVE_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // A toolbar form replaces the inspector; a node that has gone (deleted, or the file changed) closes it.
   useEffect(() => {
@@ -717,10 +844,11 @@ export function App({
     };
   }, [api, source]);
 
-  const tally = (rows: SecretStatusDto[]) => {
+  const tally = useCallback((rows: SecretStatusDto[]) => {
     setMissingSecrets(countMissing(rows));
     return rows;
-  };
+  }, []);
+  const listSecrets = useCallback(() => api.listSecrets!().then(tally), [api, tally]);
 
   // KAM-215: Ctrl/Cmd+K opens the command palette from anywhere, including a text field.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -861,9 +989,13 @@ export function App({
             </div>
           </div>
           <div
+            ref={sidePane}
             className="md3-app__side-pane"
             onInputCapture={() => {
               dirty.current = true;
+              if (selected === null && openForm !== null && DRAFT_FORMS.includes(openForm)) {
+                typedIn.current.add(openForm);
+              }
             }}
           >
             {pending && (
@@ -929,7 +1061,7 @@ export function App({
             floating over the canvas, so a run never covers the graph the user
             is watching. Toggling "Test Run" shows/hides it. */}
             {openForm === "tool" && (
-              <Panel title="Add Tool" onClose={() => setOpenForm(null)}>
+              <Panel title="Add Tool" onClose={requestClose}>
                 <ToolForm
                   components={catalog?.components}
                   componentProblems={catalog?.problems}
@@ -948,7 +1080,7 @@ export function App({
               (spec.agent.tools[editingTool].action !== "component" ||
                 catalog !== undefined ||
                 !api.listComponents) && (
-                <Panel title="Edit Tool" onClose={() => setOpenForm(null)}>
+                <Panel title="Edit Tool" onClose={requestClose}>
                   <ToolForm
                     key={`${editingTool}:${spec.agent.tools[editingTool].name}`}
                     initial={spec.agent.tools[editingTool]}
@@ -962,7 +1094,7 @@ export function App({
                 </Panel>
               )}
             {openForm === "workflow" && (
-              <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
+              <Panel title="Add Workflow Step" onClose={requestClose}>
                 <WorkflowStepForm
                   key={insert?.nonce ?? "toolbar"}
                   initial={
@@ -985,7 +1117,7 @@ export function App({
               </Panel>
             )}
             {openForm === "guardrails" && (
-              <Panel title="Set Guardrails" onClose={() => setOpenForm(null)}>
+              <Panel title="Set Guardrails" onClose={requestClose}>
                 <GuardrailsForm
                   onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
                   onCancel={() => setOpenForm(null)}
@@ -997,8 +1129,13 @@ export function App({
                 <RunPanel api={api} blockedReason={runBlockedReason} />
               </Panel>
             )}
-            {openForm === "vars" && spec && (
-              <Panel title="Spec Vars" onClose={() => setOpenForm(null)}>
+            {shows("vars") && spec && (
+              <Panel
+                title="Spec Vars"
+                testId="draft-vars"
+                hidden={openForm !== "vars"}
+                onClose={requestClose}
+              >
                 <VarsPanel
                   version={spec.version}
                   vars={spec.vars}
@@ -1007,8 +1144,13 @@ export function App({
                 />
               </Panel>
             )}
-            {openForm === "trigger" && spec && (
-              <Panel title="Trigger" onClose={() => setOpenForm(null)}>
+            {shows("trigger") && spec && (
+              <Panel
+                title="Trigger"
+                testId="draft-trigger"
+                hidden={openForm !== "trigger"}
+                onClose={requestClose}
+              >
                 <TriggerPanel
                   version={spec.version}
                   trigger={spec.agent.trigger}
@@ -1017,8 +1159,13 @@ export function App({
                 />
               </Panel>
             )}
-            {openForm === "steps" && spec && (
-              <Panel title="Edit Steps" onClose={() => setOpenForm(null)}>
+            {shows("steps") && spec && (
+              <Panel
+                title="Edit Steps"
+                testId="draft-steps"
+                hidden={openForm !== "steps"}
+                onClose={requestClose}
+              >
                 <StepsPanel
                   spec={spec}
                   onPatch={handlePatchSteps}
@@ -1032,10 +1179,15 @@ export function App({
                 />
               </Panel>
             )}
-            {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
-              <Panel title="Secrets" onClose={() => setOpenForm(null)}>
+            {shows("variables") && api.listSecrets && api.setSecret && api.removeSecret && (
+              <Panel
+                title="Secrets"
+                testId="draft-variables"
+                hidden={openForm !== "variables"}
+                onClose={requestClose}
+              >
                 <SecretsPanel
-                  list={() => api.listSecrets!().then(tally)}
+                  list={listSecrets}
                   save={(name, value) => api.setSecret!(name, value).then(tally)}
                   remove={(name) => api.removeSecret!(name).then(tally)}
                 />
@@ -1067,6 +1219,7 @@ export function App({
               <YamlPreview
                 source={source}
                 highlight={(selected !== null && yamlMap?.get(selected)) || null}
+                changed={changed}
                 onLineClick={(line) => {
                   const id = yamlMap ? nodeAtLine(yamlMap, line) : null;
                   if (id !== null && graph.nodes.some((n) => n.id === id)) requestSelect(id);
@@ -1078,6 +1231,7 @@ export function App({
           </div>
         </div>
         <StatusBar actions={actions} />
+        <Snackbar message={toast?.text ?? null} />
         {paletteOpen && (
           <CommandPalette
             actions={actions}

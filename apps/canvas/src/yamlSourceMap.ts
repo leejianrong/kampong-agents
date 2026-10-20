@@ -116,6 +116,48 @@ export function buildYamlSourceMap(source: string): YamlSourceMap {
   return map;
 }
 
+export interface ChangedNode {
+  id: string;
+  range: LineRange;
+}
+
+const textOf = (lines: string[], r: LineRange) => lines.slice(r.start - 1, r.end).join("\n");
+
+/**
+ * KAM-181: which node a save changed, found by comparing the nodes' own lines before and after. The tightest node
+ * whose text differs (or that is new) wins, so an edit to a body step is the step and not the foreach around it.
+ * A move changes no node's text, only the order, so the first node that is not where it was is the answer then.
+ * Null when nothing in the map moved (a removal, or a change outside any node).
+ */
+export function changedNode(before: string, after: string): ChangedNode | null {
+  if (before === after) return null;
+  const was = buildYamlSourceMap(before);
+  const now = buildYamlSourceMap(after);
+  const wasLines = before.split("\n");
+  const nowLines = after.split("\n");
+  let best: (ChangedNode & { size: number }) | null = null;
+  for (const [id, range] of now) {
+    const old = was.get(id);
+    if (old && textOf(wasLines, old) === textOf(nowLines, range)) continue;
+    const size = range.end - range.start;
+    if (!best || size < best.size || (size === best.size && range.start < best.range.start)) {
+      best = { id, range, size };
+    }
+  }
+  if (best) return { id: best.id, range: best.range };
+  const order = (map: YamlSourceMap) =>
+    [...map].sort((a, b) => a[1].start - b[1].start || a[1].end - b[1].end).map(([id]) => id);
+  const wasOrder = order(was);
+  const nowOrder = order(now);
+  for (let i = 0; i < nowOrder.length; i++) {
+    if (nowOrder[i] !== wasOrder[i]) {
+      const id = nowOrder[i]!;
+      return { id, range: now.get(id)! };
+    }
+  }
+  return null;
+}
+
 /** The node whose lines are the tightest around a line, so a body step wins over the foreach that holds it. */
 export function nodeAtLine(map: YamlSourceMap, line: number): string | null {
   let best: { id: string; size: number } | null = null;

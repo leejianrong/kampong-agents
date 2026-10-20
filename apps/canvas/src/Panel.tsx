@@ -15,10 +15,21 @@ export interface PanelProps {
   panelRef?: Ref<HTMLElement>;
   testId?: string;
   nodeId?: string;
+  /** KAM-182: kept mounted but out of sight, so a draft survives a switch to another panel. */
+  hidden?: boolean;
   children: ReactNode;
 }
 
-export function Panel({ title, onClose, actions, panelRef, testId, nodeId, children }: PanelProps) {
+export function Panel({
+  title,
+  onClose,
+  actions,
+  panelRef,
+  testId,
+  nodeId,
+  hidden,
+  children,
+}: PanelProps) {
   return (
     <section
       ref={panelRef}
@@ -27,6 +38,7 @@ export function Panel({ title, onClose, actions, panelRef, testId, nodeId, child
       tabIndex={-1}
       data-testid={testId}
       data-node={nodeId}
+      hidden={hidden}
     >
       <header className="md3-panel__header">
         <h2 className="md3-title-medium md3-panel__title">{title}</h2>
