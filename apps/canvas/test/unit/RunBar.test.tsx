@@ -58,7 +58,7 @@ function open(extra: Record<string, unknown> = {}, load: Record<string, unknown>
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(<App api={api as any} specName="Refund flow" />);
-  return screen.findByText(/Trigger: Bar agent/);
+  return screen.findByText(/^Manual$/);
 }
 
 const full = {

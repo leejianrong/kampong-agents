@@ -1,4 +1,5 @@
 import type { AgentSpec, WorkflowStep } from "./schema.js";
+import { triggerSummary } from "./trigger-summary.js";
 
 // Maps a validated AgentSpec to the node/edge graph the canvas renders
 // (PLAN.md affordance: "Block canvas (Trigger -> Tools -> Workflow ->
@@ -77,7 +78,13 @@ export function specToGraph(spec: AgentSpec): SpecGraph {
     id: agentId,
     kind: "agent",
     column: COLUMN.agent,
-    data: { name: spec.agent.name, role: spec.agent.role, goal: spec.agent.goal },
+    data: {
+      name: spec.agent.name,
+      role: spec.agent.role,
+      goal: spec.agent.goal,
+      // What starts a run, in a few words, for the trigger node (KAM-184).
+      triggerLabel: triggerSummary(spec.agent.trigger),
+    },
   });
 
   for (const tool of spec.agent.tools ?? []) {

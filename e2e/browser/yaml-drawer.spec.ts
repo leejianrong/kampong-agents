@@ -63,7 +63,7 @@ for (const size of [
       page,
     }) => {
       await page.goto(URL);
-      await expect(page.getByText(/Trigger: Drawer agent/)).toBeVisible();
+      await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
       await expect(page.getByTestId("yaml-preview")).toHaveCount(0);
       const surface = await page.locator(".md3-app__canvas-surface").boundingBox();
       expect(surface!.width).toBeGreaterThanOrEqual(size.width - 1);
@@ -100,7 +100,7 @@ for (const size of [
       await page.keyboard.press("Alt+y");
       await expect(page.getByTestId("yaml-preview")).toHaveCount(0);
       await page.reload();
-      await expect(page.getByText(/Trigger: Drawer agent/)).toBeVisible();
+      await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
       await expect(page.getByTestId("yaml-preview")).toHaveCount(0);
 
       await page.keyboard.press("Alt+y");

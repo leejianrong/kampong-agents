@@ -124,6 +124,8 @@ for (const size of [
       writeFileSync(file, SPEC);
       await page.goto(URL);
       await expect(node(page, "workflow:parse")).toBeVisible();
+      // This fixture is over 15 nodes, so the minimap (KAM-187) shows; at this width it can cover the node clicked.
+      await page.addStyleTag({ content: ".react-flow__minimap { display: none }" });
     });
 
     test("clicking a node opens the matching form, for every kind of node", async ({ page }) => {

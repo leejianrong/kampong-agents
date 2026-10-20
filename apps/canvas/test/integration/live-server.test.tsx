@@ -103,7 +103,7 @@ describe("canvas against a real local server (no mocks)", () => {
     render(<App apiBaseUrl={baseUrl} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Trigger: Externally Authored Agent/)).toBeTruthy();
+      expect(screen.getByText(/^Manual$/)).toBeTruthy();
     });
     fireEvent.click(screen.getByTestId("yaml-drawer-toggle"));
     expect(screen.getByTestId("yaml-preview").textContent).toContain(
@@ -114,7 +114,7 @@ describe("canvas against a real local server (no mocks)", () => {
   it("builds a two-step agent with a tool and a guardrail entirely on the canvas", async () => {
     await startServer(MINIMAL_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
-    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     chooseFromMenu("Add Tool");
     await fillAndSubmit(
@@ -191,7 +191,7 @@ ops:
     };
     expect(catalog.components.map((c) => `${c.id}@${c.version}`)).toContain("acme/tickets@1.0.0");
     render(<App apiBaseUrl={baseUrl} />);
-    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     chooseFromMenu("Add Tool");
     fireEvent.click(await screen.findByRole("button", { name: "Component" }));
@@ -226,7 +226,7 @@ ops:
     // one conditional guardrail branch"), now unblocked.
     await startServer(MINIMAL_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
-    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     chooseFromMenu("Add Workflow Step");
     let form = screen.getByRole("form", { name: "Add Workflow Step" });
@@ -278,7 +278,7 @@ ops:
   it("adding a tool through the canvas really mutates the file on disk, preserving comments", async () => {
     await startServer(EXTERNALLY_WRITTEN_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
-    await waitFor(() => screen.getByText(/Trigger: Externally Authored Agent/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     chooseFromMenu("Add Tool");
     await fillAndSubmit(
@@ -307,7 +307,7 @@ ops:
   it("shows a real error and keeps the dialog open when saving after the spec file was deleted (KAN-1216)", async () => {
     await startServer(MINIMAL_SPEC);
     render(<App apiBaseUrl={baseUrl} />);
-    await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     unlinkSync(specPath);
 
@@ -327,7 +327,7 @@ ops:
     expect(screen.getByRole("form", { name: "Add Workflow Step" })).toBeTruthy();
     // The canvas itself (toolbar + the trigger node) must still be showing,
     // not blanked out.
-    expect(screen.getByText(/Trigger: Refund Agent/)).toBeTruthy();
+    expect(screen.getByText(/^Manual$/)).toBeTruthy();
   });
 
   // KAM-196: a folder with no spec is a new workflow, and the file appears when it is chosen.
@@ -394,7 +394,7 @@ agent:
 
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
-      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      await waitFor(() => screen.getByText(/^Manual$/));
       chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }
@@ -471,7 +471,7 @@ agent:
 
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
-      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      await waitFor(() => screen.getByText(/^Manual$/));
       chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }
@@ -537,7 +537,7 @@ agent:
 
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
-      await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
+      await waitFor(() => screen.getByText(/^Manual$/));
       chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }

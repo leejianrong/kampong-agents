@@ -52,7 +52,7 @@ async function open() {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(<App api={api as any} specName="Pal flow" />);
-  await screen.findByText(/Trigger: Pal agent/);
+  await screen.findByText(/^Manual$/);
 }
 
 const dialog = () => screen.getByRole("dialog", { name: "Command palette" });

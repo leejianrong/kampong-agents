@@ -2,6 +2,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MiniMap,
   ReactFlow,
   useReactFlow,
   type EdgeChange,
@@ -28,15 +29,9 @@ import type { StepKind } from "./stepKinds.js";
 // controls, background grid) -- see theme.css's "Canvas nodes" section for
 // the full token wiring.
 //
-// No <MiniMap>: tried it during this pass (feat/canvas-md3-pass) and its
-// node rects never rendered against this spec's graph (verified via
-// Playwright -- .react-flow__minimap-node count stayed 0 even after a
-// pan/zoom interaction and after memoizing nodes/edges below), while
-// fitView's bounding box and every on-canvas node measured correctly. That
-// points at a measured-dimensions gap in @xyflow/react's MiniMap-specific
-// store subscription (12.11.6), not a styling issue -- shipping a visibly
-// blank minimap widget would be worse than leaving it out. Background +
-// Controls both render and theme correctly on their own.
+// Labels never spill out of their node (KAM-187): a title is one line cut with an ellipsis and carries the full
+// text as its tooltip, and the node's own accessible name (`ariaLabel`) is always the full name. A workflow of
+// more than MINIMAP_OVER nodes gets a minimap so a long one stays navigable.
 
 export interface CanvasProps {
   graph: SpecGraph;
@@ -63,6 +58,26 @@ export interface CanvasProps {
 const EDGE_TYPES = { insert: InsertEdge };
 
 const MARKER_ID = "insertion-marker";
+/** A workflow with more nodes than this gets a minimap (KAM-187). */
+const MINIMAP_OVER = 15;
+
+/** A node's title: one line, cut with an ellipsis, the whole text as its tooltip (KAM-187). */
+function Title({ text }: { text: string }) {
+  return (
+    <div className="md3-label-large md3-node__title" title={text}>
+      {text}
+    </div>
+  );
+}
+
+/** A line of detail under a title: at most two lines, the whole text as its tooltip (KAM-187). */
+function Meta({ text }: { text: string }) {
+  return (
+    <div className="md3-foreach__meta md3-node__meta" title={text}>
+      {text}
+    </div>
+  );
+}
 const FLASH_MS = 2200;
 
 /** Pans to the focused node once it is on the canvas, and flashes it. Rendered inside <ReactFlow>. */
@@ -93,6 +108,10 @@ function FocusNode({
   }, [flow, focus.id, focus.nonce, onDone]);
   return null;
 }
+
+/** What starts a run, from the graph (KAM-184); "Manual" for a graph that predates the field. */
+const triggerLabelOf = (node: SpecNode): string =>
+  typeof node.data.triggerLabel === "string" ? node.data.triggerLabel : "Manual";
 
 const KIND_LABEL: Record<SpecNode["kind"], string> = {
   agent: "Trigger",
@@ -147,6 +166,10 @@ export function Canvas({
     }),
     [version, hoverEdge, hover, openEdge, onInsert],
   );
+  // Sizes xyflow measured for each node. The canvas owns the nodes (controlled), so xyflow reports a measurement as a
+  // change and expects it to be applied; without that the MiniMap, which draws from the nodes it is given, has no
+  // size to draw (this is why an earlier try at a minimap came up blank).
+  const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({});
   // The focused node keeps its flash for a moment, then goes back to normal.
   const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
   useEffect(() => setFlashed(focus ?? null), [focus]);
@@ -162,6 +185,7 @@ export function Canvas({
         position: layout[node.id] ?? { x: 0, y: 0 },
         data: { label: nodeLabel(node) },
         selected: selectedId === node.id,
+        ...(sizes[node.id] !== undefined && { measured: sizes[node.id] }),
         ariaLabel: nodeAriaLabel(node),
         className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
           flashed?.id === node.id ? " md3-node--flash" : ""
@@ -186,7 +210,7 @@ export function Canvas({
           ]
         : []),
     ],
-    [graph, layout, marker, flashed, selectedId],
+    [graph, layout, marker, flashed, selectedId, sizes],
   );
 
   const edges: Edge[] = useMemo(
@@ -221,11 +245,17 @@ export function Canvas({
   // Selection is the app's: a click (or Enter or Space on a focused node) reports the node, and the app draws
   // it selected through `selectedId`. Deselecting is the app's too (Esc, Close), so a clear is ignored here.
   const onNodesChange = (changes: NodeChange[]) => {
+    const measured: Record<string, { width: number; height: number }> = {};
     for (const change of changes) {
       if (change.type === "select" && change.selected && change.id !== MARKER_ID) {
         onSelect?.(change.id);
+      } else if (change.type === "dimensions" && change.dimensions) {
+        const { width, height } = change.dimensions;
+        const had = sizes[change.id];
+        if (had?.width !== width || had?.height !== height) measured[change.id] = { width, height };
       }
     }
+    if (Object.keys(measured).length > 0) setSizes((prev) => ({ ...prev, ...measured }));
   };
 
   return (
@@ -256,6 +286,14 @@ export function Canvas({
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls />
+          {graph.nodes.length > MINIMAP_OVER && (
+            <MiniMap
+              pannable
+              zoomable
+              ariaLabel="Overview of the workflow. Drag to pan, scroll to zoom."
+              nodeStrokeWidth={3}
+            />
+          )}
           {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
         </ReactFlow>
       </EdgeInsertContext.Provider>
@@ -267,11 +305,9 @@ function branchLabel(node: SpecNode): ReactNode {
   const b = node.data.branch as { if?: string; switch?: string };
   return (
     <div className="md3-foreach">
-      <div className="md3-label-large">Branch: {String(node.data.step)}</div>
-      <div className="md3-foreach__meta">
-        {b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`}
-      </div>
-      <div className="md3-foreach__meta">its arms are the steps below, labelled on the lines</div>
+      <Title text={`Branch: ${String(node.data.step)}`} />
+      <Meta text={b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`} />
+      <Meta text="its arms are the steps below, labelled on the lines" />
     </div>
   );
 }
@@ -280,11 +316,12 @@ function stopLabel(node: SpecNode): ReactNode {
   const stop = node.data.stop as { reason?: string; status?: string };
   return (
     <div>
-      <div className="md3-label-large">Stop: {String(node.data.step)}</div>
-      <div className="md3-foreach__meta">
-        ends the run as {stop.status ?? "skipped"}
-        {stop.reason !== undefined && <>: {stop.reason}</>}
-      </div>
+      <Title text={`Stop: ${String(node.data.step)}`} />
+      <Meta
+        text={`ends the run as ${stop.status ?? "skipped"}${
+          stop.reason !== undefined ? `: ${stop.reason}` : ""
+        }`}
+      />
     </div>
   );
 }
@@ -303,15 +340,17 @@ function foreachLabel(node: SpecNode): ReactNode {
       : String(loop.on_error ?? "fail");
   return (
     <div className="md3-foreach">
-      <div className="md3-label-large">Foreach: {String(node.data.step)}</div>
-      <div className="md3-foreach__meta">
-        over {loop.items} as {loop.as} &middot; on_error {policy}
-        {loop.concurrency !== undefined && <> &middot; concurrency {loop.concurrency}</>}
-      </div>
-      <div className="md3-foreach__meta">
-        {(loop.steps ?? []).length} {(loop.steps ?? []).length === 1 ? "step" : "steps"} inside,
-        below
-      </div>
+      <Title text={`Foreach: ${String(node.data.step)}`} />
+      <Meta
+        text={`over ${loop.items} as ${loop.as} \u00b7 on_error ${policy}${
+          loop.concurrency !== undefined ? ` \u00b7 concurrency ${loop.concurrency}` : ""
+        }`}
+      />
+      <Meta
+        text={`${(loop.steps ?? []).length} ${
+          (loop.steps ?? []).length === 1 ? "step" : "steps"
+        } inside, below`}
+      />
     </div>
   );
 }
@@ -333,13 +372,11 @@ function dedupeSummary(node: SpecNode): string {
 }
 
 function dataLabel(kind: string, step: string, summary: string): ReactNode {
-  if (summary === "") return `${kind}: ${step}`;
+  if (summary === "") return <Title text={`${kind}: ${step}`} />;
   return (
     <div>
-      <div className="md3-label-large">
-        {kind}: {step}
-      </div>
-      <div className="md3-foreach__meta">{summary}</div>
+      <Title text={`${kind}: ${step}`} />
+      <Meta text={summary} />
     </div>
   );
 }
@@ -351,10 +388,11 @@ function nodeLabel(node: SpecNode): ReactNode {
   return (
     <div>
       <div>{label}</div>
-      <div className="md3-foreach__meta">
-        in {node.parent.replace(/^workflow:/, "")}
-        {node.arm !== undefined && <> &middot; {node.arm}</>}
-      </div>
+      <Meta
+        text={`in ${node.parent.replace(/^workflow:/, "")}${
+          node.arm !== undefined ? ` \u00b7 ${node.arm}` : ""
+        }`}
+      />
     </div>
   );
 }
@@ -371,7 +409,7 @@ const STEP_KIND_WORD: Record<string, string> = {
 function nodeAriaLabel(node: SpecNode): string {
   const name = String(node.data.name ?? node.data.step ?? node.id);
   let what: string;
-  if (node.kind === "agent") what = "Trigger";
+  if (node.kind === "agent") what = `Trigger, ${triggerLabelOf(node)}`;
   else if (node.kind === "tool") what = `Tool ${name}`;
   else if (node.kind === "guardrails") what = "Guardrails";
   else {
@@ -401,14 +439,15 @@ function ownLabel(node: SpecNode): ReactNode {
     if (node.data.branch) return branchLabel(node);
     if (node.data.stop) return stopLabel(node);
     const step = String(node.data.step ?? node.id);
-    if (node.data.type === "tool") return `Tool step: ${step}`;
-    if (node.data.type === "approval") return `Approval: ${step}`;
+    if (node.data.type === "tool") return <Title text={`Tool step: ${step}`} />;
+    if (node.data.type === "approval") return <Title text={`Approval: ${step}`} />;
     if (node.data.type === "transform") return dataLabel("Transform", step, transformSummary(node));
     if (node.data.type === "validate") return dataLabel("Validate", step, validateSummary(node));
     if (node.data.type === "dedupe") return dataLabel("Dedupe", step, dedupeSummary(node));
-    return `Workflow: ${step}`;
+    return <Title text={`Workflow: ${step}`} />;
   }
+  if (node.kind === "agent") return <Title text={triggerLabelOf(node)} />;
   const kind = KIND_LABEL[node.kind];
   const name = String(node.data.name ?? node.data.step ?? node.id);
-  return `${kind}: ${name}`;
+  return <Title text={`${kind}: ${name}`} />;
 }

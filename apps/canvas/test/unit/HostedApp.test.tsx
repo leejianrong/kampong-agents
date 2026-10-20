@@ -137,7 +137,7 @@ describe("HostedApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create agent" }));
 
     // Editor is the same App, bound to /api/specs/s1.
-    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
     expect(screen.getByTestId("back-to-specs")).toBeTruthy();
   });
 

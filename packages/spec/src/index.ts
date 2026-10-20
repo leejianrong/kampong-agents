@@ -32,6 +32,7 @@ export * from "./expression.js";
 export * from "./expression-names.js";
 export * from "./expression-assist.js";
 export * from "./trigger-form.js";
+export * from "./trigger-summary.js";
 export * from "./step-edit.js";
 export * from "./upgrade.js";
 export * from "./tool-edit.js";
