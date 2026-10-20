@@ -1621,3 +1621,179 @@ select.md3-text-field {
     background: Highlight;
   }
 }
+
+/* ---- Step palette and the "+" on a line (KAM-213) ---- */
+
+.md3-app__canvas-surface {
+  display: flex;
+}
+
+.md3-app__canvas-surface > .md3-flow-wrap {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+.md3-palette {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 15rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  background: var(--md-sys-color-surface-container-low);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-palette__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.md3-palette--collapsed {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 6;
+  width: auto;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  border: none;
+}
+
+/* A narrow window: the open rail floats over the canvas instead of taking width from it. */
+@media (max-width: 1099px) {
+  .md3-palette:not(.md3-palette--collapsed) {
+    position: absolute;
+    z-index: 6;
+    top: 0.5rem;
+    left: 0.5rem;
+    bottom: 0.5rem;
+    width: min(15rem, calc(100% - 1rem));
+    border: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: var(--md-shape-corner-medium);
+    box-shadow: var(--md-elevation-level2);
+  }
+}
+
+.md3-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.md3-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.md3-picker__group {
+  font-size: var(--md-type-label-large-size);
+  line-height: var(--md-type-label-large-line);
+  font-weight: 500;
+  padding: 0.5rem 0.5rem 0.25rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-picker__option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+}
+
+.md3-picker__what {
+  font-size: var(--md-type-body-small-size);
+  line-height: var(--md-type-body-small-line);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* State layer: hover and the keyboard's active row read the same. */
+.md3-picker__option:hover,
+.md3-picker__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-picker__option[aria-selected="true"] {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-picker__search:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1px;
+}
+
+.md3-edge-plus {
+  position: absolute;
+  pointer-events: all;
+}
+
+.md3-edge-plus__button {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: 50%;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.md3-edge-plus[data-visible="true"] .md3-edge-plus__button,
+.md3-edge-plus__button:focus-visible,
+.md3-edge-plus__button[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.md3-edge-plus__button:hover {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-edge-plus__button:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-edge-plus__popover {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  box-shadow: var(--md-elevation-level3);
+}
+
+.md3-flow-wrap .react-flow__edge:focus-visible .react-flow__edge-path {
+  stroke: var(--md-sys-color-primary);
+  stroke-width: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md3-edge-plus__button {
+    transition: none;
+  }
+}

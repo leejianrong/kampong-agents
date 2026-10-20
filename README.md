@@ -70,6 +70,8 @@ Run `kampong dev` in an empty folder and the canvas opens a "Start a new workflo
 creates `agent.yaml` then.
 
 On the canvas, click a node to edit it in the side panel (`Esc` closes, `Delete` removes, `Ctrl/Cmd+D` duplicates). Each form has Setup, Output, Test and Settings tabs.
+Add a step from the palette on the left (search, or press `/`) or from the **+** on a line between two steps, which
+inserts it right there, inside a loop or into a branch arm too.
 Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command
 reference, the `AgentSpec` schema and a step-by-step tutorial are in [`docs/`](./docs/index.md), a
 [Zensical](https://zensical.org) site (`uvx zensical build`, or `uvx zensical serve` to preview).

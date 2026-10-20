@@ -46,6 +46,9 @@ import {
 import { RunPanel } from "./RunPanel.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
+import { NodePalette } from "./NodePalette.js";
+import { spotBeforeStep } from "./insertSpot.js";
+import type { StepKind } from "./stepKinds.js";
 import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
 import { ImportPanel } from "./ImportPanel.js";
@@ -107,6 +110,14 @@ type OpenForm =
   | "edit-tool"
   | "import";
 
+// KAM-213: a kind chosen in the palette or from a "+", and where the "+" was. `nonce` remounts the form.
+interface InsertRequest {
+  kind: StepKind;
+  targetId?: string;
+  position?: string;
+  nonce: number;
+}
+
 // The forms whose typed input is worth a question before the selection moves on (KAM-211).
 const KEEP_INPUT_FORMS: OpenForm[] = ["tool", "workflow", "guardrails", "edit-tool"];
 
@@ -145,9 +156,10 @@ export function App({
   // KAM-211: the node whose inspector is open, whether the side pane has typed input that is not saved yet,
   // and the move (another node, the empty canvas, a toolbar button) waiting on "discard your changes?".
   const [selected, setSelected] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ select: string | null } | { form: OpenForm } | null>(
-    null,
-  );
+  const [pending, setPending] = useState<
+    { select: string | null } | { form: OpenForm } | { insert: InsertRequest } | null
+  >(null);
+  const [insert, setInsert] = useState<InsertRequest | undefined>(undefined);
   const dirty = useRef(false);
   const returnFocusTo = useRef<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -555,11 +567,40 @@ export function App({
     else setOpenForm(next);
   }
 
+  // KAM-213: open Add Workflow Step with a kind chosen (and, from a "+", the place), asking first if the form or
+  // inspector in the pane has typed input.
+  function requestInsert(request: Omit<InsertRequest, "nonce">) {
+    const full = { ...request, nonce: Date.now() };
+    if (unsavedInput()) setPending({ insert: full });
+    else applyInsert(full);
+  }
+
+  function applyInsert(request: InsertRequest) {
+    setPending(null);
+    dirty.current = false;
+    setSelected(null);
+    setInsert(request);
+    setOpenForm("workflow");
+  }
+
+  function insertFromEdge(edgeId: string, kind: StepKind) {
+    const edge = graph.edges.find((e) => e.id === edgeId);
+    const spot =
+      spec && edge ? spotBeforeStep(spec, edge.target.replace(/^workflow:/, "")) : undefined;
+    requestInsert({ kind, ...spot });
+  }
+
+  // The toolbar's own Add Workflow Step starts from scratch, not from the last "+".
+  useEffect(() => {
+    if (openForm !== "workflow") setInsert(undefined);
+  }, [openForm]);
+
   function discardAndGo() {
     const move = pending;
     if (!move) return;
     dirty.current = false;
     if ("select" in move) applySelect(move.select);
+    else if ("insert" in move) applyInsert(move.insert);
     else {
       setPending(null);
       setOpenForm(move.form);
@@ -821,6 +862,9 @@ export function App({
           )}
 
           <div className="md3-app__canvas-surface">
+            {emptyKind === null && spec && (
+              <NodePalette version={spec.version} onChoose={(kind) => requestInsert({ kind })} />
+            )}
             {emptyKind === null ? (
               <Canvas
                 graph={graph}
@@ -830,6 +874,8 @@ export function App({
                 selectedId={selected}
                 onSelect={requestSelect}
                 onPaneClick={() => requestSelect(null)}
+                version={spec?.version}
+                onInsert={spec ? insertFromEdge : undefined}
               />
             ) : (
               <EmptyState
@@ -948,6 +994,14 @@ export function App({
           {openForm === "workflow" && (
             <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
               <WorkflowStepForm
+                key={insert?.nonce ?? "toolbar"}
+                initial={
+                  insert && {
+                    kind: insert.kind,
+                    ...(insert.targetId !== undefined && { targetId: insert.targetId }),
+                    ...(insert.position !== undefined && { position: insert.position }),
+                  }
+                }
                 version={spec?.version}
                 scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
                 targets={spec ? addTargets(spec) : []}

@@ -4,13 +4,21 @@ import {
   Controls,
   ReactFlow,
   useReactFlow,
+  type EdgeChange,
   type NodeChange,
   type Edge,
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { InsertionMarker, SpecGraph, SpecNode } from "@kampong/spec";
+import {
+  EdgeInsertContext,
+  InsertEdge,
+  type EdgeInsertState,
+  type InsertEdgeData,
+} from "./InsertEdge.js";
+import type { StepKind } from "./stepKinds.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
 // Workflow -> Guardrails"). Node color roles map to Material Design 3
@@ -43,7 +51,16 @@ export interface CanvasProps {
   onSelect?: (id: string) => void;
   /** The empty canvas was clicked. */
   onPaneClick?: () => void;
+  /**
+   * A "+" on a line (KAM-213): the id of the edge and the kind chosen from its picker. Without it the lines have
+   * no "+". `version` is the spec's, for which kinds the picker offers.
+   */
+  onInsert?: (edgeId: string, kind: StepKind) => void;
+  version?: string;
 }
+
+// Defined once so @xyflow/react does not see a new map on each render.
+const EDGE_TYPES = { insert: InsertEdge };
 
 const MARKER_ID = "insertion-marker";
 const FLASH_MS = 2200;
@@ -92,7 +109,44 @@ export function Canvas({
   selectedId,
   onSelect,
   onPaneClick,
+  onInsert,
+  version,
 }: CanvasProps) {
+  const [openEdge, setOpenEdge] = useState<string | null>(null);
+  const [hoverEdge, setHoverEdge] = useState<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  // The pointer crosses a gap between the line and its "+": a short delay keeps the "+" from blinking out.
+  const hover = useCallback((id: string | null) => {
+    clearTimeout(hoverTimer.current);
+    if (id !== null) setHoverEdge(id);
+    else hoverTimer.current = setTimeout(() => setHoverEdge(null), 150);
+  }, []);
+  const insertState = useMemo<EdgeInsertState>(
+    () => ({
+      ...(version !== undefined && { version }),
+      hoverId: hoverEdge,
+      hover,
+      openId: openEdge,
+      open: setOpenEdge,
+      close: (restoreFocus) => {
+        const id = openEdge;
+        setOpenEdge(null);
+        if (restoreFocus && id !== null) {
+          requestAnimationFrame(() =>
+            document
+              .querySelector<HTMLElement>(`.react-flow__edge[data-id="${CSS.escape(id)}"]`)
+              ?.focus(),
+          );
+        }
+      },
+      choose: (id, kind) => {
+        setOpenEdge(null);
+        onInsert?.(id, kind);
+      },
+    }),
+    [version, hoverEdge, hover, openEdge, onInsert],
+  );
   // The focused node keeps its flash for a moment, then goes back to normal.
   const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
   useEffect(() => setFlashed(focus ?? null), [focus]);
@@ -137,14 +191,32 @@ export function Canvas({
 
   const edges: Edge[] = useMemo(
     () =>
-      graph.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        ...(edge.label !== undefined && { label: edge.label }),
-      })),
-    [graph],
+      graph.edges.map((edge): Edge => {
+        const into = edge.target.startsWith("workflow:")
+          ? edge.target.slice("workflow:".length)
+          : "";
+        const insertable = onInsert !== undefined && into !== "";
+        return {
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          ...(edge.label !== undefined && { label: edge.label }),
+          ...(insertable && {
+            type: "insert",
+            data: { before: into } satisfies InsertEdgeData,
+            ariaLabel: `Line into ${into}. Press Enter to insert a step before it.`,
+          }),
+        };
+      }),
+    [graph, onInsert],
   );
+
+  // Enter (or a click) on a line selects it; that opens its picker.
+  const onEdgesChange = (changes: EdgeChange[]) => {
+    for (const change of changes) {
+      if (change.type === "select" && change.selected) setOpenEdge(change.id);
+    }
+  };
 
   // Selection is the app's: a click (or Enter or Space on a focused node) reports the node, and the app draws
   // it selected through `selectedId`. Deselecting is the app's too (Esc, Close), so a clear is ignored here.
@@ -158,22 +230,35 @@ export function Canvas({
 
   return (
     <div className="md3-flow-wrap">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        fitView
-        minZoom={0.1}
-        onNodesChange={onNodesChange}
-        onNodeClick={(_, node) => node.id !== MARKER_ID && onSelect?.(node.id)}
-        onPaneClick={onPaneClick}
-        deleteKeyCode={null}
-        selectionKeyCode={null}
-        multiSelectionKeyCode={null}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls />
-        {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
-      </ReactFlow>
+      <EdgeInsertContext.Provider value={insertState}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          edgeTypes={EDGE_TYPES}
+          fitView
+          minZoom={0.1}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onEdgeMouseEnter={(_, edge) => hover(edge.id)}
+          onEdgeMouseLeave={() => hover(null)}
+          onMoveStart={() => setOpenEdge(null)}
+          onNodeClick={(_, node) => {
+            setOpenEdge(null);
+            if (node.id !== MARKER_ID) onSelect?.(node.id);
+          }}
+          onPaneClick={() => {
+            setOpenEdge(null);
+            onPaneClick?.();
+          }}
+          deleteKeyCode={null}
+          selectionKeyCode={null}
+          multiSelectionKeyCode={null}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+          <Controls />
+          {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
+        </ReactFlow>
+      </EdgeInsertContext.Provider>
     </div>
   );
 }
