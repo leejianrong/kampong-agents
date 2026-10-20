@@ -1473,6 +1473,7 @@ select.md3-text-field {
 
 .md3-empty-state__card .md3-banner {
   margin: 0;
+}
 
 /* Node selection and focus (KAM-211). The selected node keeps the primary outline xyflow draws through
    --xy-node-boxshadow-selected and takes the M3 pressed-strength state layer (12% primary); hover is 8%. The
