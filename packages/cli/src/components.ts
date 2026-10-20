@@ -279,11 +279,26 @@ function pinStatusFor(
   return { state: "changed", ...(widened.length > 0 && { widened }) };
 }
 
+// The first-party components ship inside the package and cannot change while the process runs, so they
+// are scanned and hashed once. Doing it on every /api/components request made each tool-form open cost
+// a full scan of every connector, which under CPU load outlasted the canvas test's wait (KAM-226).
+let firstPartyResolved:
+  ReturnType<ReturnType<typeof createFirstPartyRegistry>["resolveAll"]> | undefined;
+function resolveFirstParty() {
+  firstPartyResolved ??= createFirstPartyRegistry()
+    .resolveAll()
+    .catch((err: unknown) => {
+      firstPartyResolved = undefined;
+      throw err;
+    });
+  return firstPartyResolved;
+}
+
 async function buildCatalog(specPath: string): Promise<ComponentCatalog> {
   // One scan and one hash per component. The first-party components ship tested, so only the project's
   // own folder can report problems; it also cannot supply a kampong/* component (the registry refuses).
   const [firstParty, user] = await Promise.all([
-    createFirstPartyRegistry().resolveAll(),
+    resolveFirstParty(),
     new DirectoryComponentRegistry(componentsDirFor(specPath)).resolveAll(),
   ]);
   // A lockfile that cannot be read is a problem to show, not a reason to hide the components.
