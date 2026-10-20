@@ -478,7 +478,7 @@ describe("App", () => {
       await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
       fireEvent.click(screen.getByRole("button", { name: "Edit greet" }));
-      fireEvent.change(screen.getByLabelText("Model", { exact: false }), {
+      fireEvent.change(screen.getByLabelText("Model"), {
         target: { value: "m" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Save step" }));

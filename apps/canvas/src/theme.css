@@ -1527,3 +1527,97 @@ select.md3-text-field {
     outline: 3px solid Highlight;
   }
 }
+
+/* Inspector tabs (KAM-212): M3 primary tabs. A label-large label, a 3px primary indicator under the selected
+   tab, and a state layer on hover and focus. */
+
+.md3-inspector-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.md3-inspector-tabs__list {
+  display: flex;
+  border-bottom: 1px solid var(--md-sys-color-surface-variant);
+}
+
+.md3-inspector-tabs__tab {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: inherit;
+  font-size: var(--md-type-label-large-size);
+  line-height: var(--md-type-label-large-line);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.md3-inspector-tabs__tab::after {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+}
+
+.md3-inspector-tabs__tab:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-inspector-tabs__tab:focus-visible {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-inspector-tabs__tab[aria-selected="true"] {
+  color: var(--md-sys-color-on-surface);
+}
+
+.md3-inspector-tabs__tab[aria-selected="true"]::after {
+  background: var(--md-sys-color-primary);
+}
+
+.md3-inspector-tabs__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.md3-inspector-tabs__panel[hidden] {
+  display: none;
+}
+
+.md3-inspector-tabs__panel:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-inspector-tabs__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px dashed var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-inspector-tabs__empty p {
+  margin: 0;
+}
+
+@media (forced-colors: active) {
+  .md3-inspector-tabs__tab[aria-selected="true"]::after {
+    background: Highlight;
+  }
+}

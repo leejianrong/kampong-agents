@@ -127,17 +127,17 @@ for (const size of [
 
     test("clicking a node opens the matching form, for every kind of node", async ({ page }) => {
       const cases: [string, string, string | RegExp][] = [
-        ["workflow:parse", "Step parse", "Query"],
-        ["workflow:call", "Step call", "Tool"],
+        ["workflow:parse", "Step parse", "What should the model do?"],
+        ["workflow:call", "Step call", "Tool to call"],
         ["workflow:shape", "Step shape", "Values"],
-        ["workflow:check", "Step check", "Assert (expression that must be true)"],
-        ["workflow:once", "Step once", "Key (expression)"],
-        ["workflow:loop", "Step loop", "Loop variable"],
+        ["workflow:check", "Step check", "Check that this is true"],
+        ["workflow:once", "Step once", "What makes an item the same (key)"],
+        ["workflow:loop", "Step loop", "Name for each item"],
         ["workflow:scratch", "Step scratch", "Values"],
-        ["workflow:route", "Step route", /If \(expression/],
-        ["workflow:yes_arm", "Step yes_arm", "Reason"],
+        ["workflow:route", "Step route", /Go this way when this is true/],
+        ["workflow:yes_arm", "Step yes_arm", "Why the run ends here"],
         ["workflow:no_arm", "Step no_arm", "Values"],
-        ["workflow:ask", "Step ask", "Message"],
+        ["workflow:ask", "Step ask", "Message for the approver"],
         ["tool:lookup", "Tool lookup", "Name"],
         ["agent:inspector", "Trigger settings", "Schedule"],
         ["guardrails:inspector", "Guardrails", "Confidence threshold"],
@@ -184,7 +184,7 @@ for (const size of [
 
     test("saving a change from the inspector writes it and closes the panel", async ({ page }) => {
       await node(page, "workflow:check").click();
-      await page.getByLabel("Message (optional)").fill("must hold");
+      await page.getByLabel("Message when it fails (optional)").fill("must hold");
       await page.getByRole("button", { name: "Save step" }).click();
       await expect(inspector(page)).toHaveCount(0);
       await expect.poll(() => readFileSync(file, "utf8")).toContain("must hold");
@@ -257,15 +257,15 @@ for (const size of [
       page,
     }) => {
       await node(page, "workflow:check").click();
-      await page.getByLabel("Message (optional)").fill("half typed");
+      await page.getByLabel("Message when it fails (optional)").fill("half typed");
       await node(page, "workflow:shape").click();
       const prompt = page.getByTestId("discard-prompt");
       await expect(prompt).toContainText("changes you have not saved");
       // Still on the first form with the text in it.
-      await expect(page.getByLabel("Message (optional)")).toHaveValue("half typed");
+      await expect(page.getByLabel("Message when it fails (optional)")).toHaveValue("half typed");
       await prompt.getByRole("button", { name: "Keep editing" }).click();
       await expect(prompt).toHaveCount(0);
-      await expect(page.getByLabel("Message (optional)")).toHaveValue("half typed");
+      await expect(page.getByLabel("Message when it fails (optional)")).toHaveValue("half typed");
 
       // Esc asks too; Discard moves on.
       await page.keyboard.press("Escape");
@@ -276,7 +276,7 @@ for (const size of [
 
       // Discard on the way to another node opens that node.
       await node(page, "workflow:check").click();
-      await page.getByLabel("Message (optional)").fill("again");
+      await page.getByLabel("Message when it fails (optional)").fill("again");
       await node(page, "workflow:shape").click();
       await page
         .getByTestId("discard-prompt")

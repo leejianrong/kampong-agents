@@ -484,13 +484,23 @@ accessible name (for example "Transform step scratch, in loop") and a focus ring
 | `Delete` | Deletes the selected step or tool after the usual confirm (outside a text field). A step or tool that something still uses is refused and the places are listed. |
 | `Ctrl+D` / `Cmd+D` | Duplicates the selected step or tool as `<name>_copy` (then `_copy2`...). The copy sits right after the original in the same list, a copied foreach or branch gets new names for the steps inside it, and the copy is selected. |
 
+Every step form and the tool form sit in one shell with four tabs. **Setup** holds the few fields most people need,
+**Settings** the rest (for a model step the temperature, shown as **Creativity (temperature)**; for a foreach the
+concurrency and what to do when an item fails; for an HTTP tool the headers, body, response and extract field).
+**Output** and **Test** will show what the step produced and received on the last run; until a run has happened they
+say "Run the workflow to see output" and show nothing else. One **Save** saves every tab, and what is typed on a
+tab is kept when you switch. The tabs follow the ARIA tabs pattern: `Left` and `Right` (wrapping), `Home` and `End`
+move between them, and `Tab` goes on to the open panel. Fields are labelled in task words (for example **What
+should the model do?**, **Tool to call**, **List to go through**, **If an item fails**); the spec field behind each
+is unchanged.
+
 The panel also has **Duplicate** and **Delete** buttons. Clicking another node, the empty canvas or a toolbar button
 while a form has input you have not saved asks first ("Keep editing" or "Discard changes"); saving or cancelling
 closes the panel without asking. Selecting a node replaces any toolbar panel, and a toolbar button replaces the node's
 panel. **Duplicate** and **Delete** are not offered on the trigger and guardrails nodes.
 
 On the canvas, **Edit Steps** lists every step (a branch's arms and a foreach's body included) and opens an action
-step in place: its instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
+step in place: its query, instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
 editor with nested objects, arrays, enums and `required`. The form refuses what the loader refuses (an object with
 no properties, an array with no items, a `confidence_gate` step without a required numeric `confidence`), keywords
 the form has no field for (`pattern`, `format`, `default`, ...) are kept as written, and a save patches only the fields that

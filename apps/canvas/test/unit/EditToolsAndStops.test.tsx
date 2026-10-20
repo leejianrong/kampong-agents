@@ -105,8 +105,8 @@ describe("StepsPanel: tool, stop and approval steps", () => {
   it("repoints a tool step at another tool", async () => {
     const onPatch = setup();
     click("Edit get");
-    expect((screen.getByLabelText("Tool") as HTMLSelectElement).value).toBe("feed");
-    fireEvent.change(screen.getByLabelText("Tool"), { target: { value: "notify" } });
+    expect((screen.getByLabelText("Tool to call") as HTMLSelectElement).value).toBe("feed");
+    fireEvent.change(screen.getByLabelText("Tool to call"), { target: { value: "notify" } });
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -118,10 +118,14 @@ describe("StepsPanel: tool, stop and approval steps", () => {
   it("edits a stop's reason and status, clearing the status", async () => {
     const onPatch = setup();
     click("Edit halt");
-    expect((screen.getByLabelText("Reason") as HTMLTextAreaElement).value).toBe("done");
-    expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("skipped");
-    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "nothing new" } });
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "" } });
+    expect((screen.getByLabelText("Why the run ends here") as HTMLTextAreaElement).value).toBe(
+      "done",
+    );
+    expect((screen.getByLabelText("End the run as") as HTMLSelectElement).value).toBe("skipped");
+    fireEvent.change(screen.getByLabelText("Why the run ends here"), {
+      target: { value: "nothing new" },
+    });
+    fireEvent.change(screen.getByLabelText("End the run as"), { target: { value: "" } });
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -134,7 +138,7 @@ describe("StepsPanel: tool, stop and approval steps", () => {
   it("edits a stop inside a branch at its own path", async () => {
     const onPatch = setup();
     click("Edit x");
-    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "r" } });
+    fireEvent.change(screen.getByLabelText("Why the run ends here"), { target: { value: "r" } });
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -150,7 +154,9 @@ describe("StepsPanel: tool, stop and approval steps", () => {
   it("shows a bad template in a stop reason and does not save", () => {
     const onPatch = setup();
     click("Edit halt");
-    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "{{ 1 + }}" } });
+    fireEvent.change(screen.getByLabelText("Why the run ends here"), {
+      target: { value: "{{ 1 + }}" },
+    });
     click("Save step");
     expect(screen.getByRole("alert").textContent).toContain("reason:");
     expect(onPatch).not.toHaveBeenCalled();

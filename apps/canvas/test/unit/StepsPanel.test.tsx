@@ -37,6 +37,8 @@ function setup(s: AgentSpec = spec()) {
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 const change = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } });
+const changeExact = (label: string, value: string) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("StepsPanel", () => {
   afterEach(cleanup);
@@ -56,9 +58,11 @@ describe("StepsPanel", () => {
   it("opens a step with its values and saves a patch of only what changed", async () => {
     const { onPatch } = setup();
     click("Edit classify");
-    expect((screen.getByLabelText("Temperature") as HTMLInputElement).value).toBe("0.2");
-    change("Model", "gpt-x");
-    change("Instructions", "Be brief.");
+    expect((screen.getByLabelText("Creativity (temperature)") as HTMLInputElement).value).toBe(
+      "0.2",
+    );
+    changeExact("Model", "gpt-x");
+    change("How it should behave (optional)", "Be brief.");
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -72,7 +76,7 @@ describe("StepsPanel", () => {
   it("edits a nested step at its own path", async () => {
     const { onPatch } = setup();
     click("Edit inner");
-    change("Model", "m");
+    changeExact("Model", "m");
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -84,7 +88,7 @@ describe("StepsPanel", () => {
   it("clears a field and says what is wrong with a bad one", async () => {
     const { onPatch } = setup();
     click("Edit classify");
-    change("Temperature", "");
+    change("Creativity (temperature)", "");
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -92,7 +96,7 @@ describe("StepsPanel", () => {
       ]),
     );
     click("Edit classify");
-    change("Temperature", "9");
+    change("Creativity (temperature)", "9");
     click("Save step");
     expect(screen.getByRole("alert").textContent).toContain("must be a number from 0 to 2");
   });
@@ -164,7 +168,7 @@ describe("StepsPanel", () => {
     const { onPatch } = setup();
     onPatch.mockResolvedValueOnce(false);
     click("Edit classify");
-    change("Model", "x");
+    changeExact("Model", "x");
     click("Save step");
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Could not save"));
     expect(screen.getByRole("form", { name: "Edit classify" })).toBeTruthy();
@@ -245,8 +249,8 @@ describe("StepsPanel", () => {
     it("saves validate and dedupe edits", async () => {
       const { onPatch } = setup(dataSpec());
       click("Edit check");
-      change("Assert", "$exists(shape.title) and true");
-      change("On fail", "fail");
+      change("Check that this is true", "$exists(shape.title) and true");
+      change("If the check fails", "fail");
       click("Save step");
       await waitFor(() =>
         expect(onPatch).toHaveBeenCalledWith([
@@ -259,7 +263,7 @@ describe("StepsPanel", () => {
         ]),
       );
       click("Edit once");
-      change("TTL", "soon");
+      change("Remember it for (e.g. 24h)", "soon");
       click("Save step");
       expect(screen.getByRole("alert").textContent).toMatch(/^ttl: /);
     });
@@ -267,7 +271,7 @@ describe("StepsPanel", () => {
     it("lets a step in a foreach read the loop variable", async () => {
       const { onPatch } = setup(dataSpec());
       click("Edit inner");
-      change("Assert", "row.ok = true");
+      change("Check that this is true", "row.ok = true");
       expect(screen.queryByText(/not something an expression can read/)).toBeNull();
       click("Save step");
       await waitFor(() =>
@@ -334,9 +338,9 @@ describe("StepsPanel", () => {
     const long = Array.from({ length: 9 }, (_, i) => `line ${i + 1}`).join("\n");
     const { onPatch } = setup(spec("1.1", { query: long }));
     click("Edit classify");
-    const query = screen.getByLabelText("Query") as HTMLTextAreaElement;
+    const query = screen.getByLabelText("What should the model do?") as HTMLTextAreaElement;
     expect(query.value).toBe(long);
-    change("Query", "Classify {{ pay.x }}");
+    change("What should the model do?", "Classify {{ pay.x }}");
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([

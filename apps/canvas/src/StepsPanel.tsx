@@ -1,6 +1,7 @@
 import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useRef, useState } from "react";
 import { VersionGate } from "./VersionGate.js";
+import { InspectorTabs } from "./InspectorTabs.js";
 import { useAutoHeight } from "./useAutoHeight.js";
 import {
   actionStepToEditInput,
@@ -303,68 +304,76 @@ export function StepsPanel({
           className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          <PromptField
-            label="Query"
-            value={editing.input.query}
-            spellCheck={false}
-            placeholder="What this step asks the model; {{ step.field }} inserts a value"
-            onChange={(query) => patch({ query })}
-          />
-          <PromptField
-            label="Instructions"
-            value={editing.input.instructions}
-            placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
-            onChange={(instructions) => patch({ instructions })}
-          />
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Model</span>
-            <input
-              className="md3-text-field"
-              value={editing.input.model}
-              placeholder="A model of the agent's provider (blank keeps the agent's)"
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => patch({ model: e.target.value })}
-            />
-          </label>
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Temperature</span>
-            <input
-              className="md3-text-field"
-              value={editing.input.temperature}
-              placeholder="0 to 2 (blank keeps the agent's)"
-              autoComplete="off"
-              onChange={(e) => patch({ temperature: e.target.value })}
-            />
-          </label>
-          <fieldset className="md3-schema__group">
-            <legend className="md3-body-small">Output schema</legend>
-            {editing.input.schema ? (
+          <InspectorTabs
+            setup={
               <>
-                <SchemaEditor
-                  root
-                  path="output_schema"
-                  draft={editing.input.schema}
-                  onChange={(schema) => patch({ schema })}
+                <PromptField
+                  label="What should the model do?"
+                  value={editing.input.query}
+                  spellCheck={false}
+                  placeholder="What this step asks the model; {{ step.field }} inserts a value"
+                  onChange={(query) => patch({ query })}
                 />
-                <button
-                  type="button"
-                  className="md3-button md3-button-text"
-                  onClick={() => patch({ schema: undefined })}
-                >
-                  Remove output schema
-                </button>
+                <PromptField
+                  label="How it should behave (optional)"
+                  value={editing.input.instructions}
+                  placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
+                  onChange={(instructions) => patch({ instructions })}
+                />
+                <label className="md3-field">
+                  <span className="md3-body-small md3-field__label">Model</span>
+                  <input
+                    className="md3-text-field"
+                    value={editing.input.model}
+                    placeholder="A model of the agent's provider (blank keeps the agent's)"
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(e) => patch({ model: e.target.value })}
+                  />
+                </label>
+                <fieldset className="md3-schema__group">
+                  <legend className="md3-body-small">Shape of the answer (output schema)</legend>
+                  {editing.input.schema ? (
+                    <>
+                      <SchemaEditor
+                        root
+                        path="output_schema"
+                        draft={editing.input.schema}
+                        onChange={(schema) => patch({ schema })}
+                      />
+                      <button
+                        type="button"
+                        className="md3-button md3-button-text"
+                        onClick={() => patch({ schema: undefined })}
+                      >
+                        Remove output schema
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="md3-button md3-button-tonal"
+                      onClick={() => patch({ schema: emptySchemaDraft("object") })}
+                    >
+                      Add output schema
+                    </button>
+                  )}
+                </fieldset>
               </>
-            ) : (
-              <button
-                type="button"
-                className="md3-button md3-button-tonal"
-                onClick={() => patch({ schema: emptySchemaDraft("object") })}
-              >
-                Add output schema
-              </button>
-            )}
-          </fieldset>
+            }
+            settings={
+              <label className="md3-field">
+                <span className="md3-body-small md3-field__label">Creativity (temperature)</span>
+                <input
+                  className="md3-text-field"
+                  value={editing.input.temperature}
+                  placeholder="0 to 2 (blank keeps the agent's)"
+                  autoComplete="off"
+                  onChange={(e) => patch({ temperature: e.target.value })}
+                />
+              </label>
+            }
+          />
           <PanelError messages={errors} />
           <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
@@ -377,93 +386,103 @@ export function StepsPanel({
           className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          {editing.input.kind === "transform" && (
-            <fieldset className="md3-fieldset">
-              <legend className="md3-label-large">Values</legend>
-              {editing.input.set.map((row, i) => (
-                <div key={i} className="md3-setrow">
-                  <div className="md3-setrow__head">
+          <InspectorTabs
+            setup={
+              <>
+                {editing.input.kind === "transform" && (
+                  <fieldset className="md3-fieldset">
+                    <legend className="md3-label-large">Values to work out</legend>
+                    {editing.input.set.map((row, i) => (
+                      <div key={i} className="md3-setrow">
+                        <div className="md3-setrow__head">
+                          <label className="md3-field">
+                            <span className="md3-body-small md3-field__label">Name</span>
+                            <input
+                              className="md3-text-field"
+                              aria-label={`Value ${i + 1} name`}
+                              value={row.name}
+                              spellCheck={false}
+                              onChange={(e) => patchRow(i, { name: e.target.value })}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="md3-button md3-button-text"
+                            aria-label={`Remove value ${i + 1}`}
+                            onClick={() => removeRow(i)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <ExpressionField
+                          label="How to work it out"
+                          accessibleName={`Value ${i + 1} expression`}
+                          value={row.expression}
+                          scope={scopeFor(spec, current)}
+                          multiline
+                          onChange={(expression) => patchRow(i, { expression })}
+                        />
+                      </div>
+                    ))}
+                    <button type="button" className="md3-button md3-button-tonal" onClick={addRow}>
+                      Add value
+                    </button>
+                  </fieldset>
+                )}
+                {editing.input.kind === "validate" && (
+                  <>
+                    <ExpressionField
+                      label="Check that this is true"
+                      value={editing.input.assert}
+                      scope={scopeFor(spec, current)}
+                      onChange={(assert) => patchData({ assert })}
+                    />
                     <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">Name</span>
+                      <span className="md3-body-small md3-field__label">If the check fails</span>
+                      <select
+                        className="md3-text-field"
+                        value={editing.input.onFail}
+                        onChange={(e) => patchData({ onFail: e.target.value })}
+                      >
+                        <option value="fail">Stop the run (fail)</option>
+                        <option value="skip">Skip this item (skip)</option>
+                      </select>
+                    </label>
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">
+                        Message when it fails (optional)
+                      </span>
                       <input
                         className="md3-text-field"
-                        aria-label={`Value ${i + 1} name`}
-                        value={row.name}
-                        spellCheck={false}
-                        onChange={(e) => patchRow(i, { name: e.target.value })}
+                        value={editing.input.message}
+                        onChange={(e) => patchData({ message: e.target.value })}
                       />
                     </label>
-                    <button
-                      type="button"
-                      className="md3-button md3-button-text"
-                      aria-label={`Remove value ${i + 1}`}
-                      onClick={() => removeRow(i)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <ExpressionField
-                    label="Expression"
-                    accessibleName={`Value ${i + 1} expression`}
-                    value={row.expression}
-                    scope={scopeFor(spec, current)}
-                    multiline
-                    onChange={(expression) => patchRow(i, { expression })}
-                  />
-                </div>
-              ))}
-              <button type="button" className="md3-button md3-button-tonal" onClick={addRow}>
-                Add value
-              </button>
-            </fieldset>
-          )}
-          {editing.input.kind === "validate" && (
-            <>
-              <ExpressionField
-                label="Assert (expression that must be true)"
-                value={editing.input.assert}
-                scope={scopeFor(spec, current)}
-                onChange={(assert) => patchData({ assert })}
-              />
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">On fail</span>
-                <select
-                  className="md3-text-field"
-                  value={editing.input.onFail}
-                  onChange={(e) => patchData({ onFail: e.target.value })}
-                >
-                  <option value="fail">fail</option>
-                  <option value="skip">skip</option>
-                </select>
-              </label>
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">Message (optional)</span>
-                <input
-                  className="md3-text-field"
-                  value={editing.input.message}
-                  onChange={(e) => patchData({ message: e.target.value })}
-                />
-              </label>
-            </>
-          )}
-          {editing.input.kind === "dedupe" && (
-            <>
-              <ExpressionField
-                label="Key (expression)"
-                value={editing.input.key}
-                scope={scopeFor(spec, current)}
-                onChange={(key) => patchData({ key })}
-              />
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">TTL (e.g. 24h)</span>
-                <input
-                  className="md3-text-field"
-                  value={editing.input.ttl}
-                  onChange={(e) => patchData({ ttl: e.target.value })}
-                />
-              </label>
-            </>
-          )}
+                  </>
+                )}
+                {editing.input.kind === "dedupe" && (
+                  <>
+                    <ExpressionField
+                      label="What makes an item the same (key)"
+                      value={editing.input.key}
+                      scope={scopeFor(spec, current)}
+                      onChange={(key) => patchData({ key })}
+                    />
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">
+                        Remember it for (e.g. 24h)
+                      </span>
+                      <input
+                        className="md3-text-field"
+                        value={editing.input.ttl}
+                        onChange={(e) => patchData({ ttl: e.target.value })}
+                      />
+                    </label>
+                  </>
+                )}
+              </>
+            }
+          />
           <PanelError messages={errors} />
           <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
@@ -476,23 +495,29 @@ export function StepsPanel({
           className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          <ExpressionField
-            label={
-              editing.input.mode === "if"
-                ? "If (expression that gives true or false)"
-                : "Switch on (expression that gives the value)"
-            }
-            value={editing.input.expression}
-            scope={scopeFor(spec, current)}
-            onChange={(expression) =>
-              setEditing((e) =>
-                e && e.kind === "branch" ? { ...e, input: { ...e.input, expression } } : e,
-              )
+          <InspectorTabs
+            setup={
+              <>
+                <ExpressionField
+                  label={
+                    editing.input.mode === "if"
+                      ? "Go this way when this is true"
+                      : "Choose by this value"
+                  }
+                  value={editing.input.expression}
+                  scope={scopeFor(spec, current)}
+                  onChange={(expression) =>
+                    setEditing((e) =>
+                      e && e.kind === "branch" ? { ...e, input: { ...e.input, expression } } : e,
+                    )
+                  }
+                />
+                <p className="md3-body-small md3-field__hint">
+                  The arms are the steps below it in this list: edit, delete or add to them there.
+                </p>
+              </>
             }
           />
-          <p className="md3-body-small md3-field__hint">
-            The arms are the steps below it in this list: edit, delete or add to them there.
-          </p>
           <PanelError messages={errors} />
           <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
@@ -505,66 +530,76 @@ export function StepsPanel({
           className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          <ExpressionField
-            label="Items (expression that gives a list)"
-            value={editing.input.items}
-            scope={scopeFor(spec, current)}
-            onChange={(items) => patchLoop({ items })}
-          />
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Loop variable</span>
-            <input
-              className="md3-text-field"
-              value={editing.input.as}
-              spellCheck={false}
-              onChange={(e) => patchLoop({ as: e.target.value })}
-            />
-          </label>
-          <label className="md3-field">
-            <span className="md3-body-small md3-field__label">Concurrency</span>
-            <input
-              className="md3-text-field"
-              value={editing.input.concurrency}
-              placeholder="1 to 32 (blank runs one at a time)"
-              autoComplete="off"
-              onChange={(e) => patchLoop({ concurrency: e.target.value })}
-            />
-          </label>
-          {editing.input.onError === "keep" ? (
-            <p className="md3-body-small md3-field__hint">
-              This loop sends a failed item to another step (on_error goto). That is edited in the
-              YAML.
-            </p>
-          ) : (
-            <>
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">On error</span>
-                <select
-                  className="md3-text-field"
-                  value={editing.input.onError}
-                  onChange={(e) =>
-                    patchLoop({ onError: e.target.value as ForEachEditInput["onError"] })
-                  }
-                >
-                  <option value="">Default (fail)</option>
-                  <option value="fail">fail</option>
-                  <option value="continue">continue</option>
-                  <option value="retry">retry</option>
-                </select>
-              </label>
-              {editing.input.onError === "retry" && (
+          <InspectorTabs
+            setup={
+              <>
+                <ExpressionField
+                  label="List to go through"
+                  value={editing.input.items}
+                  scope={scopeFor(spec, current)}
+                  onChange={(items) => patchLoop({ items })}
+                />
                 <label className="md3-field">
-                  <span className="md3-body-small md3-field__label">Retries</span>
+                  <span className="md3-body-small md3-field__label">Name for each item</span>
                   <input
                     className="md3-text-field"
-                    value={editing.input.retries}
-                    autoComplete="off"
-                    onChange={(e) => patchLoop({ retries: e.target.value })}
+                    value={editing.input.as}
+                    spellCheck={false}
+                    onChange={(e) => patchLoop({ as: e.target.value })}
                   />
                 </label>
-              )}
-            </>
-          )}
+              </>
+            }
+            settings={
+              <>
+                <label className="md3-field">
+                  <span className="md3-body-small md3-field__label">How many at once</span>
+                  <input
+                    className="md3-text-field"
+                    value={editing.input.concurrency}
+                    placeholder="1 to 32 (blank runs one at a time)"
+                    autoComplete="off"
+                    onChange={(e) => patchLoop({ concurrency: e.target.value })}
+                  />
+                </label>
+                {editing.input.onError === "keep" ? (
+                  <p className="md3-body-small md3-field__hint">
+                    This loop sends a failed item to another step (on_error goto). That is edited in
+                    the YAML.
+                  </p>
+                ) : (
+                  <>
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">If an item fails</span>
+                      <select
+                        className="md3-text-field"
+                        value={editing.input.onError}
+                        onChange={(e) =>
+                          patchLoop({ onError: e.target.value as ForEachEditInput["onError"] })
+                        }
+                      >
+                        <option value="">Default (stop the run)</option>
+                        <option value="fail">Stop the run (fail)</option>
+                        <option value="continue">Go on with the next item (continue)</option>
+                        <option value="retry">Try again (retry)</option>
+                      </select>
+                    </label>
+                    {editing.input.onError === "retry" && (
+                      <label className="md3-field">
+                        <span className="md3-body-small md3-field__label">Tries</span>
+                        <input
+                          className="md3-text-field"
+                          value={editing.input.retries}
+                          autoComplete="off"
+                          onChange={(e) => patchLoop({ retries: e.target.value })}
+                        />
+                      </label>
+                    )}
+                  </>
+                )}
+              </>
+            }
+          />
           <PanelError messages={errors} />
           <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>
@@ -577,57 +612,65 @@ export function StepsPanel({
           className="md3-form md3-form--fill"
         >
           <span className="md3-title-small">{current.name}</span>
-          {editing.input.kind === "tool" && (
-            <label className="md3-field">
-              <span className="md3-body-small md3-field__label">Tool</span>
-              <select
-                className="md3-text-field"
-                value={editing.input.tool}
-                onChange={(e) => patchSimple({ tool: e.target.value })}
-              >
-                {!toolNames.includes(editing.input.tool) && (
-                  <option value={editing.input.tool}>{editing.input.tool} (not defined)</option>
+          <InspectorTabs
+            setup={
+              <>
+                {editing.input.kind === "tool" && (
+                  <label className="md3-field">
+                    <span className="md3-body-small md3-field__label">Tool to call</span>
+                    <select
+                      className="md3-text-field"
+                      value={editing.input.tool}
+                      onChange={(e) => patchSimple({ tool: e.target.value })}
+                    >
+                      {!toolNames.includes(editing.input.tool) && (
+                        <option value={editing.input.tool}>
+                          {editing.input.tool} (not defined)
+                        </option>
+                      )}
+                      {toolNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
-                {toolNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {editing.input.kind === "stop" && (
-            <>
-              <PromptField
-                label="Reason"
-                value={editing.input.reason}
-                spellCheck={false}
-                placeholder="Why the run ends here; {{ step.field }} inserts a value"
-                onChange={(reason) => patchSimple({ reason })}
-              />
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">Status</span>
-                <select
-                  className="md3-text-field"
-                  value={editing.input.status}
-                  onChange={(e) => patchSimple({ status: e.target.value })}
-                >
-                  <option value="">Default (completed)</option>
-                  <option value="completed">completed</option>
-                  <option value="skipped">skipped</option>
-                </select>
-              </label>
-            </>
-          )}
-          {editing.input.kind === "approval" && (
-            <PromptField
-              label="Message"
-              value={editing.input.message}
-              spellCheck={false}
-              placeholder="Shown to the approver; {{ step.field }} inserts a value"
-              onChange={(message) => patchSimple({ message })}
-            />
-          )}
+                {editing.input.kind === "stop" && (
+                  <>
+                    <PromptField
+                      label="Why the run ends here"
+                      value={editing.input.reason}
+                      spellCheck={false}
+                      placeholder="Why the run ends here; {{ step.field }} inserts a value"
+                      onChange={(reason) => patchSimple({ reason })}
+                    />
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">End the run as</span>
+                      <select
+                        className="md3-text-field"
+                        value={editing.input.status}
+                        onChange={(e) => patchSimple({ status: e.target.value })}
+                      >
+                        <option value="">Default (completed)</option>
+                        <option value="completed">completed</option>
+                        <option value="skipped">skipped</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {editing.input.kind === "approval" && (
+                  <PromptField
+                    label="Message for the approver"
+                    value={editing.input.message}
+                    spellCheck={false}
+                    placeholder="Shown to the approver; {{ step.field }} inserts a value"
+                    onChange={(message) => patchSimple({ message })}
+                  />
+                )}
+              </>
+            }
+          />
           <PanelError messages={errors} />
           <PanelFooter save="Save step" disabled={busy} onCancel={close} />
         </form>

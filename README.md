@@ -69,7 +69,7 @@ kampong doctor agent.yaml               # preflight: components, credentials, fi
 Run `kampong dev` in an empty folder and the canvas opens a "Start a new workflow" screen; **Start blank**
 creates `agent.yaml` then.
 
-On the canvas, click a node to edit it in the side panel (`Esc` closes, `Delete` removes, `Ctrl/Cmd+D` duplicates).
+On the canvas, click a node to edit it in the side panel (`Esc` closes, `Delete` removes, `Ctrl/Cmd+D` duplicates). Each form has Setup, Output, Test and Settings tabs.
 Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command
 reference, the `AgentSpec` schema and a step-by-step tutorial are in [`docs/`](./docs/index.md), a
 [Zensical](https://zensical.org) site (`uvx zensical build`, or `uvx zensical serve` to preview).
