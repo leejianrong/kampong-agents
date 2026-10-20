@@ -4,6 +4,7 @@ import {
   Controls,
   ReactFlow,
   useReactFlow,
+  type NodeChange,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -36,6 +37,12 @@ export interface CanvasProps {
   marker?: InsertionMarker;
   /** A node to pan into view and flash, as after an add (KAM-173). A new `nonce` repeats it. */
   focus?: { id: string; nonce: number };
+  /** The selected node's id (KAM-211): drawn with the selected outline. */
+  selectedId?: string | null;
+  /** A node was clicked, or chosen with Enter or Space while focused. */
+  onSelect?: (id: string) => void;
+  /** The empty canvas was clicked. */
+  onPaneClick?: () => void;
 }
 
 const MARKER_ID = "insertion-marker";
@@ -77,7 +84,15 @@ const KIND_LABEL: Record<SpecNode["kind"], string> = {
   guardrails: "Guardrails",
 };
 
-export function Canvas({ graph, layout, marker, focus }: CanvasProps) {
+export function Canvas({
+  graph,
+  layout,
+  marker,
+  focus,
+  selectedId,
+  onSelect,
+  onPaneClick,
+}: CanvasProps) {
   // The focused node keeps its flash for a moment, then goes back to normal.
   const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
   useEffect(() => setFlashed(focus ?? null), [focus]);
@@ -92,6 +107,8 @@ export function Canvas({ graph, layout, marker, focus }: CanvasProps) {
         id: node.id,
         position: layout[node.id] ?? { x: 0, y: 0 },
         data: { label: nodeLabel(node) },
+        selected: selectedId === node.id,
+        ariaLabel: nodeAriaLabel(node),
         className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
           flashed?.id === node.id ? " md3-node--flash" : ""
         }`,
@@ -115,7 +132,7 @@ export function Canvas({ graph, layout, marker, focus }: CanvasProps) {
           ]
         : []),
     ],
-    [graph, layout, marker, flashed],
+    [graph, layout, marker, flashed, selectedId],
   );
 
   const edges: Edge[] = useMemo(
@@ -129,9 +146,30 @@ export function Canvas({ graph, layout, marker, focus }: CanvasProps) {
     [graph],
   );
 
+  // Selection is the app's: a click (or Enter or Space on a focused node) reports the node, and the app draws
+  // it selected through `selectedId`. Deselecting is the app's too (Esc, Close), so a clear is ignored here.
+  const onNodesChange = (changes: NodeChange[]) => {
+    for (const change of changes) {
+      if (change.type === "select" && change.selected && change.id !== MARKER_ID) {
+        onSelect?.(change.id);
+      }
+    }
+  };
+
   return (
     <div className="md3-flow-wrap">
-      <ReactFlow nodes={nodes} edges={edges} fitView>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        fitView
+        minZoom={0.1}
+        onNodesChange={onNodesChange}
+        onNodeClick={(_, node) => node.id !== MARKER_ID && onSelect?.(node.id)}
+        onPaneClick={onPaneClick}
+        deleteKeyCode={null}
+        selectionKeyCode={null}
+        multiSelectionKeyCode={null}
+      >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls />
         {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
@@ -234,6 +272,39 @@ function nodeLabel(node: SpecNode): ReactNode {
       </div>
     </div>
   );
+}
+
+const STEP_KIND_WORD: Record<string, string> = {
+  tool: "Tool",
+  approval: "Approval",
+  transform: "Transform",
+  validate: "Validate",
+  dedupe: "Dedupe",
+};
+
+/** What a screen reader hears for a node: its kind and name, and where a nested step sits. */
+function nodeAriaLabel(node: SpecNode): string {
+  const name = String(node.data.name ?? node.data.step ?? node.id);
+  let what: string;
+  if (node.kind === "agent") what = "Trigger";
+  else if (node.kind === "tool") what = `Tool ${name}`;
+  else if (node.kind === "guardrails") what = "Guardrails";
+  else {
+    const d = node.data;
+    const kind = d.foreach
+      ? "Foreach"
+      : d.branch
+        ? "Branch"
+        : d.stop
+          ? "Stop"
+          : (STEP_KIND_WORD[String(d.type)] ?? "Workflow");
+    what = `${kind} step ${name}`;
+  }
+  if (node.parent) {
+    const arm = node.arm !== undefined ? `, ${node.arm}` : "";
+    what += `, in ${node.parent.replace(/^workflow:/, "")}${arm}`;
+  }
+  return what;
 }
 
 function ownLabel(node: SpecNode): ReactNode {

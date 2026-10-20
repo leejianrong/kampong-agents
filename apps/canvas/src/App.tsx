@@ -23,7 +23,9 @@ import {
   type Trigger,
   type WorkflowStep,
 } from "@kampong/spec";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NodeInspector } from "./NodeInspector.js";
+import { duplicateStep, duplicateTool } from "./duplicate.js";
 import { ApiError, createApiClient, type ApiClient, type SpecErrorDto } from "./api.js";
 import { Canvas } from "./Canvas.js";
 import { EmptyState } from "./EmptyState.js";
@@ -105,6 +107,9 @@ type OpenForm =
   | "edit-tool"
   | "import";
 
+// The forms whose typed input is worth a question before the selection moves on (KAM-211).
+const KEEP_INPUT_FORMS: OpenForm[] = ["tool", "workflow", "guardrails", "edit-tool"];
+
 export function App({
   apiBaseUrl = "",
   api: providedApi,
@@ -137,6 +142,14 @@ export function App({
     index?: number;
   } | null>(null);
   const [focus, setFocus] = useState<{ id: string; nonce: number } | undefined>(undefined);
+  // KAM-211: the node whose inspector is open, whether the side pane has typed input that is not saved yet,
+  // and the move (another node, the empty canvas, a toolbar button) waiting on "discard your changes?".
+  const [selected, setSelected] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ select: string | null } | { form: OpenForm } | null>(
+    null,
+  );
+  const dirty = useRef(false);
+  const returnFocusTo = useRef<string | null>(null);
   const [conflict, setConflict] = useState(false);
   // KAN-1216: a distinct error state for "the last spec load/save failed" --
   // e.g. the spec file was deleted/renamed out from under a running
@@ -212,7 +225,9 @@ export function App({
   }, [api, refresh]);
 
   useEffect(() => {
-    if ((openForm !== "tool" && openForm !== "edit-tool") || !api.listComponents) return;
+    const toolOpen =
+      openForm === "tool" || openForm === "edit-tool" || selected?.startsWith("tool:");
+    if (!toolOpen || !api.listComponents) return;
     let cancelled = false;
     api
       .listComponents()
@@ -231,7 +246,7 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [api, openForm]);
+  }, [api, openForm, selected]);
 
   const references = useMemo(
     () => (spec && catalog ? outputReferenceOptions(spec, catalog.components) : []),
@@ -510,6 +525,92 @@ export function App({
     }
   }
 
+  // KAM-211: the inspector. Selecting a node opens its form in the side pane in place of a toolbar form; Esc,
+  // Close, a save or a cancel clears it. Moving on with typed input that is not saved asks first, and the
+  // form stays as it was until the user says "discard" (KAM-182's prompt is not built yet; this is the same
+  // rule for the one place the canvas can now drop input).
+  const unsavedInput = () =>
+    dirty.current &&
+    (selected !== null || (openForm !== null && KEEP_INPUT_FORMS.includes(openForm)));
+
+  function applySelect(id: string | null) {
+    const previous = selected;
+    setPending(null);
+    dirty.current = false;
+    setSelected(id);
+    if (id !== null) setOpenForm(null);
+    else if (previous !== null) returnFocusTo.current = previous;
+  }
+
+  function requestSelect(id: string | null) {
+    if (id !== null && id === selected) return;
+    if (id === null && selected === null) return;
+    if (unsavedInput()) setPending({ select: id });
+    else applySelect(id);
+  }
+
+  // The toolbar buttons open their own form in the same pane; they ask first too.
+  function toolbarForm(next: OpenForm) {
+    if (selected !== null && unsavedInput()) setPending({ form: next });
+    else setOpenForm(next);
+  }
+
+  function discardAndGo() {
+    const move = pending;
+    if (!move) return;
+    dirty.current = false;
+    if ("select" in move) applySelect(move.select);
+    else {
+      setPending(null);
+      setOpenForm(move.form);
+    }
+  }
+
+  // A toolbar form replaces the inspector; a node that has gone (deleted, or the file changed) closes it.
+  useEffect(() => {
+    if (openForm !== null) setSelected(null);
+  }, [openForm]);
+  useEffect(() => {
+    if (selected !== null && spec && !graph.nodes.some((n) => n.id === selected)) setSelected(null);
+  }, [selected, spec, graph]);
+  useEffect(() => {
+    dirty.current = false;
+  }, [selected, openForm]);
+  // Focus goes back to the node the inspector came from, so the keyboard user is where they were.
+  useEffect(() => {
+    const id = returnFocusTo.current;
+    if (selected !== null || id === null) return;
+    returnFocusTo.current = null;
+    document.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`)?.focus();
+  }, [selected, graph]);
+
+  async function handleSaveToolAt(index: number, tool: Tool): Promise<boolean> {
+    const before = spec?.agent.tools?.[index];
+    if (!before) return false;
+    const ops = toolEditPatch(["agent", "tools", index], before, tool);
+    if (ops.length > 0 && !(await applyPatchOrReportError(ops))) return false;
+    if (ops.length > 0) await refresh();
+    return true;
+  }
+
+  async function handleDuplicate(nodeId: string): Promise<string[] | void> {
+    if (!spec) return;
+    if (nodeId.startsWith("tool:")) {
+      const copy = duplicateTool(spec, nodeId.slice("tool:".length));
+      if (!copy) return ["That tool is no longer in the spec."];
+      if (!(await applyPatchOrReportError([{ op: "add", path: ["agent", "tools"], value: copy }])))
+        return ["The copy could not be saved."];
+      await refresh();
+      applySelect(`tool:${copy.name}`);
+      return;
+    }
+    const copy = duplicateStep(spec, nodeId.replace(/^workflow:/, ""));
+    if (!copy) return ["That step is no longer in the spec."];
+    const refused = await handleAddStepAt(copy.place, copy.step);
+    if (refused) return refused;
+    applySelect(`workflow:${copy.step.step}`);
+  }
+
   // KAM-207: export is the spec's own text, as it is stored, so what is downloaded runs under `kampong run`,
   // `kampong serve` and `kampong export` exactly as it is on screen.
   function downloadAsFile() {
@@ -523,12 +624,14 @@ export function App({
 
   async function handleSaveTrigger(value: Trigger) {
     if (!(await applyPatchOrReportError(setTriggerPatch(value)))) return false;
+    dirty.current = false;
     await refresh();
     return true;
   }
 
   async function handleRemoveTrigger() {
     if (!(await applyPatchOrReportError(removeTriggerPatch()))) return false;
+    dirty.current = false;
     await refresh();
     return true;
   }
@@ -576,14 +679,14 @@ export function App({
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "tool"}
-                  onClick={() => setOpenForm(openForm === "tool" ? null : "tool")}
+                  onClick={() => toolbarForm(openForm === "tool" ? null : "tool")}
                 >
                   Add Tool
                 </button>
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "workflow"}
-                  onClick={() => setOpenForm(openForm === "workflow" ? null : "workflow")}
+                  onClick={() => toolbarForm(openForm === "workflow" ? null : "workflow")}
                 >
                   Add Workflow Step
                 </button>
@@ -594,28 +697,28 @@ export function App({
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "guardrails"}
-                  onClick={() => setOpenForm(openForm === "guardrails" ? null : "guardrails")}
+                  onClick={() => toolbarForm(openForm === "guardrails" ? null : "guardrails")}
                 >
                   Set Guardrails
                 </button>
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "vars"}
-                  onClick={() => setOpenForm(openForm === "vars" ? null : "vars")}
+                  onClick={() => toolbarForm(openForm === "vars" ? null : "vars")}
                 >
                   Spec Vars
                 </button>
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "trigger"}
-                  onClick={() => setOpenForm(openForm === "trigger" ? null : "trigger")}
+                  onClick={() => toolbarForm(openForm === "trigger" ? null : "trigger")}
                 >
                   Trigger
                 </button>
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "steps"}
-                  onClick={() => setOpenForm(openForm === "steps" ? null : "steps")}
+                  onClick={() => toolbarForm(openForm === "steps" ? null : "steps")}
                 >
                   Edit Steps
                 </button>
@@ -638,7 +741,7 @@ export function App({
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "variables"}
-                  onClick={() => setOpenForm(openForm === "variables" ? null : "variables")}
+                  onClick={() => toolbarForm(openForm === "variables" ? null : "variables")}
                 >
                   Secrets
                 </button>
@@ -647,7 +750,7 @@ export function App({
                 <button
                   className="md3-button md3-button-tonal"
                   aria-pressed={openForm === "checks"}
-                  onClick={() => setOpenForm(openForm === "checks" ? null : "checks")}
+                  onClick={() => toolbarForm(openForm === "checks" ? null : "checks")}
                 >
                   Checks
                 </button>
@@ -655,7 +758,7 @@ export function App({
               <button
                 className="md3-button md3-button-filled"
                 aria-pressed={openForm === "run"}
-                onClick={() => setOpenForm(openForm === "run" ? null : "run")}
+                onClick={() => toolbarForm(openForm === "run" ? null : "run")}
               >
                 Test Run
               </button>
@@ -719,7 +822,15 @@ export function App({
 
           <div className="md3-app__canvas-surface">
             {emptyKind === null ? (
-              <Canvas graph={graph} layout={layout} marker={marker} focus={focus} />
+              <Canvas
+                graph={graph}
+                layout={layout}
+                marker={marker}
+                focus={focus}
+                selectedId={selected}
+                onSelect={requestSelect}
+                onPaneClick={() => requestSelect(null)}
+              />
             ) : (
               <EmptyState
                 kind={emptyKind}
@@ -733,7 +844,71 @@ export function App({
             )}
           </div>
         </div>
-        <div className="md3-app__side-pane">
+        <div
+          className="md3-app__side-pane"
+          onInputCapture={() => {
+            dirty.current = true;
+          }}
+        >
+          {pending && (
+            <div
+              role="alert"
+              className="md3-banner md3-banner--warning md3-inspector__discard"
+              data-testid="discard-prompt"
+            >
+              <span>This form has changes you have not saved. Discard them?</span>
+              <button
+                type="button"
+                className="md3-banner__action"
+                autoFocus
+                onClick={() => setPending(null)}
+              >
+                Keep editing
+              </button>
+              <button type="button" className="md3-banner__action" onClick={discardAndGo}>
+                Discard changes
+              </button>
+            </div>
+          )}
+          {selected !== null &&
+            spec &&
+            (() => {
+              const node = graph.nodes.find((n) => n.id === selected);
+              if (!node) return null;
+              const tool =
+                node.kind === "tool"
+                  ? spec.agent.tools?.find((t) => t.name === node.data.name)
+                  : undefined;
+              return (
+                <NodeInspector
+                  key={selected}
+                  spec={spec}
+                  node={node}
+                  catalogReady={
+                    tool?.action !== "component" || catalog !== undefined || !api.listComponents
+                  }
+                  catalog={catalog}
+                  references={references}
+                  onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                  onPatchSteps={handlePatchSteps}
+                  onSaveTool={handleSaveToolAt}
+                  onSaveTrigger={handleSaveTrigger}
+                  onRemoveTrigger={handleRemoveTrigger}
+                  onSaveGuardrails={(value) =>
+                    applyPatchOrReportError([
+                      { op: "set", path: ["agent", "guardrails"], value },
+                    ]).then(async (ok) => {
+                      if (ok) await refresh();
+                      return ok;
+                    })
+                  }
+                  onRemove={handleRemove}
+                  onDuplicate={() => handleDuplicate(selected)}
+                  onClose={() => applySelect(null)}
+                  onRequestClose={() => (pending ? setPending(null) : requestSelect(null))}
+                />
+              );
+            })()}
           {/* The run panel docks in the side pane (above the YAML) rather than
             floating over the canvas, so a run never covers the graph the user
             is watching. Toggling "Test Run" shows/hides it. */}

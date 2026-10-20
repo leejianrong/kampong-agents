@@ -13,13 +13,19 @@ const FALLBACK_ACTIONS: FallbackAction[] = ["escalate_to_human"];
 // structured, zero-LLM-calls pattern as ToolForm.tsx and WorkflowStepForm.tsx.
 
 export interface GuardrailsFormProps {
+  /** The spec's current guardrails, when the form edits them (the inspector, KAM-211). */
+  initial?: Guardrails | undefined;
   onSubmit: (guardrails: Guardrails) => void;
   onCancel: () => void;
 }
 
-export function GuardrailsForm({ onSubmit, onCancel }: GuardrailsFormProps) {
-  const [confidenceThreshold, setConfidenceThreshold] = useState("0.8");
-  const [fallbackAction, setFallbackAction] = useState<FallbackAction>("escalate_to_human");
+export function GuardrailsForm({ initial, onSubmit, onCancel }: GuardrailsFormProps) {
+  const [confidenceThreshold, setConfidenceThreshold] = useState(
+    String(initial?.confidence_threshold ?? "0.8"),
+  );
+  const [fallbackAction, setFallbackAction] = useState<FallbackAction>(
+    initial?.fallback_action ?? "escalate_to_human",
+  );
   const [errors, setErrors] = useState<string[]>([]);
 
   function handleSubmit(event: React.FormEvent) {
