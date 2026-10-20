@@ -143,7 +143,7 @@ for (const size of [
         ["guardrails:inspector", "Guardrails", "Confidence threshold"],
       ];
       for (const [id, title, text] of cases) {
-        await node(page, id).click();
+        await node(page, id).click({ position: { x: 8, y: 8 } });
         const panel = page.getByRole("region", { name: title, exact: true });
         await expect(panel, id).toBeVisible();
         await expect(panel.getByText(text).first(), id).toBeVisible();
