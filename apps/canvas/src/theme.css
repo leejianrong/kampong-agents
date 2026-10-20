@@ -1958,3 +1958,66 @@ select.md3-text-field {
     transition: none;
   }
 }
+
+/* ---- Command palette (KAM-215): a dialog with a search field and a list, centred near the top ---- */
+.md3-cmdk-backdrop {
+  align-items: flex-start;
+  padding: 10vh 1rem 1rem;
+  z-index: 30;
+}
+
+.md3-cmdk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(36rem, 100%);
+  max-height: min(28rem, 100%);
+  padding: 0.75rem;
+  border-radius: var(--md-shape-corner-extra-large, 1.75rem);
+  background: var(--md-sys-color-surface-container-high, var(--md-sys-color-surface));
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-elevation-level3);
+}
+
+.md3-cmdk__list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.md3-cmdk__option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0 0.75rem;
+  border-radius: var(--md-shape-corner-small);
+  cursor: pointer;
+}
+
+.md3-cmdk__hint {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* State layer: hover and the keyboard's active row read the same. */
+.md3-cmdk__option:hover,
+.md3-cmdk__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-cmdk__option[aria-selected="true"] {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.md3-menu__shortcut {
+  color: var(--md-sys-color-on-surface-variant);
+}

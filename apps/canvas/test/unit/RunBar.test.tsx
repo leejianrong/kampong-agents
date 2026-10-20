@@ -109,7 +109,14 @@ describe("run bar", () => {
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     const items = screen.getAllByRole("menuitem").map((i) => i.textContent);
-    expect(items).toEqual(["Add step", "Add tool", "Edit steps", "Import YAML", "Export YAML"]);
+    expect(items).toEqual([
+      "Add step",
+      "Add tool",
+      "Edit steps",
+      "Search commandsCtrl+K",
+      "Import YAML",
+      "Export YAML",
+    ]);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(button);

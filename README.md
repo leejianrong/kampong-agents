@@ -60,6 +60,7 @@ data: see its [`README`](./packages/cli/templates/market-etl/README.md).
 
 ```sh
 kampong dev [dir]                       # canvas (YAML in a "</>" drawer, Alt+Y, lines follow the selected node); edits the file on disk
+                                        # shortcuts: Ctrl/Cmd+K command palette, / step search, Alt+Y YAML drawer
 kampong run agent.yaml --input "..."    # headless run; --tools replay for offline, --approve-all for CI
 kampong serve agent.yaml                # webhook, scheduled or polling service (POST /webhook, run-now)
 kampong export agent.yaml ./out         # standalone TypeScript project: cd ./out && npm install && npm start

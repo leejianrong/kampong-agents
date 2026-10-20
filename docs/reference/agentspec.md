@@ -495,6 +495,22 @@ accessible name (for example "Transform step scratch, in loop") and a focus ring
 | `Delete` | Deletes the selected step or tool after the usual confirm (outside a text field). A step or tool that something still uses is refused and the places are listed. |
 | `Ctrl+D` / `Cmd+D` | Duplicates the selected step or tool as `<name>_copy` (then `_copy2`...). The copy sits right after the original in the same list, a copied foreach or branch gets new names for the steps inside it, and the copy is selected. |
 
+### Command palette and shortcuts
+
+`Ctrl+K` / `Cmd+K` opens the command palette from anywhere on the canvas (also from the run bar's menu, **Search
+commands**). It is a dialog with a search box and a list; type to filter, `Up` and `Down` move, `Enter` runs, `Esc`
+closes it, and focus goes back to where it was. It lists the canvas's own actions (Run (Test Run), Open code (YAML
+drawer), Open Secrets / Vars / Checks / Guardrails / Trigger, Add step, Add tool, Edit steps, Import YAML, Export
+YAML) and a **Go to** entry for the trigger, guardrails and every step and tool, which selects the node and opens
+its inspector as a click does. If the panel has typed input that is not saved, the same "Discard changes?" prompt
+asks first. `/` is separate: it focuses the step search in the left palette.
+
+| Key | What it does |
+| --- | --- |
+| `Ctrl+K` / `Cmd+K` | Opens or closes the command palette. |
+| `/` | Focuses the step search in the left palette (outside a text field). |
+| `Alt+Y` | Opens or closes the YAML drawer. |
+
 Every step form and the tool form sit in one shell with four tabs. **Setup** holds the few fields most people need,
 **Settings** the rest (for a model step the temperature, shown as **Creativity (temperature)**; for a foreach the
 concurrency and what to do when an item fails; for an HTTP tool the headers, body, response and extract field).

@@ -27,6 +27,8 @@ export interface ActionDescriptor {
   /** Longer accessible name, which must contain `label`. */
   ariaLabel?: string;
   title?: string;
+  /** The command palette's wording for this verb when the label alone is not a command ("Open Secrets"). */
+  commandLabel?: string;
   /** Words the command palette matches besides the label. */
   keywords?: string[];
   shortcut?: string;
@@ -51,6 +53,13 @@ export interface ActionContext {
   toggleForm: (form: OpenForm) => void;
   toggleYaml: () => void;
   download: () => void;
+  /** Opens the command palette (KAM-215); without it the menu has no entry for it. */
+  openPalette?: () => void;
+}
+
+/** What the command palette calls an action. */
+export function commandName(action: ActionDescriptor): string {
+  return action.commandLabel ?? action.label;
 }
 
 export function buildActions(ctx: ActionContext): ActionDescriptor[] {
@@ -64,6 +73,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
     id,
     label,
     surface,
+    ...(surface === "status" && { commandLabel: `Open ${label}` }),
     pressed: ctx.openForm === target,
     run: () => ctx.toggleForm(target),
     ...extra,
@@ -72,6 +82,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
   const actions: ActionDescriptor[] = [
     form("run", "run", "run", "Run", {
       ariaLabel: "Test Run",
+      commandLabel: "Run (Test Run)",
       title: "Try the workflow with a test run",
       keywords: ["test", "execute", "try"],
     }),
@@ -81,6 +92,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
       ariaLabel: "For developers: show YAML",
       title: "For developers: show the spec as YAML (Alt+Y)",
       surface: "yaml",
+      commandLabel: "Open code (YAML drawer)",
       shortcut: "Alt+Y",
       pressed: ctx.yamlOpen,
       keywords: ["yaml", "developers", "source"],
@@ -131,6 +143,18 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
     // Secrets and checks need no spec, so they stay while the workflow is being started.
     if (ctx.hasSecrets) actions.push(form("secrets", "variables", "status", "Secrets"));
     if (ctx.hasChecks) actions.push(form("checks", "checks", "status", "Checks"));
+  }
+
+  if (ctx.openPalette) {
+    actions.push({
+      id: "commands",
+      label: "Search commands",
+      surface: "menu",
+      shortcut: "Ctrl+K",
+      title: "Find any command or jump to a step (Ctrl+K)",
+      keywords: ["palette", "command"],
+      run: ctx.openPalette,
+    });
   }
 
   actions.push(
