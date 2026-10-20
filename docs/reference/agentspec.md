@@ -523,6 +523,16 @@ into view and flashed. Underneath it is a `step.insert` at a place with an `inde
 the hosted server. An `else` or `default` that is not there yet is created. An
 approval in a loop, a nested foreach, or a step after a stop is refused by the spec, and the form shows that message.
 
+The canvas has two faster ways in to the same form. The **step palette** on the left lists the kinds in three
+groups (do work, work with data, control the flow), each with a one-line description; type to search (the search also
+knows words such as _loop_ or _if_), press `/` anywhere outside a text field to jump to it, use the arrow keys and
+`Enter` to choose, and the form opens with that kind at the end of the workflow. On a narrow window the palette starts
+as a **Steps** button and opens over the canvas. A **+** on a line between two steps (it shows when you hover the
+line; with the keyboard, focus the line and press `Enter`) opens the same picker, and the form opens with **Add to**
+and **Position** already set to just before the step the line leads to: between two steps, at the start of a loop's
+body, or at the start of a branch arm. The save is a single `step.insert`, so the YAML changes by one inserted block.
+`Esc` closes the picker.
+
 A branch's arms are nodes of their own the same way: each arm step is set in from its branch and marked with the arm
 it is in, the branch leads to the first step of each arm on a line labelled `then`, `else`, `case <value>` or
 `default`, and every arm that does not end in a stop leads on to the next step (a missing `else`, or no matching

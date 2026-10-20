@@ -9,6 +9,7 @@ import {
   type WorkflowStep,
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
+import { KIND_HELP, type StepKind } from "./stepKinds.js";
 
 // The "Add Workflow Step" affordance -- same structured, zero-LLM-calls
 // pattern as ToolForm.tsx (PLAN.md Affordances, Q12/R5).
@@ -21,74 +22,6 @@ import { ExpressionField } from "./ExpressionField.js";
 // variant buildWorkflowStepFromForm builds; only "Add" exists for workflow
 // steps today (no edit-in-place affordance anywhere on the canvas), so this
 // stays create-only to match that scope.
-
-// transform, validate and dedupe (KAN-1860) are version 1.1 steps: the spec's own check, not this form, says
-// so if the spec is still 1.0. Their expression fields are plain text, as the condition's `if` is.
-type StepKind =
-  | "action"
-  | "tool"
-  | "approval"
-  | "condition"
-  | "transform"
-  | "validate"
-  | "dedupe"
-  | "foreach"
-  | "branch"
-  | "stop";
-
-// KAM-176: what each kind does, in task words, shown under the picker when it is selected.
-const KIND_HELP: Record<StepKind, { label: string; what: string; example: string }> = {
-  action: {
-    label: "Action",
-    what: "Ask the model to do something and keep its answer.",
-    example: "Example: write a reply to the customer's email.",
-  },
-  tool: {
-    label: "Tool",
-    what: "Call one of the tools you added, such as a web request or a Slack message.",
-    example: "Example: post the reply to the support channel.",
-  },
-  approval: {
-    label: "Approval",
-    what: "Wait for a person to approve before the run goes on.",
-    example: "Example: let a manager check a refund before it is sent.",
-  },
-  condition: {
-    label: "Condition",
-    what: "Do this only if a condition is true, otherwise do something else (older specs).",
-    example: "Example: if the order is over 100, go to the approval step.",
-  },
-  transform: {
-    label: "Transform",
-    what: "Work out new values from earlier results, without asking the model.",
-    example: "Example: total = price * quantity.",
-  },
-  validate: {
-    label: "Validate",
-    what: "Check that the data looks right, and stop or skip the item if it does not.",
-    example: "Example: the email address must not be empty.",
-  },
-  dedupe: {
-    label: "Dedupe",
-    what: "Skip anything already handled within a time window.",
-    example: "Example: ignore a ticket seen in the last 24h.",
-  },
-  foreach: {
-    label: "Foreach",
-    what: "Repeat the steps inside for each item in a list.",
-    example: "Example: for each stock symbol, fetch its price.",
-  },
-  branch: {
-    label: "Branch",
-    what: "Choose between groups of steps: do this only if something is true, or pick by value.",
-    example: "Example: if the move is over 5%, send an alert; otherwise carry on.",
-  },
-  stop: {
-    label: "Stop",
-    what: "End the run here, with a reason.",
-    example: "Example: nothing new today, so stop.",
-  },
-};
 
 export interface WorkflowStepFormProps {
   /** The spec's version. On "1.1" the older Condition kind is hidden: Branch does the same job. */
@@ -116,6 +49,12 @@ export interface WorkflowStepFormProps {
    */
   onSubmit: (step: WorkflowStep, place?: Place) => void | string[] | Promise<void | string[]>;
   onCancel: () => void;
+  /**
+   * Where the form starts (KAM-213): the kind chosen in the palette or the "+" picker, and the list and position
+   * the "+" was on. `targetId` is an `AddTarget` id ("" is the workflow), `position` a `positionChoices` value.
+   * With it, focus starts in Step ID.
+   */
+  initial?: { kind?: StepKind; targetId?: string; position?: string };
 }
 
 export function WorkflowStepForm({
@@ -126,11 +65,12 @@ export function WorkflowStepForm({
   onPlacementChange,
   onSubmit,
   onCancel,
+  initial,
 }: WorkflowStepFormProps) {
-  const [targetId, setTargetId] = useState("");
+  const [targetId, setTargetId] = useState(initial?.targetId ?? "");
   const target = targets.find((t) => t.id === targetId);
   const scope = target ? target.scope : workflowScope;
-  const [position, setPosition] = useState("end");
+  const [position, setPosition] = useState(initial?.position ?? "end");
   const listSteps = target ? target.steps : (workflowSteps ?? []);
   const choices = positionChoices(target ? target.where : "the workflow", listSteps);
   const chosen = choices.find((c) => c.value === position) ?? choices[0]!;
@@ -144,7 +84,7 @@ export function WorkflowStepForm({
     // The names are joined so a new array of the same names is not a change.
   }, [holder, listSteps.join("\u0000"), chosen.index]);
   useEffect(() => () => onPlacementChange?.(null), []);
-  const [kind, setKind] = useState<StepKind>("action");
+  const [kind, setKind] = useState<StepKind>(initial?.kind ?? "action");
   const [step, setStep] = useState("");
   const [action, setAction] = useState("");
   const [inputs, setInputs] = useState("");
@@ -342,7 +282,12 @@ export function WorkflowStepForm({
 
       <label className="md3-field">
         <span className="md3-field__label md3-label-large">Step ID</span>
-        <input className="md3-text-field" value={step} onChange={(e) => setStep(e.target.value)} />
+        <input
+          className="md3-text-field"
+          value={step}
+          autoFocus={initial !== undefined}
+          onChange={(e) => setStep(e.target.value)}
+        />
       </label>
 
       {kind === "action" && (
