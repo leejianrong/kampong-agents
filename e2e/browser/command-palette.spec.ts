@@ -76,7 +76,7 @@ for (const size of [
     test.beforeEach(async ({ page }) => {
       writeFileSync(file, SPEC);
       await page.goto(URL);
-      await expect(page.getByText(/Trigger: Palette agent/)).toBeVisible();
+      await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
     });
 
     test("Ctrl+K opens it, the box has focus, Esc closes it and focus goes back", async ({
