@@ -50,6 +50,7 @@ import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
 import { ImportPanel } from "./ImportPanel.js";
 import { YamlPreview } from "./YamlPreview.js";
+import { buildYamlSourceMap, nodeAtLine } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
 // canvas keeps showing the last version that was valid.
@@ -638,6 +639,8 @@ export function App({
 
   // KAM-202: the read-only YAML viewer is a drawer for developers, closed by default and remembered.
   const [yamlOpen, setYamlOpen] = useState(readYamlDrawer);
+  // KAM-210: the selected node's lines in the drawer, and the way back from a line to its node.
+  const yamlMap = useMemo(() => (yamlOpen ? buildYamlSourceMap(source) : null), [yamlOpen, source]);
   useEffect(() => {
     try {
       localStorage.setItem(YAML_DRAWER_KEY, yamlOpen ? "open" : "closed");
@@ -1042,6 +1045,11 @@ export function App({
           {yamlOpen && (
             <YamlPreview
               source={source}
+              highlight={(selected !== null && yamlMap?.get(selected)) || null}
+              onLineClick={(line) => {
+                const id = yamlMap ? nodeAtLine(yamlMap, line) : null;
+                if (id !== null && graph.nodes.some((n) => n.id === id)) requestSelect(id);
+              }}
               onDownload={downloadAsFile}
               onImport={() => setOpenForm("import")}
             />
