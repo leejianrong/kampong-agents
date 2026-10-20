@@ -639,6 +639,27 @@ select.md3-text-field {
   line-height: 1.5;
   color: var(--md-sys-color-on-surface);
   white-space: pre-wrap;
+  position: relative;
+}
+
+/* KAM-210: the selected node's lines. A tonal container plus a leading bar, so it is not colour alone. */
+.md3-yaml-line {
+  display: block;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  margin-left: -0.5rem;
+  padding-left: 0.5rem;
+}
+
+.md3-yaml-line:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-yaml-line--selected,
+.md3-yaml-line--selected:hover {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  border-left-color: var(--md-sys-color-primary);
 }
 
 /* ---- App shell (App.tsx) ---- */
