@@ -34,9 +34,9 @@ describe("StepsPanel: editing a foreach", () => {
     const onPatch = vi.fn(async (_ops: PatchOp[]) => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit each_symbol");
-    expect((screen.getByLabelText("Loop variable") as HTMLInputElement).value).toBe("symbol");
-    expect((screen.getByLabelText("On error") as HTMLSelectElement).value).toBe("continue");
-    fireEvent.change(screen.getByLabelText("Concurrency"), { target: { value: "3" } });
+    expect((screen.getByLabelText("Name for each item") as HTMLInputElement).value).toBe("symbol");
+    expect((screen.getByLabelText("If an item fails") as HTMLSelectElement).value).toBe("continue");
+    fireEvent.change(screen.getByLabelText("How many at once"), { target: { value: "3" } });
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([
@@ -50,7 +50,7 @@ describe("StepsPanel: editing a foreach", () => {
     const onPatch = vi.fn(async () => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit each_symbol");
-    fireEvent.change(screen.getByLabelText("Loop variable"), { target: { value: "1x" } });
+    fireEvent.change(screen.getByLabelText("Name for each item"), { target: { value: "1x" } });
     click("Save step");
     expect(screen.getByRole("alert").textContent).toContain("loop variable");
     expect(onPatch).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe("StepsPanel: editing a foreach", () => {
     const onPatch = vi.fn(async (_ops: PatchOp[]) => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit fetch");
-    fireEvent.change(screen.getByLabelText("Tool"), { target: { value: "upsert_price" } });
+    fireEvent.change(screen.getByLabelText("Tool to call"), { target: { value: "upsert_price" } });
     click("Save step");
     await waitFor(() =>
       expect(onPatch).toHaveBeenCalledWith([

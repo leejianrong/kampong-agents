@@ -1,4 +1,5 @@
 import { PanelError, PanelFooter } from "./Panel";
+import { InspectorTabs } from "./InspectorTabs.js";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComponentTrust, type PinResult } from "./ComponentTrust.js";
 import {
@@ -333,189 +334,203 @@ export function ComponentToolForm({
       aria-label={editing ? "Edit Tool" : "Add Tool"}
       className="md3-form md3-form--fill"
     >
-      {header}
-
       {components.length === 0 && !editing ? (
-        <div role="status" className="md3-banner md3-banner--info">
-          <p>
-            No components are installed. Put one under{" "}
-            <code>components/&lt;namespace&gt;/&lt;name&gt;/&lt;version&gt;/</code> next to the
-            spec, then reopen this form.
-          </p>
-          {problems.length > 0 && (
-            <ul className="md3-banner__errors">
-              {problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : (
         <>
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Name</span>
-            <input
-              className="md3-text-field"
-              value={name}
-              disabled={editing}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-
-          {/* Keyed on what was reviewed, so consent given for one component or version never carries to another. */}
-          {entry && <ComponentTrust key={`${use}:${entry.digest}`} entry={entry} onPin={onPin} />}
-
-          <Field label="Component" hint={entry?.description}>
-            {(control) =>
-              editing ? (
-                <input {...control} className="md3-text-field" value={use} disabled readOnly />
-              ) : (
-                <select
-                  {...control}
-                  className="md3-text-field"
-                  value={use}
-                  onChange={(e) => chooseComponent(e.target.value)}
-                >
-                  {components.map((c) => (
-                    <option key={refOf(c)} value={refOf(c)}>
-                      {c.title ? `${c.title} (${refOf(c)})` : refOf(c)}
-                    </option>
-                  ))}
-                </select>
-              )
-            }
-          </Field>
-
-          <Field
-            label="Operation"
-            hint={
-              opSpec
-                ? `${opSpec.description ? `${opSpec.description} ` : ""}${EFFECT_HINT[opSpec.effect]}`
-                : undefined
-            }
-          >
-            {(control) =>
-              editing ? (
-                <input {...control} className="md3-text-field" value={op} disabled readOnly />
-              ) : (
-                <select
-                  {...control}
-                  className="md3-text-field"
-                  value={op}
-                  onChange={(e) => chooseOp(e.target.value)}
-                >
-                  {opNames.map((n) => (
-                    <option key={n} value={n}>
-                      {entry!.ops[n]!.title ?? n}
-                    </option>
-                  ))}
-                </select>
-              )
-            }
-          </Field>
-
-          {references.length > 0 && !yamlMode && (
-            <label className="md3-field">
-              <span className="md3-field__label md3-label-large">Insert reference</span>
-              <select
-                className="md3-text-field"
-                value=""
-                disabled={focused === null}
-                onChange={(e) => {
-                  if (e.target.value) insertReference(e.target.value);
-                }}
-              >
-                <option value="">
-                  {focused === null ? "Click a field first" : "Earlier step output"}
-                </option>
-                {references.map((r) => (
-                  <option key={r.reference} value={r.reference}>
-                    {r.label}
-                  </option>
+          {header}
+          <div role="status" className="md3-banner md3-banner--info">
+            <p>
+              No components are installed. Put one under{" "}
+              <code>components/&lt;namespace&gt;/&lt;name&gt;/&lt;version&gt;/</code> next to the
+              spec, then reopen this form.
+            </p>
+            {problems.length > 0 && (
+              <ul className="md3-banner__errors">
+                {problems.map((p) => (
+                  <li key={p}>{p}</li>
                 ))}
-              </select>
-            </label>
-          )}
-
-          {!yamlMode ? (
-            plan.fields.map((field) => renderField(field))
-          ) : (
+              </ul>
+            )}
+          </div>
+        </>
+      ) : (
+        <InspectorTabs
+          setup={
             <>
-              <div role="note" className="md3-banner md3-banner--info">
-                <p>
-                  This operation's input is outside what the form can show (
-                  {seeded && "reason" in seeded ? seeded.reason : plan.reason}). Enter it as YAML.
-                </p>
-              </div>
+              {header}
               <label className="md3-field">
-                <span className="md3-field__label md3-label-large">Input (YAML)</span>
-                <textarea
-                  className="md3-text-field md3-code-block"
-                  rows={6}
-                  placeholder={"name: value\nitems:\n  - a"}
-                  value={yaml}
-                  onChange={(e) => setYaml(e.target.value)}
+                <span className="md3-field__label md3-label-large">Name</span>
+                <input
+                  className="md3-text-field"
+                  value={name}
+                  disabled={editing}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
+
+              {/* Keyed on what was reviewed, so consent given for one component or version never carries to another. */}
+              {entry && (
+                <ComponentTrust key={`${use}:${entry.digest}`} entry={entry} onPin={onPin} />
+              )}
+
+              <Field label="Component" hint={entry?.description}>
+                {(control) =>
+                  editing ? (
+                    <input {...control} className="md3-text-field" value={use} disabled readOnly />
+                  ) : (
+                    <select
+                      {...control}
+                      className="md3-text-field"
+                      value={use}
+                      onChange={(e) => chooseComponent(e.target.value)}
+                    >
+                      {components.map((c) => (
+                        <option key={refOf(c)} value={refOf(c)}>
+                          {c.title ? `${c.title} (${refOf(c)})` : refOf(c)}
+                        </option>
+                      ))}
+                    </select>
+                  )
+                }
+              </Field>
+
+              <Field
+                label="Operation"
+                hint={
+                  opSpec
+                    ? `${opSpec.description ? `${opSpec.description} ` : ""}${EFFECT_HINT[opSpec.effect]}`
+                    : undefined
+                }
+              >
+                {(control) =>
+                  editing ? (
+                    <input {...control} className="md3-text-field" value={op} disabled readOnly />
+                  ) : (
+                    <select
+                      {...control}
+                      className="md3-text-field"
+                      value={op}
+                      onChange={(e) => chooseOp(e.target.value)}
+                    >
+                      {opNames.map((n) => (
+                        <option key={n} value={n}>
+                          {entry!.ops[n]!.title ?? n}
+                        </option>
+                      ))}
+                    </select>
+                  )
+                }
+              </Field>
+
+              {references.length > 0 && !yamlMode && (
+                <label className="md3-field">
+                  <span className="md3-field__label md3-label-large">Insert reference</span>
+                  <select
+                    className="md3-text-field"
+                    value=""
+                    disabled={focused === null}
+                    onChange={(e) => {
+                      if (e.target.value) insertReference(e.target.value);
+                    }}
+                  >
+                    <option value="">
+                      {focused === null ? "Click a field first" : "Earlier step output"}
+                    </option>
+                    {references.map((r) => (
+                      <option key={r.reference} value={r.reference}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {!yamlMode ? (
+                plan.fields.map((field) => renderField(field))
+              ) : (
+                <>
+                  <div role="note" className="md3-banner md3-banner--info">
+                    <p>
+                      This operation's input is outside what the form can show (
+                      {seeded && "reason" in seeded ? seeded.reason : plan.reason}). Enter it as
+                      YAML.
+                    </p>
+                  </div>
+                  <label className="md3-field">
+                    <span className="md3-field__label md3-label-large">Input (YAML)</span>
+                    <textarea
+                      className="md3-text-field md3-code-block"
+                      rows={6}
+                      placeholder={"name: value\nitems:\n  - a"}
+                      value={yaml}
+                      onChange={(e) => setYaml(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+
+              {entry?.config.map((param) => (
+                <Field
+                  key={param.name}
+                  label={param.title ?? `Config: ${param.name}`}
+                  hint={param.description}
+                >
+                  {(control) => (
+                    <input
+                      {...control}
+                      className="md3-text-field"
+                      placeholder={
+                        param.default !== undefined ? `Default: ${param.default}` : undefined
+                      }
+                      value={config[param.name] ?? ""}
+                      onChange={(e) => setConfig((c) => ({ ...c, [param.name]: e.target.value }))}
+                    />
+                  )}
+                </Field>
+              ))}
+
+              {entry?.slots.map((slot) => (
+                <label key={slot.name} className="md3-field">
+                  <span className="md3-field__label md3-label-large">
+                    Secret: {slot.name} (env reference)
+                  </span>
+                  <input
+                    className="md3-text-field"
+                    placeholder={`\${${slot.env}}`}
+                    value={secrets[slot.name] ?? ""}
+                    onChange={(e) => setSecrets((s) => ({ ...s, [slot.name]: e.target.value }))}
+                  />
+                </label>
+              ))}
+            </>
+          }
+          settings={
+            <>
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">Approval</span>
+                <select
+                  className="md3-text-field"
+                  value={approval}
+                  onChange={(e) => setApproval(e.target.value as typeof approval)}
+                >
+                  <option value="default">Default for this operation</option>
+                  <option value="always">Always ask a person</option>
+                  <option value="never">Never ask</option>
+                </select>
+              </label>
+
+              <label className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  Use only this part of the answer (extract field)
+                </span>
+                <input
+                  className="md3-text-field"
+                  value={extract}
+                  onChange={(e) => setExtract(e.target.value)}
                 />
               </label>
             </>
-          )}
-
-          {entry?.config.map((param) => (
-            <Field
-              key={param.name}
-              label={param.title ?? `Config: ${param.name}`}
-              hint={param.description}
-            >
-              {(control) => (
-                <input
-                  {...control}
-                  className="md3-text-field"
-                  placeholder={
-                    param.default !== undefined ? `Default: ${param.default}` : undefined
-                  }
-                  value={config[param.name] ?? ""}
-                  onChange={(e) => setConfig((c) => ({ ...c, [param.name]: e.target.value }))}
-                />
-              )}
-            </Field>
-          ))}
-
-          {entry?.slots.map((slot) => (
-            <label key={slot.name} className="md3-field">
-              <span className="md3-field__label md3-label-large">
-                Secret: {slot.name} (env reference)
-              </span>
-              <input
-                className="md3-text-field"
-                placeholder={`\${${slot.env}}`}
-                value={secrets[slot.name] ?? ""}
-                onChange={(e) => setSecrets((s) => ({ ...s, [slot.name]: e.target.value }))}
-              />
-            </label>
-          ))}
-
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Approval</span>
-            <select
-              className="md3-text-field"
-              value={approval}
-              onChange={(e) => setApproval(e.target.value as typeof approval)}
-            >
-              <option value="default">Default for this operation</option>
-              <option value="always">Always ask a person</option>
-              <option value="never">Never ask</option>
-            </select>
-          </label>
-
-          <label className="md3-field">
-            <span className="md3-field__label md3-label-large">Extract field</span>
-            <input
-              className="md3-text-field"
-              value={extract}
-              onChange={(e) => setExtract(e.target.value)}
-            />
-          </label>
-        </>
+          }
+        />
       )}
 
       <PanelError messages={errors} />

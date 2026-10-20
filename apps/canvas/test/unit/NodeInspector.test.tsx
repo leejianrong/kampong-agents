@@ -116,17 +116,17 @@ describe("NodeInspector opens the matching form", () => {
 
   const spec = parse(KINDS);
   const stepForms: Record<string, RegExp> = {
-    parse: /Query/,
-    call: /Tool/,
+    parse: /What should the model do/,
+    call: /Tool to call/,
     shape: /Values/,
-    check: /Assert/,
-    once: /Key \(expression\)/,
-    loop: /Items \(expression/,
+    check: /Check that this is true/,
+    once: /What makes an item the same/,
+    loop: /List to go through/,
     inner: /Values/,
-    route: /If \(expression/,
-    yes_arm: /Reason/,
+    route: /Go this way when this is true/,
+    yes_arm: /Why the run ends here/,
     no_arm: /Values/,
-    ask: /Message/,
+    ask: /Message for the approver/,
   };
   for (const [name, expected] of Object.entries(stepForms)) {
     it(`step ${name}`, () => {

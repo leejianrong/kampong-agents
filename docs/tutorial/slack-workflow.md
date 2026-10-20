@@ -128,8 +128,8 @@ agent:
 
 ## Going further
 
-- **Give a step its own prompt.** On an action step, the optional **Instructions**, **Model** and
-  **Temperature** fields override the agent's role and goal, model and sampling temperature for
+- **Give a step its own prompt.** On an action step, the optional **How it should behave**, **Model** and
+  **Creativity (temperature)** fields override the agent's role and goal, model and sampling temperature for
   that step only. They need `version: "1.1"` at the top of the spec.
 - **Branch on the result.** Add a **Condition** step to take a different path, for example to
   escalate instead of sending. See [Workflows and conditions](workflows.md).

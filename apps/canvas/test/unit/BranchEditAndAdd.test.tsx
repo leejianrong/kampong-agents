@@ -33,7 +33,7 @@ describe("StepsPanel: editing a branch", () => {
     const onPatch = vi.fn(async (_ops: PatchOp[]) => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit anomaly");
-    const field = screen.getByLabelText("If (expression that gives true or false)");
+    const field = screen.getByLabelText("Go this way when this is true");
     expect((field as HTMLInputElement).value).toContain("vars.threshold");
     fireEvent.change(field, { target: { value: "$abs(delta.change_pct) >= 5" } });
     click("Save step");
@@ -53,7 +53,7 @@ describe("StepsPanel: editing a branch", () => {
     const onPatch = vi.fn(async () => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit anomaly");
-    fireEvent.change(screen.getByLabelText("If (expression that gives true or false)"), {
+    fireEvent.change(screen.getByLabelText("Go this way when this is true"), {
       target: { value: "a +" },
     });
     click("Save step");
@@ -66,7 +66,7 @@ describe("StepsPanel: editing a branch", () => {
     const onPatch = vi.fn(async (_ops: PatchOp[]) => true);
     render(<StepsPanel spec={spec!} onPatch={onPatch} />);
     click("Edit alert");
-    fireEvent.change(screen.getByLabelText("Tool"), { target: { value: "upsert_price" } });
+    fireEvent.change(screen.getByLabelText("Tool to call"), { target: { value: "upsert_price" } });
     click("Save step");
     await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
     const [ops] = onPatch.mock.calls[0]!;
