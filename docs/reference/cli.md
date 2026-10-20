@@ -41,6 +41,17 @@ that exists but cannot be read is still reported as an error. A spec with `workf
 While the YAML is broken, the canvas keeps the last valid version, names the line to fix and says
 saves are paused.
 
+**Saves are confirmed.** After each save the canvas shows a short "Saved: ..." message (announced to
+screen readers), flashes the node that changed, and, when the YAML drawer is open, scrolls it to the
+changed lines and marks them for a few seconds. The drawer is never opened for you, and with
+`prefers-reduced-motion` the marking is a still colour with no animation.
+
+**Typed input is not lost silently.** Vars, Trigger, Edit Steps and Secrets keep their draft while
+you open another panel and are as you left them when you come back. `Esc` (or Close) closes the open
+panel at once when nothing is typed; with typed input it asks "Keep editing / Discard changes", and
+Discard is what drops the draft. The other forms (Add Tool, Add Workflow Step, Guardrails, Edit Tool
+and a node's inspector) ask the same question before another panel or node replaces them.
+
 ## `kampong run`
 
 Runs a spec against the execution engine with no server and no browser. Designed to run fully

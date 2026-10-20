@@ -42,6 +42,8 @@
   --md-sys-color-surface-container-high: #e5ebe6;
   --md-sys-color-surface-container-highest: #dfe5e0;
   --md-sys-color-on-surface: #171d1a;
+  --md-sys-color-inverse-surface: #2c322f;
+  --md-sys-color-inverse-on-surface: #edf2ee;
   --md-sys-color-on-surface-variant: #3f4945;
   --md-sys-color-outline: #6f7975;
   --md-sys-color-outline-variant: #bfc9c4;
@@ -702,6 +704,61 @@ select.md3-text-field {
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
   border-left-color: var(--md-sys-color-primary);
+}
+
+/* KAM-181: the lines a save just changed. Static colour plus a bar, so it reads without any motion; the pulse is
+   only for people who have not asked for less. */
+.md3-yaml-line--changed,
+.md3-yaml-line--changed:hover {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  border-left-color: var(--md-sys-color-tertiary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .md3-yaml-line--changed {
+    animation: md3-yaml-changed 1.2s ease-out;
+  }
+}
+
+@keyframes md3-yaml-changed {
+  from {
+    background: var(--md-sys-color-tertiary);
+    color: var(--md-sys-color-on-tertiary);
+  }
+}
+
+/* KAM-181: the snackbar (M3: inverse surface, label text, level 3). Sits above the status bar, never takes clicks. */
+.md3-snackbar-host {
+  position: fixed;
+  left: 50%;
+  bottom: 3.5rem;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(32rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.md3-snackbar {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--md-shape-corner-extra-small);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-elevation-level3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .md3-snackbar {
+    animation: md3-snackbar-in 0.2s ease-out;
+  }
+}
+
+@keyframes md3-snackbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
 }
 
 /* ---- App shell (App.tsx) ---- */
@@ -1641,7 +1698,12 @@ select.md3-text-field {
   flex: 0 0 clamp(22rem, 40%, 36rem);
 }
 
-.md3-app__side-pane > .md3-panel:last-child {
+/* The last panel on show fills the pane. Panels kept for their drafts (KAM-182) are [hidden] and do not count. */
+.md3-panel[hidden] {
+  display: none;
+}
+
+.md3-app__side-pane > .md3-panel:not([hidden]):not(:has(~ :not([hidden]))) {
   max-height: none;
   flex: 1 1 auto;
   border-bottom: none;
@@ -1652,7 +1714,8 @@ select.md3-text-field {
 }
 
 /* Nothing docked: no pane, no border, the canvas keeps the width. */
-.md3-app__side-pane:empty {
+.md3-app__side-pane:empty,
+.md3-app__side-pane:not(:has(> :not([hidden]))) {
   display: none;
 }
 

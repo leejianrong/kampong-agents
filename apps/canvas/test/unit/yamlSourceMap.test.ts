@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildYamlSourceMap, nodeAtLine } from "../../src/yamlSourceMap.js";
+import { buildYamlSourceMap, changedNode, nodeAtLine } from "../../src/yamlSourceMap.js";
 
 const SPEC = `version: "1.1"
 agent:
@@ -121,5 +121,37 @@ describe("nodeAtLine", () => {
   it("is null for a line no node owns", () => {
     expect(nodeAtLine(map, 1)).toBeNull();
     expect(nodeAtLine(map, 4)).toBeNull();
+  });
+});
+
+// KAM-181: which node a save changed.
+describe("changedNode", () => {
+  it("is null when nothing changed", () => {
+    expect(changedNode(SPEC, SPEC)).toBeNull();
+  });
+
+  it("finds an edited trigger", () => {
+    const after = SPEC.replace("every: 1h", "every: 2h");
+    const hit = changedNode(SPEC, after);
+    expect(hit?.id).toBe("agent:a1");
+    expect(after.split("\n")[hit!.range.start - 1]).toContain("trigger:");
+  });
+
+  it("prefers the body step over the foreach around it", () => {
+    expect(changedNode(SPEC, SPEC.replace("inner work", "other work"))?.id).toBe("workflow:inner");
+  });
+
+  it("finds a new step and a changed tool", () => {
+    const added = SPEC.replace("  workflow:\n", "  workflow:\n    - step: zero\n      action: z\n");
+    expect(changedNode(SPEC, added)?.id).toBe("workflow:zero");
+    expect(changedNode(SPEC, SPEC.replace("https://y.test", "https://z.test"))?.id).toBe("tool:t2");
+  });
+
+  it("finds a moved step by its new place", () => {
+    const moved = SPEC.replace(
+      "    - step: first\n      action: do it\n    - step: each\n",
+      "    - step: each\n",
+    ).replace("    - step: route\n", "    - step: first\n      action: do it\n    - step: route\n");
+    expect(changedNode(SPEC, moved)).not.toBeNull();
   });
 });

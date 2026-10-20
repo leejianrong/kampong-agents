@@ -400,7 +400,9 @@ describe("App", () => {
       appWith(withVersion("1.0"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Vars" }));
-      expect(screen.getByRole("status").textContent).toContain("Vars need spec version");
+      expect(
+        screen.getByTestId("vars-panel").querySelector("[role=status]")!.textContent,
+      ).toContain("Vars need spec version");
     });
   });
 
@@ -456,7 +458,9 @@ describe("App", () => {
       appWith(withTrigger("1.0"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
-      expect(screen.getByRole("status").textContent).toContain("need spec version");
+      expect(
+        screen.getByTestId("draft-trigger").querySelector("[role=status]")!.textContent,
+      ).toContain("need spec version");
     });
   });
 
