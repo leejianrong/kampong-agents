@@ -6,6 +6,7 @@ import { parseSpec, type PatchOp, type SpecOp } from "@kampong/spec";
 import { App } from "../../src/App.js";
 import { StepsPanel } from "../../src/StepsPanel.js";
 import { WorkflowStepForm } from "../../src/WorkflowStepForm.js";
+import { chooseFromMenu } from "./menu.js";
 
 // KAM-154: the branch's own field is editable in place, a switch can be built in the Add form, and a step of any
 // kind can be added to an arm. The market-etl template (the `anomaly` branch inside the loop) is the fixture.
@@ -163,10 +164,8 @@ describe("App: adding a step to a branch arm", () => {
     return sent;
   }
   const start = async () => {
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Add Workflow Step" })).toBeTruthy(),
-    );
-    click("Add Workflow Step");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy());
+    chooseFromMenu("Add Workflow Step");
     fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "anomaly/else" } });
   };
 

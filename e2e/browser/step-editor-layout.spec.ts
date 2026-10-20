@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-166/167 follow-up: the step editor's layout, checked in a real browser. jsdom has no layout, so a unit test
 // cannot see a prompt cut off mid-sentence or a form that stops short of its panel; both shipped once.
@@ -61,7 +62,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 async function open(page: import("@playwright/test").Page, step: string) {
   await page.goto(URL);
-  await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+  await openPanel(page, "Edit Steps");
   await page.getByRole("button", { name: `Edit ${step}` }).click();
   await expect(page.getByRole("form", { name: `Edit ${step}` })).toBeVisible();
 }
@@ -111,7 +112,7 @@ for (const [button, what] of [
 ] as const) {
   test(`${button}: the version 1.1 notice is one readable paragraph`, async ({ page }) => {
     await page.goto(V10_URL);
-    await page.getByRole("button", { name: button, exact: true }).click();
+    await openPanel(page, button);
     const notice = page.getByRole("status").filter({ hasText: "need spec version" });
     await expect(notice).toBeVisible();
     await expect(notice).toContainText(what);
@@ -137,7 +138,7 @@ for (const [button, what] of [
 test("Upgrade to 1.1: preview, apply, and the step becomes editable", async ({ page }) => {
   const file = join(dir, "upgrade", "agent.yaml");
   await page.goto(UPGRADE_URL);
-  await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+  await openPanel(page, "Edit Steps");
   await expect(page.getByRole("button", { name: "Edit greet" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Upgrade to 1.1…" }).click();
@@ -192,7 +193,7 @@ for (const size of [
     }) => {
       await page.setViewportSize(size);
       await page.goto(URL);
-      await page.getByRole("button", { name: form.open, exact: true }).click();
+      await openPanel(page, form.open);
       await form.then?.(page);
       const save = page.getByRole("button", { name: form.save, exact: true });
       await expect(save).toBeInViewport({ ratio: 1 });
@@ -207,28 +208,26 @@ for (const size of [
   }
 }
 
-// KAM-179: the toolbar's buttons are one height, stay inside the canvas column at any width the app supports (they
-// used to run under the side pane, so Test Run covered the open panel's title), and a button that opened a panel
-// shows as pressed. Panel content stays inside the pane too: the Trigger panel's three buttons wrap, not clip.
+// KAM-179/214: the run bar's and status bar's buttons are one height, stay inside the window at any width the app
+// supports, and a button that opened a panel shows as pressed. Panel content stays inside the pane too: the Trigger panel's three buttons wrap, not clip.
 for (const width of [1440, 1100, 900]) {
-  test(`toolbar at ${width}px: one height, inside the canvas column, no sideways scroll`, async ({
+  test(`bars at ${width}px: one height, inside the window, no sideways scroll`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.goto(URL);
-    await page.getByRole("button", { name: "Trigger", exact: true }).click();
+    await openPanel(page, "Trigger");
     const m = await page.evaluate(() => {
-      const pane = document.querySelector(".md3-app__canvas-pane")!.getBoundingClientRect();
-      const buttons = [...document.querySelectorAll(".md3-app__toolbar button")].map((b) =>
-        b.getBoundingClientRect(),
-      );
+      const buttons = [
+        ...document.querySelectorAll(".md3-runbar button, .md3-statusbar button"),
+      ].map((b) => b.getBoundingClientRect());
       const panel = document.querySelector(".md3-panel")!.getBoundingClientRect();
       const inside = [...document.querySelectorAll(".md3-panel__body button")].every(
         (b) => b.getBoundingClientRect().right <= panel.right + 1,
       );
       return {
         heights: [...new Set(buttons.map((r) => Math.round(r.height)))],
-        overruns: buttons.filter((r) => r.right > pane.right + 1).length,
+        overruns: buttons.filter((r) => r.right > innerWidth + 1).length,
         hscroll: document.documentElement.scrollWidth > innerWidth,
         panelButtonsInside: inside,
       };
@@ -237,10 +236,9 @@ for (const width of [1440, 1100, 900]) {
     expect(m.overruns).toBe(0);
     expect(m.hscroll).toBe(false);
     expect(m.panelButtonsInside).toBe(true);
-    await expect(page.getByRole("button", { name: "Trigger", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    await expect(page.getByRole("button", { name: "Secrets", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("contentinfo").getByRole("button", { name: "Trigger", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: /^Secrets/ })).toBeVisible();
   });
 }

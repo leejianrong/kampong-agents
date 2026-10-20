@@ -71,7 +71,7 @@ kampong dev examples
 
 `kampong dev` starts a local server and prints a URL, by default
 [http://localhost:4310](http://localhost:4310). Open it. You'll see the agent laid out as
-blocks, the trigger and the workflow step, with a `</>` button in the toolbar (or Alt+Y) that opens a read-only YAML drawer for developers. Edit the file in any editor
+blocks, the trigger and the workflow step, with a `</>` button in the top bar (or Alt+Y) that opens a read-only YAML drawer for developers. Edit the file in any editor
 and the canvas updates. Press **Run**, type an input, and watch the trace fill in step by step.
 
 !!! note "Running the app in Docker"

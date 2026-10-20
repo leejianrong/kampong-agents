@@ -50,7 +50,7 @@ Fill in `OPENROUTER_API_KEY`, `SLACK_BOT_TOKEN` and `SLACK_CHANNEL`. `.env` is g
 spec never holds a value, only the `${ENV_VAR}` name. Don't paste these into chat, issues or
 commits.
 
-You can also set them from the canvas: **Secrets** lists every name the spec needs (including the
+You can also set them from the canvas: **Secrets** in the status bar (with a count of the names that have no value yet) lists every name the spec needs (including the
 Slack token, which the Slack component reads on its own), and lets you set or replace a value. Values
 are saved to `.kampong/secrets.env` on this machine and are never shown again. This applies to the canvas
 (`kampong dev`, `make up`); `kampong run` and `kampong serve` still read the process environment.
@@ -84,7 +84,7 @@ node packages/cli/dist/cli.js dev workspace
 Open <http://localhost:4310>. You see the trigger, the two tools and the five workflow steps
 (`classify`, `lookup`, `draft`, `review`, `send`). Open the `</>` drawer (Alt+Y) to see the same file as YAML.
 
-Click **Test Run** and paste:
+Click **Run** in the top bar and paste:
 
 ```json
 {"customer_id":3,"subject":"Charged twice this month","body":"Hi, I was charged twice for my subscription on the 3rd. Can you refund the duplicate? Thanks, Clementine"}

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-174: Move up / Move down on the step rows of Edit Steps, in a real browser against `kampong dev`. The order
 // changes in the file; a move that would put a step before one it reads is refused in words and the file is left
@@ -81,7 +82,7 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
-    await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+    await openPanel(page, "Edit Steps");
 
     // The first row of a list cannot go up, and says why.
     const first = page.getByRole("button", { name: "Move step parse up", exact: true });

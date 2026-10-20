@@ -26,7 +26,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NodeInspector } from "./NodeInspector.js";
 import { duplicateStep, duplicateTool } from "./duplicate.js";
-import { ApiError, createApiClient, type ApiClient, type SpecErrorDto } from "./api.js";
+import {
+  ApiError,
+  createApiClient,
+  type ApiClient,
+  type SecretStatusDto,
+  type SpecErrorDto,
+} from "./api.js";
 import { Canvas } from "./Canvas.js";
 import { EmptyState } from "./EmptyState.js";
 import { DoctorPanel } from "./DoctorPanel.js";
@@ -53,6 +59,9 @@ import { Panel } from "./Panel.js";
 import { UpgradeContext } from "./UpgradeContext.js";
 import { ImportPanel } from "./ImportPanel.js";
 import { YamlPreview } from "./YamlPreview.js";
+import { buildActions, type OpenForm } from "./actions.js";
+import { TopBar, type SaveState } from "./TopBar.js";
+import { StatusBar } from "./StatusBar.js";
 import { buildYamlSourceMap, nodeAtLine } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
@@ -97,20 +106,6 @@ export interface AppProps {
   onUnauthorized?: () => void;
 }
 
-type OpenForm =
-  | "tool"
-  | "workflow"
-  | "guardrails"
-  | "run"
-  | null
-  | "checks"
-  | "variables"
-  | "vars"
-  | "trigger"
-  | "steps"
-  | "edit-tool"
-  | "import";
-
 // KAM-213: a kind chosen in the palette or from a "+", and where the "+" was. `nonce` remounts the form.
 interface InsertRequest {
   kind: StepKind;
@@ -140,7 +135,7 @@ export function App({
   const [errors, setErrors] = useState<SpecErrorDto[]>([]);
   // KAN-1831: a valid spec can still declare fields nothing executes (knowledge_base today).
   const [warnings, setWarnings] = useState<ReturnType<typeof specWarnings>>([]);
-  const [openForm, setOpenForm] = useState<OpenForm>(null);
+  const [openForm, setOpenForm] = useState<OpenForm | null>(null);
   // KAN-1885: the installed components, fetched each time the tool form opens so a component added
   // while the canvas is running shows up without a reload. Undefined where the server offers none.
   const [catalog, setCatalog] = useState<ComponentCatalog | undefined>(undefined);
@@ -158,7 +153,7 @@ export function App({
   // and the move (another node, the empty canvas, a toolbar button) waiting on "discard your changes?".
   const [selected, setSelected] = useState<string | null>(null);
   const [pending, setPending] = useState<
-    { select: string | null } | { form: OpenForm } | { insert: InsertRequest } | null
+    { select: string | null } | { form: OpenForm | null } | { insert: InsertRequest } | null
   >(null);
   const [insert, setInsert] = useState<InsertRequest | undefined>(undefined);
   const dirty = useRef(false);
@@ -563,7 +558,7 @@ export function App({
   }
 
   // The toolbar buttons open their own form in the same pane; they ask first too.
-  function toolbarForm(next: OpenForm) {
+  function toolbarForm(next: OpenForm | null) {
     if (selected !== null && unsavedInput()) setPending({ form: next });
     else setOpenForm(next);
   }
@@ -700,415 +695,369 @@ export function App({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // KAM-214: secrets the workflow reads that have no value yet, for the count on the status bar. Fetched on load
+  // and whenever the spec text changes (a new ${NAME} may have appeared); the Secrets panel keeps it current.
+  const [missingSecrets, setMissingSecrets] = useState<number | undefined>(undefined);
+  const countMissing = (rows: SecretStatusDto[]) =>
+    rows.filter((row) => row.referenced && row.source === "unset").length;
+  useEffect(() => {
+    if (!api.listSecrets) return;
+    let cancelled = false;
+    api
+      .listSecrets()
+      .then((rows) => {
+        if (!cancelled) setMissingSecrets(countMissing(rows));
+      })
+      .catch(() => {
+        // the count is a hint; the panel reports a failure itself
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, source]);
+
+  const tally = (rows: SecretStatusDto[]) => {
+    setMissingSecrets(countMissing(rows));
+    return rows;
+  };
+
+  const saveState: SaveState = specError ? "failed" : errors.length > 0 ? "paused" : "saved";
+  const actions = buildActions({
+    openForm,
+    yamlOpen,
+    hasSecrets: api.listSecrets !== undefined,
+    hasChecks: api.runDoctor !== undefined,
+    noSpecYet: emptyKind === "new",
+    ...(missingSecrets !== undefined && { missingSecrets }),
+    toggleForm: (form) => toolbarForm(openForm === form ? null : form),
+    toggleYaml: () => setYamlOpen((open) => !open),
+    download: downloadAsFile,
+  });
+
   // KAM-199: only where the canvas can write a spec that then runs. The hosted server refuses a 1.1 spec.
   const upgrade = providedApi === undefined ? { source, apply: handlePatchSteps } : null;
 
   return (
     <UpgradeContext.Provider value={upgrade}>
       <div className="md3-app">
-        <div className="md3-app__canvas-pane">
-          <div className="md3-app__toolbar">
-            {onNavigateBack && (
-              <button
-                className="md3-button md3-button-text"
-                onClick={onNavigateBack}
-                data-testid="back-to-specs"
+        <TopBar
+          name={specName ?? "Kampong Agents"}
+          saveState={saveState}
+          actions={actions}
+          {...(onNavigateBack && { onBack: onNavigateBack })}
+        />
+        <div className="md3-app__main">
+          <div className="md3-app__canvas-pane">
+            {specError && (
+              <div
+                role="alert"
+                data-testid="spec-error-banner"
+                className="md3-banner md3-banner--error"
               >
-                ← Specs
-              </button>
-            )}
-            <span className="md3-title-large md3-app__title">{specName ?? "Kampong Agents"}</span>
-            {emptyKind !== "new" && (
-              <div className="md3-toolbar__group" role="group" aria-label="Build">
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "tool"}
-                  onClick={() => toolbarForm(openForm === "tool" ? null : "tool")}
-                >
-                  Add Tool
-                </button>
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "workflow"}
-                  onClick={() => toolbarForm(openForm === "workflow" ? null : "workflow")}
-                >
-                  Add Workflow Step
+                <span>{specError}</span>
+                <button className="md3-banner__action" onClick={() => void refresh()}>
+                  Retry
                 </button>
               </div>
             )}
-            {emptyKind !== "new" && (
-              <div className="md3-toolbar__group" role="group" aria-label="Configure">
+            {conflict && (
+              <div
+                role="alert"
+                data-testid="conflict-banner"
+                className="md3-banner md3-banner--info"
+              >
+                <span>This spec changed externally while you were editing it.</span>
                 <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "guardrails"}
-                  onClick={() => toolbarForm(openForm === "guardrails" ? null : "guardrails")}
+                  className="md3-banner__action"
+                  onClick={() => void refresh().then(() => setConflict(false))}
                 >
-                  Set Guardrails
-                </button>
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "vars"}
-                  onClick={() => toolbarForm(openForm === "vars" ? null : "vars")}
-                >
-                  Spec Vars
-                </button>
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "trigger"}
-                  onClick={() => toolbarForm(openForm === "trigger" ? null : "trigger")}
-                >
-                  Trigger
-                </button>
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "steps"}
-                  onClick={() => toolbarForm(openForm === "steps" ? null : "steps")}
-                >
-                  Edit Steps
+                  Reload
                 </button>
               </div>
             )}
-            <span className="md3-app__toolbar-spacer" />
-            <div className="md3-toolbar__group" role="group" aria-label="Run">
-              <button
-                className="md3-button md3-button-tonal md3-toolbar__code"
-                aria-pressed={yamlOpen}
-                aria-label="For developers: show YAML"
-                aria-keyshortcuts="Alt+Y"
-                title="For developers: show the spec as YAML (Alt+Y)"
-                data-testid="yaml-drawer-toggle"
-                onClick={() => setYamlOpen(!yamlOpen)}
+            {warnings.length > 0 && (
+              <div
+                role="status"
+                data-testid="spec-warnings"
+                className="md3-banner md3-banner--warning"
               >
-                {"</>"}
-              </button>
-              {api.listSecrets && (
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "variables"}
-                  onClick={() => toolbarForm(openForm === "variables" ? null : "variables")}
-                >
-                  Secrets
-                </button>
-              )}
-              {api.runDoctor && (
-                <button
-                  className="md3-button md3-button-tonal"
-                  aria-pressed={openForm === "checks"}
-                  onClick={() => toolbarForm(openForm === "checks" ? null : "checks")}
-                >
-                  Checks
-                </button>
-              )}
-              <button
-                className="md3-button md3-button-filled"
-                aria-pressed={openForm === "run"}
-                onClick={() => toolbarForm(openForm === "run" ? null : "run")}
-              >
-                Test Run
-              </button>
-            </div>
-          </div>
-
-          {specError && (
-            <div
-              role="alert"
-              data-testid="spec-error-banner"
-              className="md3-banner md3-banner--error"
-            >
-              <span>{specError}</span>
-              <button className="md3-banner__action" onClick={() => void refresh()}>
-                Retry
-              </button>
-            </div>
-          )}
-          {conflict && (
-            <div role="alert" data-testid="conflict-banner" className="md3-banner md3-banner--info">
-              <span>This spec changed externally while you were editing it.</span>
-              <button
-                className="md3-banner__action"
-                onClick={() => void refresh().then(() => setConflict(false))}
-              >
-                Reload
-              </button>
-            </div>
-          )}
-          {warnings.length > 0 && (
-            <div
-              role="status"
-              data-testid="spec-warnings"
-              className="md3-banner md3-banner--warning"
-            >
-              <ul className="md3-banner__errors">
-                {warnings.map((warning) => (
-                  <li key={warning.code}>{warning.message}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {errors.length > 0 && emptyKind === null && (
-            <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
-              <div>
-                <p className="md3-title-small" data-testid="spec-errors-summary">
-                  {errorSummary(errors, spec !== null)}
-                </p>
                 <ul className="md3-banner__errors">
-                  {errors.map((error, i) => (
-                    <li key={i}>
-                      {error.path.length > 0 && `${error.path.join(".")}: `}
-                      {error.message}
-                      {error.line !== undefined && ` (line ${error.line})`}
-                    </li>
+                  {warnings.map((warning) => (
+                    <li key={warning.code}>{warning.message}</li>
                   ))}
                 </ul>
               </div>
-            </div>
-          )}
+            )}
+            {errors.length > 0 && emptyKind === null && (
+              <div role="alert" data-testid="spec-errors" className="md3-banner md3-banner--error">
+                <div>
+                  <p className="md3-title-small" data-testid="spec-errors-summary">
+                    {errorSummary(errors, spec !== null)}
+                  </p>
+                  <ul className="md3-banner__errors">
+                    {errors.map((error, i) => (
+                      <li key={i}>
+                        {error.path.length > 0 && `${error.path.join(".")}: `}
+                        {error.message}
+                        {error.line !== undefined && ` (line ${error.line})`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
 
-          <div className="md3-app__canvas-surface">
-            {emptyKind === null && spec && (
-              <NodePalette version={spec.version} onChoose={(kind) => requestInsert({ kind })} />
-            )}
-            {emptyKind === null ? (
-              <Canvas
-                graph={graph}
-                layout={layout}
-                marker={marker}
-                focus={focus}
-                selectedId={selected}
-                onSelect={requestSelect}
-                onPaneClick={() => requestSelect(null)}
-                version={spec?.version}
-                onInsert={spec ? insertFromEdge : undefined}
-              />
-            ) : (
-              <EmptyState
-                kind={emptyKind}
-                busy={startingBlank}
-                error={startBlankError}
-                onStartBlank={() => void handleStartBlank()}
-                onAddStep={() => setOpenForm("workflow")}
-                // KAM-216: the template gallery plugs in here (`templates={<TemplateGallery ... />}`).
-                templates={undefined}
-              />
-            )}
-          </div>
-        </div>
-        <div
-          className="md3-app__side-pane"
-          onInputCapture={() => {
-            dirty.current = true;
-          }}
-        >
-          {pending && (
-            <div
-              role="alert"
-              className="md3-banner md3-banner--warning md3-inspector__discard"
-              data-testid="discard-prompt"
-            >
-              <span>This form has changes you have not saved. Discard them?</span>
-              <button
-                type="button"
-                className="md3-banner__action"
-                autoFocus
-                onClick={() => setPending(null)}
-              >
-                Keep editing
-              </button>
-              <button type="button" className="md3-banner__action" onClick={discardAndGo}>
-                Discard changes
-              </button>
-            </div>
-          )}
-          {selected !== null &&
-            spec &&
-            (() => {
-              const node = graph.nodes.find((n) => n.id === selected);
-              if (!node) return null;
-              const tool =
-                node.kind === "tool"
-                  ? spec.agent.tools?.find((t) => t.name === node.data.name)
-                  : undefined;
-              return (
-                <NodeInspector
-                  key={selected}
-                  spec={spec}
-                  node={node}
-                  catalogReady={
-                    tool?.action !== "component" || catalog !== undefined || !api.listComponents
-                  }
-                  catalog={catalog}
-                  references={references}
-                  onPinComponent={api.pinComponent ? handlePinComponent : undefined}
-                  onPatchSteps={handlePatchSteps}
-                  onSaveTool={handleSaveToolAt}
-                  onSaveTrigger={handleSaveTrigger}
-                  onRemoveTrigger={handleRemoveTrigger}
-                  onSaveGuardrails={(value) =>
-                    applyPatchOrReportError([
-                      { op: "set", path: ["agent", "guardrails"], value },
-                    ]).then(async (ok) => {
-                      if (ok) await refresh();
-                      return ok;
-                    })
-                  }
-                  onRemove={handleRemove}
-                  onDuplicate={() => handleDuplicate(selected)}
-                  onClose={() => applySelect(null)}
-                  onRequestClose={() => (pending ? setPending(null) : requestSelect(null))}
+            <div className="md3-app__canvas-surface">
+              {emptyKind === null && spec && (
+                <NodePalette
+                  version={spec.version}
+                  onChoose={(kind) => requestInsert({ kind })}
+                  onAddTool={() => toolbarForm("tool")}
                 />
-              );
-            })()}
-          {/* The run panel docks in the side pane (above the YAML) rather than
+              )}
+              {emptyKind === null ? (
+                <Canvas
+                  graph={graph}
+                  layout={layout}
+                  marker={marker}
+                  focus={focus}
+                  selectedId={selected}
+                  onSelect={requestSelect}
+                  onPaneClick={() => requestSelect(null)}
+                  version={spec?.version}
+                  onInsert={spec ? insertFromEdge : undefined}
+                />
+              ) : (
+                <EmptyState
+                  kind={emptyKind}
+                  busy={startingBlank}
+                  error={startBlankError}
+                  onStartBlank={() => void handleStartBlank()}
+                  onAddStep={() => setOpenForm("workflow")}
+                  // KAM-216: the template gallery plugs in here (`templates={<TemplateGallery ... />}`).
+                  templates={undefined}
+                />
+              )}
+            </div>
+          </div>
+          <div
+            className="md3-app__side-pane"
+            onInputCapture={() => {
+              dirty.current = true;
+            }}
+          >
+            {pending && (
+              <div
+                role="alert"
+                className="md3-banner md3-banner--warning md3-inspector__discard"
+                data-testid="discard-prompt"
+              >
+                <span>This form has changes you have not saved. Discard them?</span>
+                <button
+                  type="button"
+                  className="md3-banner__action"
+                  autoFocus
+                  onClick={() => setPending(null)}
+                >
+                  Keep editing
+                </button>
+                <button type="button" className="md3-banner__action" onClick={discardAndGo}>
+                  Discard changes
+                </button>
+              </div>
+            )}
+            {selected !== null &&
+              spec &&
+              (() => {
+                const node = graph.nodes.find((n) => n.id === selected);
+                if (!node) return null;
+                const tool =
+                  node.kind === "tool"
+                    ? spec.agent.tools?.find((t) => t.name === node.data.name)
+                    : undefined;
+                return (
+                  <NodeInspector
+                    key={selected}
+                    spec={spec}
+                    node={node}
+                    catalogReady={
+                      tool?.action !== "component" || catalog !== undefined || !api.listComponents
+                    }
+                    catalog={catalog}
+                    references={references}
+                    onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                    onPatchSteps={handlePatchSteps}
+                    onSaveTool={handleSaveToolAt}
+                    onSaveTrigger={handleSaveTrigger}
+                    onRemoveTrigger={handleRemoveTrigger}
+                    onSaveGuardrails={(value) =>
+                      applyPatchOrReportError([
+                        { op: "set", path: ["agent", "guardrails"], value },
+                      ]).then(async (ok) => {
+                        if (ok) await refresh();
+                        return ok;
+                      })
+                    }
+                    onRemove={handleRemove}
+                    onDuplicate={() => handleDuplicate(selected)}
+                    onClose={() => applySelect(null)}
+                    onRequestClose={() => (pending ? setPending(null) : requestSelect(null))}
+                  />
+                );
+              })()}
+            {/* The run panel docks in the side pane (above the YAML) rather than
             floating over the canvas, so a run never covers the graph the user
             is watching. Toggling "Test Run" shows/hides it. */}
-          {openForm === "tool" && (
-            <Panel title="Add Tool" onClose={() => setOpenForm(null)}>
-              <ToolForm
-                components={catalog?.components}
-                componentProblems={catalog?.problems}
-                references={references}
-                onPinComponent={api.pinComponent ? handlePinComponent : undefined}
-                onSubmit={(tool) => void handleAddTool(tool)}
-                onCancel={() => setOpenForm(null)}
-              />
-            </Panel>
-          )}
-          {openForm === "edit-tool" &&
-            spec &&
-            editingTool !== null &&
-            spec.agent.tools?.[editingTool] &&
-            // A component tool waits for the catalog, so its inputs open as fields and not as YAML.
-            (spec.agent.tools[editingTool].action !== "component" ||
-              catalog !== undefined ||
-              !api.listComponents) && (
-              <Panel title="Edit Tool" onClose={() => setOpenForm(null)}>
+            {openForm === "tool" && (
+              <Panel title="Add Tool" onClose={() => setOpenForm(null)}>
                 <ToolForm
-                  key={`${editingTool}:${spec.agent.tools[editingTool].name}`}
-                  initial={spec.agent.tools[editingTool]}
                   components={catalog?.components}
                   componentProblems={catalog?.problems}
                   references={references}
                   onPinComponent={api.pinComponent ? handlePinComponent : undefined}
-                  onSubmit={(tool) => void handleEditTool(editingTool, tool)}
+                  onSubmit={(tool) => void handleAddTool(tool)}
                   onCancel={() => setOpenForm(null)}
                 />
               </Panel>
             )}
-          {openForm === "workflow" && (
-            <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
-              <WorkflowStepForm
-                key={insert?.nonce ?? "toolbar"}
-                initial={
-                  insert && {
-                    kind: insert.kind,
-                    ...(insert.targetId !== undefined && { targetId: insert.targetId }),
-                    ...(insert.position !== undefined && { position: insert.position }),
+            {openForm === "edit-tool" &&
+              spec &&
+              editingTool !== null &&
+              spec.agent.tools?.[editingTool] &&
+              // A component tool waits for the catalog, so its inputs open as fields and not as YAML.
+              (spec.agent.tools[editingTool].action !== "component" ||
+                catalog !== undefined ||
+                !api.listComponents) && (
+                <Panel title="Edit Tool" onClose={() => setOpenForm(null)}>
+                  <ToolForm
+                    key={`${editingTool}:${spec.agent.tools[editingTool].name}`}
+                    initial={spec.agent.tools[editingTool]}
+                    components={catalog?.components}
+                    componentProblems={catalog?.problems}
+                    references={references}
+                    onPinComponent={api.pinComponent ? handlePinComponent : undefined}
+                    onSubmit={(tool) => void handleEditTool(editingTool, tool)}
+                    onCancel={() => setOpenForm(null)}
+                  />
+                </Panel>
+              )}
+            {openForm === "workflow" && (
+              <Panel title="Add Workflow Step" onClose={() => setOpenForm(null)}>
+                <WorkflowStepForm
+                  key={insert?.nonce ?? "toolbar"}
+                  initial={
+                    insert && {
+                      kind: insert.kind,
+                      ...(insert.targetId !== undefined && { targetId: insert.targetId }),
+                      ...(insert.position !== undefined && { position: insert.position }),
+                    }
                   }
-                }
-                version={spec?.version}
-                scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
-                targets={spec ? addTargets(spec) : []}
-                workflowSteps={spec ? workflowStepNames(spec) : []}
-                onPlacementChange={setPlacement}
-                onSubmit={(step, place) =>
-                  place === undefined ? handleAddWorkflowStep(step) : handleAddStepAt(place, step)
-                }
-                onCancel={() => setOpenForm(null)}
-              />
-            </Panel>
-          )}
-          {openForm === "guardrails" && (
-            <Panel title="Set Guardrails" onClose={() => setOpenForm(null)}>
-              <GuardrailsForm
-                onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
-                onCancel={() => setOpenForm(null)}
-              />
-            </Panel>
-          )}
-          {openForm === "run" && (
-            <Panel title="Test Run" onClose={() => setOpenForm(null)}>
-              <RunPanel api={api} blockedReason={runBlockedReason} />
-            </Panel>
-          )}
-          {openForm === "vars" && spec && (
-            <Panel title="Spec Vars" onClose={() => setOpenForm(null)}>
-              <VarsPanel
-                version={spec.version}
-                vars={spec.vars}
-                onSave={handleSaveVar}
-                onRemove={handleRemoveVar}
-              />
-            </Panel>
-          )}
-          {openForm === "trigger" && spec && (
-            <Panel title="Trigger" onClose={() => setOpenForm(null)}>
-              <TriggerPanel
-                version={spec.version}
-                trigger={spec.agent.trigger}
-                onSave={handleSaveTrigger}
-                onRemove={handleRemoveTrigger}
-              />
-            </Panel>
-          )}
-          {openForm === "steps" && spec && (
-            <Panel title="Edit Steps" onClose={() => setOpenForm(null)}>
-              <StepsPanel
-                spec={spec}
-                onPatch={handlePatchSteps}
-                onRemove={handleRemove}
-                onRename={handleRename}
-                onMove={handleMove}
-                onEditTool={(index) => {
-                  setEditingTool(index);
-                  setOpenForm("edit-tool");
+                  version={spec?.version}
+                  scope={spec?.version === "1.1" ? expressionScopeFor(spec) : undefined}
+                  targets={spec ? addTargets(spec) : []}
+                  workflowSteps={spec ? workflowStepNames(spec) : []}
+                  onPlacementChange={setPlacement}
+                  onSubmit={(step, place) =>
+                    place === undefined ? handleAddWorkflowStep(step) : handleAddStepAt(place, step)
+                  }
+                  onCancel={() => setOpenForm(null)}
+                />
+              </Panel>
+            )}
+            {openForm === "guardrails" && (
+              <Panel title="Set Guardrails" onClose={() => setOpenForm(null)}>
+                <GuardrailsForm
+                  onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
+                  onCancel={() => setOpenForm(null)}
+                />
+              </Panel>
+            )}
+            {openForm === "run" && (
+              <Panel title="Test Run" onClose={() => setOpenForm(null)}>
+                <RunPanel api={api} blockedReason={runBlockedReason} />
+              </Panel>
+            )}
+            {openForm === "vars" && spec && (
+              <Panel title="Spec Vars" onClose={() => setOpenForm(null)}>
+                <VarsPanel
+                  version={spec.version}
+                  vars={spec.vars}
+                  onSave={handleSaveVar}
+                  onRemove={handleRemoveVar}
+                />
+              </Panel>
+            )}
+            {openForm === "trigger" && spec && (
+              <Panel title="Trigger" onClose={() => setOpenForm(null)}>
+                <TriggerPanel
+                  version={spec.version}
+                  trigger={spec.agent.trigger}
+                  onSave={handleSaveTrigger}
+                  onRemove={handleRemoveTrigger}
+                />
+              </Panel>
+            )}
+            {openForm === "steps" && spec && (
+              <Panel title="Edit Steps" onClose={() => setOpenForm(null)}>
+                <StepsPanel
+                  spec={spec}
+                  onPatch={handlePatchSteps}
+                  onRemove={handleRemove}
+                  onRename={handleRename}
+                  onMove={handleMove}
+                  onEditTool={(index) => {
+                    setEditingTool(index);
+                    setOpenForm("edit-tool");
+                  }}
+                />
+              </Panel>
+            )}
+            {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
+              <Panel title="Secrets" onClose={() => setOpenForm(null)}>
+                <SecretsPanel
+                  list={() => api.listSecrets!().then(tally)}
+                  save={(name, value) => api.setSecret!(name, value).then(tally)}
+                  remove={(name) => api.removeSecret!(name).then(tally)}
+                />
+              </Panel>
+            )}
+            {openForm === "checks" && api.runDoctor && (
+              <Panel title="Checks" onClose={() => setOpenForm(null)}>
+                <DoctorPanel run={(options) => api.runDoctor!(options)} />
+              </Panel>
+            )}
+            {openForm === "import" && (
+              <Panel title="Import from file" onClose={() => setOpenForm(null)}>
+                <ImportPanel
+                  hasContent={
+                    spec
+                      ? spec.agent.workflow.length > 0 || (spec.agent.tools?.length ?? 0) > 0
+                      : source.trim() !== ""
+                  }
+                  hosted={providedApi !== undefined}
+                  replace={(text) => api.replaceSource(text)}
+                  onImported={() => {
+                    setOpenForm(null);
+                    void refresh();
+                  }}
+                />
+              </Panel>
+            )}
+            {yamlOpen && (
+              <YamlPreview
+                source={source}
+                highlight={(selected !== null && yamlMap?.get(selected)) || null}
+                onLineClick={(line) => {
+                  const id = yamlMap ? nodeAtLine(yamlMap, line) : null;
+                  if (id !== null && graph.nodes.some((n) => n.id === id)) requestSelect(id);
                 }}
+                onDownload={downloadAsFile}
+                onImport={() => setOpenForm("import")}
               />
-            </Panel>
-          )}
-          {openForm === "variables" && api.listSecrets && api.setSecret && api.removeSecret && (
-            <Panel title="Secrets" onClose={() => setOpenForm(null)}>
-              <SecretsPanel
-                list={() => api.listSecrets!()}
-                save={(name, value) => api.setSecret!(name, value)}
-                remove={(name) => api.removeSecret!(name)}
-              />
-            </Panel>
-          )}
-          {openForm === "checks" && api.runDoctor && (
-            <Panel title="Checks" onClose={() => setOpenForm(null)}>
-              <DoctorPanel run={(options) => api.runDoctor!(options)} />
-            </Panel>
-          )}
-          {openForm === "import" && (
-            <Panel title="Import from file" onClose={() => setOpenForm(null)}>
-              <ImportPanel
-                hasContent={
-                  spec
-                    ? spec.agent.workflow.length > 0 || (spec.agent.tools?.length ?? 0) > 0
-                    : source.trim() !== ""
-                }
-                hosted={providedApi !== undefined}
-                replace={(text) => api.replaceSource(text)}
-                onImported={() => {
-                  setOpenForm(null);
-                  void refresh();
-                }}
-              />
-            </Panel>
-          )}
-          {yamlOpen && (
-            <YamlPreview
-              source={source}
-              highlight={(selected !== null && yamlMap?.get(selected)) || null}
-              onLineClick={(line) => {
-                const id = yamlMap ? nodeAtLine(yamlMap, line) : null;
-                if (id !== null && graph.nodes.some((n) => n.id === id)) requestSelect(id);
-              }}
-              onDownload={downloadAsFile}
-              onImport={() => setOpenForm("import")}
-            />
-          )}
+            )}
+          </div>
         </div>
+        <StatusBar actions={actions} />
       </div>
     </UpgradeContext.Provider>
   );

@@ -6,6 +6,7 @@ import { addTargets, parseSpec, specToGraph, type SpecOp } from "@kampong/spec";
 import { App } from "../../src/App.js";
 import { Canvas } from "../../src/Canvas.js";
 import { WorkflowStepForm } from "../../src/WorkflowStepForm.js";
+import { chooseFromMenu } from "./menu.js";
 
 // KAM-173: the Position choice of Add Workflow Step, the insertion marker on the canvas, and the flash on the new
 // node. The market-etl template (each_symbol and its anomaly branch) is the fixture.
@@ -158,10 +159,8 @@ describe("App: choosing where a step goes", () => {
 
   it("shows the marker while choosing, then inserts at the index and flashes the new step", async () => {
     const sent = open();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Add Workflow Step" })).toBeTruthy(),
-    );
-    click("Add Workflow Step");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy());
+    chooseFromMenu("Add Workflow Step");
     fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each_symbol/steps" } });
     fireEvent.change(screen.getByLabelText("Position"), { target: { value: "after:0" } });
     expect(screen.getByText("New step goes here")).toBeTruthy();

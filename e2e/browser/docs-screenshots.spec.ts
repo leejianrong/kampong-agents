@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { TOOL_APPROVAL_SPEC } from "./harness/fixtures.js";
+import { openPanel } from "./harness/bars.js";
 
 // Captures the canvas screenshots the docs (KAN-1390) embed. Skipped in CI --
 // it writes committed PNGs under docs/assets/img, so it's run deliberately,
@@ -63,13 +64,13 @@ test("capture docs screenshots", async ({ page }) => {
   await shot(page, "canvas-editor");
 
   // The Add Tool form open on the canvas.
-  await page.getByRole("button", { name: "Add Tool" }).click();
+  await openPanel(page, "Add Tool");
   await expect(page.getByRole("form", { name: "Add Tool" })).toBeVisible();
   await shot(page, "canvas-add-tool");
   await page.getByRole("button", { name: "Cancel" }).click();
 
   // The Set Guardrails form open on the canvas.
-  await page.getByRole("button", { name: "Set Guardrails" }).click();
+  await openPanel(page, "Set Guardrails");
   await shot(page, "canvas-guardrails");
   await page.getByRole("button", { name: "Cancel" }).click();
 

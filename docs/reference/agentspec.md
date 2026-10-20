@@ -35,7 +35,7 @@ The `version` decides how references and conditions are written. Nothing else ch
 
 ### Upgrading from the canvas
 
-On a `"1.0"` spec the panels that need 1.1 (Spec Vars, Trigger, Edit Steps) say so and offer **Upgrade to 1.1…**.
+On a `"1.0"` spec the panels that need 1.1 (Vars, Trigger, Edit steps) say so and offer **Upgrade to 1.1…**.
 It shows a line diff of exactly what would change and writes nothing until you press **Upgrade**. Changing
 `version` alone would silently change a spec, so the upgrade also rewrites the two constructs 1.1 reads differently,
 and lists each one:
@@ -77,7 +77,7 @@ a list a list), so a component input can be filled with real data; inside other 
 step, naming the expression. A condition must come out `true` or `false`: nothing, or any other type, fails
 the step (`$exists(x)` tests whether a name is there, `$boolean(x)` tests truthiness).
 
-On the canvas, every expression field in **Add Workflow Step** (a condition, a branch's `if`, a transform's
+On the canvas, every expression field in **Add step** (a condition, a branch's `if`, a transform's
 values, a validate's `assert`, a dedupe's `key`, a foreach's `items`) checks what you type with the same parser
 and the same name rule as the loader, so a problem shows as you type instead of on save, and it completes the
 path you are typing: `vars.` lists the declared vars, `trigger.` its fields, and a step name its known outputs
@@ -113,7 +113,7 @@ An environment value is parsed as the declared type: a number must be finite, a 
 and a `${ENV_VAR}` default whose variable is unset or empty fails the run naming it; nothing is guessed.
 Var names are letters, digits and underscores.
 
-On the canvas, **Spec Vars** lists, adds, edits and removes them (not to be confused with **Secrets**, which
+On the canvas, **Vars** (status bar) lists, adds, edits and removes them (not to be confused with **Secrets**, which
 holds credentials outside the spec). Adding the first var creates the `vars:` block above `agent:`, and removing
 the last takes the block with it. The panel is off for a `"1.0"` spec: 1.1 reads `{{ }}` references as
 expressions, so the panel asks you to upgrade first (see [Upgrading from the canvas](#upgrading-from-the-canvas)).
@@ -469,10 +469,21 @@ kind and the line of the field.
 | `model`           | string   | no       | A different model of the same provider for this step. Version 1.1.           |
 | `temperature`     | number   | no       | Sampling temperature, 0 to 2. Version 1.1.                                    |
 
+#### The top bar and the status bar
+
+The canvas has a **top bar** with the workflow's name (and **← Specs** in hosted mode), whether it is **Saved**
+(or "Saves paused" while the YAML has an error), **Run** (opens Test Run), the `</>` button for the YAML drawer
+and a **⋮** menu. The menu holds what is not used on every edit: **Add step**, **Add tool**, **Edit steps** (the
+list for renaming, reordering and deleting steps and tools), **Import YAML** and **Export YAML**. A step is also
+added from the palette on the left or the + on a line, and **+ Tool** under the palette adds a tool. The **status
+bar** along the bottom holds the workflow's settings, each opening its panel: **Vars**, **Secrets** (with the
+number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
+overlaps at 480 pixels wide or more.
+
 #### Selecting a node on the canvas
 
 Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the
-toolbar: the step forms of **Edit Steps** for every kind of step (action, tool, approval, transform, validate,
+menu: the step forms of **Edit steps** for every kind of step (action, tool, approval, transform, validate,
 dedupe, stop, foreach, branch, including a foreach's body steps and a branch's arms), the tool form for a tool node,
 the **Trigger** form for the trigger node and the guardrails form for the guardrails node. A condition step, or a
 step on a `"1.0"` spec, has no form; its panel says so and still offers Delete and Duplicate. Each node has an
@@ -494,12 +505,12 @@ move between them, and `Tab` goes on to the open panel. Fields are labelled in t
 should the model do?**, **Tool to call**, **List to go through**, **If an item fails**); the spec field behind each
 is unchanged.
 
-The panel also has **Duplicate** and **Delete** buttons. Clicking another node, the empty canvas or a toolbar button
+The panel also has **Duplicate** and **Delete** buttons. Clicking another node, the empty canvas, a status bar button or a menu action
 while a form has input you have not saved asks first ("Keep editing" or "Discard changes"); saving or cancelling
-closes the panel without asking. Selecting a node replaces any toolbar panel, and a toolbar button replaces the node's
+closes the panel without asking. Selecting a node replaces any docked panel, and a status bar button or menu action replaces the node's
 panel. **Duplicate** and **Delete** are not offered on the trigger and guardrails nodes.
 
-On the canvas, **Edit Steps** lists every step (a branch's arms and a foreach's body included) and opens an action
+On the canvas, **Edit steps** (in the top bar's **⋮** menu) lists every step (a branch's arms and a foreach's body included) and opens an action
 step in place: its query, instructions, model and temperature (blank keeps the agent's), and an `output_schema` tree
 editor with nested objects, arrays, enums and `required`. The form refuses what the loader refuses (an object with
 no properties, an array with no items, a `confidence_gate` step without a required numeric `confidence`), keywords
@@ -513,9 +524,9 @@ carry a line under the title: a transform's value names, a validate's assertion 
 dedupe's key and `ttl`.
 
 A foreach's body steps are nodes of their own on the canvas, set in from the loop and joined in run order
-(loop, each body step, then the step after the loop). A foreach opens in **Edit Steps** with its `items`, loop
+(loop, each body step, then the step after the loop). A foreach opens in **Edit steps** with its `items`, loop
 variable, `concurrency` and `on_error` (`fail`, `continue` or `retry`; an `on_error: goto` is left as written).
-**Add Workflow Step** has an **Add to** choice: pick a loop, or an arm of a branch (`then`, `else`, a case or the
+**Add step** (the menu action, or a kind chosen in the palette) has an **Add to** choice: pick a loop, or an arm of a branch (`then`, `else`, a case or the
 `default`), to add a step of any kind there, and a **Position** choice in plain words and step names (_At the end
 of each_symbol_, _At the start of anomaly (else)_, _After fetch_). While you choose, the canvas shows a dashed
 "New step goes here" marker beside the node the step will land next to, and after the save the new node is panned
@@ -536,7 +547,7 @@ body, or at the start of a branch arm. The save is a single `step.insert`, so th
 A branch's arms are nodes of their own the same way: each arm step is set in from its branch and marked with the arm
 it is in, the branch leads to the first step of each arm on a line labelled `then`, `else`, `case <value>` or
 `default`, and every arm that does not end in a stop leads on to the next step (a missing `else`, or no matching
-case, goes straight on). A branch opens in **Edit Steps** with its `if` condition or its `switch` value; its arms
+case, goes straight on). A branch opens in **Edit steps** with its `if` condition or its `switch` value; its arms
 are edited, deleted and added to as steps. In the Add form, **Branch on** a value builds a `switch`: one
 `value: step: tool` line per step (repeat a value for more steps in a case) and an optional default. Adding a new
 case to an existing switch is done in the YAML for now.
@@ -544,7 +555,7 @@ case to an existing switch is done in the YAML for now.
 A tool step opens with a picker over the agent's tools, a stop step with its `reason` and `status` (clearing a
 field removes it from the file), and an approval step with its `message`; these also work on a `"1.0"` spec except
 `stop`, which is 1.1 only. Loops, branches and condition steps have no form here yet and say so in their row. Below the
-steps, **Edit Steps** lists the agent's tools, each with an **Edit** button that opens the Add Tool form on the saved
+steps, **Edit steps** lists the agent's tools, each with an **Edit** button that opens the Add Tool form on the saved
 values. The tool's name, kind and (for a component) component and operation are fixed, because changing them is a
 rename or a different tool. A component's operation inputs show as fields; an input the form cannot show, or a
 component that is not installed, is edited as YAML. Fields the form has no control for (an HTTP tool's `failure_when`,

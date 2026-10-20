@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSpec } from "@kampong/spec";
 import { App } from "../../src/App.js";
+import { chooseFromMenu } from "../unit/menu.js";
 
 // The real acceptance criterion (SLICES.md V1): build a two-step agent with
 // a tool and a guardrail entirely on the canvas, and a spec written
@@ -115,7 +116,7 @@ describe("canvas against a real local server (no mocks)", () => {
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
 
-    fireEvent.click(screen.getByText("Add Tool"));
+    chooseFromMenu("Add Tool");
     await fillAndSubmit(
       "Add Tool",
       { Name: "check_status", URL: "https://api.example.com/status" },
@@ -125,7 +126,7 @@ describe("canvas against a real local server (no mocks)", () => {
       expect(readFileSync(specPath, "utf8")).toContain("check_status");
     });
 
-    fireEvent.click(screen.getByText("Add Workflow Step"));
+    chooseFromMenu("Add Workflow Step");
     await fillAndSubmit(
       "Add Workflow Step",
       { "Step ID": "evaluate_policy", Action: "check_knowledge" },
@@ -135,7 +136,7 @@ describe("canvas against a real local server (no mocks)", () => {
       expect(readFileSync(specPath, "utf8")).toContain("evaluate_policy");
     });
 
-    fireEvent.click(screen.getByText("Set Guardrails"));
+    fireEvent.click(screen.getByRole("button", { name: "Guardrails" }));
     await fillAndSubmit(
       "Set Guardrails",
       { "Confidence threshold": "0.9", "Fallback action": "escalate_to_human" },
@@ -192,7 +193,7 @@ ops:
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
 
-    fireEvent.click(screen.getByText("Add Tool"));
+    chooseFromMenu("Add Tool");
     fireEvent.click(await screen.findByRole("button", { name: "Component" }));
     const form = screen.getByRole("form", { name: "Add Tool" });
     fireEvent.change(within(form).getByLabelText("Component"), {
@@ -227,7 +228,7 @@ ops:
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
 
-    fireEvent.click(screen.getByText("Add Workflow Step"));
+    chooseFromMenu("Add Workflow Step");
     let form = screen.getByRole("form", { name: "Add Workflow Step" });
     fireEvent.change(within(form).getByLabelText("Step ID"), {
       target: { value: "evaluate_policy" },
@@ -241,7 +242,7 @@ ops:
       expect(readFileSync(specPath, "utf8")).toContain("confidence_gate: true");
     });
 
-    fireEvent.click(screen.getByText("Add Workflow Step"));
+    chooseFromMenu("Add Workflow Step");
     form = screen.getByRole("form", { name: "Add Workflow Step" });
     fireEvent.click(within(form).getByText("Condition"));
     fireEvent.change(within(form).getByLabelText("Step ID"), {
@@ -279,7 +280,7 @@ ops:
     render(<App apiBaseUrl={baseUrl} />);
     await waitFor(() => screen.getByText(/Trigger: Externally Authored Agent/));
 
-    fireEvent.click(screen.getByText("Add Tool"));
+    chooseFromMenu("Add Tool");
     await fillAndSubmit(
       "Add Tool",
       { Name: "check_status", URL: "https://api.example.com/status" },
@@ -310,7 +311,7 @@ ops:
 
     unlinkSync(specPath);
 
-    fireEvent.click(screen.getByText("Add Workflow Step"));
+    chooseFromMenu("Add Workflow Step");
     await fillAndSubmit(
       "Add Workflow Step",
       { "Step ID": "evaluate_policy", Action: "check_knowledge" },
@@ -394,7 +395,7 @@ agent:
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
       await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
-      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }
 
@@ -471,7 +472,7 @@ agent:
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
       await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
-      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }
     const rename = (button: string, to: string, submit: string) => {
@@ -537,7 +538,7 @@ agent:
     async function openSteps() {
       render(<App apiBaseUrl={baseUrl} />);
       await waitFor(() => screen.getByText(/Trigger: Refund Agent/));
-      fireEvent.click(screen.getByRole("button", { name: "Edit Steps" }));
+      chooseFromMenu("Edit Steps");
       await waitFor(() => screen.getByTestId("steps-list"));
     }
 

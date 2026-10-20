@@ -69,7 +69,10 @@ describe("empty states (KAM-196)", () => {
     expect(screen.queryByTestId("spec-errors")).toBeNull();
     expect(screen.getByTestId("start-blank")).toBeTruthy();
     // Nothing to edit yet, so the build tools are not offered.
-    expect(screen.queryByText("Add Tool")).toBeNull();
+    // Nothing to edit yet: the menu has no Add tool, only import.
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(screen.queryByRole("menuitem", { name: "Add tool" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Import YAML" })).toBeTruthy();
   });
 
   it("Start blank asks the server to create the workflow, then loads it", async () => {
@@ -145,7 +148,7 @@ describe("empty states (KAM-196)", () => {
     render(<App api={api} />);
     await waitFor(() => screen.getByTestId("empty-state"));
 
-    fireEvent.click(screen.getByText("Test Run"));
+    fireEvent.click(screen.getByRole("button", { name: "Test Run" }));
 
     expect(screen.getByTestId("run-blocked").textContent).toContain("no steps yet");
     expect(screen.getByRole("button", { name: "Run" }).hasAttribute("disabled")).toBe(true);

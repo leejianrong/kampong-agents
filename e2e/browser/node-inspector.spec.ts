@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-211: click a node to open its inspector (the matching form in the docked panel); Esc closes it, Delete
 // removes the step or tool through the KAM-171 flow, Ctrl+D duplicates it. Real browser against `kampong dev`, at
@@ -289,10 +290,10 @@ for (const size of [
       page,
     }) => {
       await node(page, "workflow:shape").click();
-      await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+      await openPanel(page, "Edit Steps");
       await expect(page.getByTestId("steps-panel")).toBeVisible();
       await expect(inspector(page)).toHaveCount(0);
-      await page.getByRole("button", { name: "Add Tool", exact: true }).click();
+      await openPanel(page, "Add Tool");
       await expect(page.getByRole("region", { name: "Add Tool", exact: true })).toBeVisible();
     });
 

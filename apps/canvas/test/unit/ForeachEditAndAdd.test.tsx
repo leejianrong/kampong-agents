@@ -7,6 +7,7 @@ import type { RemoveOutcome } from "../../src/DeleteControl.js";
 import { App } from "../../src/App.js";
 import { StepsPanel } from "../../src/StepsPanel.js";
 import { WorkflowStepForm } from "../../src/WorkflowStepForm.js";
+import { chooseFromMenu } from "./menu.js";
 
 // KAM-153: the loop is editable in place, and a step of any kind can be added inside one. The market-etl template
 // (each_symbol, a foreach over an eight-step body) is the fixture.
@@ -152,10 +153,8 @@ describe("App: adding a step inside a foreach", () => {
     return sent;
   }
   const start = async () => {
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Add Workflow Step" })).toBeTruthy(),
-    );
-    click("Add Workflow Step");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Menu" })).toBeTruthy());
+    chooseFromMenu("Add Workflow Step");
     fireEvent.change(screen.getByLabelText("Add to"), { target: { value: "each_symbol/steps" } });
   };
 

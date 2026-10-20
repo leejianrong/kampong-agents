@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-202: the YAML viewer is a "For developers" drawer, closed by default. Checked in a real browser against
 // `kampong dev` at 1440x900 and 900x700.
@@ -67,8 +68,8 @@ for (const size of [
       const surface = await page.locator(".md3-app__canvas-surface").boundingBox();
       expect(surface!.width).toBeGreaterThanOrEqual(size.width - 1);
       expect(await page.evaluate(noHorizontalScroll)).toBe(true);
-      // Every toolbar button is inside the viewport.
-      for (const button of await page.locator(".md3-app__toolbar button").all()) {
+      // Every run bar and status bar button is inside the viewport.
+      for (const button of await page.locator(".md3-runbar button, .md3-statusbar button").all()) {
         const box = (await button.boundingBox())!;
         expect(box.x + box.width).toBeLessThanOrEqual(size.width);
       }
@@ -76,7 +77,7 @@ for (const size of [
 
     test("a form is fully usable with the drawer closed", async ({ page }) => {
       await page.goto(URL);
-      await page.getByRole("button", { name: "Add Tool" }).click();
+      await openPanel(page, "Add Tool");
       const form = page.getByRole("form", { name: "Add Tool" });
       await expect(form.getByLabel("Name")).toBeInViewport();
       await expect(form.getByRole("button", { name: "Save tool" })).toBeInViewport();

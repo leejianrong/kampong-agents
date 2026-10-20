@@ -63,17 +63,17 @@ Creating an agent drops you straight onto the canvas for it.
 ## Edit on the canvas
 
 From here the canvas is identical to local mode: the graph on the left, the live YAML on the
-right, and **Add Tool** / **Add Workflow Step** / **Set Guardrails** in the toolbar. Everything
+right, the **Add tool** and **Add step** actions in the top bar's menu (**⋮**), and **Guardrails** in the status bar along the bottom. Everything
 in the [tutorial](tutorial/first-agent.md) applies unchanged. The only difference is that your
 edits are saved to the workspace's database instead of a file on your disk.
 
 ![Editing an agent on the canvas](assets/img/canvas-editor.png)
 
-The **← Specs** link in the toolbar takes you back to the agent list.
+The **← Specs** link in the top bar takes you back to the agent list.
 
 ## Run it, and approve when asked
 
-Press **Test Run**, type an input, and the run streams its steps in the panel. When the agent
+Press **Run** in the top bar, type an input, and the run streams its steps in the panel. When the agent
 reaches a guardrail or a tool that needs sign-off, the run pauses and asks.
 
 ![A run paused for approval](assets/img/run-approval.png)

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openPanel } from "./harness/bars.js";
 
 // KAM-171: Delete on the step and tool rows of Edit Steps, in a real browser against `kampong dev`. A step
 // something reads, and a tool a step uses, show what blocks them and stay; a step nothing reads is confirmed,
@@ -84,7 +85,7 @@ for (const size of [
     writeFileSync(file, SPEC);
     await page.setViewportSize(size);
     await page.goto(URL);
-    await page.getByRole("button", { name: "Edit Steps", exact: true }).click();
+    await openPanel(page, "Edit Steps");
 
     // A step that is read: the list comes first, the file is untouched, and the text fits the panel.
     await page.getByRole("button", { name: "Delete step parse", exact: true }).click();
