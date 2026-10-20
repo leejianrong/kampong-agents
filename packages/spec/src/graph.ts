@@ -34,7 +34,9 @@ export interface SpecGraph {
   edges: SpecEdge[];
 }
 
-const COLUMN: Record<NodeKind, number> = { agent: 0, tool: 1, workflow: 2, guardrails: 3 };
+// The run reads down one column: the trigger, then the steps in run order (KAM-185). Tools sit in a lane to its left,
+// out of the way of every line, and the guardrails to its right.
+const COLUMN: Record<NodeKind, number> = { tool: 0, agent: 1, workflow: 1, guardrails: 3 };
 // A step inside a loop or an arm is its own node, set in from the step that holds it, a fifth of a column per level.
 // Part of a column, so the auto layout still gives it a row in run order (layout.ts counts rows by whole column).
 const INDENT = 0.2;
@@ -152,4 +154,36 @@ export function specToGraph(spec: AgentSpec): SpecGraph {
   }
 
   return { nodes, edges };
+}
+
+const EXECUTE_TOOL = /^execute_tool\(([A-Za-z0-9_]+)\)$/;
+
+/** The names of the tools a step calls: a tool step's `tool`, and a 1.0 condition's `execute_tool(name)`. */
+function toolsCalledBy(step: Record<string, unknown>): string[] {
+  const names: string[] = [];
+  if (typeof step.tool === "string") names.push(step.tool);
+  for (const key of ["then", "else"]) {
+    const v = step[key];
+    const m = typeof v === "string" ? EXECUTE_TOOL.exec(v) : null;
+    if (m) names.push(m[1]!);
+  }
+  return names;
+}
+
+/**
+ * Which steps use which tool (KAM-185), by node id: `tool:<name>` to the `workflow:<step>` ids that call it, in run
+ * order. A tool nobody calls is absent; so is a call to a tool the spec does not define.
+ */
+export function toolUsage(graph: SpecGraph): Record<string, string[]> {
+  const known = new Set(graph.nodes.filter((n) => n.kind === "tool").map((n) => n.id));
+  const usage: Record<string, string[]> = {};
+  for (const node of graph.nodes) {
+    if (node.kind !== "workflow") continue;
+    for (const name of new Set(toolsCalledBy(node.data))) {
+      const tool = `tool:${name}`;
+      if (!known.has(tool)) continue;
+      (usage[tool] ??= []).push(node.id);
+    }
+  }
+  return usage;
 }

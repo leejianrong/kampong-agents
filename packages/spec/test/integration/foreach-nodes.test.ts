@@ -47,7 +47,7 @@ describe("specToGraph with a foreach", () => {
     );
     const loop = layout["workflow:each_symbol"]!;
     const ys = BODY.map((n) => layout[`workflow:${n}`]!.y);
-    expect(ys).toEqual(BODY.map((_, i) => loop.y + (i + 1) * 120));
+    expect(ys).toEqual(BODY.map((_, i) => loop.y + (i + 1) * 140));
     expect(layout["workflow:fetch"]!.x).toBeGreaterThan(loop.x);
     expect(layout["workflow:report"]!.y).toBeGreaterThan(ys.at(-1)!);
     // The keys are the step names (ADR-0006, ADR-0055), and a stored position is kept.

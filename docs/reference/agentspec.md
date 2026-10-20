@@ -469,6 +469,14 @@ kind and the line of the field.
 | `model`           | string   | no       | A different model of the same provider for this step. Version 1.1.           |
 | `temperature`     | number   | no       | Sampling temperature, 0 to 2. Version 1.1.                                    |
 
+#### Lines and tools on the canvas
+
+The trigger and the steps run down one column, in run order, and each line joins a step to the next one. A line
+that would pass behind a step (a branch going on to the step after its arms) is drawn round it instead. Tools sit in
+a column to the left of the run. Hover or focus a tool and the steps that call it get an outline; hover or focus a
+step and the tools it calls get one. A line's accessible name uses the steps' names ("Line from anomaly to report
+(else)"), never internal ids. Positions on the canvas are not part of the spec.
+
 #### The top bar and the status bar
 
 The canvas has a **top bar** with the workflow's name (and **← Specs** in hosted mode), whether it is **Saved**

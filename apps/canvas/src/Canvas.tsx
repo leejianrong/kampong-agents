@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { InsertionMarker, SpecGraph, SpecNode } from "@kampong/spec";
+import { toolUsage, type InsertionMarker, type SpecGraph, type SpecNode } from "@kampong/spec";
 import {
   EdgeInsertContext,
   InsertEdge,
@@ -109,6 +109,21 @@ function FocusNode({
   return null;
 }
 
+/** The id of the node an element is in, if it is in one. */
+function nodeIdOf(el: EventTarget): string | null {
+  return el instanceof Element
+    ? (el.closest<HTMLElement>(".react-flow__node")?.dataset.id ?? null)
+    : null;
+}
+
+/** How a line's end reads aloud: the step's own name, "the trigger", the tool's name. */
+function edgeEnd(node: SpecNode | undefined, fallback: string): string {
+  if (!node) return fallback;
+  if (node.kind === "agent") return "the trigger";
+  if (node.kind === "guardrails") return "the guardrails";
+  return String(node.data.name ?? node.data.step ?? fallback);
+}
+
 /** What starts a run, from the graph (KAM-184); "Manual" for a graph that predates the field. */
 const triggerLabelOf = (node: SpecNode): string =>
   typeof node.data.triggerLabel === "string" ? node.data.triggerLabel : "Manual";
@@ -173,6 +188,29 @@ export function Canvas({
   // The focused node keeps its flash for a moment, then goes back to normal.
   const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
   useEffect(() => setFlashed(focus ?? null), [focus]);
+  // Hovering or focusing a tool lights the steps that call it, and a step lights its tools (KAM-185). The pointer
+  // wins over focus while it is on a node.
+  const links = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const add = (a: string, b: string) => {
+      if (!map.has(a)) map.set(a, new Set());
+      map.get(a)!.add(b);
+    };
+    for (const [tool, steps] of Object.entries(toolUsage(graph))) {
+      for (const step of steps) {
+        add(tool, step);
+        add(step, tool);
+      }
+    }
+    return map;
+  }, [graph]);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const pointed = hovered ?? focused;
+  const linked = useMemo(
+    () => (pointed !== null ? (links.get(pointed) ?? new Set<string>()) : new Set<string>()),
+    [links, pointed],
+  );
   // Stable node/edge object identity across re-renders (App.tsx re-renders
   // on unrelated state, e.g. opening a form) -- @xyflow/react is a
   // controlled component and recreating fresh node/edge objects on every
@@ -189,7 +227,7 @@ export function Canvas({
         ariaLabel: nodeAriaLabel(node),
         className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
           flashed?.id === node.id ? " md3-node--flash" : ""
-        }`,
+        }${linked.has(node.id) ? " md3-node--linked" : ""}`,
       })),
       ...(marker
         ? [
@@ -210,30 +248,29 @@ export function Canvas({
           ]
         : []),
     ],
-    [graph, layout, marker, flashed, selectedId, sizes],
+    [graph, layout, marker, flashed, selectedId, sizes, linked],
   );
 
-  const edges: Edge[] = useMemo(
-    () =>
-      graph.edges.map((edge): Edge => {
-        const into = edge.target.startsWith("workflow:")
-          ? edge.target.slice("workflow:".length)
-          : "";
-        const insertable = onInsert !== undefined && into !== "";
-        return {
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          ...(edge.label !== undefined && { label: edge.label }),
-          ...(insertable && {
-            type: "insert",
-            data: { before: into } satisfies InsertEdgeData,
-            ariaLabel: `Line into ${into}. Press Enter to insert a step before it.`,
-          }),
-        };
-      }),
-    [graph, onInsert],
-  );
+  const edges: Edge[] = useMemo(() => {
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    return graph.edges.map((edge): Edge => {
+      const into = edge.target.startsWith("workflow:") ? edge.target.slice("workflow:".length) : "";
+      const insertable = onInsert !== undefined && into !== "";
+      // A line is named by its steps' labels, not their internal ids (KAM-185).
+      const from = edgeEnd(byId.get(edge.source), edge.source);
+      const to = edgeEnd(byId.get(edge.target), edge.target);
+      const name = `Line from ${from} to ${to}${edge.label !== undefined ? ` (${edge.label})` : ""}`;
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: "insert",
+        ...(edge.label !== undefined && { label: edge.label }),
+        ...(insertable && { data: { before: into } satisfies InsertEdgeData }),
+        ariaLabel: insertable ? `${name}. Press Enter to insert a step before ${into}.` : name,
+      };
+    });
+  }, [graph, onInsert]);
 
   // Enter (or a click) on a line selects it; that opens its picker.
   const onEdgesChange = (changes: EdgeChange[]) => {
@@ -259,7 +296,11 @@ export function Canvas({
   };
 
   return (
-    <div className="md3-flow-wrap">
+    <div
+      className="md3-flow-wrap"
+      onFocus={(e) => setFocused(nodeIdOf(e.target))}
+      onBlur={() => setFocused(null)}
+    >
       <EdgeInsertContext.Provider value={insertState}>
         <ReactFlow
           nodes={nodes}
@@ -272,6 +313,8 @@ export function Canvas({
           onEdgeMouseEnter={(_, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover(null)}
           onMoveStart={() => setOpenEdge(null)}
+          onNodeMouseEnter={(_, node) => setHovered(node.id)}
+          onNodeMouseLeave={() => setHovered(null)}
           onNodeClick={(_, node) => {
             setOpenEdge(null);
             if (node.id !== MARKER_ID) onSelect?.(node.id);
@@ -307,7 +350,7 @@ function branchLabel(node: SpecNode): ReactNode {
     <div className="md3-foreach">
       <Title text={`Branch: ${String(node.data.step)}`} />
       <Meta text={b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`} />
-      <Meta text="its arms are the steps below, labelled on the lines" />
+      <Meta text="arms are below" />
     </div>
   );
 }
