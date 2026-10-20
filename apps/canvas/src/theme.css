@@ -565,6 +565,48 @@ select.md3-text-field {
   white-space: normal;
 }
 
+/* Labels stay inside their node (KAM-187): a title is one line with an ellipsis, a detail line at most two. The
+   full text is the tooltip and the node's accessible name. */
+.md3-node__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md3-node__meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The minimap (KAM-187, shown over about 15 nodes) takes the surface-container tones; its nodes use the same
+   container roles as the canvas nodes and the viewport mask is a scrim. */
+.md3-flow-wrap .react-flow__minimap {
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+  overflow: hidden;
+}
+
+@media (max-width: 1000px) {
+  .md3-flow-wrap .react-flow__minimap-svg {
+    width: 140px;
+    height: 105px;
+  }
+}
+
+.md3-flow-wrap .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+}
+
+.md3-flow-wrap .react-flow__minimap-node {
+  fill: var(--md-sys-color-tertiary);
+  stroke: var(--md-sys-color-surface-container);
+}
+
 .md3-node--agent {
   background-color: var(--md-sys-color-primary-container) !important;
   color: var(--md-sys-color-on-primary-container) !important;
@@ -1043,7 +1085,8 @@ select.md3-text-field {
 
 .md3-secrets__row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* The name keeps room to wrap in; the buttons wrap under each other before they squeeze it (KAM-187). */
+  grid-template-columns: minmax(7rem, 1fr) minmax(0, auto);
   align-items: center;
   gap: 0.125rem 0.5rem;
 }
@@ -1060,6 +1103,8 @@ select.md3-text-field {
 }
 
 .md3-secrets__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
   grid-column: 2;
   grid-row: 1 / span 2;
   display: flex;
@@ -1071,7 +1116,8 @@ select.md3-text-field {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  word-break: break-word;
+  /* A long step name wraps at any character rather than breaking mid-word at an odd place (KAM-187). */
+  overflow-wrap: anywhere;
 }
 
 /* Expression field (KAM-160): the suggestion list drops under the input; a problem is words, not only colour. */

@@ -84,6 +84,8 @@ for (const size of [
     }) => {
       await page.goto(URL);
       await expect(node(page, "workflow:inner")).toBeVisible();
+      // These fixtures are over 15 nodes, so the minimap (KAM-187) shows; at this width it can cover the node clicked.
+      await page.addStyleTag({ content: ".react-flow__minimap { display: none }" });
       await page.getByTestId("yaml-drawer-toggle").click();
       await expect(page.getByTestId("yaml-preview")).toBeVisible();
       await expect(marked(page)).toHaveCount(0);

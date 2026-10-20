@@ -91,7 +91,7 @@ describe("empty states (KAM-196)", () => {
 
     fireEvent.click(screen.getByTestId("start-blank"));
 
-    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
     expect(startBlank).toHaveBeenCalledOnce();
     expect(screen.queryByTestId("empty-state")).toBeNull();
   });
@@ -184,7 +184,7 @@ describe("invalid YAML banner (KAM-196)", () => {
       return () => {};
     };
     render(<App api={api} />);
-    await waitFor(() => screen.getByText(/Trigger: Greeter/));
+    await waitFor(() => screen.getByText(/^Manual$/));
 
     fire?.({ type: "reload", source: "" });
 
@@ -194,6 +194,6 @@ describe("invalid YAML banner (KAM-196)", () => {
     expect(text).toContain("fix line 7");
     expect(text).toContain("Saves are paused");
     // The last valid canvas is still there.
-    expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy();
+    expect(screen.getByText(/^Manual$/)).toBeTruthy();
   });
 });

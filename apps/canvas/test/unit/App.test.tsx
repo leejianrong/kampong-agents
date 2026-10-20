@@ -55,14 +55,14 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy();
+      expect(screen.getByText(/^Manual$/)).toBeTruthy();
     });
     expect(screen.getByText(/Workflow: greet/)).toBeTruthy();
   });
 
   it("keeps the YAML in a drawer for developers, closed until opened (KAM-202)", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
     expect(screen.queryByTestId("yaml-preview")).toBeNull();
 
     const toggle = screen.getByTestId("yaml-drawer-toggle");
@@ -80,7 +80,7 @@ describe("App", () => {
 
   it("toggles the YAML drawer with Alt+Y and remembers it across a reload", async () => {
     const first = render(<App />);
-    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
     fireEvent.keyDown(window, { code: "KeyY", altKey: true });
     expect(screen.getByTestId("yaml-preview")).toBeTruthy();
     first.unmount();
@@ -101,7 +101,7 @@ describe("App", () => {
       },
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
     expect(screen.queryByTestId("yaml-preview")).toBeNull();
     fireEvent.click(screen.getByTestId("yaml-drawer-toggle"));
     expect(screen.getByTestId("yaml-preview")).toBeTruthy();
@@ -135,14 +135,14 @@ describe("App", () => {
   it("shows no warning banner for a spec without inert fields", async () => {
     render(<App />);
 
-    await waitFor(() => screen.getByText(/Trigger: Greeter/));
+    await waitFor(() => screen.getByText(/^Manual$/));
     expect(screen.queryByTestId("spec-warnings")).toBeNull();
   });
 
   it("does not show a conflict banner for an ordinary render", async () => {
     render(<App />);
 
-    await waitFor(() => screen.getByText(/Trigger: Greeter/));
+    await waitFor(() => screen.getByText(/^Manual$/));
     expect(screen.queryByTestId("conflict-banner")).toBeNull();
   });
 
@@ -181,7 +181,7 @@ describe("App", () => {
     it("loads the installed components when the Add Tool form opens and offers the Component kind", async () => {
       stubFetch(async () => ({ ok: true, status: 200, json: async () => CATALOG }) as Response);
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect(screen.getByLabelText("Component")).toBeTruthy();
@@ -193,7 +193,7 @@ describe("App", () => {
         async () => ({ ok: false, status: 500, json: async () => ({ error: "nope" }) }) as Response,
       );
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect(screen.getByText(/Could not list components: nope/)).toBeTruthy();
@@ -223,7 +223,7 @@ describe("App", () => {
         }),
       );
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Add Tool");
       fireEvent.click(await screen.findByRole("button", { name: "Component" }));
       expect((await screen.findByTestId("pin-state")).textContent).toBe("Not pinned");
@@ -266,7 +266,7 @@ describe("App", () => {
     it("lists names with where each comes from, and sets one without ever showing it", async () => {
       const calls = stub([{ name: "SLACK_BOT_TOKEN", source: "unset", referenced: true }]);
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: /^Secrets/ }));
       expect(await screen.findByText("SLACK_BOT_TOKEN")).toBeTruthy();
       expect(screen.getByText("Needed, not set")).toBeTruthy();
@@ -289,7 +289,7 @@ describe("App", () => {
     it("refuses a name that is not a variable name", async () => {
       stub([]);
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: /^Secrets/ }));
       fireEvent.click(await screen.findByRole("button", { name: "Add secret" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "not valid" } });
@@ -321,7 +321,7 @@ describe("App", () => {
         }),
       );
       render(<App />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Checks" }));
       fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
       expect(await screen.findByText("X is not set")).toBeTruthy();
@@ -341,7 +341,7 @@ describe("App", () => {
         subscribeToRunEvents: () => () => {},
       };
       render(<App api={api} />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       expect(screen.queryByRole("button", { name: "Checks" })).toBeNull();
     });
   });
@@ -368,7 +368,7 @@ describe("App", () => {
 
     it("opens from the toolbar and saves the first var as a vars block", async () => {
       const applied = appWith(withVersion("1.1"));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       fireEvent.click(screen.getByRole("button", { name: "Add var" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "symbols" } });
@@ -389,7 +389,7 @@ describe("App", () => {
 
     it("adds to an existing block and removes the last var along with the block", async () => {
       const applied = appWith(withVersion("1.1", { only: { type: "string" } }));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       fireEvent.click(screen.getByRole("button", { name: "Remove only" }));
       await waitFor(() => expect(applied).toHaveLength(1));
@@ -398,7 +398,7 @@ describe("App", () => {
 
     it("is gated on a 1.0 spec", async () => {
       appWith(withVersion("1.0"));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Vars" }));
       expect(screen.getByRole("status").textContent).toContain("Vars need spec version");
     });
@@ -430,7 +430,7 @@ describe("App", () => {
 
     it("opens from the toolbar and sets agent.trigger", async () => {
       const applied = appWith(withTrigger("1.1"));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
       fireEvent.click(screen.getByRole("button", { name: "Add schedule" }));
       fireEvent.change(screen.getByLabelText("Cron", { exact: false }), {
@@ -445,7 +445,7 @@ describe("App", () => {
 
     it("removes an existing trigger", async () => {
       const applied = appWith(withTrigger("1.1", { type: "webhook" }));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Webhook$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
       fireEvent.click(screen.getByRole("button", { name: "Remove trigger" }));
       await waitFor(() => expect(applied).toHaveLength(1));
@@ -454,7 +454,7 @@ describe("App", () => {
 
     it("is gated on a 1.0 spec", async () => {
       appWith(withTrigger("1.0"));
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
       expect(screen.getByRole("status").textContent).toContain("need spec version");
     });
@@ -476,7 +476,7 @@ describe("App", () => {
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       render(<App api={api as any} />);
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Edit Steps");
       fireEvent.click(screen.getByRole("button", { name: "Edit greet" }));
       fireEvent.change(screen.getByLabelText("Model"), {
@@ -514,7 +514,7 @@ describe("App", () => {
 
     it("checks a new step's expressions against the spec's vars on a 1.1 spec", async () => {
       open11("1.1");
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Add Workflow Step");
       fireEvent.click(screen.getByRole("button", { name: "Validate" }));
       const field = screen.getByLabelText("Assert (expression that must be true)");
@@ -528,7 +528,7 @@ describe("App", () => {
 
     it("leaves them plain on a 1.0 spec", async () => {
       open11("1.0");
-      await waitFor(() => expect(screen.getByText(/Trigger: Greeter/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       chooseFromMenu("Add Workflow Step");
       fireEvent.click(screen.getByRole("button", { name: "Condition" }));
       fireEvent.change(screen.getByLabelText("If (condition)"), { target: { value: "vars.x" } });

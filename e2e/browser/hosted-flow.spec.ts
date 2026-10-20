@@ -73,7 +73,7 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   // 7. Open it on the canvas.
   await expect(page.getByTestId("spec-list")).toBeVisible();
   await page.getByRole("button", { name: /Refund Agent/ }).click();
-  await expect(page.getByText(/Trigger: Refund Agent/)).toBeVisible();
+  await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
   await shot(page, "04-canvas-editor");
 
   // 8. Edit the spec on the canvas: add a tool via the structured form.

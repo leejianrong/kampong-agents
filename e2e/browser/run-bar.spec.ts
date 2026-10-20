@@ -112,7 +112,7 @@ for (const size of [
     test.beforeEach(async ({ page }) => {
       writeFileSync(file, SPEC);
       await page.goto(URL);
-      await expect(page.getByText(/Trigger: Bar agent/)).toBeVisible();
+      await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
     });
 
     test("the bars do not overlap, closed, with the menu open and with a panel open", async ({
@@ -259,7 +259,7 @@ test.describe("palette", () => {
 
   test("+ Tool in the palette opens Add Tool", async ({ page }) => {
     await page.goto(URL);
-    await expect(page.getByText(/Trigger: Bar agent/)).toBeVisible();
+    await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
     await page.getByTestId("step-palette").getByRole("button", { name: "+ Tool" }).click();
     await expect(page.getByRole("form", { name: "Add Tool" })).toBeVisible();
   });
