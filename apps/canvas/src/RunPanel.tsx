@@ -1,6 +1,6 @@
 import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useRef, useState } from "react";
-import type { ApiClient } from "./api.js";
+import type { ApiClient, RunMode, RunOptionsResponse } from "./api.js";
 import type { RunState } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
 
@@ -17,10 +17,28 @@ export interface RunPanelProps {
   blockedReason?: string;
 }
 
+/**
+ * What this panel remembers about the run on screen beside its engine state. The chain of run-panel cards
+ * (KAM-189 onward) adds its fields here, so the result block reads one record rather than loose state.
+ */
+interface RunRecord {
+  id: string;
+  /** The mode the run was started in (KAM-188), as the server reported it; absent from a server with only live runs. */
+  mode?: RunMode;
+}
+
+const MODE_LABEL: Record<RunMode, string> = { replay: "Replay", live: "Live" };
+
 export function RunPanel({ api, blockedReason }: RunPanelProps) {
   const [input, setInput] = useState("");
   const [state, setState] = useState<RunState | null>(null);
-  const [runId, setRunId] = useState<string | null>(null);
+  const [record, setRecord] = useState<RunRecord | null>(null);
+  const runId = record?.id ?? null;
+  // KAM-188: what the open spec can do (null until loaded, or on a server that cannot say), the chosen mode,
+  // and whether the live-run confirmation is open.
+  const [options, setOptions] = useState<RunOptionsResponse | null>(null);
+  const [mode, setMode] = useState<RunMode>("live");
+  const [confirmingLive, setConfirmingLive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -32,8 +50,39 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
     return () => unsubscribeRef.current?.();
   }, []);
 
-  async function handleStart(event: React.FormEvent) {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await api.getRunOptions?.();
+        if (cancelled || !loaded?.success) return;
+        setOptions(loaded);
+        setMode(loaded.defaultMode ?? "live");
+      } catch {
+        // A server that cannot describe its runs gets the plain panel: no switch, a live run as before.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const sideEffecting = (options?.tools ?? []).filter((t) => t.sideEffecting);
+  const canChoose = (options?.modes?.length ?? 0) > 1;
+
+  function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (starting) return;
+    // A live run that can change something outside the project asks first, naming what it would call.
+    if (options && mode === "live" && sideEffecting.length > 0) {
+      setConfirmingLive(true);
+      return;
+    }
+    void handleStart();
+  }
+
+  async function handleStart() {
+    setConfirmingLive(false);
     if (starting) return;
     // Set synchronously, before the `await` below, so a fast double-click
     // can't get past this guard twice and start two concurrent runs -- the
@@ -42,12 +91,12 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
     setStarting(true);
     setError(null);
     try {
-      const result = await api.startRun(input);
+      const result = await api.startRun(input, options ? mode : undefined);
       if (!result.success || !result.id || !result.state) {
         setError(result.error ?? "Failed to start run.");
         return;
       }
-      setRunId(result.id);
+      setRecord({ id: result.id, ...(result.mode && { mode: result.mode }) });
       setState(result.state);
 
       unsubscribeRef.current?.();
@@ -74,7 +123,30 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
 
   return (
     <div className="md3-stack" data-testid="run-panel">
-      <form onSubmit={(e) => void handleStart(e)} className="md3-form">
+      <form onSubmit={handleSubmit} className="md3-form">
+        {canChoose && (
+          <div className="md3-field">
+            <span className="md3-field__label md3-label-large">Mode</span>
+            <div className="md3-segmented-button" role="group" aria-label="Run mode">
+              {(options?.modes ?? []).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={mode === value}
+                  disabled={isRunning}
+                  className={
+                    mode === value
+                      ? "md3-segmented-button__segment md3-segmented-button__segment--selected"
+                      : "md3-segmented-button__segment"
+                  }
+                  onClick={() => setMode(value)}
+                >
+                  {MODE_LABEL[value]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="md3-field">
           <span className="md3-field__label md3-label-large">Input</span>
           <input
@@ -83,14 +155,77 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
             onChange={(e) => setInput(e.target.value)}
           />
         </label>
+        {options && mode === "replay" && (
+          <p className="md3-body-small md3-run-mode-note" data-testid="run-replay-note">
+            Replay answers from the {options.fixtures?.count} recorded fixtures in{" "}
+            <code>{options.fixtures?.dir}</code>. No keys, no network, nothing is sent.
+          </p>
+        )}
+        {options && mode === "live" && (
+          <div className="md3-banner md3-banner--error md3-run-live" data-testid="run-live-banner">
+            <div>
+              <strong>LIVE</strong>: this run calls real services
+              {!canChoose && " (no recorded fixtures to replay)"}.
+              <RunToolList options={options} />
+            </div>
+          </div>
+        )}
         <PanelFooter save="Run" disabled={isRunning || blockedReason !== undefined} />
       </form>
+
+      {confirmingLive && options && (
+        <div className="md3-modal-backdrop">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Run live?"
+            className="md3-elevated-surface md3-stack"
+          >
+            <h2 className="md3-title-medium">Run live?</h2>
+            <p className="md3-body-medium">
+              This run can change things outside your project. It would call:
+            </p>
+            <ul className="md3-run-tools" data-testid="run-confirm-tools">
+              {sideEffecting.map((t) => (
+                <li key={t.name}>
+                  <strong>{t.name}</strong> ({t.describes}, {t.effect})
+                </li>
+              ))}
+            </ul>
+            <div className="md3-form-actions">
+              <button
+                type="button"
+                className="md3-button md3-button-filled"
+                data-testid="run-confirm-live"
+                onClick={() => void handleStart()}
+              >
+                Run live
+              </button>
+              <button
+                type="button"
+                className="md3-button md3-button-outlined"
+                onClick={() => setConfirmingLive(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {blockedReason && <PanelError messages={[blockedReason]} testId="run-blocked" />}
       {error && <PanelError messages={[error]} testId="run-error" />}
 
       {state && (
         <>
+          {record?.mode && (
+            <div className="md3-body-medium" data-testid="run-mode">
+              Mode:{" "}
+              <span className={`md3-status-pill md3-run-mode md3-run-mode--${record.mode}`}>
+                {record.mode === "live" ? "LIVE" : "Replay (recorded fixtures)"}
+              </span>
+            </div>
+          )}
           <div className="md3-body-medium" data-testid="run-status">
             Status:{" "}
             <span className={`md3-status-pill md3-status-pill--${state.status}`}>
@@ -124,5 +259,23 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
         />
       )}
     </div>
+  );
+}
+
+/** The tools a live run would call, each marked when it changes something outside the project. */
+function RunToolList({ options }: { options: RunOptionsResponse }) {
+  const tools = options.tools ?? [];
+  if (tools.length === 0 && !options.modelCalls) return null;
+  return (
+    <ul className="md3-run-tools" data-testid="run-live-tools">
+      {tools.map((t) => (
+        <li key={t.name}>
+          <strong>{t.name}</strong> ({t.describes}){" "}
+          {t.sideEffecting ? `changes things (${t.effect})` : "read only"}
+          {t.requiresApproval && ", asks for approval first"}
+        </li>
+      ))}
+      {options.modelCalls && <li>Model calls go to the configured model provider.</li>}
+    </ul>
   );
 }

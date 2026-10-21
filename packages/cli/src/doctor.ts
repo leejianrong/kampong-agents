@@ -108,7 +108,7 @@ function urlTarget(raw: string): { host: string; port: number } | undefined {
 }
 
 /** True when any step, however deeply nested in a foreach or branch, is a model step (an `action` step). */
-function hasModelStep(node: unknown): boolean {
+export function hasModelStep(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(hasModelStep);
   if (node && typeof node === "object") {
     const record = node as Record<string, unknown>;

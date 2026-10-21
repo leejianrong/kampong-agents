@@ -177,7 +177,8 @@ describe("RunPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("run-status").textContent).toContain("running");
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Counts run starts only: the panel also asks /api/run-options when it opens (KAM-188).
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/runs")).toHaveLength(1);
   });
 
   it("regression: closes the SSE subscription on unmount, not only when a new run starts", async () => {

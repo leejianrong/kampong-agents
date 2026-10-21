@@ -19,6 +19,7 @@ import { envNamesIn, runDoctor, type DoctorOptions } from "./doctor.js";
 import { SecretStore, validateSecret } from "./secrets.js";
 import { copyTemplateFixtures, listTemplates, templateSource } from "./templates.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
+import { describeRunOptions, replayDepsFor, replayFixturesDirFor } from "./run-options.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
 // error (ENOENT when the spec file is deleted/renamed out from under a
@@ -482,43 +483,90 @@ export function createDevServer({
     request.raw.on("close", () => watcher.off("change", onChange));
   });
 
-  app.post<{ Body: { input: string } }>("/api/runs", async (request, reply) => {
+  // KAM-188: which modes a test run can use for the spec on disk, and what a live run would call.
+  app.get("/api/run-options", async (_request, reply) => {
     let loaded;
     try {
       loaded = await loadWithLayout(store);
     } catch (err) {
       if (!isNotFound(err)) throw err;
       reply.code(422);
+      return { success: false, error: "There is no workflow to run yet." };
+    }
+    if (!loaded.success || !loaded.spec) {
+      reply.code(422);
       return {
         success: false,
-        errors: [],
-        error: "There is no workflow to run yet: choose a template or start blank first.",
+        error: "The workflow has errors; fix them to see how it would run.",
       };
     }
-    const { success, spec, errors } = loaded;
-    if (!success || !spec) {
-      reply.code(422);
-      return { success: false, errors };
-    }
-
-    try {
-      // KAN-1187: returns as soon as the run is registered and kicked off --
-      // `state` here is always the untouched initial "running" snapshot, not
-      // the first pause/terminal state. The canvas (or any client) opens
-      // `/api/runs/:id/events` with this `id` right away and drives all
-      // further UI off that SSE stream, which is what makes the very first
-      // step_started event (and everything after it) actually observable.
-      const { id, state } = await runManager.start(spec as AgentSpec, request.body.input);
-      return { success: true, id, state };
-    } catch (err) {
-      // Covers KAN-1106: a missing/invalid BYOK env var (or an unconfigured
-      // model) throws synchronously from createAgentRun, before any network
-      // call -- surfaced here as a specific 400, never a generic 500, and
-      // the message never contains the resolved key value (only its name).
-      reply.code(400);
-      return { success: false, error: (err as Error).message };
-    }
+    return { success: true, ...(await describeRunOptions(loaded.spec as AgentSpec, specPath)) };
   });
+
+  app.post<{ Body: { input: string; mode?: "replay" | "live" } }>(
+    "/api/runs",
+    async (request, reply) => {
+      let loaded;
+      try {
+        loaded = await loadWithLayout(store);
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+        reply.code(422);
+        return {
+          success: false,
+          errors: [],
+          error: "There is no workflow to run yet: choose a template or start blank first.",
+        };
+      }
+      const { success, spec, errors } = loaded;
+      if (!success || !spec) {
+        reply.code(422);
+        return { success: false, errors };
+      }
+
+      const mode = request.body.mode ?? "live";
+      if (mode !== "live" && mode !== "replay") {
+        reply.code(400);
+        return { success: false, error: `Unknown run mode "${String(mode)}"; use replay or live.` };
+      }
+
+      try {
+        // KAM-188: a replay answers from the recorded fixtures, so it needs no keys and touches no service.
+        let replay;
+        if (mode === "replay") {
+          const dir = replayFixturesDirFor(specPath);
+          if (!dir) {
+            reply.code(409);
+            return {
+              success: false,
+              error: "There are no recorded fixtures to replay; run live, or record some first.",
+            };
+          }
+          replay = await replayDepsFor(spec as AgentSpec, specPath, dir, runOptions?.env);
+        }
+        // KAN-1187: returns as soon as the run is registered and kicked off --
+        // `state` here is always the untouched initial "running" snapshot, not
+        // the first pause/terminal state. The canvas (or any client) opens
+        // `/api/runs/:id/events` with this `id` right away and drives all
+        // further UI off that SSE stream, which is what makes the very first
+        // step_started event (and everything after it) actually observable.
+        const { id, state } = await runManager.start(
+          spec as AgentSpec,
+          request.body.input,
+          undefined,
+          replay,
+        );
+        return { success: true, id, state, mode };
+      } catch (err) {
+        // Covers KAN-1106: a missing/invalid BYOK env var (or an unconfigured
+        // model) throws synchronously from createAgentRun, before any network
+        // call -- surfaced here as a specific 400, never a generic 500, and
+        // the message never contains the resolved key value (only its name).
+        reply.code(400);
+        return { success: false, error: (err as Error).message };
+      }
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/api/runs/:id", async (request, reply) => {
     const run = runManager.get(request.params.id);

@@ -2189,3 +2189,25 @@ select.md3-text-field {
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
 }
+
+/* ---- Test Run mode (KAM-188): replay vs live ---- */
+
+.md3-run-tools {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.md3-run-mode--replay {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-run-mode--live {
+  background: var(--md-sys-color-error);
+  color: var(--md-sys-color-on-error);
+  font-weight: 700;
+}
+
+.md3-run-live {
+  margin: 0;
+}
