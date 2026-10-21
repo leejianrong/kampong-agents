@@ -98,14 +98,15 @@ describe("the local client's startRun", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("puts the vars in the request body, and leaves them out when there are none", async () => {
-    const fetchMock = vi.fn(async () => ({ json: async () => ({ success: true }) }) as Response);
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        ({ json: async () => ({ success: true }) }) as Response,
+    );
     vi.stubGlobal("fetch", fetchMock);
     const api = createApiClient();
     await api.startRun("hi", "replay", { threshold: "2" });
     await api.startRun("hi");
-    const bodies = fetchMock.mock.calls.map((c) =>
-      JSON.parse((c[1] as RequestInit).body as string),
-    );
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1]?.body as string));
     expect(bodies).toEqual([
       { input: "hi", mode: "replay", vars: { threshold: "2" } },
       { input: "hi" },

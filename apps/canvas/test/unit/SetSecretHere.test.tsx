@@ -53,7 +53,11 @@ describe("missingSecretNames", () => {
 });
 
 function runApi(startRun: ApiClient["startRun"]): ApiClient {
-  return { startRun, approveRun: vi.fn(), subscribeToRunEvents: () => () => {} } as ApiClient;
+  return {
+    startRun,
+    approveRun: vi.fn(),
+    subscribeToRunEvents: () => () => {},
+  } as unknown as ApiClient;
 }
 
 describe("RunPanel Set it here", () => {
