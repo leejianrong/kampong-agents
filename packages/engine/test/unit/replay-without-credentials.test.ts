@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Tool } from "@kampong/spec";
-import { createFirstPartyRegistry } from "../../src/component-registry.js";
+import { createComponentDispatcher } from "../../src/component-dispatch.js";
+import { createFirstPartyRegistry, InProcessModuleRunner } from "../../src/component-registry.js";
+import { desugarLegacyTool } from "../../src/workflow.js";
 import { invokeOp } from "../../src/component.js";
 import { callHttpTool } from "../../src/http-tool.js";
 import { createFixtureFetch } from "../../src/tool-fixtures.js";
@@ -87,6 +89,45 @@ describe("replay does not read credentials", () => {
       );
     const recorded = await run("record", { ALPHAVANTAGE_API_KEY: "av-live-secret" });
     expect(await run("replay", NO_ENV)).toEqual(recorded);
+  });
+
+  it("replays a legacy gmail_send tool (a module run under the HTTP fixtures) with no token set (KAM-233)", async () => {
+    const tool: Tool = {
+      name: "mail",
+      action: "gmail_send",
+      token: "${GMAIL_TOKEN}",
+      to: "a@example.test",
+      subject: "s",
+      body: "b",
+    };
+    const registry = createFirstPartyRegistry();
+    const prepared = await createComponentDispatcher({
+      registry,
+      runner: new InProcessModuleRunner(registry),
+    }).prepare(desugarLegacyTool(tool)!);
+    const run = (mode: "record" | "replay", env: NodeJS.ProcessEnv) =>
+      prepared.run(
+        { to: "a@example.test", subject: "s", body: "b" },
+        {
+          env,
+          toolName: "mail",
+          fetchImpl: createFixtureFetch({
+            mode,
+            fixturesDir: dir,
+            fetchImpl: async () =>
+              new Response(JSON.stringify({ id: "m1", threadId: "t1" }), { status: 200 }),
+          }),
+        },
+      );
+    const recorded = await run("record", { GMAIL_TOKEN: "gmail-live-secret" });
+    expect(await run("replay", NO_ENV)).toEqual(recorded);
+    // A live call with the token missing still fails visibly, with the same message as before.
+    await expect(
+      prepared.run(
+        { to: "a@example.test", subject: "s", body: "b" },
+        { env: NO_ENV, toolName: "mail" },
+      ),
+    ).rejects.toThrow('environment variable GMAIL_TOKEN is not set (secret slot "token")');
   });
 
   it("still reports a missing fixture, and still demands the credential when live", async () => {
