@@ -2693,3 +2693,9 @@ select.md3-text-field {
     border: 1px solid CanvasText;
   }
 }
+
+/* An inline problem under a field (KAM-180): words in the error colour, with "Problem:" so it never rests on
+   colour alone. The same shape as an expression field's problems. */
+.md3-field__error {
+  color: var(--md-sys-color-error);
+}
