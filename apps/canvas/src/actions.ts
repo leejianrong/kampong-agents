@@ -14,7 +14,8 @@ export type OpenForm =
   | "trigger"
   | "steps"
   | "edit-tool"
-  | "import";
+  | "import"
+  | "templates";
 
 /** Where an action is drawn: the run bar, the status bar, or the menu (everything that is not frequent). */
 export type ActionSurface = "run" | "yaml" | "status" | "menu";
@@ -45,6 +46,8 @@ export interface ActionContext {
   /** The server can list secrets / run the checks (the hosted server cannot yet). */
   hasSecrets: boolean;
   hasChecks: boolean;
+  /** The server has ready-made templates to start from (KAM-216); the hosted server has none yet. */
+  hasTemplates?: boolean;
   /** No spec file yet: only the actions that need no spec are offered. */
   noSpecYet: boolean;
   /** Secrets the workflow reads that have no value; undefined until known. */
@@ -155,6 +158,15 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
       keywords: ["palette", "command"],
       run: ctx.openPalette,
     });
+  }
+
+  if (ctx.hasTemplates) {
+    actions.push(
+      form("templates", "templates", "menu", "New from template", {
+        title: "Start from a ready-made workflow",
+        keywords: ["gallery", "example", "starter", "new"],
+      }),
+    );
   }
 
   actions.push(

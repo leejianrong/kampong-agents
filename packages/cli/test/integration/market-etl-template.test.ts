@@ -183,7 +183,7 @@ describe("the market-etl template", () => {
   it("is listed by kampong templates", async () => {
     const { io, out } = capture();
     expect(await runCli(["templates"], io)).toBe(EXIT_SUCCESS);
-    expect(out.join("\n")).toMatch(/market-etl\s+.*Alpha Vantage/);
+    expect(out.join("\n")).toMatch(/market-etl\s+.*stock/);
   });
 
   it("kampong templates --json lists name, description and path, and rejects unknown options", async () => {
@@ -195,7 +195,9 @@ describe("the market-etl template", () => {
       path: string;
     }[];
     expect(list.find((t) => t.name === "market-etl")).toMatchObject({
-      description: expect.stringContaining("Alpha Vantage"),
+      title: "Daily stock price tracker",
+      description: expect.stringContaining("stock"),
+      runsOffline: true,
       path: expect.stringContaining("market-etl"),
     });
     expect(

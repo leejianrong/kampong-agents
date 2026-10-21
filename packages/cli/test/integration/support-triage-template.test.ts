@@ -82,7 +82,7 @@ describe("the support-triage template", () => {
   it("is listed by kampong templates, with its description and folder", async () => {
     const plain = capture();
     expect(await runCli(["templates"], plain.io)).toBe(EXIT_SUCCESS);
-    expect(plain.out.join("\n")).toMatch(/support-triage\s+.*IMAP/);
+    expect(plain.out.join("\n")).toMatch(/support-triage\s+.*customer email/);
 
     const json = capture();
     expect(await runCli(["templates", "--json"], json.io)).toBe(EXIT_SUCCESS);
@@ -92,7 +92,7 @@ describe("the support-triage template", () => {
       path: string;
     }[];
     const entry = list.find((t) => t.name === "support-triage");
-    expect(entry).toMatchObject({ description: expect.stringContaining("IMAP") });
+    expect(entry).toMatchObject({ description: expect.stringContaining("customer email") });
     expect(readFileSync(`${entry!.path}/agent.yaml`, "utf8")).toBe(readFileSync(SPEC_PATH, "utf8"));
     expect(await runCli(["templates", "--nope"], capture().io)).toBe(EXIT_USAGE_ERROR);
   });

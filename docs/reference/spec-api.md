@@ -23,7 +23,14 @@ operation fails, nothing is written. Design and reasons: [ADR-0055](../adr/0055-
 when the spec file does not exist: a new workflow, not an error. `POST /api/spec/blank` then writes
 the minimal valid spec (with the schema pragma) and answers `409` if the file already has content.
 `PUT /api/spec/source` also creates a missing file, which is how a template choice is saved. A file
-that exists but cannot be read is still a `500`. Hosted specs always exist, so they have no such state.
+that exists but cannot be read is still a `500`.
+
+The template gallery (KAM-216) is local only: `GET /api/templates` lists the templates
+(`name`, `title`, `description`, `stepKinds`, `runsOffline`), and `POST /api/spec/template` with
+`{ "name": "market-etl" }` saves that template's spec as the workflow and copies its recorded fixtures to
+`.kampong/fixtures/`. It answers `404` for an unknown name and `409` if the spec already has content, unless
+the body also has `"replace": true`. The hosted server has no template routes yet, so the canvas hides the
+gallery there. Hosted specs always exist, so they have no such state.
 
 ## Operations
 

@@ -166,6 +166,17 @@ export interface PinComponentResponse {
  * per-spec client both satisfy it, which is what keeps the editor from
  * forking on mode (ADR-0020).
  */
+/** One template the gallery offers (KAM-216): what `GET /api/templates` returns. */
+export interface TemplateSummary {
+  name: string;
+  title: string;
+  description: string;
+  /** The kinds of step it uses, for the chips. */
+  stepKinds: string[];
+  /** Ships recorded data, so it runs with no key. */
+  runsOffline: boolean;
+}
+
 export interface ApiClient {
   loadSpec(): Promise<LoadSpecResponse>;
   applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse>;
@@ -188,6 +199,16 @@ export interface ApiClient {
    * `replaceSource`.
    */
   startBlank(): Promise<ApplyOpsResponse>;
+  /**
+   * The ready-made templates the template gallery offers (KAM-216). Only the local server has them (the
+   * hosted server has no template route yet), so the hosted client omits this and the gallery is hidden.
+   */
+  listTemplates?(): Promise<TemplateSummary[]>;
+  /**
+   * Saves a template as this workflow, with its recorded fixtures so it runs in replay with no key. Refused
+   * (`success: false`) when the workflow already has content, unless `replace` is set. Local server only.
+   */
+  startFromTemplate?(name: string, options?: { replace?: boolean }): Promise<ApplyOpsResponse>;
   /**
    * Subscribes to out-of-band spec-change events. Only the local server has a
    * file watcher (ADR-0008); the hosted client returns a no-op unsubscribe,
@@ -318,6 +339,37 @@ export function createApiClient(baseUrl = ""): ApiClient {
       }
       throw new ApiError(
         await errorMessageFor(res, `Failed to start a blank workflow (HTTP ${res.status}).`),
+        res.status,
+      );
+    },
+
+    async listTemplates(): Promise<TemplateSummary[]> {
+      const res = await fetch(`${baseUrl}/api/templates`, withCredentials());
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Failed to list templates (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
+      return (await res.json()) as TemplateSummary[];
+    },
+
+    async startFromTemplate(name, options): Promise<ApplyOpsResponse> {
+      const res = await fetch(
+        `${baseUrl}/api/spec/template`,
+        jsonInit({ name, ...(options?.replace && { replace: true }) }),
+      );
+      if (res.ok || res.status === 409 || res.status === 422 || res.status === 404) {
+        const body = (await res.json()) as ApplyOpsResponse & { error?: string };
+        return body.success || body.errors
+          ? body
+          : {
+              ...body,
+              errors: [{ path: [], message: body.error ?? "Could not use the template." }],
+            };
+      }
+      throw new ApiError(
+        await errorMessageFor(res, `Failed to start from the template (HTTP ${res.status}).`),
         res.status,
       );
     },

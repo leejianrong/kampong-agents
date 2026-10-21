@@ -32,7 +32,9 @@ import {
   type ApiClient,
   type SecretStatusDto,
   type SpecErrorDto,
+  type TemplateSummary,
 } from "./api.js";
+import { TemplateGallery } from "./TemplateGallery.js";
 import { Canvas } from "./Canvas.js";
 import { EmptyState } from "./EmptyState.js";
 import { DoctorPanel } from "./DoctorPanel.js";
@@ -205,6 +207,23 @@ export function App({
   const [loaded, setLoaded] = useState(false);
   const [startingBlank, setStartingBlank] = useState(false);
   const [startBlankError, setStartBlankError] = useState<string | null>(null);
+  // KAM-216: the template gallery. Undefined until listed, and left empty where the server has none (hosted).
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  useEffect(() => {
+    if (!api.listTemplates) return;
+    let cancelled = false;
+    api
+      .listTemplates()
+      .then((list) => {
+        if (!cancelled) setTemplates(list);
+      })
+      .catch(() => {
+        // No gallery is better than a broken one; "Start blank" still works.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
 
   // KAM-181: confirm a save and show what it changed: a toast, the node flashed, the YAML lines marked.
   function announceSave(before: string, after: string) {
@@ -360,6 +379,32 @@ export function App({
         return;
       }
       setStartBlankError(err instanceof Error ? err.message : "Could not start blank.");
+    } finally {
+      setStartingBlank(false);
+    }
+  }
+
+  // KAM-216: choosing a template saves it as the workflow (with its recorded data) and opens it.
+  async function handleChooseTemplate(name: string, replace: boolean) {
+    if (startingBlank || !api.startFromTemplate) return;
+    setStartingBlank(true);
+    setStartBlankError(null);
+    try {
+      const result = await api.startFromTemplate(name, { replace });
+      if (!result.success) {
+        setStartBlankError(
+          (result.errors ?? []).map((e) => e.message).join("; ") || "Could not use the template.",
+        );
+        return;
+      }
+      setOpenForm(null);
+      await refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      setStartBlankError(err instanceof Error ? err.message : "Could not use the template.");
     } finally {
       setStartingBlank(false);
     }
@@ -874,6 +919,7 @@ export function App({
     yamlOpen,
     hasSecrets: api.listSecrets !== undefined,
     hasChecks: api.runDoctor !== undefined,
+    hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
     noSpecYet: emptyKind === "new",
     ...(missingSecrets !== undefined && { missingSecrets }),
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
@@ -982,8 +1028,15 @@ export function App({
                   error={startBlankError}
                   onStartBlank={() => void handleStartBlank()}
                   onAddStep={() => setOpenForm("workflow")}
-                  // KAM-216: the template gallery plugs in here (`templates={<TemplateGallery ... />}`).
-                  templates={undefined}
+                  templates={
+                    api.startFromTemplate && templates.length > 0 ? (
+                      <TemplateGallery
+                        templates={templates}
+                        busy={startingBlank}
+                        onChoose={(name) => void handleChooseTemplate(name, false)}
+                      />
+                    ) : undefined
+                  }
                 />
               )}
             </div>
@@ -1196,6 +1249,25 @@ export function App({
             {openForm === "checks" && api.runDoctor && (
               <Panel title="Checks" onClose={() => setOpenForm(null)}>
                 <DoctorPanel run={(options) => api.runDoctor!(options)} />
+              </Panel>
+            )}
+            {openForm === "templates" && templates.length > 0 && (
+              <Panel title="New from template" onClose={() => setOpenForm(null)}>
+                {startBlankError && (
+                  <div
+                    role="alert"
+                    data-testid="template-error"
+                    className="md3-banner md3-banner--error"
+                  >
+                    {startBlankError}
+                  </div>
+                )}
+                <TemplateGallery
+                  templates={templates}
+                  busy={startingBlank}
+                  confirmReplace={emptyKind === null}
+                  onChoose={(name) => void handleChooseTemplate(name, emptyKind !== "new")}
+                />
               </Panel>
             )}
             {openForm === "import" && (

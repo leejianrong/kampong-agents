@@ -41,6 +41,14 @@ that exists but cannot be read is still reported as an error. A spec with `workf
 While the YAML is broken, the canvas keeps the last valid version, names the line to fix and says
 saves are paused.
 
+**Templates in the canvas.** The empty state also lists the ready-made templates, each with a friendly
+title, a plain description, chips for the kinds of step it uses and a **Runs offline** badge when it ships
+recorded data. **New from template** in the menu (**⋮**) and the command palette opens the same list on a
+workflow that already exists; choosing one there asks before replacing it. Choosing a template saves its
+`agent.yaml` and copies its recorded `fixtures/` to `.kampong/fixtures/`, where a replay run looks, so it runs
+with no key. A new folder under `packages/cli/templates` appears in the gallery with no code change. The
+hosted app has no gallery yet.
+
 **Saves are confirmed.** After each save the canvas shows a short "Saved: ..." message (announced to
 screen readers), flashes the node that changed, and, when the YAML drawer is open, scrolls it to the
 changed lines and marks them for a few seconds. The drawer is never opened for you, and with
@@ -117,8 +125,10 @@ Lists the ready-made specs that ship with kampong: complete folders to copy and 
 kampong templates [--json]
 ```
 
-`--json` prints an array of `{ name, description, path }`. The command copies nothing; copy the folder
-yourself. Today there are two: `market-etl`, a scheduled price pipeline (see
+`--json` prints an array of `{ name, title, description, stepKinds, runsOffline, path }`. `title` and
+`description` come from the folder's `template.json` (a friendly name and a plain-language description of the
+job); `stepKinds` and `runsOffline` are worked out from the spec and the `fixtures/` folder. The command
+copies nothing; copy the folder yourself, or choose the template in `kampong dev` (see above). Today there are two: `market-etl`, a scheduled price pipeline (see
 [Scheduled data pipelines](../tutorial/pipelines.md)), and `support-triage`, an inbox assistant that drafts replies.
 
 ## `kampong doctor`
