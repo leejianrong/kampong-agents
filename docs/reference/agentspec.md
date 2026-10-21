@@ -467,6 +467,10 @@ guardrails:
 | `confidence_threshold` | number 0–1          | no       | Below this, the guardrail fires on a `confidence_gate` step.            |
 | `fallback_action`      | `escalate_to_human` | no       | What to do when it fires. The one supported action pauses for approval. |
 
+The **Guardrails** form on the canvas has a sentence under each field saying what it does. A threshold outside 0 to 1
+(or not a number) shows "Problem: the threshold must be from 0 to 1, and 1.5 is above that." under the field as you
+type, and the save waits; a blank threshold saves as none.
+
 ## `agent.workflow[]`
 
 At least one step. A step is an action step, a condition step, or one of the kinds below. Everything except
