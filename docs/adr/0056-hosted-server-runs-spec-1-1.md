@@ -33,7 +33,7 @@ Reading the code for KAM-203 found the bounds are mostly in place and one gap is
 
 ## Not done here
 
-`dedupe`, `poll`, `schedule` and webhook auth presets need persistent state and trigger wiring (KAM-203 PR B and
+Until then they are refused up front with a 422 naming the feature (`UnsupportedOnHostedError`), never started and left to fail or do nothing. `dedupe`, `poll`, `schedule` and webhook auth presets need persistent state and trigger wiring (KAM-203 PR B and
 C). Outbound HTTP from tools has no private-address (SSRF) guard; a hosted tool can reach addresses inside the
 server's network. This predates 1.1 and is flagged for its own card.
 

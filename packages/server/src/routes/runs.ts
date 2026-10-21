@@ -5,7 +5,11 @@ import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
-import { HostedRunManager, InvalidStoredSpecError } from "../run/manager.js";
+import {
+  HostedRunManager,
+  InvalidStoredSpecError,
+  UnsupportedOnHostedError,
+} from "../run/manager.js";
 
 // KAN-1231/KAN-1425 (ADR-0014, SLICES.md V5 build-plan step 11): the
 // workspace-scoped, durable hosted-execution routes -- start a run of one of
@@ -67,7 +71,7 @@ export function registerRunRoutes(
             .code(404)
             .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
         }
-        if (err instanceof InvalidStoredSpecError) {
+        if (err instanceof InvalidStoredSpecError || err instanceof UnsupportedOnHostedError) {
           return reply.code(422).send({ success: false, error: err.message });
         }
         if (err instanceof WorkspaceApiKeyNotConfiguredError) {

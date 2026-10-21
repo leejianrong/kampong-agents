@@ -206,6 +206,91 @@ describe.skipIf(!DATABASE_URL)(
       expect(hosted.error).toMatch(/vars\.threshold/);
     });
 
+    // The hosted server has no state store or scheduler yet (KAM-203 parts B and C). What it cannot run is
+    // refused up front, by name, never started and then silently skipped or failed partway.
+    const spec11 = (trigger: string, step = "") => `version: "1.1"
+agent:
+  id: unsupported
+  name: "U"
+  role: "r"
+  goal: "g"
+${trigger}  workflow:
+    - step: shape
+      type: transform
+      set:
+        value: "1"
+${step}`;
+    const DEDUPE_STEP = `    - step: once
+      type: dedupe
+      once: { key: "shape.value", ttl: "24h" }
+`;
+
+    async function createSpec(cookie: string, source: string): Promise<string> {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/specs",
+        headers: { cookie },
+        payload: { name: "unsupported", source },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      return created.json().id;
+    }
+
+    it("refuses to run a spec with a dedupe step, by name, before any step runs", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const id = await createSpec(cookie, spec11("", DEDUPE_STEP));
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/specs/${id}/runs`,
+        headers: { cookie },
+        payload: { input: "" },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error).toMatch(/`dedupe` step is not available on the hosted server yet/);
+    });
+
+    it("refuses to deploy a schedule or poll trigger instead of accepting a deployment that never fires", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const schedule = await createSpec(
+        cookie,
+        spec11("  trigger:\n    type: schedule\n    every: 6h\n"),
+      );
+      const res = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${schedule}/deployment`,
+        headers: { cookie },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error).toMatch(
+        /`schedule` trigger is not available on the hosted server yet/,
+      );
+      // A manual run of the same spec is a normal run and still works.
+      const run = await app.inject({
+        method: "POST",
+        url: `/api/specs/${schedule}/runs`,
+        headers: { cookie },
+        payload: { input: "" },
+      });
+      expect(run.statusCode).toBe(201);
+    });
+
+    it("refuses to deploy a webhook with auth, which the hosted ingress would not enforce", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const id = await createSpec(
+        cookie,
+        spec11(
+          "  trigger:\n    type: webhook\n    auth: { type: bearer, secret_env: HOOK_TOKEN }\n",
+        ),
+      );
+      const res = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${id}/deployment`,
+        headers: { cookie },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error).toMatch(/auth.*not available on the hosted server yet/);
+    });
+
     it("rejects a `vars` that is not an object with 400", async () => {
       const { cookie } = await newUserWithWorkspace();
       const created = await app.inject({

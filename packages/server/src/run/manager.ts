@@ -45,6 +45,53 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<RunEvent["type"]> = new Set([
 ]);
 const DEFAULT_EVICT_AFTER_MS = 10 * 60 * 1000;
 
+/**
+ * A 1.1 feature the hosted server cannot run yet (KAM-203). Refused up front, by name, so a run never starts
+ * and then fails or silently does nothing partway: `dedupe` and the `schedule`/`poll` triggers need a
+ * workspace-scoped state store and a scheduler, and webhook `auth`/`when`/`map` need the ingress route to
+ * apply them (parts B and C of KAM-203).
+ */
+export class UnsupportedOnHostedError extends Error {
+  constructor(feature: string) {
+    super(
+      `${feature} is not available on the hosted server yet. Run it locally with \`kampong run\`.`,
+    );
+    this.name = "UnsupportedOnHostedError";
+  }
+}
+
+function hasDedupeStep(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasDedupeStep);
+  if (node === null || typeof node !== "object") return false;
+  const o = node as Record<string, unknown>;
+  return o["type"] === "dedupe" || Object.values(o).some(hasDedupeStep);
+}
+
+/** The first hosted-unsupported feature the spec uses, or undefined. `webhook` also checks the trigger a deployment would fire. */
+export function hostedUnsupportedFeature(
+  spec: AgentSpec,
+  { webhook = false }: { webhook?: boolean } = {},
+): string | undefined {
+  if (hasDedupeStep(spec.agent.workflow)) return "A `dedupe` step";
+  const trigger = spec.agent.trigger;
+  if (webhook) {
+    if (trigger?.type === "schedule") return "The `schedule` trigger";
+    if (trigger?.type === "poll") return "The `poll` trigger";
+    if (trigger?.type === "webhook") {
+      const t = trigger as { auth?: unknown; preset?: unknown; when?: unknown; map?: unknown };
+      if (
+        t.auth !== undefined ||
+        t.preset !== undefined ||
+        t.when !== undefined ||
+        t.map !== undefined
+      ) {
+        return "Webhook `auth`, `preset`, `when` and `map`";
+      }
+    }
+  }
+  return undefined;
+}
+
 export class InvalidStoredSpecError extends Error {
   constructor(specId: string) {
     super(`Stored spec "${specId}" could not be parsed into a runnable AgentSpec.`);
@@ -81,6 +128,8 @@ export interface HostedRunManagerOptions {
 export interface StartRunOptions {
   /** Values for the spec's `vars` (version 1.1); the engine checks names and types and fails the run visibly. */
   vars?: Record<string, unknown>;
+  /** True when a deployment's webhook starts the run, so the trigger is checked too. */
+  viaWebhook?: boolean;
   trigger?: { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> };
 }
 
@@ -149,6 +198,8 @@ export class HostedRunManager {
       throw new InvalidStoredSpecError(specId);
     }
     const spec = parsed.spec as AgentSpec;
+    const unsupported = hostedUnsupportedFeature(spec, { webhook: runOptions.viaWebhook });
+    if (unsupported) throw new UnsupportedOnHostedError(unsupported);
 
     const model = this.options.createModel
       ? await this.options.createModel(spec)
