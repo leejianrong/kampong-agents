@@ -131,6 +131,17 @@ export interface RunOptionsTool {
   recorded: boolean;
 }
 
+/** One of the spec's `vars`, as a test run lets you set it for a single run (KAM-191). */
+export interface RunOptionsVar {
+  name: string;
+  type: "string" | "number" | "list";
+  /** What a list holds; absent for the other types. */
+  items?: "string" | "number";
+  description?: string;
+  /** The default as the text a field shows (a list comma-separated, `${ENV}` as written); absent when the var has none. */
+  default?: string;
+}
+
 export interface RunOptions {
   /** The modes this server can run, in the order the canvas offers them. */
   modes: RunToolsMode[];
@@ -143,6 +154,8 @@ export interface RunOptions {
     count: number;
   };
   tools: RunOptionsTool[];
+  /** The spec's declared `vars`, in declaration order; empty for a spec without any (and for every 1.0 spec). */
+  vars: RunOptionsVar[];
   /** True when the workflow has a model step, which a live run sends to the model provider. */
   modelCalls: boolean;
 }
@@ -206,6 +219,15 @@ export async function describeRunOptions(spec: AgentSpec, specPath: string): Pro
       count: files.length,
     },
     tools,
+    vars: Object.entries(spec.vars ?? {}).map(([name, def]) => ({
+      name,
+      type: def.type,
+      ...(def.items && { items: def.items }),
+      ...(def.description !== undefined && { description: def.description }),
+      ...(def.default !== undefined && {
+        default: Array.isArray(def.default) ? def.default.join(", ") : String(def.default),
+      }),
+    })),
     modelCalls: hasModelStep(spec.agent.workflow),
   };
 }

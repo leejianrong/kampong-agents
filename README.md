@@ -78,6 +78,7 @@ inserts it right there, inside a loop or into a branch arm too.
 **Run** opens Test Run with a **Replay / Live** switch: Replay answers from recorded fixtures (no keys, no network,
 the default when fixtures exist); Live calls the real services, shows a LIVE banner with the tools it would call
 and asks first when one of them changes something outside the project.
+A spec's `vars` appear in Test Run prefilled with their defaults; change one for a single run (like `kampong run --var`) without editing the spec.
 A run that finishes with failed loop items shows an amber "completed with N errors" and a table of them.
 Each save shows a "Saved" message, flashes the changed node and (if the YAML drawer is open) scrolls to and marks the changed lines.
 Panels (Vars, Trigger, Edit Steps, Secrets) keep what you typed when you open another panel; `Esc` closes a panel, asking first if input would be lost.

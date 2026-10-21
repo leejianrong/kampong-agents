@@ -503,7 +503,7 @@ export function createDevServer({
     return { success: true, ...(await describeRunOptions(loaded.spec as AgentSpec, specPath)) };
   });
 
-  app.post<{ Body: { input: string; mode?: "replay" | "live" } }>(
+  app.post<{ Body: { input: string; mode?: "replay" | "live"; vars?: Record<string, unknown> } }>(
     "/api/runs",
     async (request, reply) => {
       let loaded;
@@ -528,6 +528,26 @@ export function createDevServer({
       if (mode !== "live" && mode !== "replay") {
         reply.code(400);
         return { success: false, error: `Unknown run mode "${String(mode)}"; use replay or live.` };
+      }
+
+      // KAM-191: values for the spec's vars, for this run only. The spec on disk is not touched.
+      const vars = request.body.vars;
+      if (vars !== undefined) {
+        if (typeof vars !== "object" || vars === null || Array.isArray(vars)) {
+          reply.code(400);
+          return { success: false, error: "vars must be an object of var name to value." };
+        }
+        const declared = Object.keys((spec as AgentSpec).vars ?? {});
+        const unknown = Object.keys(vars).filter((name) => !declared.includes(name));
+        if (unknown.length > 0) {
+          reply.code(400);
+          return {
+            success: false,
+            error:
+              `${unknown.join(", ")} is not declared in the spec's vars` +
+              (declared.length > 0 ? ` (declared: ${declared.join(", ")}).` : " (it has no vars)."),
+          };
+        }
       }
 
       try {
@@ -555,6 +575,7 @@ export function createDevServer({
           request.body.input,
           undefined,
           replay,
+          vars,
         );
         return { success: true, id, state, mode };
       } catch (err) {

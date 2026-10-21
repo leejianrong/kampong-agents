@@ -40,6 +40,8 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
   const [mode, setMode] = useState<RunMode>("live");
   const [confirmingLive, setConfirmingLive] = useState(false);
+  // KAM-191: the text of each declared var's field, for the next run only (the spec is never changed).
+  const [varText, setVarText] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -58,6 +60,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
         const loaded = await api.getRunOptions?.();
         if (cancelled || !loaded?.success) return;
         setOptions(loaded);
+        setVarText(Object.fromEntries((loaded.vars ?? []).map((v) => [v.name, v.default ?? ""])));
         setMode(loaded.defaultMode ?? "live");
       } catch {
         // A server that cannot describe its runs gets the plain panel: no switch, a live run as before.
@@ -69,6 +72,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
   }, [api]);
 
   const sideEffecting = (options?.tools ?? []).filter((t) => t.sideEffecting);
+  const declaredVars = options?.vars ?? [];
   const canChoose = (options?.modes?.length ?? 0) > 1;
 
   function handleSubmit(event: React.FormEvent) {
@@ -92,7 +96,16 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
     setStarting(true);
     setError(null);
     try {
-      const result = await api.startRun(input, options ? mode : undefined);
+      // Only the vars changed from their defaults go with the run; the rest keep resolving as the spec says.
+      const changed = Object.fromEntries(
+        declaredVars
+          .filter((v) => (varText[v.name] ?? "") !== (v.default ?? ""))
+          .map((v) => [v.name, varText[v.name] ?? ""]),
+      );
+      const result =
+        Object.keys(changed).length > 0
+          ? await api.startRun(input, options ? mode : undefined, changed)
+          : await api.startRun(input, options ? mode : undefined);
       if (!result.success || !result.id || !result.state) {
         setError(result.error ?? "Failed to start run.");
         return;
@@ -160,6 +173,35 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
             onChange={(e) => setInput(e.target.value)}
           />
         </label>
+        {declaredVars.length > 0 && (
+          <fieldset className="md3-run-vars" data-testid="run-vars">
+            <legend className="md3-label-large">Vars</legend>
+            <p className="md3-body-small md3-run-mode-note">
+              Values for this run only. The spec keeps its defaults.
+            </p>
+            {declaredVars.map((v) => (
+              <label key={v.name} className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  {v.name}
+                  <span className="md3-body-small">
+                    {" "}
+                    (
+                    {v.type === "list" ? `list of ${v.items ?? "string"}, comma separated` : v.type}
+                    {v.default === undefined && ", required"})
+                  </span>
+                </span>
+                <input
+                  className="md3-text-field"
+                  data-testid={`run-var-${v.name}`}
+                  value={varText[v.name] ?? ""}
+                  disabled={isRunning}
+                  onChange={(e) => setVarText((t) => ({ ...t, [v.name]: e.target.value }))}
+                />
+                {v.description && <span className="md3-body-small">{v.description}</span>}
+              </label>
+            ))}
+          </fieldset>
+        )}
         {options && mode === "replay" && (
           <p className="md3-body-small md3-run-mode-note" data-testid="run-replay-note">
             Replay answers from the {options.fixtures?.count} recorded fixtures in{" "}

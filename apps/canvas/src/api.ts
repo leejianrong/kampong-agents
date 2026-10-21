@@ -143,6 +143,16 @@ export interface RunOptionsToolDto {
   recorded: boolean;
 }
 
+/** One declared spec var a test run can set for a single run (KAM-191). */
+export interface RunOptionsVarDto {
+  name: string;
+  type: "string" | "number" | "list";
+  items?: "string" | "number";
+  description?: string;
+  /** The default as field text (a list comma-separated); absent when the var has none. */
+  default?: string;
+}
+
 /** What the open spec can do on a test run: the modes open to it and what a live run would call. */
 export interface RunOptionsResponse {
   success: boolean;
@@ -151,6 +161,8 @@ export interface RunOptionsResponse {
   defaultMode?: RunMode;
   fixtures?: { available: boolean; dir?: string; count: number };
   tools?: RunOptionsToolDto[];
+  /** The spec's declared vars; absent from a server that cannot say, which gets no var fields (hosted today). */
+  vars?: RunOptionsVarDto[];
   modelCalls?: boolean;
 }
 
@@ -272,7 +284,8 @@ export interface ApiClient {
    * server can replay recorded fixtures; the hosted client omits this, so the panel shows no mode switch.
    */
   getRunOptions?(): Promise<RunOptionsResponse>;
-  startRun(input: string, mode?: RunMode): Promise<StartRunResponse>;
+  /** `vars` are values for the spec's `vars` for this run only (KAM-191); the local server applies them, hosted ignores them. */
+  startRun(input: string, mode?: RunMode, vars?: Record<string, string>): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
 }
@@ -476,8 +489,15 @@ export function createApiClient(baseUrl = ""): ApiClient {
       return (await res.json()) as RunOptionsResponse;
     },
 
-    async startRun(input: string, mode?: RunMode): Promise<StartRunResponse> {
-      const res = await fetch(`${baseUrl}/api/runs`, jsonInit(mode ? { input, mode } : { input }));
+    async startRun(
+      input: string,
+      mode?: RunMode,
+      vars?: Record<string, string>,
+    ): Promise<StartRunResponse> {
+      const res = await fetch(
+        `${baseUrl}/api/runs`,
+        jsonInit({ input, ...(mode && { mode }), ...(vars && { vars }) }),
+      );
       return (await res.json()) as StartRunResponse;
     },
 

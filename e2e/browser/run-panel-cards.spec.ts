@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -13,11 +13,13 @@ const URL = `http://127.0.0.1:${PORT}`;
 const TEMPLATE = join("packages", "cli", "templates", "market-etl");
 let server: ChildProcess;
 let dir: string;
+let originalSpec: string;
 
 test.beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kampong-runcards-"));
   cpSync(join(TEMPLATE, "agent.yaml"), join(dir, "agent.yaml"));
   cpSync(join(TEMPLATE, "fixtures"), join(dir, "fixtures"), { recursive: true });
+  originalSpec = readFileSync(join(dir, "agent.yaml"), "utf8");
   server = spawn(
     process.execPath,
     [join("packages", "cli", "dist", "cli.js"), "dev", dir, "--port", String(PORT)],
@@ -90,6 +92,49 @@ for (const size of [
       await expect(rows.first()).toContainText("MSFT");
       await expect(rows.first()).toContainText("each_symbol / fetch");
       await expect(rows.first()).toContainText("rate limit");
+    });
+
+    test("KAM-191: vars are listed with their defaults; changing one affects the run, not the spec", async ({
+      page,
+    }) => {
+      const symbols = page.getByTestId("run-var-symbols");
+      const threshold = page.getByTestId("run-var-threshold");
+      await expect(symbols).toHaveValue("AAPL, MSFT, NVDA");
+      await expect(threshold).toHaveValue("1.5");
+
+      // One symbol, so nothing fails: plain green, and AAPL's 4% move is over the 1.5 threshold.
+      await symbols.fill("AAPL");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).not.toContainText("error");
+      await expect(page.getByTestId("run-errors")).toHaveCount(0);
+      await expect(page.getByTestId("run-final-output")).toContainText('"count": 1');
+      await expect(page.getByTestId("run-trace")).toContainText("each_symbol[0].summarize");
+
+      // A fresh panel, with the threshold raised above that move: the alert branch is no longer taken.
+      await page.reload();
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await openPanel(page, "Test Run");
+      await page.getByTestId("run-var-symbols").fill("AAPL");
+      await page.getByTestId("run-var-threshold").fill("50");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-trace")).toContainText("each_symbol[0].delta");
+      await expect(page.getByTestId("run-trace")).not.toContainText("each_symbol[0].summarize");
+
+      // The spec is untouched: a fresh canvas shows the defaults again, and so does its file.
+      expect(readFileSync(join(dir, "agent.yaml"), "utf8")).toBe(originalSpec);
+      await page.reload();
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await openPanel(page, "Test Run");
+      await expect(page.getByTestId("run-var-symbols")).toHaveValue("AAPL, MSFT, NVDA");
+      await expect(page.getByTestId("run-var-threshold")).toHaveValue("1.5");
+    });
+
+    test("KAM-191: a value of the wrong type fails the run and names the var", async ({ page }) => {
+      await page.getByTestId("run-var-threshold").fill("high");
+      await page.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(page.getByTestId("run-halted")).toContainText("threshold", { timeout: 20000 });
     });
   });
 }

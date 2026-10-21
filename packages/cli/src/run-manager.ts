@@ -151,8 +151,10 @@ export class RunManager {
     trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
     /** KAM-188: `replay` answers tool and model calls from recorded fixtures instead of the real services. */
     replay?: ReplayDeps,
+    /** KAM-191: values for the spec's `vars` for this run only, winning over their defaults (`kampong run --var`). */
+    vars?: Record<string, unknown>,
   ): Promise<StartRunResult> {
-    const run = this.createRun(spec, trigger, replay);
+    const run = this.createRun(spec, trigger, replay, vars);
     const id = this.register(spec, run);
     // Fire-and-forget: workflow.ts (packages/engine) already catches every
     // real failure mode itself and yields a "failed" RunEvent instead of
@@ -181,6 +183,7 @@ export class RunManager {
     spec: AgentSpec,
     trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
     replay?: ReplayDeps,
+    vars?: Record<string, unknown>,
   ): AgentRun {
     return createAgentRun(spec, {
       env: this.options.env,
@@ -188,6 +191,7 @@ export class RunManager {
       components: this.options.components,
       model: this.options.createModel?.(spec),
       ...(replay ? replay : {}),
+      ...(vars && Object.keys(vars).length > 0 ? { vars } : {}),
       ...(trigger ? { trigger } : {}),
       ...(this.options.persistApprovals
         ? {
