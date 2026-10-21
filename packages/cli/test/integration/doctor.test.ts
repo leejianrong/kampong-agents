@@ -93,6 +93,26 @@ describe("kampong doctor", () => {
     expect(text).toMatch(/ANTHROPIC_API_KEY.*not set/);
   });
 
+  // KAM-192: a webhook trigger refuses every request until its secret is set; doctor says so, as a warning.
+  it("warns when a webhook trigger's secret is not set, and passes once it is", async () => {
+    const hook = spec("    []", "- step: go\n      type: action\n      action: x")
+      .replace('version: "1.0"', 'version: "1.1"')
+      .replace(
+        "  tools:",
+        "  trigger:\n    type: webhook\n    preset: github\n    auth:\n      secret_env: GITHUB_WEBHOOK_SECRET\n  tools:",
+      );
+    writeFileSync(path("agent.yaml"), hook);
+    const missing = await doctor([path("agent.yaml")]);
+    expect(missing.code).toBe(EXIT_SUCCESS);
+    expect(missing.text).toMatch(/GITHUB_WEBHOOK_SECRET is not set \(webhook trigger secret\)/);
+    const set = await doctor([path("agent.yaml")], {
+      ANTHROPIC_API_KEY: SECRET,
+      GITHUB_WEBHOOK_SECRET: "whsec",
+    });
+    expect(set.text).toMatch(/GITHUB_WEBHOOK_SECRET is set \(webhook trigger secret\)/);
+    expect(set.text).not.toContain("whsec");
+  });
+
   it("fails when a used component is not installed", async () => {
     writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
     const { code, text } = await doctor([path("agent.yaml")]);

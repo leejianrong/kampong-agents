@@ -1,18 +1,21 @@
 import { PanelError, PanelFooter } from "./Panel";
 import { useState } from "react";
 import type { DoctorCheckDto } from "./api.js";
+import { missingSecretNames } from "./secretNames.js";
 
 // KAN-1901: `kampong doctor` in the canvas. The default check is offline; reaching hosts and sending
 // credentials are separate buttons, because each one leaves the machine.
 
 export interface DoctorPanelProps {
   run: (options: { online?: boolean; probe?: boolean }) => Promise<DoctorCheckDto[]>;
+  /** KAM-192: opens the Secrets panel on a name a check says is not set. Absent where there is no Secrets panel. */
+  onSetSecret?: (name: string) => void;
 }
 
 const WORD = { pass: "Passed", warn: "Warning", fail: "Failed" } as const;
 const MARK = { pass: "✓", warn: "!", fail: "✗" } as const;
 
-export function DoctorPanel({ run }: DoctorPanelProps) {
+export function DoctorPanel({ run, onSetSecret }: DoctorPanelProps) {
   const [checks, setChecks] = useState<DoctorCheckDto[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +114,19 @@ export function DoctorPanel({ run }: DoctorPanelProps) {
                 </span>
                 <span className="md3-visually-hidden">{WORD[check.status]}: </span>
                 <span className="md3-body-medium">{check.message}</span>
+                {onSetSecret &&
+                  check.status !== "pass" &&
+                  missingSecretNames(check.message).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className="md3-button md3-button-text"
+                      aria-label={`Set it here for ${name}`}
+                      onClick={() => onSetSecret(name)}
+                    >
+                      Set it here
+                    </button>
+                  ))}
               </li>
             ))}
           </ul>

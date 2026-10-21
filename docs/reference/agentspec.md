@@ -512,6 +512,12 @@ touched. A var named in `vars` but not declared in the spec is refused with 400.
 declared `vars` with their defaults. Hosted mode shows no var fields yet, because the hosted server does not run
 1.1 specs.
 
+When a run, or a failed item in it, says an environment variable is not set (a missing model key, a connector
+credential), the error gets a **Set it here** button. It opens **Secrets** with the form for that name ready, so you
+set the value there instead of in a shell or `.env`. The **Checks** panel offers the same on a failing or warning
+check. **Secrets** also lists the secret a webhook trigger checks (`auth.secret_env`, or the one a `preset` needs) as
+**Needed, not set** until it has a value. Hosted mode has no Secrets panel here, so it shows no button.
+
 A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown as an amber
 **completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
 and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed

@@ -1110,6 +1110,7 @@ select.md3-text-field {
 
 .md3-doctor__item {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: baseline;
 }
@@ -2275,4 +2276,12 @@ select.md3-text-field {
 
 .md3-run-vars p {
   margin: 0;
+}
+
+/* ---- "Set it here" for a missing credential (KAM-192) ---- */
+
+.md3-run-secrets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }

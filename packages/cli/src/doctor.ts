@@ -18,6 +18,7 @@ import {
   describePermissions,
   diffPermissions,
   permissionsOf,
+  resolveWebhookAuth,
   type AgentSpec,
   type ComponentManifest,
 } from "@kampong/spec";
@@ -165,6 +166,16 @@ export async function runDoctor(
         "spec",
         `agent.model.api_key must be a \${ENV_VAR} placeholder for ${model.provider}`,
       );
+  }
+
+  // Trigger (KAM-192): a webhook that checks a bearer token or signature refuses every request until its secret is
+  // set. A warning, not a failure: the workflow still runs from the canvas and `kampong run` without it.
+  const trigger = spec.agent.trigger;
+  if (trigger?.type === "webhook" && (trigger.preset !== undefined || trigger.auth !== undefined)) {
+    const resolved = resolveWebhookAuth(trigger.preset, trigger.auth);
+    if (resolved.ok && resolved.auth.type !== "none") {
+      checkEnv(resolved.auth.secretEnv, "webhook trigger secret", "warn");
+    }
   }
 
   // Tools.

@@ -10,6 +10,11 @@ export interface SecretsPanelProps {
   list: () => Promise<SecretStatusDto[]>;
   save: (name: string, value: string) => Promise<SecretStatusDto[]>;
   remove: (name: string) => Promise<SecretStatusDto[]>;
+  /**
+   * KAM-192: asks the panel to open its Set form for this name, as the Test Run and Checks "Set it here" buttons
+   * do. A new `nonce` asks again, so the same name can be asked for twice.
+   */
+  focus?: { name: string; nonce: number };
 }
 
 const SOURCE = {
@@ -20,13 +25,24 @@ const SOURCE = {
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export function SecretsPanel({ list, save, remove }: SecretsPanelProps) {
+export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
   const [rows, setRows] = useState<SecretStatusDto[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // KAM-192: open the Set form for the name a "Set it here" button asked for, with nothing typed yet.
+  const focusName = focus?.name;
+  const focusNonce = focus?.nonce;
+  useEffect(() => {
+    if (focusName === undefined || !NAME.test(focusName)) return;
+    setEditing(focusName);
+    setNewName("");
+    setValue("");
+    setError(null);
+  }, [focusName, focusNonce]);
 
   useEffect(() => {
     let live = true;
