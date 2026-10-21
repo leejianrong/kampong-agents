@@ -80,6 +80,14 @@ reaches a guardrail or a tool that needs sign-off, the run pauses and asks.
 
 Approve it, and the run finishes; the trace and final output stay on screen.
 
+### Where a tool may call
+
+On the hosted server a tool can only reach public internet addresses. A tool whose URL is, or resolves to, a
+loopback, private, link-local or cloud-metadata address (`localhost`, `10.x.x.x`, `169.254.169.254` and the like)
+is stopped before anything is sent, and the run shows an error naming the tool and the host. The same goes for a
+public URL that redirects to a private one. Self-hosters who need a tool to reach an internal service list its
+exact hostname or IP address in `KAMPONG_EGRESS_ALLOW_HOSTS` (comma-separated). See ADR-0058.
+
 ![A completed run and its trace](assets/img/run-completed.png)
 
 Runs are durable in hosted mode. They are stored per workspace, so you can come back to a past
