@@ -2523,3 +2523,101 @@ select.md3-text-field {
     outline: 2px solid Highlight;
   }
 }
+
+/* ---- Insert data (KAM-218): a text button at the end of a field's label row, and a panel under it that lists
+   what the field may read with the value the last run gave. ---- */
+
+.md3-expression__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+
+/* Not positioned itself: the panel is as wide as the field and hangs under its label row. */
+.md3-insertdata {
+  flex: none;
+}
+
+.md3-insertdata__toggle {
+  height: 2rem;
+  padding-block: 0;
+  white-space: nowrap;
+}
+
+.md3-insertdata__panel {
+  position: absolute;
+  top: 2.25rem;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  max-height: min(22rem, 45vh);
+  padding: 0.75rem;
+}
+
+.md3-insertdata__groups {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.md3-insertdata__title {
+  margin: 0.5rem 0 0.25rem;
+  font-weight: 500;
+}
+
+.md3-insertdata__note {
+  display: block;
+  font-weight: 400;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-insertdata__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.md3-insertdata__item {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.125rem 0.75rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-radius: var(--md-shape-corner-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.md3-insertdata__item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
+}
+
+.md3-insertdata__item:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.md3-insertdata__item code {
+  overflow-wrap: anywhere;
+}
+
+.md3-insertdata__value {
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}

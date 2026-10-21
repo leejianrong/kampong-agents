@@ -63,6 +63,8 @@ export interface RunSession {
   requestRun: () => void;
   /** Run now, past the live confirmation. */
   start: () => Promise<void>;
+  /** A Replay run (recorded fixtures, nothing sent), whatever mode is chosen; null when this spec has no fixtures or a run is on. */
+  replayNow: (() => void) | null;
   decide: (approved: boolean, reason?: string) => Promise<void>;
 }
 
@@ -162,7 +164,7 @@ export function useRunSession(
     );
   }, []);
 
-  async function start() {
+  async function start(forced?: RunMode) {
     setConfirmingLive(false);
     if (starting) return;
     // Set synchronously, before the `await` below, so a fast double-click can't get past this guard twice and
@@ -180,8 +182,8 @@ export function useRunSession(
       );
       const result =
         Object.keys(changed).length > 0
-          ? await api.startRun(input, options ? mode : undefined, changed)
-          : await api.startRun(input, options ? mode : undefined);
+          ? await api.startRun(input, options ? (forced ?? mode) : undefined, changed)
+          : await api.startRun(input, options ? (forced ?? mode) : undefined);
       if (!result.success || !result.id || !result.state) {
         setError(result.error ?? "Failed to start run.");
         return;
@@ -268,6 +270,13 @@ export function useRunSession(
     canRun,
     requestRun,
     start,
+    replayNow:
+      canRun && options?.modes?.includes("replay")
+        ? () => {
+            setMode("replay");
+            void start("replay");
+          }
+        : null,
     decide,
   };
 }

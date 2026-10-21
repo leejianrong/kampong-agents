@@ -1,5 +1,5 @@
 import { PanelError, PanelFooter } from "./Panel";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import { InspectorTabs } from "./InspectorTabs.js";
 import { useAutoHeight } from "./useAutoHeight.js";
@@ -33,6 +33,7 @@ import {
   type StepRef,
 } from "@kampong/spec";
 import { ExpressionField } from "./ExpressionField.js";
+import { InsertData } from "./InsertData.js";
 import { SchemaEditor } from "./SchemaEditor.js";
 import {
   DeletableRow,
@@ -159,19 +160,40 @@ function PromptField({
   placeholder,
   onChange,
   spellCheck,
+  scope,
 }: {
   label: string;
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
   spellCheck?: boolean;
+  /** Names a `{{ }}` in the text may use (version 1.1): gives the field an Insert data button (KAM-218). */
+  scope?: ExpressionScope | undefined;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
   useAutoHeight(ref, value);
+  function insert(text: string) {
+    const el = ref.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? start;
+    onChange(value.slice(0, start) + text + value.slice(end));
+    // After React writes the new value, put the cursor behind what was inserted.
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + text.length, start + text.length);
+    });
+  }
   return (
-    <label className="md3-field">
-      <span className="md3-body-small md3-field__label">{label}</span>
+    <div className="md3-field md3-expression">
+      <div className="md3-expression__head">
+        <label className="md3-body-small md3-field__label" htmlFor={id} id={`${id}-label`}>
+          {label}
+        </label>
+        <InsertData scope={scope} labelId={`${id}-label`} onInsert={insert} wrap />
+      </div>
       <textarea
+        id={id}
         ref={ref}
         className="md3-text-field"
         value={value}
@@ -180,7 +202,7 @@ function PromptField({
         {...(spellCheck === false && { spellCheck: false })}
         onChange={(e) => onChange(e.target.value)}
       />
-    </label>
+    </div>
   );
 }
 
@@ -312,6 +334,7 @@ export function StepsPanel({
                   value={editing.input.query}
                   spellCheck={false}
                   placeholder="What this step asks the model; {{ step.field }} inserts a value"
+                  scope={scopeFor(spec, current)}
                   onChange={(query) => patch({ query })}
                 />
                 <PromptField
@@ -643,6 +666,7 @@ export function StepsPanel({
                       value={editing.input.reason}
                       spellCheck={false}
                       placeholder="Why the run ends here; {{ step.field }} inserts a value"
+                      scope={scopeFor(spec, current)}
                       onChange={(reason) => patchSimple({ reason })}
                     />
                     <label className="md3-field">
@@ -665,6 +689,7 @@ export function StepsPanel({
                     value={editing.input.message}
                     spellCheck={false}
                     placeholder="Shown to the approver; {{ step.field }} inserts a value"
+                    scope={scopeFor(spec, current)}
                     onChange={(message) => patchSimple({ message })}
                   />
                 )}

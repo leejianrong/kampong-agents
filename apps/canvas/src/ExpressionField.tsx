@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useAutoHeight } from "./useAutoHeight.js";
+import { InsertData } from "./InsertData.js";
 import {
   completeExpression,
   diagnoseExpression,
@@ -121,6 +122,18 @@ export function ExpressionField({
     onChange(next);
   }
 
+  // "Insert data" (KAM-218) puts the chosen reference over the selection, or at the cursor.
+  function insert(text: string) {
+    const el = input.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? start;
+    pendingCursor.current = start + text.length;
+    setCursor(start + text.length);
+    setOpen(false);
+    onChange(value.slice(0, start) + text + value.slice(end));
+    el?.focus();
+  }
+
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key === " " && event.ctrlKey) {
       event.preventDefault();
@@ -177,9 +190,12 @@ export function ExpressionField({
 
   return (
     <div className="md3-field md3-expression">
-      <label className="md3-field__label md3-label-large" htmlFor={id}>
-        {label}
-      </label>
+      <div className="md3-expression__head">
+        <label className="md3-field__label md3-label-large" htmlFor={id} id={`${id}-label`}>
+          {label}
+        </label>
+        <InsertData scope={scope} labelId={`${id}-label`} onInsert={insert} />
+      </div>
       {lines || multiline ? <textarea {...shared} /> : <input {...shared} />}
       {showList && (
         <ul

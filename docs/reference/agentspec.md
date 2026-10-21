@@ -90,6 +90,16 @@ path you are typing: `vars.` lists the declared vars, `trigger.` its fields, and
 (an `output_schema`'s properties, a transform's names). Press Ctrl+Space to list the roots. A `"1.0"` spec's
 conditions are not expressions, so those fields stay plain text there.
 
+Each of those fields, a webhook's `when` and `map`, and the prompt of a model, stop or approval step (which takes
+`{{ }}`) has an **Insert data** button. It lists what the field may read: the steps that run before it (nearest first),
+the run's input, the declared vars and the trigger's fields. Each step shows the values its last run gave
+(the shape of its output, down to four levels, a list through its first item), so you can see what `fetch.price`
+holds before you use it. Clicking an entry puts the reference at the cursor (inside `{{ }}` in a prompt), and what it
+inserts always passes the check above because it is offered from the same names. With no run yet, it lists the names
+the spec knows, without values, and offers **Run in Replay to see values** where recorded fixtures exist. A webhook's
+`trigger` has no sample: it lists `headers`, `body` and the mapped names. A webhook `when` and `map` see only the request.
+A poll's `items` and `id` read the op's result, so they have no picker. Nothing is saved by inserting.
+
 ### `vars`
 
 ```yaml
