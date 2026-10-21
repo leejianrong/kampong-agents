@@ -539,6 +539,19 @@ A run that finishes but carried failed items on (a `foreach` with `on_error: con
 and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed
 items stays green and shows its output as before.
 
+While a run is on screen, each step's node on the canvas carries a badge on its top edge: **Running**, **Waiting
+for approval**, **Passed**, **Failed** or **Skipped**. Each badge has an icon and a word, so the state never rests on
+colour alone, and a failed or skipped node also changes its border. It updates live from the run's event stream, in
+Replay and Live alike. A step inside a `foreach` marks its own node and counts its runs (for example **Passed
+(3x)**): it is **Failed** if any item failed it, even when the loop carried on and the run completed. Steps in a
+branch arm that was not taken, and the steps after an early `stop`, show **Skipped** once the run completes; a run
+that fails leaves the steps it never reached unmarked. A failed node has a **See message** button that brings Test
+Run forward and moves focus to that step's message. Starting the next run clears every badge. Badges are drawn from
+the run only: they are never saved, and neither the spec nor `.kampong/layout.json` changes. Test Run keeps running
+in the background if you open another panel. The hosted client reads the same event stream and shows the same badges.
+Run stays disabled for a moment after Test Run opens, until the server has said which modes the spec can run, so an
+early click cannot start an unconfirmed Live run.
+
 #### Selecting a node on the canvas
 
 Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the

@@ -2285,3 +2285,115 @@ select.md3-text-field {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* ---- Run status on a node (KAM-190) ----
+   An icon and a word on the node's top edge, so the node does not grow and the state never rests on colour alone.
+   A failed node also gets a heavier border and a link to its message. */
+.md3-node__run-wrap {
+  position: absolute;
+  top: -0.8rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  z-index: 1;
+}
+
+.md3-node__run {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--md-shape-corner-full);
+  border: 1px solid currentColor;
+  font-size: var(--md-type-label-small-size, 0.6875rem);
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+.md3-node__run--running,
+.md3-node__run--waiting {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.md3-node__run--passed {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.md3-node__run--failed {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.md3-node__run--skipped {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  border-style: dashed;
+}
+
+.md3-node__run--running .md3-node__run-icon {
+  display: inline-block;
+  animation: md3-run-spin 1s linear infinite;
+}
+
+@keyframes md3-run-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md3-node__run--running .md3-node__run-icon {
+    animation: none;
+  }
+}
+
+.md3-node__run-link {
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--md-shape-corner-full);
+  border: 1px solid var(--md-sys-color-error);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-error);
+  font: inherit;
+  font-size: var(--md-type-label-small-size, 0.6875rem);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.md3-node__run-link:hover {
+  background: color-mix(in srgb, var(--md-sys-color-error) 8%, var(--md-sys-color-surface));
+}
+
+.md3-node__run-link:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-node--run-running,
+.md3-node--run-waiting {
+  border-width: 2px !important;
+  border-style: solid !important;
+}
+
+.md3-node--run-failed {
+  border: 3px solid var(--md-sys-color-error) !important;
+}
+
+.md3-node--run-skipped {
+  border-style: dashed !important;
+  opacity: 0.75;
+}
+
+.md3-run-trace [data-run-failed]:focus {
+  outline: 2px solid var(--md-sys-color-error);
+  outline-offset: 2px;
+}
+
+.md3-run-errors [data-run-failed]:focus {
+  outline: 2px solid var(--md-sys-color-error);
+  outline-offset: -2px;
+}

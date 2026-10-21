@@ -81,6 +81,8 @@ and asks first when one of them changes something outside the project.
 A spec's `vars` appear in Test Run prefilled with their defaults; change one for a single run (like `kampong run --var`) without editing the spec.
 A "not set" error in Test Run or Checks has a "Set it here" button that opens Secrets on that name.
 A run that finishes with failed loop items shows an amber "completed with N errors" and a table of them.
+During a run each node shows Running, Passed, Failed or Skipped (an icon and a word, live, inside loops and branch arms
+too); a failed node's "See message" jumps to its message in Test Run, and the next run clears the marks.
 Each save shows a "Saved" message, flashes the changed node and (if the YAML drawer is open) scrolls to and marks the changed lines.
 Panels (Vars, Trigger, Edit Steps, Secrets) keep what you typed when you open another panel; `Esc` closes a panel, asking first if input would be lost.
 Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command

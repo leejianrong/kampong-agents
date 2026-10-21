@@ -5,6 +5,8 @@ import type { RunState } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
 import { describeItem, failedItems } from "./runErrors.js";
 import { missingSecretNamesIn } from "./secretNames.js";
+import { baseStepName } from "./runStatus.js";
+import { useRunTracker } from "./runTracker.js";
 
 // The in-canvas test-run panel (PLAN.md Affordances "Test-run sandbox +
 // approval modal", SLICES.md V2 KAN-1107): starts a run against the spec
@@ -41,6 +43,9 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
   // KAM-188: what the open spec can do (null until loaded, or on a server that cannot say), the chosen mode,
   // and whether the live-run confirmation is open.
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
+  // Until the options arrive the mode is a guess ("live"), so no run may start: an early click would run live,
+  // unconfirmed, instead of the replay the spec is about to offer.
+  const [optionsPending, setOptionsPending] = useState(() => api.getRunOptions !== undefined);
   const [mode, setMode] = useState<RunMode>("live");
   const [confirmingLive, setConfirmingLive] = useState(false);
   // KAM-191: the text of each declared var's field, for the next run only (the spec is never changed).
@@ -48,6 +53,10 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  // KAM-190: what the run is doing is shared with the canvas, which draws it on the nodes.
+  const tracker = useRunTracker();
+  const traceRef = useRef<HTMLOListElement>(null);
+  const errorsRef = useRef<HTMLDivElement>(null);
 
   // Closes the SSE subscription on unmount too, not just on the next
   // handleStart -- otherwise navigating away from this panel mid-run (e.g.
@@ -67,6 +76,8 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
         setMode(loaded.defaultMode ?? "live");
       } catch {
         // A server that cannot describe its runs gets the plain panel: no switch, a live run as before.
+      } finally {
+        if (!cancelled) setOptionsPending(false);
       }
     })();
     return () => {
@@ -80,7 +91,7 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (starting) return;
+    if (starting || optionsPending) return;
     // A live run that can change something outside the project asks first, naming what it would call.
     if (options && mode === "live" && sideEffecting.length > 0) {
       setConfirmingLive(true);
@@ -98,6 +109,8 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
     // between click and the POST /api/runs response resolving.
     setStarting(true);
     setError(null);
+    // The last run's marks leave the canvas as the next one starts.
+    tracker?.begin(null);
     try {
       // Only the vars changed from their defaults go with the run; the rest keep resolving as the spec says.
       const changed = Object.fromEntries(
@@ -115,10 +128,14 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
       }
       setRecord({ id: result.id, ...(result.mode && { mode: result.mode }) });
       setState(result.state);
+      const id = result.id;
+      tracker?.begin(id);
+      tracker?.publish(id, { type: "state", state: result.state });
 
       unsubscribeRef.current?.();
-      unsubscribeRef.current = api.subscribeToRunEvents(result.id, (message) => {
+      unsubscribeRef.current = api.subscribeToRunEvents(id, (message) => {
         setState(message.state);
+        tracker?.publish(id, message);
       });
     } finally {
       setStarting(false);
@@ -130,6 +147,7 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
     const result = await api.approveRun(runId, approved, reason);
     if (result.success && result.state) {
       setState(result.state);
+      tracker?.publish(runId, { type: "state", state: result.state });
     } else {
       setError(result.error ?? "Failed to record approval decision.");
     }
@@ -147,6 +165,19 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
         ...failed.map((f) => f.message),
       ])
     : [];
+
+  // KAM-190: a failed node on the canvas links here; show the message it is about.
+  const request = tracker?.messageRequest ?? null;
+  useEffect(() => {
+    if (!request) return;
+    const step = request.nodeId.replace(/^workflow:/, "");
+    const target = [traceRef.current, errorsRef.current]
+      .flatMap((root) => Array.from(root?.querySelectorAll<HTMLElement>("[data-run-failed]") ?? []))
+      .find((el) => el.dataset["runStep"] === step);
+    if (!target) return;
+    target.scrollIntoView?.({ block: "nearest" });
+    target.focus();
+  }, [request]);
 
   const isRunning =
     starting || state?.status === "running" || state?.status === "awaiting_approval";
@@ -254,7 +285,10 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
             />
           </div>
         ) : (
-          <PanelFooter save="Run" disabled={isRunning || blockedReason !== undefined} />
+          <PanelFooter
+            save="Run"
+            disabled={isRunning || optionsPending || blockedReason !== undefined}
+          />
         )}
       </form>
 
@@ -284,16 +318,20 @@ export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
                 : state.status}
             </span>
           </div>
-          <ol data-testid="run-trace" className="md3-run-trace md3-body-medium">
+          <ol ref={traceRef} data-testid="run-trace" className="md3-run-trace md3-body-medium">
             {state.trace.map((entry, i) => (
-              <li key={`${entry.step}-${i}`}>
+              <li
+                key={`${entry.step}-${i}`}
+                data-run-step={baseStepName(entry.step)}
+                {...(entry.status !== "completed" && { "data-run-failed": "", tabIndex: -1 })}
+              >
                 {entry.step}: {entry.status}
                 {entry.confidence !== undefined && ` (confidence ${entry.confidence})`}
                 {entry.error && `: ${entry.error}`}
               </li>
             ))}
           </ol>
-          {completedWithErrors && <FailedItemsTable items={failed} />}
+          {completedWithErrors && <FailedItemsTable items={failed} rootRef={errorsRef} />}
           {state.status === "completed" &&
             (completedWithErrors ? (
               <details className="md3-run-raw">
@@ -344,9 +382,15 @@ function SetSecretActions({ names, onSet }: { names: string[]; onSet: (name: str
 }
 
 /** The items a loop carried on past (KAM-189): which one, which step failed, and why. */
-function FailedItemsTable({ items }: { items: ReturnType<typeof failedItems> }) {
+function FailedItemsTable({
+  items,
+  rootRef,
+}: {
+  items: ReturnType<typeof failedItems>;
+  rootRef: React.Ref<HTMLDivElement>;
+}) {
   return (
-    <div className="md3-run-errors" data-testid="run-errors">
+    <div className="md3-run-errors" data-testid="run-errors" ref={rootRef}>
       <table className="md3-run-errors__table md3-body-small">
         <thead>
           <tr>
@@ -357,7 +401,13 @@ function FailedItemsTable({ items }: { items: ReturnType<typeof failedItems> }) 
         </thead>
         <tbody>
           {items.map((f) => (
-            <tr key={`${f.loop}-${f.index}`} data-testid="run-error-row">
+            <tr
+              key={`${f.loop}-${f.index}`}
+              data-testid="run-error-row"
+              data-run-step={f.step}
+              data-run-failed=""
+              tabIndex={-1}
+            >
               <td>{describeItem(f.item) || `#${f.index + 1}`}</td>
               <td>
                 {f.loop}
