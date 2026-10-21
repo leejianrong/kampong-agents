@@ -65,6 +65,10 @@ for (const size of [
       await expect(page.getByTestId("template-support-triage")).toContainText(
         "Support inbox assistant",
       );
+      const triage = page.getByTestId("template-webhook-triage");
+      await expect(triage).toContainText("Alert triage with Slack approval");
+      await expect(triage).toContainText("Approval");
+      await expect(page.getByTestId("template-webhook-triage-offline")).toHaveText("Runs offline");
       // The primary action stays reachable without scrolling past the gallery.
       await expect(page.getByTestId("start-blank")).toBeInViewport();
       expect(await page.evaluate(noHorizontalScroll)).toBe(true);

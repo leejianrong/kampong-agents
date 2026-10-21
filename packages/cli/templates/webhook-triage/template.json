@@ -1,0 +1,4 @@
+{
+  "title": "Alert triage with Slack approval",
+  "description": "When an alert arrives, decides whether it is worth interrupting your team, drafts a short Slack message, and asks you to approve it before anything is posted. Noise is dropped quietly. It starts with recorded data, so you can try it without any account or key."
+}
