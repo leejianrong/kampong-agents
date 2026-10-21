@@ -9,7 +9,7 @@ import { openPanel } from "./harness/bars.js";
 // confirmed before it can change anything. The template's own fixtures are used, with no keys in the
 // environment, so a passing replay proves it never needed one.
 
-const PORT = 4358;
+const PORT = 4360;
 const URL = `http://127.0.0.1:${PORT}`;
 const TEMPLATE = join("packages", "cli", "templates", "market-etl");
 let server: ChildProcess;
@@ -95,3 +95,47 @@ for (const size of [
     });
   });
 }
+
+// A template chosen from the gallery runs in Replay straight away, with no key: its fixtures were copied beside it.
+test.describe("from the template gallery", () => {
+  const GPORT = 4358;
+  let gserver: ChildProcess;
+  let gdir: string;
+
+  test.beforeAll(async () => {
+    gdir = mkdtempSync(join(tmpdir(), "kampong-runmodes-gallery-"));
+    gserver = spawn(
+      process.execPath,
+      [join("packages", "cli", "dist", "cli.js"), "dev", gdir, "--port", String(GPORT)],
+      { stdio: "ignore", env: { PATH: process.env["PATH"] ?? "", HOME: gdir } },
+    );
+    for (let i = 0; i < 160; i++) {
+      try {
+        if ((await fetch(`http://127.0.0.1:${GPORT}`)).ok) return;
+      } catch {
+        // not listening yet
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error("kampong dev did not start");
+  });
+
+  test.afterAll(() => {
+    gserver.kill();
+    rmSync(gdir, { recursive: true, force: true });
+  });
+
+  test("market-etl chosen from the gallery replays with no key", async ({ page }) => {
+    await page.goto(`http://127.0.0.1:${GPORT}`);
+    await page.getByTestId("template-market-etl-use").scrollIntoViewIfNeeded();
+    await page.getByTestId("template-market-etl-use").click();
+    await expect(page.getByTestId("empty-state")).toHaveCount(0);
+    await openPanel(page, "Test Run");
+    await expect(
+      page.getByRole("group", { name: "Run mode" }).getByRole("button", { name: "Replay" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(page.getByTestId("run-mode")).toContainText("Replay (recorded fixtures)");
+    await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+  });
+});
