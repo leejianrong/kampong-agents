@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunPanel } from "../../src/RunPanel.js";
+import { RunHarness as RunPanel } from "./RunHarness.js";
 import { createApiClient, type ApiClient, type RunOptionsResponse } from "../../src/api.js";
 
 // KAM-191: Test Run lists the spec's declared vars, prefilled with their defaults, and sends only the ones

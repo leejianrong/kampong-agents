@@ -75,12 +75,12 @@ creates `agent.yaml` then.
 On the canvas, click a node to edit it in the side panel (`Esc` closes, `Delete` removes, `Ctrl/Cmd+D` duplicates). Each form has Setup, Output, Test and Settings tabs.
 Add a step from the palette on the left (search, or press `/`) or from the **+** on a line between two steps, which
 inserts it right there, inside a loop or into a branch arm too.
-**Run** opens Test Run with a **Replay / Live** switch: Replay answers from recorded fixtures (no keys, no network,
+The **Run bar** under the top bar has **Run**, a **Replay / Live** switch and a drawer of this session's runs; **Test Run** shows a run's details. Replay answers from recorded fixtures (no keys, no network,
 the default when fixtures exist); Live calls the real services, shows a LIVE banner with the tools it would call
 and asks first when one of them changes something outside the project.
 A spec's `vars` appear in Test Run prefilled with their defaults; change one for a single run (like `kampong run --var`) without editing the spec.
 A "not set" error in Test Run or Checks has a "Set it here" button that opens Secrets on that name.
-A run that finishes with failed loop items shows an amber "completed with N errors" and a table of them.
+A run that finishes with failed loop items shows an amber "completed with N errors" in the Run bar and a table of them in Test Run.
 During a run each node shows Running, Passed, Failed or Skipped (an icon and a word, live, inside loops and branch arms
 too); a failed node's "See message" jumps to its message in Test Run, and the next run clears the marks.
 Each save shows a "Saved" message, flashes the changed node and (if the YAML drawer is open) scrolls to and marks the changed lines.

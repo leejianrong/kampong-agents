@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunPanel } from "../../src/RunPanel.js";
+import { RunHarness as RunPanel } from "./RunHarness.js";
 import type { ApiClient, RunOptionsResponse } from "../../src/api.js";
 
 // KAM-188: the Test Run panel's Replay / Live switch, the LIVE banner and the confirmation before a live

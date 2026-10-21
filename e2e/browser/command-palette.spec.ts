@@ -128,7 +128,7 @@ for (const size of [
     test("run, open code, add step and import are commands", async ({ page }) => {
       await page.keyboard.press("Control+k");
       await search(page).fill("test run");
-      await palette(page).getByRole("option", { name: "Run (Test Run)" }).click();
+      await palette(page).getByRole("option", { name: "Open Test Run" }).click();
       await expect(page.getByRole("region", { name: "Test Run" })).toBeVisible();
 
       await page.keyboard.press("Control+k");

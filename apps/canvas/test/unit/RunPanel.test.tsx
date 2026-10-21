@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunPanel } from "../../src/RunPanel.js";
+import { RunHarness as RunPanel } from "./RunHarness.js";
 import { createApiClient } from "../../src/api.js";
 
 // SLICES.md V2 KAN-1107: the in-canvas test-run panel shows live per-step

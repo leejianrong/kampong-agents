@@ -496,7 +496,7 @@ step and the tools it calls get one. A line's accessible name uses the steps' na
 #### The top bar and the status bar
 
 The canvas has a **top bar** with the workflow's name (and **← Specs** in hosted mode), whether it is **Saved**
-(or "Saves paused" while the YAML has an error), **Run** (opens Test Run), the `</>` button for the YAML drawer
+(or "Saves paused" while the YAML has an error), **Test Run** (shows the details of the run), the `</>` button for the YAML drawer
 and a **⋮** menu. The menu holds what is not used on every edit: **Add step**, **Add tool**, **Edit steps** (the
 list for renaming, reordering and deleting steps and tools), **Import YAML** and **Export YAML**. A step is also
 added from the palette on the left or the + on a line, and **+ Tool** under the palette adds a tool. The **status
@@ -504,13 +504,21 @@ bar** along the bottom holds the workflow's settings, each opening its panel: **
 number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
 overlaps at 480 pixels wide or more.
 
+Under the top bar sits the **Run bar**, always visible: the **Replay / Live** switch (local mode), **Run**, a chip with
+how the run on show went and how long it took, and **Runs**, a drawer of this session's runs (up to 20, newest first,
+each with its mode, outcome and length). The chip and a row in the drawer open Test Run on that run, so an earlier run
+can be looked at again with its per-step marks and data on the canvas. **Run** is also a command in the palette (**Run the
+workflow**). A run does not need Test Run to be open: it starts, streams and is judged from the bar, and the result,
+the typed input and var values stay when you open Secrets or any other panel. Run is disabled, with the reason as its
+tooltip, while the workflow has errors. Hosted mode shows only what it can do: no Replay / Live switch and no Set it here.
+
 #### Test Run: Replay or Live
 
-**Run** opens Test Run, which has a **Replay / Live** switch (local mode). **Replay** answers every tool,
+The Run bar has a **Replay / Live** switch (local mode); Test Run holds the input, the vars and the details of the run. **Replay** answers every tool,
 connector and model call from recorded fixtures, so it needs no keys and no network and shows the recorded
 results; it is the default whenever fixtures exist, in `.kampong/fixtures` or in a `fixtures/` folder beside the
-spec (the `market-etl` template ships them). **Live** calls the real services. It shows a red **LIVE** banner
-listing each tool the run would call and whether it only reads or changes something outside the project, and a
+spec (the `market-etl` template ships them). **Live** calls the real services. It shows a red **LIVE** badge in
+the Run bar and a banner in Test Run listing each tool the run would call and whether it only reads or changes something outside the project, and a
 live run with a tool that changes things asks you to confirm before it starts. Which tools change things comes
 from the HTTP method (anything but GET or HEAD) or, for a component, the `effect` of the operation. The result
 states the mode it ran in, **Replay (recorded fixtures)** or **LIVE**. With no fixtures only Live is offered. The
@@ -529,13 +537,13 @@ declared `vars` with their defaults. Hosted mode shows no var fields yet, becaus
 1.1 specs.
 
 When a run, or a failed item in it, says an environment variable is not set (a missing model key, a connector
-credential), the error gets a **Set it here** button. It opens **Secrets** with the form for that name ready, so you
+credential), the Run bar gets a **Set it here** button. It opens **Secrets** with the form for that name ready, so you
 set the value there instead of in a shell or `.env`. The **Checks** panel offers the same on a failing or warning
 check. **Secrets** also lists the secret a webhook trigger checks (`auth.secret_env`, or the one a `preset` needs) as
 **Needed, not set** until it has a value. Hosted mode has no Secrets panel here, so it shows no button.
 
-A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown as an amber
-**completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
+A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown, in the Run bar and in
+Test Run, as an amber **completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
 and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed
 items stays green and shows its output as before.
 
@@ -547,9 +555,9 @@ Replay and Live alike. A step inside a `foreach` marks its own node and counts i
 branch arm that was not taken, and the steps after an early `stop`, show **Skipped** once the run completes; a run
 that fails leaves the steps it never reached unmarked. A failed node has a **See message** button that brings Test
 Run forward and moves focus to that step's message. Starting the next run clears every badge. Badges are drawn from
-the run only: they are never saved, and neither the spec nor `.kampong/layout.json` changes. Test Run keeps running
+the run only: they are never saved, and neither the spec nor `.kampong/layout.json` changes. A run keeps running
 in the background if you open another panel. The hosted client reads the same event stream and shows the same badges.
-Run stays disabled for a moment after Test Run opens, until the server has said which modes the spec can run, so an
+Run stays disabled for a moment after the canvas opens, and again after the spec text changes, until the server has said which modes the spec can run, so an
 early click cannot start an unconfirmed Live run.
 
 #### Selecting a node on the canvas
@@ -576,7 +584,7 @@ accessible name), and a workflow of more than 15 nodes gets a minimap in the cor
 
 `Ctrl+K` / `Cmd+K` opens the command palette from anywhere on the canvas (also from the run bar's menu, **Search
 commands**). It is a dialog with a search box and a list; type to filter, `Up` and `Down` move, `Enter` runs, `Esc`
-closes it, and focus goes back to where it was. It lists the canvas's own actions (Run (Test Run), Open code (YAML
+closes it, and focus goes back to where it was. It lists the canvas's own actions (Run the workflow, Open Test Run, Open code (YAML
 drawer), Open Secrets / Vars / Checks / Guardrails / Trigger, Add step, Add tool, Edit steps, Import YAML, Export
 YAML) and a **Go to** entry for the trigger, guardrails and every step and tool, which selects the node and opens
 its inspector as a click does. If the panel has typed input that is not saved, the same "Discard changes?" prompt

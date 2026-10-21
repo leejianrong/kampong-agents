@@ -2397,3 +2397,129 @@ select.md3-text-field {
   outline: 2px solid var(--md-sys-color-error);
   outline-offset: -2px;
 }
+
+/* ---- The Run bar (KAM-219): a strip under the top bar with the mode, Run, the last run's outcome and the runs
+   drawer. It wraps rather than overflows, so nothing overlaps at 480px. The drawer and the live confirmation hang
+   from the strip as surfaces over the canvas. ---- */
+
+.md3-runcontrols {
+  flex: none;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--md-sys-color-surface-container);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  z-index: 4;
+}
+
+.md3-runcontrols .md3-button {
+  height: 2.5rem;
+  padding-block: 0;
+  white-space: nowrap;
+}
+
+.md3-runcontrols__status {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-runcontrols__chip {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--md-type-label-large-size);
+  font-weight: 500;
+  min-height: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.md3-runcontrols__chip:hover::after,
+.md3-runcontrols__run-row:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: var(--md-state-hover, 0.08);
+  pointer-events: none;
+}
+
+.md3-runcontrols__chip:focus-visible,
+.md3-runcontrols__run-row:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-runcontrols__secrets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.md3-runcontrols__drawer,
+.md3-runcontrols__confirm {
+  position: absolute;
+  top: 100%;
+  right: 1rem;
+  z-index: 10;
+  margin-top: 0.25rem;
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(24rem, 60vh);
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.md3-runcontrols__confirm {
+  left: 1rem;
+  right: auto;
+  box-shadow: var(--md-elevation-level3);
+}
+
+.md3-runcontrols__drawer {
+  min-width: 0;
+  padding: 0.5rem;
+}
+
+.md3-runcontrols__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.md3-runcontrols__run-row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: var(--md-shape-corner-medium);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.md3-runcontrols__run-row[aria-pressed="true"] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+@media (forced-colors: active) {
+  .md3-runcontrols__run-row[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+  }
+}

@@ -18,7 +18,7 @@ export type OpenForm =
   | "templates";
 
 /** Where an action is drawn: the run bar, the status bar, or the menu (everything that is not frequent). */
-export type ActionSurface = "run" | "yaml" | "status" | "menu";
+export type ActionSurface = "run" | "runbar" | "yaml" | "status" | "menu";
 
 export interface ActionDescriptor {
   id: string;
@@ -35,6 +35,8 @@ export interface ActionDescriptor {
   shortcut?: string;
   /** The panel or drawer this action opens is open now (drawn as pressed). */
   pressed?: boolean;
+  /** The action cannot be taken now: its control is disabled and the command palette leaves it out. */
+  disabled?: boolean;
   /** A small count beside the label, with the words a screen reader says for it. */
   badge?: { count: number; words: string };
   run: () => void;
@@ -56,6 +58,9 @@ export interface ActionContext {
   toggleForm: (form: OpenForm) => void;
   toggleYaml: () => void;
   download: () => void;
+  /** Starts a run (KAM-219), and whether one can start now; without it the Run bar's action is not offered. */
+  startRun?: () => void;
+  canRun?: boolean;
   /** Opens the command palette (KAM-215); without it the menu has no entry for it. */
   openPalette?: () => void;
 }
@@ -83,12 +88,26 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
   });
 
   const actions: ActionDescriptor[] = [
-    form("run", "run", "run", "Run", {
-      ariaLabel: "Test Run",
-      commandLabel: "Run (Test Run)",
-      title: "Try the workflow with a test run",
-      keywords: ["test", "execute", "try"],
+    // The top bar's button shows the details of a test run (input, vars, trace, output); Run itself is in the Run bar.
+    form("run", "run", "run", "Test Run", {
+      commandLabel: "Open Test Run",
+      title: "Show the test run: input, vars, trace and output",
+      keywords: ["details", "output", "trace", "input"],
     }),
+    ...(ctx.startRun
+      ? [
+          {
+            id: "run-now",
+            label: "Run",
+            surface: "runbar" as const,
+            commandLabel: "Run the workflow",
+            title: "Try the workflow with a test run",
+            keywords: ["test", "execute", "try", "start", "replay"],
+            disabled: ctx.canRun === false,
+            run: ctx.startRun,
+          },
+        ]
+      : []),
     {
       id: "yaml",
       label: "</>",

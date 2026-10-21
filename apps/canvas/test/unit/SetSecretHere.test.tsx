@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DoctorPanel } from "../../src/DoctorPanel.js";
-import { RunPanel } from "../../src/RunPanel.js";
+import { RunHarness as RunPanel } from "./RunHarness.js";
 import { SecretsPanel } from "../../src/SecretsPanel.js";
 import type { ApiClient, SecretStatusDto } from "../../src/api.js";
 import { missingSecretNames, missingSecretNamesIn } from "../../src/secretNames.js";

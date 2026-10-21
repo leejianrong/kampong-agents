@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunPanel } from "../../src/RunPanel.js";
+import { RunHarness as RunPanel } from "./RunHarness.js";
 import type { ApiClient } from "../../src/api.js";
 import { failedItems } from "../../src/runErrors.js";
 

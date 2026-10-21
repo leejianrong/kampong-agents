@@ -64,7 +64,7 @@ export function CommandPalette({ actions, nodes, onGoTo, onClose }: CommandPalet
 
   const commands = useMemo<Command[]>(() => {
     const verbs: Command[] = actions
-      .filter((a) => a.id !== "commands")
+      .filter((a) => a.id !== "commands" && !a.disabled)
       .map((a) => {
         const label = commandName(a);
         return {

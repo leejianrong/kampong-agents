@@ -90,7 +90,7 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   // pauses at the HITL gate.
   await page.getByRole("button", { name: "Test Run" }).click();
   await page.getByTestId("run-panel").getByLabel("Input").fill("Refund order #1");
-  await page.getByTestId("run-panel").getByRole("button", { name: "Run" }).click();
+  await page.getByTestId("run-button").click();
 
   const approvalDialog = page.getByRole("dialog", { name: "Approval required" });
   await expect(approvalDialog).toBeVisible({ timeout: 20_000 });

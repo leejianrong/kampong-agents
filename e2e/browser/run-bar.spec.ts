@@ -136,14 +136,14 @@ for (const size of [
       await page.getByRole("button", { name: "For developers: show YAML" }).click();
     });
 
-    test("the run bar shows the name and the saved state, and Run opens Test Run", async ({
+    test("the top bar shows the name and the saved state, and Test Run opens the panel", async ({
       page,
     }) => {
       const bar = page.getByRole("banner");
       await expect(bar.getByRole("heading", { name: "Kampong Agents" })).toBeVisible();
       await expect(bar.getByTestId("save-state")).toHaveText("Saved");
       const run = bar.getByRole("button", { name: "Test Run", exact: true });
-      await expect(run).toHaveText("Run");
+      await expect(run).toHaveText("Test Run");
       await run.click();
       await expect(page.getByRole("region", { name: "Test Run" })).toBeVisible();
       await expect(run).toHaveAttribute("aria-pressed", "true");
