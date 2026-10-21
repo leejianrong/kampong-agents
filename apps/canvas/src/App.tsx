@@ -53,6 +53,8 @@ import {
 } from "./DeleteControl.js";
 import { RunPanel } from "./RunPanel.js";
 import { RunControls } from "./RunControls.js";
+import { CoachMarks } from "./CoachMarks.js";
+import { useCoachMarks } from "./coachMarks.js";
 import { SampleDataContext } from "./sampleData.js";
 import { useRunSession } from "./runSession.js";
 import { deriveNodeStatuses } from "./runStatus.js";
@@ -432,6 +434,15 @@ export function App({
   const runSession = useRunSession(api, runTracker, {
     blockedReason: runBlockedReason,
     refreshKey: source,
+  });
+  // KAM-220: the first-run marks. They start on a new, blank workflow and follow what the person does.
+  const coach = useCoachMarks({
+    loaded,
+    blank: emptyKind !== null,
+    hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
+    runCount: runSession.runs.length,
+    runOver: runSession.latest?.endedAt !== undefined,
+    selectedId: selected,
   });
   const marker = useMemo(
     () =>
@@ -963,6 +974,7 @@ export function App({
     canRun: runSession.canRun,
     download: downloadAsFile,
     openPalette: () => setPaletteOpen(true),
+    showTour: coach.restart,
   });
 
   // KAM-199: only where the canvas can write a spec that then runs. The hosted server refuses a 1.1 spec.
@@ -1390,6 +1402,10 @@ export function App({
               />
             )}
           </div>
+          <CoachMarks
+            coach={coach}
+            replay={runSession.options?.modes?.includes("replay") ?? false}
+          />
         </SampleDataContext.Provider>
       </RunTrackerProvider>
     </UpgradeContext.Provider>

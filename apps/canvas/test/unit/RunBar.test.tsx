@@ -114,6 +114,7 @@ describe("run bar", () => {
       "Add tool",
       "Edit steps",
       "Search commandsCtrl+K",
+      "Show tour",
       "Import YAML",
       "Export YAML",
     ]);

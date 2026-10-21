@@ -63,6 +63,8 @@ export interface ActionContext {
   canRun?: boolean;
   /** Opens the command palette (KAM-215); without it the menu has no entry for it. */
   openPalette?: () => void;
+  /** Plays the first-run marks again (KAM-220); without it the menu has no entry for it. */
+  showTour?: () => void;
 }
 
 /** What the command palette calls an action. */
@@ -176,6 +178,17 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
       title: "Find any command or jump to a step (Ctrl+K)",
       keywords: ["palette", "command"],
       run: ctx.openPalette,
+    });
+  }
+
+  if (ctx.showTour) {
+    actions.push({
+      id: "tour",
+      label: "Show tour",
+      surface: "menu",
+      title: "Replay the three first-run tips",
+      keywords: ["help", "onboarding", "intro", "tips", "guide"],
+      run: ctx.showTour,
     });
   }
 
