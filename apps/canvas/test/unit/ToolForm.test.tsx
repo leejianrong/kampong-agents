@@ -64,7 +64,8 @@ describe("ToolForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toBeTruthy();
+    // The schema's own words, beside the field they are about.
+    expect(screen.getByTestId("tool-error-token").textContent).toMatch(/^Problem: /);
   });
 });
 
@@ -176,5 +177,108 @@ describe("ToolForm -- accessible names (PR #88 regression)", () => {
 
     expect(screen.getAllByLabelText("Name")).toHaveLength(1);
     expect(screen.getAllByLabelText(/name/i)).toHaveLength(1);
+  });
+});
+
+// KAM-193: a name and URL that cannot work are rejected beside their fields, and an empty field is named.
+describe("ToolForm validation (KAM-193)", () => {
+  afterEach(() => cleanup());
+
+  const name = () => screen.getByLabelText("Name") as HTMLInputElement;
+  const url = () => screen.getByLabelText("URL") as HTMLInputElement;
+  const save = () => fireEvent.click(screen.getByRole("button", { name: "Save tool" }));
+
+  it("calls out a name like `my tool!` and a URL like `not a url` as they are typed, and refuses to save them", () => {
+    const onSubmit = vi.fn();
+    render(<ToolForm onSubmit={onSubmit} onCancel={vi.fn()} />);
+
+    fireEvent.change(name(), { target: { value: "my tool!" } });
+    fireEvent.change(url(), { target: { value: "not a url" } });
+    expect(screen.getByTestId("tool-error-name").textContent).toMatch(
+      /^Problem: Name can only use letters, digits and underscores/,
+    );
+    expect(screen.getByTestId("tool-error-url").textContent).toMatch(
+      /^Problem: URL must start with http:\/\/ or https:\/\//,
+    );
+    expect(name().getAttribute("aria-invalid")).toBe("true");
+    expect(name().getAttribute("aria-describedby")).toBe(screen.getByTestId("tool-error-name").id);
+
+    save();
+    expect(onSubmit).not.toHaveBeenCalled();
+    // The messages are beside the fields, and only there: no second list of the same problems.
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+
+    fireEvent.change(name(), { target: { value: "my_tool" } });
+    fireEvent.change(url(), { target: { value: "https://api.example.com/{symbol}" } });
+    expect(screen.queryByTestId("tool-error-name")).toBeNull();
+    expect(screen.queryByTestId("tool-error-url")).toBeNull();
+    save();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("names each empty field once, beside it, with no schema sentence", () => {
+    render(<ToolForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    save();
+    expect(screen.getByTestId("tool-error-name").textContent).toBe("Problem: Name is required.");
+    expect(screen.getByTestId("tool-error-url").textContent).toBe("Problem: URL is required.");
+    expect(document.body.textContent).not.toContain("Too small");
+    expect(document.body.textContent).not.toContain("expected string");
+
+    // Typing in a field clears its message.
+    fireEvent.change(name(), { target: { value: "x" } });
+    expect(screen.queryByTestId("tool-error-name")).toBeNull();
+    expect(screen.getByTestId("tool-error-url")).toBeTruthy();
+  });
+
+  it("names the empty fields of a Slack connector beside them", () => {
+    render(<ToolForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Slack" }));
+    fireEvent.change(name(), { target: { value: "post" } });
+    save();
+    expect(screen.getByTestId("tool-error-token").textContent).toBe("Problem: Token is required.");
+    expect(screen.getByTestId("tool-error-channel").textContent).toBe(
+      "Problem: Channel is required.",
+    );
+    expect(screen.getByTestId("tool-error-text").textContent).toBe("Problem: Text is required.");
+  });
+
+  it("opens the Setup tab on a failed save, so the problem beside its field is seen", () => {
+    render(<ToolForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    expect(screen.getByRole("tab", { name: "Settings" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    save();
+    expect(screen.getByRole("tab", { name: "Setup" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tool-error-name")).toBeTruthy();
+  });
+
+  it("lists a problem that has no field of its own in the error box, and no field summary beside it", () => {
+    render(<ToolForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(name(), { target: { value: "ok_name" } });
+    fireEvent.change(url(), { target: { value: "https://api.example.test/q" } });
+    fireEvent.change(screen.getByLabelText("Headers"), {
+      target: { value: "Authorization: Bearer literal" },
+    });
+    save();
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.textContent).toMatch(/credential/);
+  });
+
+  it("does not hold an existing tool's name against it when editing", () => {
+    render(
+      <ToolForm
+        initial={{
+          name: "legacy tool",
+          action: "http_request",
+          method: "GET",
+          url: "https://x.test/",
+        }}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("tool-error-name")).toBeNull();
   });
 });

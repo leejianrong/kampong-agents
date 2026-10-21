@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 // The inspector shell (KAM-212): every node form shows the same four tabs, the way n8n's node view and
 // Activepieces' inspector do. Setup holds the few fields most people need, Settings the rest (error handling,
@@ -29,6 +29,8 @@ export interface InspectorTabsProps {
   settings?: ReactNode;
   /** The tab open first. */
   initial?: InspectorTabId;
+  /** Opens a tab on request, as when a save fails on a field in it (KAM-193). A new `nonce` asks again. */
+  show?: { tab: InspectorTabId; nonce: number };
 }
 
 function RunPlaceholder({ heading, hint }: { heading: string; hint: string }) {
@@ -41,10 +43,15 @@ function RunPlaceholder({ heading, hint }: { heading: string; hint: string }) {
   );
 }
 
-export function InspectorTabs({ setup, settings, initial = "setup" }: InspectorTabsProps) {
+export function InspectorTabs({ setup, settings, initial = "setup", show }: InspectorTabsProps) {
   const base = useId();
   const [active, setActive] = useState<InspectorTabId>(initial);
   const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    if (show && show.nonce > 0) setActive(show.tab);
+    // Only a new request opens a tab; the tab itself is not a reason to open it again.
+  }, [show?.nonce]);
 
   function select(id: InspectorTabId, focus: boolean) {
     setActive(id);

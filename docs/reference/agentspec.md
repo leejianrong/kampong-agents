@@ -355,6 +355,15 @@ tools:
 | `extract`           | string                                          | no       | Dotted path into the JSON response. Only valid for `json`.                |
 | `requires_approval` | boolean                                         | no       | Pause for approval before the call.                                       |
 
+The **Add Tool** form checks what the schema does not (the spec itself still accepts any non-empty name and URL, so
+existing specs keep validating). A new tool's name must be letters, digits and underscores, starting with a letter
+or an underscore, because the tool is called by it (`my tool!` is refused). An HTTP URL must be a web address
+starting with `http://` or `https://`, with no spaces; a `{placeholder}`, `{{ step.field }}` or `${ENV}` counts as
+filled in later, and a URL may open with one (`{{ vars.base }}/v1`). Each problem shows beside its field as you type
+("Problem: URL must start with http:// or https://"), an empty field says "Name is required." and so on rather than
+the schema's wording, and a failed save opens the Setup tab. Editing an existing tool never holds its saved name
+against it.
+
 ### Component tools
 
 ```yaml

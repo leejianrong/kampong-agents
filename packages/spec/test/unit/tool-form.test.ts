@@ -145,3 +145,102 @@ describe("parseKeyValueLines", () => {
     ]);
   });
 });
+
+// KAM-193: a tool's name and URL are checked at the form, and an empty field is named. `my tool!` and `not a url`
+// used to save, and two empty fields gave the same schema sentence twice.
+describe("buildToolFromForm: named, checked fields (KAM-193)", () => {
+  const http = (over: Record<string, unknown>) =>
+    buildToolFromForm({
+      name: "fetch_price",
+      method: "GET",
+      url: "https://api.example.com/q",
+      ...over,
+    });
+
+  it.each(["my tool!", "my tool", "1tool", "tool-name", "tool.name", "é"])(
+    "rejects the name %j, in words, against the name field",
+    (name) => {
+      const result = http({ name });
+      expect(result.success).toBe(false);
+      expect(result.fieldErrors?.["name"]).toMatch(/^Name .*letters, digits and underscores/);
+      expect(result.errors).toEqual([result.fieldErrors?.["name"]]);
+    },
+  );
+
+  it.each(["fetch_price", "_x", "A1", "get_2"])("accepts the name %j", (name) => {
+    expect(http({ name }).success).toBe(true);
+  });
+
+  it.each([
+    ["not a url", /URL .*start with http:\/\/ or https:\/\//],
+    ["example.com/x", /URL .*start with http:\/\/ or https:\/\//],
+    ["ftp://example.com/x", /URL .*start with http:\/\/ or https:\/\//],
+    ["https://", /URL .*not a web address/],
+    ["https://exa mple.com", /URL .*spaces/],
+  ])("rejects the URL %j, against the url field", (url, message) => {
+    const result = http({ url });
+    expect(result.success).toBe(false);
+    expect(result.fieldErrors?.["url"]).toMatch(message);
+  });
+
+  it.each([
+    "https://api.example.com/q",
+    "http://localhost:8080/x?y=1",
+    "https://api.example.com/{symbol}/daily",
+    "https://api.example.com/q?key=${API_KEY}",
+    "{{ vars.base }}/v1/items",
+    "${BASE_URL}/v1/items",
+    "https://{{ vars.host }}/x",
+  ])("accepts the URL %j, placeholders included", (url) => {
+    expect(http({ url }).success).toBe(true);
+  });
+
+  it("names each empty field once instead of repeating the schema's sentence", () => {
+    const result = buildToolFromForm({ name: "", method: "GET", url: "" });
+    expect(result.success).toBe(false);
+    expect(result.fieldErrors).toEqual({ name: "Name is required.", url: "URL is required." });
+    expect(result.errors).toEqual(["Name is required.", "URL is required."]);
+    expect(result.errors?.join(" ")).not.toContain("Too small");
+  });
+
+  it("names the empty fields of a Slack and a Gmail tool", () => {
+    const slack = buildToolFromForm({
+      kind: "slack_post_message",
+      name: "post",
+      token: "",
+      channel: "",
+      text: "",
+    });
+    expect(slack.fieldErrors).toEqual({
+      token: "Token is required.",
+      channel: "Channel is required.",
+      text: "Text is required.",
+    });
+    const gmail = buildToolFromForm({
+      kind: "gmail_send",
+      name: "mail",
+      token: "${GMAIL_TOKEN}",
+      to: "",
+      subject: "",
+      body: "",
+    });
+    expect(gmail.fieldErrors).toEqual({
+      to: "To is required.",
+      subject: "Subject is required.",
+      body: "Body is required.",
+    });
+  });
+
+  it("keeps the schema's own messages for what only it knows, against the field", () => {
+    const result = buildToolFromForm({
+      kind: "slack_post_message",
+      name: "post",
+      token: "xoxb-literal",
+      channel: "#a",
+      text: "hi",
+    });
+    expect(result.success).toBe(false);
+    expect(result.fieldErrors?.["token"]).toBeTruthy();
+    expect(result.fieldErrors?.["token"]).not.toMatch(/Too small/);
+  });
+});
