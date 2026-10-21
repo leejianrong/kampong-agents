@@ -54,7 +54,8 @@ kampong dev examples                                   # the canvas, at http://l
 ```
 
 No key? `kampong templates` lists the ready-made specs, and the `market-etl` template runs on recorded
-data: see its [`README`](./packages/cli/templates/market-etl/README.md).
+data: see its [`README`](./packages/cli/templates/market-etl/README.md). In the canvas, the empty state and
+**New from template** in the menu list them too; choosing one copies the spec and its recorded data and opens it.
 
 ## Usage
 

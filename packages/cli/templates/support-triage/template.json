@@ -1,3 +1,4 @@
 {
-  "description": "Reads one unread support email over IMAP, drafts a reply with a model, asks in Slack when unsure, and saves a Gmail draft; runs offline on recorded fixtures."
+  "title": "Support inbox assistant",
+  "description": "Reads the next unread customer email, writes a reply from your own help notes, and saves it as a Gmail draft. When it is not sure, it asks you in Slack first. Nothing is ever sent for you. It starts with recorded data, so you can try it without any account or key."
 }

@@ -36,21 +36,6 @@ export function EmptyState({
               Nothing is saved yet. Start with a blank workflow and add steps as you go; it is saved
               the first time you choose.
             </p>
-            {templates && (
-              <section data-testid="empty-state-templates" aria-label="Start from a template">
-                <h3 className="md3-title-small">Start from a template</h3>
-                {templates}
-              </section>
-            )}
-            {error && (
-              <div
-                role="alert"
-                data-testid="empty-state-error"
-                className="md3-banner md3-banner--error"
-              >
-                {error}
-              </div>
-            )}
             <div className="md3-form-actions">
               <button
                 type="button"
@@ -62,6 +47,21 @@ export function EmptyState({
                 Start blank
               </button>
             </div>
+            {error && (
+              <div
+                role="alert"
+                data-testid="empty-state-error"
+                className="md3-banner md3-banner--error"
+              >
+                {error}
+              </div>
+            )}
+            {templates && (
+              <section data-testid="empty-state-templates" aria-label="Start from a template">
+                <h3 className="md3-title-small">Start from a template</h3>
+                {templates}
+              </section>
+            )}
           </>
         ) : (
           <>

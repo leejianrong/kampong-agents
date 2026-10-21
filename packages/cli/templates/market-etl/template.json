@@ -1,3 +1,4 @@
 {
-  "description": "Scheduled Alpha Vantage to Supabase price ETL that alerts Slack on large moves; runs offline on recorded fixtures."
+  "title": "Daily stock price tracker",
+  "description": "Every day, looks up the latest closing price for each stock on your list, saves it to your database, and posts a short Slack message when one moves a lot. It starts with recorded data, so you can try it without any account or key."
 }

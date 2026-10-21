@@ -1,4 +1,4 @@
-import { basename, dirname, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -17,6 +17,7 @@ import { SpecStore } from "./spec-store.js";
 import { componentCatalogFor, componentDispatcherFor, lockUses } from "./components.js";
 import { envNamesIn, runDoctor, type DoctorOptions } from "./doctor.js";
 import { SecretStore, validateSecret } from "./secrets.js";
+import { copyTemplateFixtures, listTemplates, templateSource } from "./templates.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
@@ -310,8 +311,7 @@ export function createDevServer({
   );
 
   // KAM-196: "Start blank". Writes the minimal valid spec (with the schema pragma) when there is no spec yet or
-  // the file is empty, and refuses to touch one that has content. The template gallery (KAM-216) plugs in next
-  // to this: choosing a template is a PUT /api/spec/source with that template's text.
+  // the file is empty, and refuses to touch one that has content. Choosing a template (KAM-216) is the next route.
   app.post("/api/spec/blank", async (_request, reply) => {
     watcher.beginMutation();
     try {
@@ -342,6 +342,61 @@ export function createDevServer({
       return body;
     }
   });
+
+  // KAM-216: the template gallery. Lists the templates that ship with kampong; choosing one saves its spec as
+  // this workflow (only into an empty one, as "Start blank" does, unless the request says `replace`) and copies its recorded fixtures to where a
+  // replay run looks, so it runs with no key. The hosted server has no template route yet; the canvas hides the
+  // gallery when the client has no `listTemplates`.
+  app.get("/api/templates", async () =>
+    listTemplates().map(({ name, title, description, stepKinds, runsOffline }) => ({
+      name,
+      title,
+      description,
+      stepKinds,
+      runsOffline,
+    })),
+  );
+
+  app.post<{ Body: { name?: unknown; replace?: unknown } }>(
+    "/api/spec/template",
+    async (request, reply) => {
+      const wanted = request.body?.name;
+      const info =
+        typeof wanted === "string" ? listTemplates().find((t) => t.name === wanted) : undefined;
+      if (!info) {
+        reply.code(404);
+        return { success: false, error: "There is no template with that name." };
+      }
+      watcher.beginMutation();
+      try {
+        const current = await fileStore.readSourceOrBlank();
+        if (request.body?.replace !== true && !isBlankSource(current)) {
+          watcher.endMutation();
+          reply.code(409);
+          return {
+            success: false,
+            error: "This workflow already has content, so it was not replaced.",
+          };
+        }
+        const result = await fileStore.replaceSourceAndSave(
+          templateSource(info, schemaPragmaPath(specPath)),
+        );
+        if (!result.success) {
+          watcher.endMutation();
+          reply.code(422);
+          return { success: false, errors: result.errors };
+        }
+        copyTemplateFixtures(info, join(dirname(specPath), ".kampong", "fixtures"));
+        watcher.endMutation(result.source);
+        return { success: true, spec: result.spec, revision: result.revision };
+      } catch (err) {
+        watcher.endMutation();
+        const { status, body } = specFileErrorResponse(err, specPath);
+        reply.code(status);
+        return body;
+      }
+    },
+  );
 
   // KAM-207 (ADR-0054): import. Replaces the spec file with the text given if it validates; an invalid text
   // is a 422 with line-numbered errors and the file is untouched.
