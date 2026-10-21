@@ -1,4 +1,5 @@
 import { PanelError, PanelFooter } from "./Panel";
+import { SchedulePreviewNote } from "./SchedulePreviewNote.js";
 import { FieldProblemsContext, useFieldProblems } from "./fieldProblems.js";
 import { useState } from "react";
 import { VersionGate } from "./VersionGate.js";
@@ -241,14 +242,21 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
                   ["every", "At an interval"],
                 ])}
                 {form.schedule === "every" ? (
-                  text("Every", "every", { placeholder: "6h", hint: "30s, 15m, 6h or 1d." })
+                  <>
+                    {text("Every", "every", { placeholder: "6h", hint: "30s, 15m, 6h or 1d." })}
+                    <SchedulePreviewNote every={form.every ?? ""} />
+                  </>
                 ) : (
                   <>
-                    {text("Cron", "cron", { placeholder: "0 9 * * 1-5", hint: "Five fields." })}
+                    {text("Cron", "cron", {
+                      placeholder: "0 9 * * 1-5",
+                      hint: "Five fields: minute hour day-of-month month day-of-week.",
+                    })}
                     {text("Time zone", "tz", {
                       placeholder: "UTC",
-                      hint: "An IANA name; blank is UTC.",
+                      hint: "An IANA name such as Asia/Singapore; blank is UTC.",
                     })}
+                    <SchedulePreviewNote cron={form.cron ?? ""} tz={form.tz ?? ""} />
                   </>
                 )}
                 {choice("If the last run is still going", "overlap", [
@@ -262,6 +270,7 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
             {form.type === "poll" && (
               <>
                 {text("Every", "every", { placeholder: "15m", hint: "30s, 15m, 6h or 1d." })}
+                <SchedulePreviewNote every={form.every ?? ""} />
                 {text("Component", "use", { placeholder: "kampong/github@1.0.0" })}
                 {text("Op", "op", { placeholder: "list_issues" })}
                 <label className="md3-field">
@@ -333,7 +342,12 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
             )}
 
             <PanelError messages={errors} />
-            <PanelFooter save="Save trigger" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save trigger"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 

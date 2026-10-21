@@ -2699,3 +2699,23 @@ select.md3-text-field {
 .md3-field__error {
   color: var(--md-sys-color-error);
 }
+
+/* A warning under a field (KAM-197): the tertiary container, the same softer-than-error role as "completed with errors",
+   with a word and a glyph so it never rests on colour alone. */
+.md3-field__warning {
+  margin: 0.25rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-shape-corner-small);
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.md3-schedule-preview p {
+  margin: 0.25rem 0 0;
+}
+
+/* The reason Save is disabled (KAM-197) sits above the buttons, on its own line. */
+.md3-panel__footer-reason {
+  flex: 1 0 100%;
+  margin: 0;
+}

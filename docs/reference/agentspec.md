@@ -254,6 +254,14 @@ not exist (a DST gap) runs once just after the gap; one that happens twice runs 
 every real hour regardless of the calendar should use `every`. `POST /schedule/run-now` starts a run
 immediately and is refused, not queued, while another holds the lock.
 
+The **Trigger** form previews a schedule as you type it: a cron shows what it means in words where it has a plain
+reading ("at 09:00 every day", "every 5 minutes", "at 18:30 on weekdays") and its next three run times, written in the
+schedule's time zone; an interval shows how often it runs. It warns, in the tertiary colour with a word and a glyph,
+when a schedule runs at least once a minute (`* * * * *`, or an `every` under one minute such as `10s`), since each
+run can call models and services and the cost and rate limits add up quickly. While the text is half-typed or wrong the
+preview says nothing; the save reports the problem, in the loader's own words. The same warning appears under a poll's
+`every`.
+
 !!! note "Exports"
 
     An exported project runs the schedule too: `npm run serve` (and the generated Dockerfile) starts the
@@ -535,6 +543,10 @@ instead ("Spec file could not be read"). A failure shows once: a field that is a
 expression that reads a name it cannot) stops the save in the form, with the field focused, instead of sending it to
 the server to be refused in the same words, and a message goes as soon as you change the input. **Retry** appears only
 where trying again can help, when the spec could not be loaded.
+
+A **Save** button that is disabled says why, in a line above the buttons that is also its accessible description: in
+**Secrets**, "Enter a name to save.", "A name uses letters, digits and underscores...", or "Enter a value to save."; in
+any form, "Saving, one moment." while a save is in flight.
 
 Under the top bar sits the **Run bar**, always visible: the **Replay / Live** switch (local mode), **Run**, a chip with
 how the run on show went and how long it took, and **Runs**, a drawer of this session's runs (up to 20, newest first,

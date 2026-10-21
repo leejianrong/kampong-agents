@@ -410,7 +410,12 @@ export function StepsPanel({
               }
             />
             <PanelError messages={errors} />
-            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save step"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 
@@ -524,7 +529,12 @@ export function StepsPanel({
               }
             />
             <PanelError messages={errors} />
-            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save step"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 
@@ -560,7 +570,12 @@ export function StepsPanel({
               }
             />
             <PanelError messages={errors} />
-            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save step"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 
@@ -643,7 +658,12 @@ export function StepsPanel({
               }
             />
             <PanelError messages={errors} />
-            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save step"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 
@@ -717,7 +737,12 @@ export function StepsPanel({
               }
             />
             <PanelError messages={errors} />
-            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+            <PanelFooter
+              save="Save step"
+              disabled={busy}
+              disabledReason="Saving, one moment."
+              onCancel={close}
+            />
           </form>
         )}
 

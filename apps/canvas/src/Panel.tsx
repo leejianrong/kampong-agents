@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode, type Ref } from "react";
+import { createContext, useContext, useId, type ReactNode, type Ref } from "react";
 
 // The one container every tool panel docks in (KAM-177): a fixed header with the title and a Close action, and a
 // body that scrolls on its own. Panels sit in the side pane above the YAML view, never over the canvas, so no node
@@ -103,6 +103,11 @@ export interface PanelFooterProps {
   /** A submit button when inside a form, otherwise `onSave` makes it a plain button. */
   onSave?: () => void;
   disabled?: boolean;
+  /**
+   * Why Save is disabled right now, in a sentence (KAM-197). Shown above the buttons while it is disabled and tied to
+   * Save with `aria-describedby`, so nobody is left guessing why a button does nothing.
+   */
+  disabledReason?: string;
   autoFocus?: boolean;
   onCancel?: () => void;
   cancelLabel?: string;
@@ -114,18 +119,27 @@ export function PanelFooter({
   save,
   onSave,
   disabled,
+  disabledReason,
   autoFocus,
   onCancel,
   cancelLabel = "Cancel",
   children,
 }: PanelFooterProps) {
+  const reasonId = useId();
+  const explained = disabled && disabledReason !== undefined;
   return (
     <div className="md3-panel__footer">
+      {explained && (
+        <p id={reasonId} className="md3-body-small md3-field__hint md3-panel__footer-reason">
+          {disabledReason}
+        </p>
+      )}
       {save !== undefined && (
         <button
           type={onSave ? "button" : "submit"}
           className="md3-button md3-button-filled"
           disabled={disabled}
+          aria-describedby={explained ? reasonId : undefined}
           autoFocus={autoFocus}
           onClick={onSave}
         >
