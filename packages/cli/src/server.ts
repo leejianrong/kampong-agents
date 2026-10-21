@@ -60,12 +60,18 @@ function schemaPragmaPath(specPath: string): string {
   }
 }
 
-function specFileErrorResponse(
+/**
+ * The response for a spec file that could not be read or written (KAM-195). A failed write is a save failure
+ * and says why in a sentence, never the raw errno text or a host path; a failed read stays a read failure.
+ */
+export function specFileErrorResponse(
   err: unknown,
   specPath: string,
+  op: "read" | "write" = "read",
 ): { status: number; body: { success: false; error: string } } {
   const shownPath = shownSpecPath(specPath);
-  if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+  const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
+  if (code === "ENOENT") {
     return {
       status: 404,
       body: {
@@ -74,9 +80,25 @@ function specFileErrorResponse(
       },
     };
   }
+  const denied = code === "EACCES" || code === "EPERM";
+  if (op === "write") {
+    const why = denied
+      ? `${shownPath} is not writable (permission denied)`
+      : code === "EROFS"
+        ? `${shownPath} is on a read-only file system`
+        : code === "ENOSPC"
+          ? "the disk is full"
+          : code === "EDQUOT"
+            ? "the disk quota is exceeded"
+            : `${shownPath} could not be written`;
+    return { status: 500, body: { success: false, error: `Could not save: ${why}.` } };
+  }
   return {
     status: 500,
-    body: { success: false, error: `Spec file could not be read: ${shownPath}.` },
+    body: {
+      success: false,
+      error: `Spec file could not be read: ${shownPath}${denied ? " (permission denied)" : ""}.`,
+    },
   };
 }
 
@@ -338,7 +360,7 @@ export function createDevServer({
       return { success: true, spec: result.spec, revision: result.revision };
     } catch (err) {
       watcher.endMutation();
-      const { status, body } = specFileErrorResponse(err, specPath);
+      const { status, body } = specFileErrorResponse(err, specPath, "write");
       reply.code(status);
       return body;
     }
@@ -392,7 +414,7 @@ export function createDevServer({
         return { success: true, spec: result.spec, revision: result.revision };
       } catch (err) {
         watcher.endMutation();
-        const { status, body } = specFileErrorResponse(err, specPath);
+        const { status, body } = specFileErrorResponse(err, specPath, "write");
         reply.code(status);
         return body;
       }
@@ -422,7 +444,7 @@ export function createDevServer({
         return { success: true, spec: result.spec, revision: result.revision };
       } catch (err) {
         watcher.endMutation();
-        const { status, body } = specFileErrorResponse(err, specPath);
+        const { status, body } = specFileErrorResponse(err, specPath, "write");
         reply.code(status);
         return body;
       }
@@ -461,7 +483,7 @@ export function createDevServer({
         };
       } catch (err) {
         watcher.endMutation();
-        const { status, body } = specFileErrorResponse(err, specPath);
+        const { status, body } = specFileErrorResponse(err, specPath, "write");
         reply.code(status);
         return body;
       }

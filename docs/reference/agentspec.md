@@ -515,6 +515,11 @@ bar** along the bottom holds the workflow's settings, each opening its panel: **
 number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
 overlaps at 480 pixels wide or more.
 
+If a save fails, the panel that was saving says so in its own words and keeps what you typed: "Could not save:
+agent.yaml is not writable (permission denied)", "the disk is full" or "agent.yaml is on a read-only file system".
+With no panel open, a banner says it, with **Dismiss**. A file that cannot be read is reported as a read failure
+instead ("Spec file could not be read").
+
 Under the top bar sits the **Run bar**, always visible: the **Replay / Live** switch (local mode), **Run**, a chip with
 how the run on show went and how long it took, and **Runs**, a drawer of this session's runs (up to 20, newest first,
 each with its mode, outcome and length). The chip and a row in the drawer open Test Run on that run, so an earlier run

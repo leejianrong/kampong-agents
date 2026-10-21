@@ -1,7 +1,15 @@
 /** @vitest-environment jsdom */
 import { createDevServer } from "@kampong/cli";
 import type { FastifyInstance } from "fastify";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -318,17 +326,54 @@ ops:
       "Save step",
     );
 
+    // KAM-195: the failure shows inside the form that was not saved.
     await waitFor(() => {
-      expect(screen.getByTestId("spec-error-banner")).toBeTruthy();
+      expect(screen.getByTestId("panel-save-error")).toBeTruthy();
     });
-    expect(screen.getByTestId("spec-error-banner").textContent).not.toContain("ENOENT");
-    expect(screen.getByTestId("spec-error-banner").textContent).not.toContain(dir);
+    expect(screen.getByTestId("panel-save-error").textContent).not.toContain("ENOENT");
+    expect(screen.getByTestId("panel-save-error").textContent).not.toContain(dir);
     // The dialog must still be open -- the save did not actually succeed.
     expect(screen.getByRole("form", { name: "Add Workflow Step" })).toBeTruthy();
     // The canvas itself (toolbar + the trigger node) must still be showing,
     // not blanked out.
     expect(screen.getByText(/^Manual$/)).toBeTruthy();
   });
+
+  // KAM-195: a read-only agent.yaml used to say "Spec file could not be read" with a Retry that reloads. A save that
+  // fails says it could not save and why, inside the form, with no Retry, and the typed input stays.
+  it.skipIf(process.getuid?.() === 0)(
+    "says Could not save: agent.yaml is not writable, inside the form, for a read-only file (KAM-195)",
+    async () => {
+      await startServer(MINIMAL_SPEC);
+      render(<App apiBaseUrl={baseUrl} />);
+      await waitFor(() => screen.getByText(/^Manual$/));
+      chmodSync(specPath, 0o444);
+      try {
+        chooseFromMenu("Add Workflow Step");
+        await fillAndSubmit(
+          "Add Workflow Step",
+          { "Step ID": "evaluate_policy", Action: "check_knowledge" },
+          "Save step",
+        );
+        await waitFor(() => {
+          expect(screen.getByTestId("panel-save-error")).toBeTruthy();
+        });
+        expect(screen.getByTestId("panel-save-error").textContent).toContain(
+          "Could not save: agent.yaml is not writable",
+        );
+        // One surface, and no Retry that would only reload the file.
+        expect(screen.queryByTestId("spec-error-banner")).toBeNull();
+        expect(screen.queryByTestId("save-error-banner")).toBeNull();
+        expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+        expect(screen.getByRole("form", { name: "Add Workflow Step" })).toBeTruthy();
+        expect((screen.getByLabelText("Step ID") as HTMLInputElement).value).toBe(
+          "evaluate_policy",
+        );
+      } finally {
+        chmodSync(specPath, 0o644);
+      }
+    },
+  );
 
   // KAM-196: a folder with no spec is a new workflow, and the file appears when it is chosen.
   it("opens the empty state on a folder with no spec, and Start blank writes a valid spec with the pragma (KAM-196)", async () => {
