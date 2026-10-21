@@ -17,6 +17,7 @@ import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
 import { PgStateStore } from "./pg-state-store.js";
+import { createGuardedFetch, parseAllowHosts } from "./ssrf-guard.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 
 // KAN-1231 (ADR-0014): the hosted, durable successor to packages/cli's
@@ -97,7 +98,16 @@ export interface HostedRunManagerOptions {
   modelEnv?: NodeJS.ProcessEnv;
   /** Test-only seam: replaces the first-party component dispatcher. */
   components?: ComponentDispatcher;
+  /**
+   * What sends a tool's or component's HTTP request. Defaults to a guarded fetch that refuses private, loopback,
+   * link-local and metadata addresses (KAM-232). Replacing it is a test seam: a replacement is not guarded.
+   */
   fetchImpl?: ToolFetchImpl;
+  /**
+   * Private hosts a tool may reach anyway: the self-host exception for internal services an operator chooses.
+   * Exact hostnames or IP addresses. Defaults to `KAMPONG_EGRESS_ALLOW_HOSTS` (comma-separated), else none.
+   */
+  egressAllowHosts?: readonly string[];
   /**
    * Test-only seam (mirrors packages/cli's `RunManagerOptions.createModel`):
    * bypasses the real per-workspace BYOK/LiteLLM resolution
@@ -141,12 +151,19 @@ export class HostedRunManager {
   private readonly persistTails = new Map<string, Promise<void>>();
   private readonly evictAfterMs: number;
   private readonly components = firstPartyDispatcher();
+  private readonly toolFetch: ToolFetchImpl;
 
   constructor(
     private readonly db: DbClient,
     private readonly options: HostedRunManagerOptions = {},
   ) {
     this.evictAfterMs = options.evictAfterMs ?? DEFAULT_EVICT_AFTER_MS;
+    this.toolFetch =
+      options.fetchImpl ??
+      createGuardedFetch({
+        allowHosts:
+          options.egressAllowHosts ?? parseAllowHosts(process.env["KAMPONG_EGRESS_ALLOW_HOSTS"]),
+      });
   }
 
   /**
@@ -198,7 +215,7 @@ export class HostedRunManager {
     const run = createAgentRun(spec, {
       model,
       env: this.options.env ?? {},
-      fetchImpl: this.options.fetchImpl,
+      fetchImpl: this.toolFetch,
       components: this.options.components ?? this.components,
       // A `dedupe` step remembers its keys here (KAM-113): Postgres, scoped to this workspace under RLS. It is
       // only a handle (every call opens its own scoped transaction), so a workflow with no dedupe step never
