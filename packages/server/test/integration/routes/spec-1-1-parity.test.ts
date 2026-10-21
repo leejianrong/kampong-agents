@@ -301,23 +301,6 @@ ${step}`;
       expect(run.statusCode).toBe(201);
     });
 
-    it("refuses to deploy a webhook with auth, which the hosted ingress would not enforce", async () => {
-      const { cookie } = await newUserWithWorkspace();
-      const id = await createSpec(
-        cookie,
-        spec11(
-          "  trigger:\n    type: webhook\n    auth: { type: bearer, secret_env: HOOK_TOKEN }\n",
-        ),
-      );
-      const res = await app.inject({
-        method: "PUT",
-        url: `/api/specs/${id}/deployment`,
-        headers: { cookie },
-      });
-      expect(res.statusCode).toBe(422);
-      expect(res.json().error).toMatch(/auth.*not available on the hosted server yet/);
-    });
-
     it("rejects a `vars` that is not an object with 400", async () => {
       const { cookie } = await newUserWithWorkspace();
       const created = await app.inject({

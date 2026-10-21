@@ -48,8 +48,8 @@ const DEFAULT_EVICT_AFTER_MS = 10 * 60 * 1000;
 
 /**
  * A 1.1 feature the hosted server cannot run yet (KAM-203). Refused up front, by name, so a run never starts
- * and then fails or silently does nothing partway: the `schedule`/`poll` triggers need a scheduler, and webhook `auth`/`when`/`map` need the ingress route to
- * apply them (parts B and C of KAM-203).
+ * and then fails or silently does nothing partway: the `schedule`/`poll` triggers need a scheduler and a webhook's `respond: sync` needs the ingress to hold
+ * the request (KAM-203).
  */
 export class UnsupportedOnHostedError extends Error {
   constructor(feature: string) {
@@ -69,16 +69,9 @@ export function hostedUnsupportedFeature(
   if (webhook) {
     if (trigger?.type === "schedule") return "The `schedule` trigger";
     if (trigger?.type === "poll") return "The `poll` trigger";
-    if (trigger?.type === "webhook") {
-      const t = trigger as { auth?: unknown; preset?: unknown; when?: unknown; map?: unknown };
-      if (
-        t.auth !== undefined ||
-        t.preset !== undefined ||
-        t.when !== undefined ||
-        t.map !== undefined
-      ) {
-        return "Webhook `auth`, `preset`, `when` and `map`";
-      }
+    // `respond: sync` holds the caller until the run settles; the hosted ingress always answers with a run id.
+    if (trigger?.type === "webhook" && trigger.respond === "sync") {
+      return "The webhook `respond: sync` mode";
     }
   }
   return undefined;

@@ -1,0 +1,1 @@
+ALTER TABLE "deployments" ADD COLUMN "webhook_secret_ciphertext" text;

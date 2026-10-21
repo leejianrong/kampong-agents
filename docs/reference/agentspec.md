@@ -55,7 +55,10 @@ app yet.
     The hosted server runs one too (KAM-203, ADR-0056): `POST /api/specs/:id/runs` takes an optional `vars`
     object, like `--var`. Its tools and components read an empty environment, so a step that needs a secret
     fails visibly until workspace secrets exist, and only the first-party `kampong/*` components resolve.
-    `dedupe` works on hosted: its keys live in a Postgres state store private to the workspace. Deploying a `poll` or `schedule` trigger, and webhook `auth`/`when`/`map` is not available there yet: they are refused with a 422 that names the feature.
+    `dedupe` works on hosted: its keys live in a Postgres state store private to the workspace. Webhook `auth`, `preset`, `when` and `map` work on a deployment's webhook URL, using the same code as
+    `kampong serve`; the secret is not an environment variable there but one the server generates per
+    deployment (see below). Deploying a `poll` or `schedule` trigger, or a webhook with `respond: sync`, is
+    not available yet and is refused with a 422 that names the feature.
     See `examples/incident-responder.yaml`.
 
 ### Expressions
@@ -206,6 +209,16 @@ wants an answer (a question-and-answer endpoint):
 
 A `202` is not a failure: the run carries on, and `GET /runs/<id>` (and `POST /runs/<id>/approve`) work as
 usual. A spec that needs a human to approve should expect `202` and tell its caller to poll.
+
+#### On the hosted server
+
+A deployed spec's webhook is `/hooks/w/<workspace>/<deployment>`. With `auth` or a `preset`, the request is
+checked by the same code `kampong serve` uses (a bad or missing signature is `401`, `when` false is `200` with
+`ignored: true`, `map` builds `trigger.*`). The secret differs: `secret_env` is only a label there, because the
+server never reads its own environment for a tenant. Deploying (`PUT /api/specs/:id/deployment`) generates a
+secret and returns it once as `webhookSecret`; paste it into the sender (GitHub's secret field, Alertmanager's
+bearer token). A redeploy keeps it. If it is lost or leaked, `POST /api/specs/:id/deployment/webhook-secret`
+issues a new one and the old one stops working at once. `respond: sync` is not available on hosted yet.
 
 
 ### `type: schedule`

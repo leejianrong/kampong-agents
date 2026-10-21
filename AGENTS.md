@@ -54,8 +54,8 @@ claim it, and keep it in the active cycle (see KAM-150).
 - **Spec versions:** `"1.0"` keeps the original `{step.field}` syntax and string conditions and must keep
   validating. New step kinds (`transform`, `validate`, `dedupe`, `foreach`, `branch`, `stop`), `vars`,
   schedule/webhook auth and `output_schema` are `"1.1"` only. Each carries its own YAML line in errors.
-  The hosted server runs 1.1 specs (ADR-0056) except `poll`/`schedule` triggers and webhook auth
-  presets (KAM-203). `dedupe` works there, on a Postgres state store scoped per workspace under RLS. (ADR-0027)
+  The hosted server runs 1.1 specs (ADR-0056) except `poll`/`schedule` triggers (KAM-203).
+  Webhook auth presets, `when` and `map` work (a per-deployment secret, ADR-0057). `dedupe` works there, on a Postgres state store scoped per workspace under RLS. (ADR-0027)
 - **Exported projects vendor the engine files** (parity-tested copies, e.g. `workflow.ts`, `run.ts`,
   `schedule.ts`), so a change to a vendored file must keep the parity tests passing. (ADR-0010)
 - **Local-first, no telemetry by default.** Secrets never go in a spec: only `${ENV_VAR}` placeholders
@@ -124,7 +124,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0055).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0057).
 - Every bug or flake becomes a regression test before the fix.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 
