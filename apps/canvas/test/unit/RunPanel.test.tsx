@@ -24,6 +24,13 @@ class FakeEventSource {
   }
 }
 
+// Run stays off until the panel knows which modes the spec can run (KAM-190), so a test waits for it.
+async function ready() {
+  await waitFor(() =>
+    expect((screen.getByRole("button", { name: "Run" }) as HTMLButtonElement).disabled).toBe(false),
+  );
+}
+
 describe("RunPanel", () => {
   afterEach(() => {
     cleanup();
@@ -68,6 +75,7 @@ describe("RunPanel", () => {
     const api = createApiClient();
     render(<RunPanel api={api} />);
 
+    await ready();
     fireEvent.change(screen.getByLabelText("Input"), { target: { value: "Refund order #1" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
@@ -120,6 +128,7 @@ describe("RunPanel", () => {
     const api = createApiClient();
     render(<RunPanel api={api} />);
 
+    await ready();
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => screen.getByRole("dialog"));
 
@@ -158,6 +167,7 @@ describe("RunPanel", () => {
     const api = createApiClient();
     render(<RunPanel api={api} />);
 
+    await ready();
     const runButton = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
     fireEvent.click(runButton);
     // Still in-flight (startPromise unresolved): the button must already be
@@ -201,6 +211,7 @@ describe("RunPanel", () => {
     const api = createApiClient();
     const { unmount } = render(<RunPanel api={api} />);
 
+    await ready();
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => {
       expect(screen.getByTestId("run-status").textContent).toContain("running");

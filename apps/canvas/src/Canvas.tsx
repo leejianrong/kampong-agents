@@ -20,6 +20,7 @@ import {
   type InsertEdgeData,
 } from "./InsertEdge.js";
 import type { StepKind } from "./stepKinds.js";
+import { STATUS_ICON, STATUS_LABEL, type NodeRunInfo } from "./runStatus.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
 // Workflow -> Guardrails"). Node color roles map to Material Design 3
@@ -52,6 +53,10 @@ export interface CanvasProps {
    */
   onInsert?: (edgeId: string, kind: StepKind) => void;
   version?: string;
+  /** KAM-190: what the run on screen did to each node, by node id. Only a drawn view: the spec and layout are untouched. */
+  runStatus?: Record<string, NodeRunInfo>;
+  /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
+  onShowRunMessage?: (id: string) => void;
 }
 
 // Defined once so @xyflow/react does not see a new map on each render.
@@ -78,6 +83,57 @@ function Meta({ text }: { text: string }) {
     </div>
   );
 }
+
+/**
+ * A node's run status (KAM-190): an icon and a word, never colour alone, on the node's top edge so the node does not
+ * grow. A failed one carries a "See message" button that takes the run panel to the message.
+ */
+function RunBadge({
+  nodeId,
+  info,
+  onShowMessage,
+}: {
+  nodeId: string;
+  info: NodeRunInfo;
+  onShowMessage?: (id: string) => void;
+}) {
+  const seconds =
+    info.durationMs !== undefined && info.status !== "running" && info.status !== "waiting"
+      ? ` ${info.durationMs < 1000 ? `${info.durationMs} ms` : `${(info.durationMs / 1000).toFixed(1)} s`}`
+      : "";
+  return (
+    <span className="md3-node__run-wrap">
+      <span
+        className={`md3-node__run md3-node__run--${info.status}`}
+        data-testid="node-run-status"
+        data-status={info.status}
+        title={info.message}
+      >
+        <span aria-hidden="true" className="md3-node__run-icon">
+          {STATUS_ICON[info.status]}
+        </span>
+        {STATUS_LABEL[info.status]}
+        {info.runs !== undefined && ` (${info.runs}x)`}
+        {seconds}
+      </span>
+      {info.status === "failed" && onShowMessage && (
+        <button
+          type="button"
+          className="md3-node__run-link nodrag nopan"
+          data-testid="node-run-message"
+          aria-label={`See the message for ${nodeId.replace(/^workflow:/, "")} in Test Run`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onShowMessage(nodeId);
+          }}
+        >
+          See message
+        </button>
+      )}
+    </span>
+  );
+}
+
 const FLASH_MS = 2200;
 
 /** Pans to the focused node once it is on the canvas, and flashes it. Rendered inside <ReactFlow>. */
@@ -145,6 +201,8 @@ export function Canvas({
   onPaneClick,
   onInsert,
   version,
+  runStatus,
+  onShowRunMessage,
 }: CanvasProps) {
   const [openEdge, setOpenEdge] = useState<string | null>(null);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
@@ -218,17 +276,35 @@ export function Canvas({
   // reconciliation work it doesn't need to.
   const nodes: Node[] = useMemo(
     () => [
-      ...graph.nodes.map((node) => ({
-        id: node.id,
-        position: layout[node.id] ?? { x: 0, y: 0 },
-        data: { label: nodeLabel(node) },
-        selected: selectedId === node.id,
-        ...(sizes[node.id] !== undefined && { measured: sizes[node.id] }),
-        ariaLabel: nodeAriaLabel(node),
-        className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
-          flashed?.id === node.id ? " md3-node--flash" : ""
-        }${linked.has(node.id) ? " md3-node--linked" : ""}`,
-      })),
+      ...graph.nodes.map((node) => {
+        const run = runStatus?.[node.id];
+        return {
+          id: node.id,
+          position: layout[node.id] ?? { x: 0, y: 0 },
+          data: {
+            label: run ? (
+              <>
+                {nodeLabel(node)}
+                <RunBadge
+                  nodeId={node.id}
+                  info={run}
+                  {...(onShowRunMessage && { onShowMessage: onShowRunMessage })}
+                />
+              </>
+            ) : (
+              nodeLabel(node)
+            ),
+          },
+          selected: selectedId === node.id,
+          ...(sizes[node.id] !== undefined && { measured: sizes[node.id] }),
+          ariaLabel: nodeAriaLabel(node) + (run ? `. ${STATUS_LABEL[run.status]}` : ""),
+          className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
+            flashed?.id === node.id ? " md3-node--flash" : ""
+          }${linked.has(node.id) ? " md3-node--linked" : ""}${
+            run ? ` md3-node--run-${run.status}` : ""
+          }`,
+        };
+      }),
       ...(marker
         ? [
             {
@@ -248,7 +324,7 @@ export function Canvas({
           ]
         : []),
     ],
-    [graph, layout, marker, flashed, selectedId, sizes, linked],
+    [graph, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage],
   );
 
   const edges: Edge[] = useMemo(() => {

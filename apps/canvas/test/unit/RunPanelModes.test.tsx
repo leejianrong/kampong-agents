@@ -145,4 +145,22 @@ describe("RunPanel modes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => expect(startRun).toHaveBeenCalledWith("", undefined));
   });
+
+  // Regression (found in KAM-190): before the run options arrived the panel was on "live" with Run enabled, so an
+  // early click started an unconfirmed live run against real services instead of the replay it was about to offer.
+  it("does not let a run start before it knows which modes the spec can run", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const { api, startRun } = apiWith(options());
+    let release: (value: RunOptionsResponse) => void = () => {};
+    api.getRunOptions = () => new Promise<RunOptionsResponse>((resolve) => (release = resolve));
+    render(<RunPanel api={api} />);
+    const run = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(true);
+    fireEvent.click(run);
+    expect(startRun).not.toHaveBeenCalled();
+    release(options());
+    await waitFor(() => expect(run.disabled).toBe(false));
+    fireEvent.click(run);
+    await waitFor(() => expect(startRun).toHaveBeenCalledWith("", "replay"));
+  });
 });
