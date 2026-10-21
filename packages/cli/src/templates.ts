@@ -23,9 +23,13 @@ export interface TemplateInfo {
   path: string;
 }
 
-export const TEMPLATES_DIR = fileURLToPath(new URL("../templates", import.meta.url));
+// Resolved when needed, not at import: server.ts imports this file, and the canvas's jsdom tests import server.ts,
+// where `import.meta.url` is not a file URL.
+export function templatesDir(): string {
+  return fileURLToPath(new URL("../templates", import.meta.url));
+}
 
-export function listTemplates(dir: string = TEMPLATES_DIR): TemplateInfo[] {
+export function listTemplates(dir: string = templatesDir()): TemplateInfo[] {
   if (!existsSync(dir)) return [];
   const out: TemplateInfo[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
