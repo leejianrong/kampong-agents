@@ -92,13 +92,14 @@ describe("VarsPanel", () => {
     );
   });
 
-  it("keeps the form and its input open, with a message, when the save fails", async () => {
+  it("keeps the form and its input open when the save fails, and adds no message of its own (KAM-194)", async () => {
     const onSave = vi.fn(async () => false);
     setup({ onSave });
     fireEvent.click(screen.getByRole("button", { name: "Add var" }));
     type("Name", "keep_me");
     fireEvent.click(screen.getByRole("button", { name: "Save var" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Could not save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("keep_me");
   });
 

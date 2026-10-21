@@ -164,13 +164,14 @@ describe("StepsPanel", () => {
     );
   });
 
-  it("keeps the form and says so when the save fails", async () => {
+  it("keeps the form when the save fails, and adds no message of its own (KAM-194)", async () => {
     const { onPatch } = setup();
     onPatch.mockResolvedValueOnce(false);
     click("Edit classify");
     changeExact("Model", "x");
     click("Save step");
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Could not save"));
+    await waitFor(() => expect(onPatch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("form", { name: "Edit classify" })).toBeTruthy();
   });
 
@@ -242,7 +243,10 @@ describe("StepsPanel", () => {
       change("Value 1 expression", "vars.nope");
       expect(screen.getByText(/vars.nope is not declared in vars/)).toBeTruthy();
       click("Save step");
-      expect(screen.getByRole("alert").textContent).toContain("vars.nope is not declared");
+      // One message, in the field, and the save did not go anywhere (KAM-194).
+      expect(screen.getAllByText(/vars.nope is not declared/)).toHaveLength(1);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(document.activeElement).toBe(screen.getByLabelText("Value 1 expression"));
       expect(onPatch).not.toHaveBeenCalled();
     });
 

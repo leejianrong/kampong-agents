@@ -10,7 +10,12 @@ import { createContext, useContext, type ReactNode, type Ref } from "react";
  * Why the last save failed (KAM-195), shown inside whichever panel is open so the person sees it next to the
  * input that was not saved. Without a provider there is none.
  */
-export const SaveErrorContext = createContext<string | null>(null);
+export interface SaveErrorState {
+  message: string | null;
+  /** The person changed something: what failed is no longer what is on screen. */
+  clear: () => void;
+}
+export const SaveErrorContext = createContext<SaveErrorState>({ message: null, clear: () => {} });
 
 export interface PanelProps {
   title: string;
@@ -36,7 +41,7 @@ export function Panel({
   hidden,
   children,
 }: PanelProps) {
-  const saveError = useContext(SaveErrorContext);
+  const { message: saveError, clear: clearSaveError } = useContext(SaveErrorContext);
   return (
     <section
       ref={panelRef}
@@ -59,7 +64,7 @@ export function Panel({
           Close
         </button>
       </header>
-      <div className="md3-panel__body">
+      <div className="md3-panel__body" onChange={() => saveError !== null && clearSaveError()}>
         {saveError !== null && !hidden && (
           <PanelError messages={[saveError]} testId="panel-save-error" />
         )}

@@ -369,11 +369,65 @@ ops:
         expect((screen.getByLabelText("Step ID") as HTMLInputElement).value).toBe(
           "evaluate_policy",
         );
+        // KAM-194: it is gone as soon as the person changes the input, not left to linger.
+        fireEvent.change(screen.getByLabelText("Step ID"), {
+          target: { value: "evaluate_policy_2" },
+        });
+        expect(screen.queryByTestId("panel-save-error")).toBeNull();
       } finally {
         chmodSync(specPath, 0o644);
       }
     },
   );
+
+  // KAM-194: one failure shows one message. A webhook `when` that reads `vars.x` used to show the field's problem,
+  // then (after a round trip to the server that refused it) the server's words and a generic "try again" as well; and
+  // an old error stayed after a later save worked.
+  it("shows one message for a webhook `when` that reads vars, and none once it is fixed and saved (KAM-194)", async () => {
+    await startServer(`version: "1.1"
+vars:
+  x:
+    type: number
+    default: 1
+agent:
+  id: refund-agent
+  name: "Refund Agent"
+  role: "Support"
+  goal: "Handle refunds."
+  workflow:
+    - step: parse_request
+      action: extract_entities
+`);
+    render(<App apiBaseUrl={baseUrl} />);
+    await waitFor(() => screen.getByText(/^Manual$/));
+
+    fireEvent.click(
+      within(screen.getByRole("contentinfo")).getByRole("button", { name: /^Trigger$/ }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Add webhook" }));
+    const when = () => screen.getByLabelText("When", { exact: false });
+    fireEvent.change(when(), { target: { value: "vars.x = 1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+
+    // One message, wherever it is shown, and nothing generic beside it.
+    const said = () =>
+      document.body.textContent?.match(/not available when a request arrives/g)?.length ?? 0;
+    await waitFor(() => expect(said()).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 150));
+    expect(said()).toBe(1);
+    expect(document.body.textContent).not.toContain("Could not save the change");
+    expect(readFileSync(specPath, "utf8")).not.toContain("trigger:");
+
+    // Fixed, it saves, and nothing from the failure is left on screen.
+    fireEvent.change(when(), { target: { value: 'trigger.headers.`x-event` = "push"' } });
+    fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+    await waitFor(() => expect(readFileSync(specPath, "utf8")).toContain("trigger:"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save trigger" })).toBeNull());
+    expect(said()).toBe(0);
+    expect(screen.queryByTestId("panel-save-error")).toBeNull();
+    expect(screen.queryByTestId("spec-error-banner")).toBeNull();
+    expect(screen.queryByTestId("save-error-banner")).toBeNull();
+  });
 
   // KAM-196: a folder with no spec is a new workflow, and the file appears when it is chosen.
   it("opens the empty state on a folder with no spec, and Start blank writes a valid spec with the pragma (KAM-196)", async () => {

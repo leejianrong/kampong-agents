@@ -191,13 +191,41 @@ describe("TriggerPanel", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ type: "schedule", every: "2h" }));
   });
 
-  it("keeps the form and says so when the save fails", async () => {
+  // KAM-194: a failed save keeps the form and its input; the panel shell explains the failure in the server's
+  // words (App.test and live-server.test cover that), so the panel adds no second, generic message.
+  it("keeps the form open when the save fails, and adds no message of its own", async () => {
     const { onSave } = setup({ trigger: { type: "webhook" } });
     onSave.mockResolvedValueOnce(false);
     click("Edit trigger");
     click("Save trigger");
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Could not save"));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("form", { name: "Trigger" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.body.textContent).not.toContain("try again");
+  });
+
+  it("clears a form-level problem when the input changes", () => {
+    const { onSave } = setup({ version: "1.0" });
+    click("Add webhook");
+    type("When", "x");
+    click("Save trigger");
+    expect(screen.getByRole("alert").textContent).toContain('when needs version "1.1"');
+    type("When", "");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("does not send a save to the server while a field is already saying what is wrong", () => {
+    const { onSave } = setup();
+    click("Add webhook");
+    type("When", "vars.x = 1");
+    expect(screen.getAllByText(/not available when a request arrives/)).toHaveLength(1);
+    click("Save trigger");
+    expect(onSave).not.toHaveBeenCalled();
+    // Still one message, not the same problem again in a second place, and the field has focus.
+    expect(screen.getAllByText(/not available when a request arrives/)).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText("When", { exact: false }));
   });
 
   it("removes the trigger", async () => {
