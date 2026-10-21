@@ -83,7 +83,8 @@ describe("command palette", () => {
       .getAllByRole("option")
       .map((o) => o.textContent);
     for (const want of [
-      "Run (Test Run)",
+      "Run the workflow",
+      "Open Test Run",
       "Open code (YAML drawer)Alt+Y",
       "Open Secrets",
       "Open Vars",

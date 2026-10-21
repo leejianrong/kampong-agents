@@ -52,6 +52,8 @@ import {
   type RenameOutcome,
 } from "./DeleteControl.js";
 import { RunPanel } from "./RunPanel.js";
+import { RunControls } from "./RunControls.js";
+import { useRunSession } from "./runSession.js";
 import { deriveNodeStatuses } from "./runStatus.js";
 import { RunTrackerProvider, useRunTrackerStore } from "./runTracker.js";
 import { ToolForm } from "./ToolForm.js";
@@ -423,9 +425,13 @@ export function App({
       ),
     [runTracker.tracker, graph],
   );
-  // The Test Run panel stays mounted once opened, so a run keeps streaming (and the nodes keep updating) while
-  // another panel is on show.
-  const [runOpened, setRunOpened] = useState(false);
+  // KAM-219: the runs of this session, shared by the Run bar and the Test Run panel. Held here, above both, so a
+  // run keeps streaming and its result and typed vars survive while other panels open and close. The options are
+  // fetched again when the spec's text changes, so a template just chosen offers Replay at once.
+  const runSession = useRunSession(api, runTracker, {
+    blockedReason: runBlockedReason,
+    refreshKey: source,
+  });
   const marker = useMemo(
     () =>
       openForm === "workflow" && placement
@@ -785,9 +791,6 @@ export function App({
     runTracker.showMessage(id);
   };
   const showRunMessage = useCallback((id: string) => showRunMessageRef.current(id), []);
-  useEffect(() => {
-    if (openForm === "run") setRunOpened(true);
-  }, [openForm]);
 
   // KAM-181: the changed lines and the toast clear on their own.
   useEffect(() => {
@@ -955,6 +958,8 @@ export function App({
     ...(missingSecrets !== undefined && { missingSecrets }),
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
     toggleYaml: () => setYamlOpen((open) => !open),
+    startRun: runSession.requestRun,
+    canRun: runSession.canRun,
     download: downloadAsFile,
     openPalette: () => setPaletteOpen(true),
   });
@@ -971,6 +976,16 @@ export function App({
             saveState={saveState}
             actions={actions}
             {...(onNavigateBack && { onBack: onNavigateBack })}
+          />
+          <RunControls
+            session={runSession}
+            action={actions.find((a) => a.surface === "runbar")}
+            onOpenDetails={() => {
+              if (openForm !== "run") toolbarForm("run");
+            }}
+            {...(api.listSecrets &&
+              api.setSecret &&
+              api.removeSecret && { onSetSecret: openSecret })}
           />
           <div className="md3-app__main">
             <div className="md3-app__canvas-pane">
@@ -1217,20 +1232,9 @@ export function App({
                   />
                 </Panel>
               )}
-              {(openForm === "run" || runOpened) && (
-                <Panel
-                  title="Test Run"
-                  testId="run-panel-shell"
-                  hidden={openForm !== "run"}
-                  onClose={() => setOpenForm(null)}
-                >
-                  <RunPanel
-                    api={api}
-                    blockedReason={runBlockedReason}
-                    {...(api.listSecrets &&
-                      api.setSecret &&
-                      api.removeSecret && { onSetSecret: openSecret })}
-                  />
+              {openForm === "run" && (
+                <Panel title="Test Run" testId="run-panel-shell" onClose={() => setOpenForm(null)}>
+                  <RunPanel session={runSession} />
                 </Panel>
               )}
               {shows("vars") && spec && (

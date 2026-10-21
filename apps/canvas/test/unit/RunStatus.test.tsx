@@ -2,7 +2,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseSpec, specToGraph } from "@kampong/spec";
 import { Canvas } from "../../src/Canvas.js";
+import { RunControls } from "../../src/RunControls.js";
 import { RunPanel } from "../../src/RunPanel.js";
+import { useRunSession } from "../../src/runSession.js";
 import type { ApiClient, RunEventMessage, RunState } from "../../src/api.js";
 import {
   applyMessage,
@@ -210,6 +212,7 @@ describe("deriveNodeStatuses", () => {
 // The seam end to end: the panel publishes, the canvas draws, a failed node links back.
 function Harness({ api }: { api: ApiClient }) {
   const store = useRunTrackerStore();
+  const session = useRunSession(api, store);
   const { spec } = parseSpec(SOURCE);
   const graph = specToGraph(spec!);
   const layout = Object.fromEntries(graph.nodes.map((n, i) => [n.id, { x: 0, y: i * 120 }]));
@@ -224,7 +227,8 @@ function Harness({ api }: { api: ApiClient }) {
         )}
         onShowRunMessage={store.showMessage}
       />
-      <RunPanel api={api} />
+      <RunControls session={session} onOpenDetails={() => {}} />
+      <RunPanel session={session} />
     </RunTrackerProvider>
   );
 }

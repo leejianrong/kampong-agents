@@ -79,7 +79,7 @@ describe("run bar", () => {
     const bar = screen.getByRole("banner");
     expect(within(bar).getByRole("heading", { name: "Refund flow" })).toBeTruthy();
     expect(within(bar).getByTestId("save-state").textContent).toBe("Saved");
-    expect(within(bar).getByRole("button", { name: "Test Run" }).textContent).toBe("Run");
+    expect(within(bar).getByRole("button", { name: "Test Run" }).textContent).toBe("Test Run");
     expect(within(bar).getByRole("button", { name: "For developers: show YAML" })).toBeTruthy();
     expect(within(bar).getByRole("button", { name: "Menu" })).toBeTruthy();
   });

@@ -11,6 +11,8 @@ export interface RunTrackerApi {
   begin(runId: string | null): void;
   /** The stream's message for a run (or the state its start returned). */
   publish(runId: string, message: RunEventMessage): void;
+  /** Show an earlier run from this session (KAM-219): its marks and data replace the current ones. */
+  show(tracker: RunTracker): void;
   /** Ask the run panel to show a node's failure message. A new request repeats an old one. */
   showMessage(nodeId: string): void;
   messageRequest: { nodeId: string; nonce: number } | null;
@@ -31,6 +33,10 @@ export function useRunTrackerStore(): RunTrackerApi {
     setTracker({ ...emptyTracker, runId });
     setRequest(null);
   }, []);
+  const show = useCallback((shown: RunTracker) => {
+    setTracker(shown);
+    setRequest(null);
+  }, []);
   const publish = useCallback((runId: string, message: RunEventMessage) => {
     setTracker((t) => applyMessage(t, runId, message, Date.now()));
   }, []);
@@ -38,8 +44,8 @@ export function useRunTrackerStore(): RunTrackerApi {
     setRequest((r) => ({ nodeId, nonce: (r?.nonce ?? 0) + 1 }));
   }, []);
   return useMemo(
-    () => ({ tracker, begin, publish, showMessage, messageRequest }),
-    [tracker, begin, publish, showMessage, messageRequest],
+    () => ({ tracker, begin, publish, show, showMessage, messageRequest }),
+    [tracker, begin, publish, show, showMessage, messageRequest],
   );
 }
 
