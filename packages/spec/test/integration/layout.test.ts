@@ -44,7 +44,7 @@ describe("withAutoLayout", () => {
 
     expect(afterSecondStep["workflow:greet"]).toEqual({ x: 520, y: 0 });
     expect(afterSecondStep["workflow:farewell"]).not.toEqual(afterSecondStep["workflow:greet"]);
-    expect(afterSecondStep["workflow:farewell"]).toEqual({ x: 520, y: 120 });
+    expect(afterSecondStep["workflow:farewell"]).toEqual({ x: 520, y: 140 });
 
     // A third call/step should keep walking forward, not reset again.
     const afterThirdStep = withAutoLayout(afterSecondStep, [
@@ -53,7 +53,7 @@ describe("withAutoLayout", () => {
       { id: "workflow:cleanup", column: 2 },
     ]);
 
-    expect(afterThirdStep["workflow:cleanup"]).toEqual({ x: 520, y: 240 });
+    expect(afterThirdStep["workflow:cleanup"]).toEqual({ x: 520, y: 280 });
   });
 
   // "Next free row" is defined as one past the highest occupied row in a
@@ -76,7 +76,7 @@ describe("withAutoLayout", () => {
     ]);
 
     // The new node goes after the highest occupied row (240), not into the
-    // empty row 1 (y: 120).
-    expect(next["workflow:fourth"]).toEqual({ x: 520, y: 360 });
+    // empty row 1 (y: 140).
+    expect(next["workflow:fourth"]).toEqual({ x: 520, y: 380 });
   });
 });

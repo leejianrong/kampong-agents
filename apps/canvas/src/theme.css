@@ -1674,6 +1674,13 @@ select.md3-text-field {
   }
 }
 
+/* The steps that use the tool under the pointer or focus, and the tools a step uses (KAM-185): a thick outline in the
+   primary role, offset from the node, so it does not rest on colour alone. */
+.md3-node--linked {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+
 /* Download / Import in the YAML view's header (KAM-207): quiet text buttons beside the title. */
 .md3-yaml-panel__header {
   display: flex;

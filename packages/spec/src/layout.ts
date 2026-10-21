@@ -9,7 +9,7 @@ export interface NodePosition {
 
 export type LayoutMap = Record<string, NodePosition>;
 
-const SPACING = { x: 260, y: 120 };
+const SPACING = { x: 260, y: 140 };
 
 export function parseLayout(source: string): LayoutMap {
   if (!source.trim()) return {};

@@ -1,6 +1,7 @@
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
-import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
+import { BaseEdge, EdgeLabelRenderer, useStore, type EdgeProps } from "@xyflow/react";
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { routeEdge, type Rect } from "./edgeRoute.js";
 import { StepPicker } from "./StepPicker.js";
 import type { StepKind } from "./stepKinds.js";
 
@@ -23,8 +24,29 @@ export interface EdgeInsertState {
 export const EdgeInsertContext = createContext<EdgeInsertState | null>(null);
 
 export interface InsertEdgeData extends Record<string, unknown> {
-  /** The step the new one goes in front of, for the button's name. */
-  before: string;
+  /** The step the new one goes in front of, for the button's name. Without it the line has no "+". */
+  before?: string;
+}
+
+/** Every node but the two ends and the insertion marker, as `id:x,y,w,h` so a store selector can compare it as a string. */
+function obstaclesSignature(skip: string[]) {
+  return (state: {
+    nodeLookup: Map<
+      string,
+      {
+        internals: { positionAbsolute: { x: number; y: number } };
+        measured: { width?: number; height?: number };
+      }
+    >;
+  }): string => {
+    const out: string[] = [];
+    for (const [id, node] of state.nodeLookup) {
+      if (skip.includes(id)) continue;
+      const { x, y } = node.internals.positionAbsolute;
+      out.push(`${x},${y},${node.measured.width ?? 180},${node.measured.height ?? 60}`);
+    }
+    return out.join(";");
+  };
 }
 
 const POPOVER_WIDTH = 272;
@@ -93,20 +115,29 @@ function EdgePopover({
 export function InsertEdge(props: EdgeProps) {
   const button = useRef<HTMLButtonElement>(null);
   const state = useContext(EdgeInsertContext);
-  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label } = props;
-  const [path, midX, midY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  const { id, sourceX, sourceY, targetX, targetY, label, source, target } = props;
+  const signature = useStore(obstaclesSignature([source, target, "insertion-marker"]));
+  const route = useMemo(() => {
+    const obstacles: Rect[] = signature
+      .split(";")
+      .filter((part) => part !== "")
+      .map((part) => {
+        const [x, y, width, height] = part.split(",").map(Number) as [
+          number,
+          number,
+          number,
+          number,
+        ];
+        return { x, y, width, height };
+      });
+    return routeEdge({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, obstacles);
+  }, [signature, sourceX, sourceY, targetX, targetY]);
   // A labelled line (a branch arm) keeps its label at the middle, so the "+" sits nearer the step it leads to.
-  const t = label !== undefined && label !== "" ? 0.8 : 0.5;
-  const x = label !== undefined && label !== "" ? sourceX + (targetX - sourceX) * t : midX;
-  const y = label !== undefined && label !== "" ? sourceY + (targetY - sourceY) * t : midY;
-  const before = String((props.data as InsertEdgeData | undefined)?.before ?? "this step");
+  const labelled = label !== undefined && label !== "";
+  const x = labelled && !route.detoured ? sourceX + (targetX - sourceX) * 0.8 : route.mid.x;
+  const y = labelled && !route.detoured ? sourceY + (targetY - sourceY) * 0.8 : route.mid.y;
+  const insertBefore = (props.data as InsertEdgeData | undefined)?.before;
+  const before = insertBefore ?? "this step";
   const isOpen = state?.openId === id;
   const visible = isOpen || state?.hoverId === id;
 
@@ -114,11 +145,11 @@ export function InsertEdge(props: EdgeProps) {
     <>
       <BaseEdge
         id={id}
-        path={path}
-        {...(label !== undefined && { label, labelX: midX, labelY: midY })}
+        path={route.path}
+        {...(label !== undefined && { label, labelX: route.mid.x, labelY: route.mid.y })}
         interactionWidth={24}
       />
-      {state && (
+      {state && insertBefore !== undefined && (
         <EdgeLabelRenderer>
           <div
             className="md3-edge-plus nodrag nopan nowheel"
