@@ -1,10 +1,16 @@
-import type { ReactNode, Ref } from "react";
+import { createContext, useContext, type ReactNode, type Ref } from "react";
 
 // The one container every tool panel docks in (KAM-177): a fixed header with the title and a Close action, and a
 // body that scrolls on its own. Panels sit in the side pane above the YAML view, never over the canvas, so no node
 // is covered and the Save and Cancel row, which sticks to the bottom of the body, is always reachable however tall
 // the form is. KAM-178: the rest of a panel's chrome lives here too. A panel puts its Save and Cancel row in a
 // PanelFooter and its failures in a PanelError, and draws neither itself, so every panel looks and behaves alike.
+
+/**
+ * Why the last save failed (KAM-195), shown inside whichever panel is open so the person sees it next to the
+ * input that was not saved. Without a provider there is none.
+ */
+export const SaveErrorContext = createContext<string | null>(null);
 
 export interface PanelProps {
   title: string;
@@ -30,6 +36,7 @@ export function Panel({
   hidden,
   children,
 }: PanelProps) {
+  const saveError = useContext(SaveErrorContext);
   return (
     <section
       ref={panelRef}
@@ -52,7 +59,12 @@ export function Panel({
           Close
         </button>
       </header>
-      <div className="md3-panel__body">{children}</div>
+      <div className="md3-panel__body">
+        {saveError !== null && !hidden && (
+          <PanelError messages={[saveError]} testId="panel-save-error" />
+        )}
+        {children}
+      </div>
     </section>
   );
 }
