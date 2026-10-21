@@ -162,7 +162,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
           </p>
         )}
         {options && mode === "live" && (
-          <div className="md3-banner md3-banner--error md3-run-live" data-testid="run-live-banner">
+          <div className="md3-run-live" data-testid="run-live-banner">
             <div>
               <strong>LIVE</strong>: this run calls real services
               {!canChoose && " (no recorded fixtures to replay)"}.
@@ -170,20 +170,16 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
             </div>
           </div>
         )}
-        <PanelFooter save="Run" disabled={isRunning || blockedReason !== undefined} />
-      </form>
-
-      {confirmingLive && options && (
-        <div className="md3-modal-backdrop">
+        {confirmingLive ? (
           <div
-            role="dialog"
-            aria-modal="true"
+            role="alertdialog"
             aria-label="Run live?"
-            className="md3-elevated-surface md3-stack"
+            className="md3-run-confirm"
+            data-testid="run-confirm"
           >
-            <h2 className="md3-title-medium">Run live?</h2>
             <p className="md3-body-medium">
-              This run can change things outside your project. It would call:
+              <strong>Run live?</strong> This run can change things outside your project. It would
+              call:
             </p>
             <ul className="md3-run-tools" data-testid="run-confirm-tools">
               {sideEffecting.map((t) => (
@@ -192,26 +188,16 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
                 </li>
               ))}
             </ul>
-            <div className="md3-form-actions">
-              <button
-                type="button"
-                className="md3-button md3-button-filled"
-                data-testid="run-confirm-live"
-                onClick={() => void handleStart()}
-              >
-                Run live
-              </button>
-              <button
-                type="button"
-                className="md3-button md3-button-outlined"
-                onClick={() => setConfirmingLive(false)}
-              >
-                Cancel
-              </button>
-            </div>
+            <PanelFooter
+              save="Run live"
+              onSave={() => void handleStart()}
+              onCancel={() => setConfirmingLive(false)}
+            />
           </div>
-        </div>
-      )}
+        ) : (
+          <PanelFooter save="Run" disabled={isRunning || blockedReason !== undefined} />
+        )}
+      </form>
 
       {blockedReason && <PanelError messages={[blockedReason]} testId="run-blocked" />}
       {error && <PanelError messages={[error]} testId="run-error" />}

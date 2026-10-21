@@ -2208,6 +2208,12 @@ select.md3-text-field {
   font-weight: 700;
 }
 
-.md3-run-live {
-  margin: 0;
+.md3-run-live,
+.md3-run-confirm {
+  border-radius: var(--md-shape-corner-medium);
+  padding: 0.75rem 1rem;
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+  font-size: var(--md-type-body-medium-size);
+  line-height: var(--md-type-body-medium-line);
 }

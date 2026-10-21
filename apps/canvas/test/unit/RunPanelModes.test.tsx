@@ -76,7 +76,7 @@ describe("RunPanel modes", () => {
     expect(screen.queryByTestId("run-live-banner")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => expect(startRun).toHaveBeenCalledWith("", "replay"));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() =>
       expect(screen.getByTestId("run-mode").textContent).toContain("Replay (recorded fixtures)"),
     );
@@ -103,17 +103,17 @@ describe("RunPanel modes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
-    const dialog = screen.getByRole("dialog", { name: "Run live?" });
+    const dialog = screen.getByRole("alertdialog", { name: "Run live?" });
     expect(dialog.textContent).toContain("post_alert");
     expect(dialog.textContent).not.toContain("quote");
     expect(startRun).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(startRun).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    fireEvent.click(screen.getByTestId("run-confirm-live"));
+    fireEvent.click(screen.getByRole("button", { name: "Run live" }));
     await waitFor(() => expect(startRun).toHaveBeenCalledWith("", "live"));
     await waitFor(() => expect(screen.getByTestId("run-mode").textContent).toContain("LIVE"));
   });
@@ -133,7 +133,7 @@ describe("RunPanel modes", () => {
     expect(screen.getByTestId("run-live-banner").textContent).toContain("no recorded fixtures");
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => expect(startRun).toHaveBeenCalledWith("", "live"));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("shows no switch and sends no mode when the client cannot describe runs (hosted)", async () => {

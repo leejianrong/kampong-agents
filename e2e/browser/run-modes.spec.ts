@@ -85,7 +85,7 @@ for (const size of [
       await expect(banner).toContainText("changes things");
 
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Run live?" });
+      const dialog = page.getByRole("alertdialog", { name: "Run live?" });
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("kampong/slack");
       // Cancel: nothing started, so no run result is shown.
