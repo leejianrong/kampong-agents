@@ -79,6 +79,7 @@ The **Run bar** under the top bar has **Run**, a **Replay / Live** switch and a 
 the default when fixtures exist); Live calls the real services, shows a LIVE banner with the tools it would call
 and asks first when one of them changes something outside the project.
 A spec's `vars` appear in Test Run prefilled with their defaults; change one for a single run (like `kampong run --var`) without editing the spec.
+Beside an expression or prompt field, **Insert data** lists the steps before it with the values their last run gave (a Replay run fills it in) and inserts the reference at the cursor.
 A "not set" error in Test Run or Checks has a "Set it here" button that opens Secrets on that name.
 A run that finishes with failed loop items shows an amber "completed with N errors" in the Run bar and a table of them in Test Run.
 During a run each node shows Running, Passed, Failed or Skipped (an icon and a word, live, inside loops and branch arms
