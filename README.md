@@ -84,6 +84,7 @@ A "not set" error in Test Run or Checks has a "Set it here" button that opens Se
 A run that finishes with failed loop items shows an amber "completed with N errors" in the Run bar and a table of them in Test Run.
 During a run each node shows Running, Passed, Failed or Skipped (an icon and a word, live, inside loops and branch arms
 too); a failed node's "See message" jumps to its message in Test Run, and the next run clears the marks.
+A new workflow gets three first-run tips (pick a template, press Run, click a step), kept in your browser only; **Skip tour** turns them off and **Show tour** in the menu replays them.
 Each save shows a "Saved" message, flashes the changed node and (if the YAML drawer is open) scrolls to and marks the changed lines.
 Panels (Vars, Trigger, Edit Steps, Secrets) keep what you typed when you open another panel; `Esc` closes a panel, asking first if input would be lost.
 Edit the YAML in your editor while `kampong dev` is open and the canvas reloads. The full command

@@ -44,6 +44,7 @@
   --md-sys-color-on-surface: #171d1a;
   --md-sys-color-inverse-surface: #2c322f;
   --md-sys-color-inverse-on-surface: #edf2ee;
+  --md-sys-color-inverse-primary: #8fd6c4;
   --md-sys-color-on-surface-variant: #3f4945;
   --md-sys-color-outline: #6f7975;
   --md-sys-color-outline-variant: #bfc9c4;
@@ -2620,4 +2621,75 @@ select.md3-text-field {
 .md3-insertdata__value {
   color: var(--md-sys-color-on-surface-variant);
   overflow-wrap: anywhere;
+}
+
+/* ---- First-run coach marks (KAM-220): a small card near what it points at, on the inverse surface so it reads
+   over the canvas in light and dark. Fixed so it follows the window, not the canvas pan. ---- */
+
+.md3-coach {
+  position: fixed;
+  z-index: 30;
+  box-sizing: border-box;
+  width: min(20rem, calc(100vw - 1.5rem));
+  padding: 0.75rem 1rem;
+  border-radius: var(--md-shape-corner-large);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-elevation-level3);
+}
+
+.md3-coach .md3-coach__text,
+.md3-coach .md3-coach__count {
+  color: inherit;
+}
+
+.md3-coach__text {
+  margin: 0 0 0.5rem;
+}
+
+.md3-coach__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.5rem;
+}
+
+.md3-coach__count {
+  margin-right: auto;
+  opacity: 0.8;
+}
+
+.md3-coach .md3-button {
+  height: 2.25rem;
+  padding-block: 0;
+  color: var(--md-sys-color-inverse-primary);
+}
+
+.md3-coach .md3-button-tonal {
+  background: var(--md-sys-color-inverse-primary);
+  color: var(--md-sys-color-inverse-surface);
+}
+
+.md3-coach .md3-button:focus-visible {
+  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline-offset: 2px;
+}
+
+/* The pointer: a small square turned to a diamond, on the card's top edge under the Run button. */
+.md3-coach--below::before {
+  content: "";
+  position: absolute;
+  top: -0.3125rem;
+  left: calc(var(--coach-pointer, 1rem) - 0.3125rem);
+  width: 0.625rem;
+  height: 0.625rem;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+@media (forced-colors: active) {
+  .md3-coach {
+    border: 1px solid CanvasText;
+  }
 }

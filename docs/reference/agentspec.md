@@ -508,7 +508,8 @@ step and the tools it calls get one. A line's accessible name uses the steps' na
 The canvas has a **top bar** with the workflow's name (and **← Specs** in hosted mode), whether it is **Saved**
 (or "Saves paused" while the YAML has an error), **Test Run** (shows the details of the run), the `</>` button for the YAML drawer
 and a **⋮** menu. The menu holds what is not used on every edit: **Add step**, **Add tool**, **Edit steps** (the
-list for renaming, reordering and deleting steps and tools), **Import YAML** and **Export YAML**. A step is also
+list for renaming, reordering and deleting steps and tools), **Search commands**, **Show tour**, **Import YAML** and
+**Export YAML**. A step is also
 added from the palette on the left or the + on a line, and **+ Tool** under the palette adds a tool. The **status
 bar** along the bottom holds the workflow's settings, each opening its panel: **Vars**, **Secrets** (with the
 number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
@@ -521,6 +522,17 @@ can be looked at again with its per-step marks and data on the canvas. **Run** i
 workflow**). A run does not need Test Run to be open: it starts, streams and is judged from the bar, and the result,
 the typed input and var values stay when you open Secrets or any other panel. Run is disabled, with the reason as its
 tooltip, while the workflow has errors. Hosted mode shows only what it can do: no Replay / Live switch and no Set it here.
+
+#### First-run tips
+
+The first time the canvas opens in a browser on a new, blank workflow, three one-line tips show one at a time:
+**pick a template** (where the server offers them), **press Run** (with Replay, "no keys are needed"), and **click a
+step to see the data it handled**. Each tip goes away when you do what it says, so the tour follows you and never
+blocks anything. **Skip tour** (or `Esc` while focus is in the tip) turns it off for good, and **Got it** closes the last
+one. A workflow that was already there when the canvas first opened gets no tour. **Show tour** in the **⋮** menu (and in
+the command palette) plays it again, from the first tip that applies. The tips are announced politely to a screen
+reader and reachable with Tab. Where they are in the tour is one small record in this browser's local storage
+(`kampong:coach-marks`); nothing is sent anywhere, and clearing site data starts it over.
 
 #### Test Run: Replay or Live
 
@@ -594,7 +606,7 @@ accessible name), and a workflow of more than 15 nodes gets a minimap in the cor
 
 `Ctrl+K` / `Cmd+K` opens the command palette from anywhere on the canvas (also from the run bar's menu, **Search
 commands**). It is a dialog with a search box and a list; type to filter, `Up` and `Down` move, `Enter` runs, `Esc`
-closes it, and focus goes back to where it was. It lists the canvas's own actions (Run the workflow, Open Test Run, Open code (YAML
+closes it, and focus goes back to where it was. It lists the canvas's own actions (Run the workflow, Open Test Run, Show tour, Open code (YAML
 drawer), Open Secrets / Vars / Checks / Guardrails / Trigger, Add step, Add tool, Edit steps, Import YAML, Export
 YAML) and a **Go to** entry for the trigger, guardrails and every step and tool, which selects the node and opens
 its inspector as a click does. If the panel has typed input that is not saved, the same "Discard changes?" prompt
