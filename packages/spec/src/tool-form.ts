@@ -52,7 +52,63 @@ export type ToolFormInput = HttpToolFormInput | SlackToolFormInput | GmailToolFo
 export interface ToolFormResult {
   success: boolean;
   tool?: Tool;
+  /** Every problem as one sentence that names its field, in field order, each once. */
   errors?: string[];
+  /** The same problems by form field (`name`, `url`, `token`...), so a form can show each beside its field. */
+  fieldErrors?: Record<string, string>;
+}
+
+// KAM-193: how each form field is called in a message.
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  method: "Method",
+  url: "URL",
+  token: "Token",
+  channel: "Channel",
+  text: "Text",
+  to: "To",
+  subject: "Subject",
+  body: "Body",
+};
+
+const TOOL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Why a tool name cannot be used, in a sentence that starts with "Name", or null. A tool is called by this name. */
+export function toolNameProblem(name: string): string | null {
+  if (name.trim() === "") return "Name is required.";
+  if (!TOOL_NAME.test(name)) {
+    return (
+      "Name can only use letters, digits and underscores, and must start with a letter or an underscore " +
+      "(for example fetch_price)."
+    );
+  }
+  return null;
+}
+
+// A `{symbol}`, `{{ step.field }}` or `${ENV}` in a URL is filled in at run time, so for the shape check each stands
+// in as a plain word.
+const PLACEHOLDER = /\$\{[^}]*\}|\{\{[^}]*\}\}|\{[^}]*\}/g;
+
+/** Why a tool's URL cannot be used, in a sentence that starts with "URL", or null. */
+export function toolUrlProblem(url: string): string | null {
+  const text = url.trim();
+  if (text === "") return "URL is required.";
+  const shape = text.replace(PLACEHOLDER, "x");
+  // A URL that opens with a placeholder (`{{ vars.base }}/v1`, `${BASE_URL}/v1`) has its scheme and host filled in
+  // later, so only what can be judged now is judged.
+  const opensWithPlaceholder = /^(\$\{|\{)/.test(text);
+  if (!opensWithPlaceholder && !/^https?:\/\//i.test(shape)) {
+    return "URL must start with http:// or https:// (for example https://api.example.com/items).";
+  }
+  if (/\s/.test(shape)) return "URL cannot contain spaces.";
+  if (!opensWithPlaceholder) {
+    try {
+      if (new URL(shape).hostname === "") throw new Error("no host");
+    } catch {
+      return "URL is not a web address: it needs a host after http:// or https://.";
+    }
+  }
+  return null;
 }
 
 export function buildToolFromForm(input: ToolFormInput): ToolFormResult {
@@ -93,10 +149,30 @@ export function buildToolFromForm(input: ToolFormInput): ToolFormResult {
     };
   }
 
+  // The checks the schema does not make (a name that can be called, a URL that is one) come first, so an empty
+  // field is named once; then whatever else the schema says is attached to its field.
+  const fieldErrors: Record<string, string> = {};
+  const nameProblem = toolNameProblem(input.name);
+  if (nameProblem) fieldErrors["name"] = nameProblem;
+  if ((input.kind ?? "http_request") === "http_request") {
+    const urlProblem = toolUrlProblem((input as HttpToolFormInput).url);
+    if (urlProblem) fieldErrors["url"] = urlProblem;
+  }
   const result = toolSchema.safeParse(candidate);
   if (!result.success) {
-    return { success: false, errors: result.error.issues.map((issue) => issue.message) };
+    for (const issue of result.error.issues) {
+      const field = typeof issue.path[0] === "string" ? issue.path[0] : "form";
+      if (field in fieldErrors) continue;
+      const label = FIELD_LABELS[field];
+      // An empty text field is "required" whichever rule the schema tripped first (a min length, a pattern).
+      const empty = (candidate as Record<string, unknown>)[field] === "";
+      fieldErrors[field] = empty && label ? `${label} is required.` : issue.message;
+    }
   }
+  if (Object.keys(fieldErrors).length > 0) {
+    return { success: false, errors: [...new Set(Object.values(fieldErrors))], fieldErrors };
+  }
+  if (!result.success) return { success: false, errors: ["Invalid tool definition"] };
   return { success: true, tool: result.data };
 }
 

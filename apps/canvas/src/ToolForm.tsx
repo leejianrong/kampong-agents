@@ -1,9 +1,11 @@
 import { PanelError, PanelFooter } from "./Panel";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   buildToolFromForm,
   httpToolToDraft,
   parseKeyValueLines,
+  toolNameProblem,
+  toolUrlProblem,
   type ComponentCatalogEntry,
   type OutputReferenceOption,
   type RequestBody,
@@ -21,6 +23,18 @@ import type { PinResult } from "./ComponentTrust.js";
 // `http_request` tool plus the Slack/Gmail connectors, whose credential is an
 // ${ENV} token (never a literal). The "Tool kind" control picks which shape
 // buildToolFromForm builds.
+
+/** How a field is called in the summary line. */
+const FIELD_NAMES: Record<string, string> = {
+  name: "Name",
+  url: "URL",
+  token: "Token",
+  channel: "Channel",
+  text: "Text",
+  to: "To",
+  subject: "Subject",
+  body: "Body",
+};
 
 type ToolKind = "http_request" | "slack_post_message" | "gmail_send" | "component";
 
@@ -84,6 +98,38 @@ export function ToolForm({
   const [subject, setSubject] = useState(gmail?.subject ?? "");
   const [body, setBody] = useState(gmail?.body ?? "");
   const [errors, setErrors] = useState<string[]>([]);
+  // KAM-193: problems by field, shown beside the field. A field's problem goes when it is edited, and a name or URL
+  // that cannot work is called out as it is typed.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [reveal, setReveal] = useState<{ tab: "setup"; nonce: number }>({ tab: "setup", nonce: 0 });
+  const id = useId();
+  const liveProblem = (field: string): string | null =>
+    field === "name" && !editing && name !== ""
+      ? toolNameProblem(name)
+      : field === "url" && kind === "http_request" && url !== ""
+        ? toolUrlProblem(url)
+        : null;
+  const problemFor = (field: string) => fieldErrors[field] ?? liveProblem(field);
+  const fieldProps = (field: string) =>
+    problemFor(field) ? { "aria-invalid": true, "aria-describedby": `${id}-${field}-error` } : {};
+  const fieldError = (field: string) => {
+    const problem = problemFor(field);
+    return problem ? (
+      <span
+        id={`${id}-${field}-error`}
+        role="alert"
+        className="md3-body-small md3-field__error"
+        data-testid={`tool-error-${field}`}
+      >
+        Problem: {problem}
+      </span>
+    ) : null;
+  };
+  const edit =
+    (field: string, set: (value: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      set(e.target.value);
+      setFieldErrors(({ [field]: _gone, ...rest }) => rest);
+    };
 
   function buildBody(): { value?: RequestBody; error?: string } {
     if (bodyType === "none") return {};
@@ -204,9 +250,21 @@ export function ToolForm({
       });
     }
     if (!result.success || !result.tool) {
-      setErrors(result.errors ?? ["Invalid tool definition"]);
+      const byField = result.fieldErrors ?? {};
+      setFieldErrors(byField);
+      // A problem with a field on the form shows beside it (and the Setup tab opens so it is seen); one with no
+      // field of its own (a header, the body) is listed in the error box.
+      const beside = Object.keys(byField).filter((f) => f in FIELD_NAMES);
+      if (beside.length > 0) setReveal((r) => ({ tab: "setup", nonce: r.nonce + 1 }));
+      const other = Object.entries(byField)
+        .filter(([f]) => !(f in FIELD_NAMES))
+        .map(([, message]) => message);
+      setErrors(
+        Object.keys(byField).length > 0 ? other : (result.errors ?? ["Invalid tool definition"]),
+      );
       return;
     }
+    setFieldErrors({});
     onSubmit(result.tool);
   }
 
@@ -217,19 +275,25 @@ export function ToolForm({
       className="md3-form md3-form--fill"
     >
       <InspectorTabs
+        show={reveal}
         setup={
           <>
             {kindSwitcher}
 
-            <label className="md3-field">
-              <span className="md3-field__label md3-label-large">Name</span>
+            <div className="md3-field">
+              <label className="md3-field__label md3-label-large" htmlFor={`${id}-name`}>
+                Name
+              </label>
               <input
+                id={`${id}-name`}
                 className="md3-text-field"
                 value={name}
                 disabled={editing}
-                onChange={(e) => setName(e.target.value)}
+                {...fieldProps("name")}
+                onChange={edit("name", setName)}
               />
-            </label>
+              {fieldError("name")}
+            </div>
 
             {kind === "http_request" && (
               <>
@@ -247,14 +311,19 @@ export function ToolForm({
                     <option>DELETE</option>
                   </select>
                 </label>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">URL</span>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-url`}>
+                    URL
+                  </label>
                   <input
+                    id={`${id}-url`}
                     className="md3-text-field"
                     value={url}
-                    onChange={(e) => setUrl(e.target.value)}
+                    {...fieldProps("url")}
+                    onChange={edit("url", setUrl)}
                   />
-                </label>
+                  {fieldError("url")}
+                </div>
                 <label className="md3-field">
                   <span className="md3-field__label md3-label-large">Query parameters</span>
                   <textarea
@@ -269,67 +338,97 @@ export function ToolForm({
             )}
 
             {(kind === "slack_post_message" || kind === "gmail_send") && (
-              <label className="md3-field">
-                <span className="md3-field__label md3-label-large">Token (env reference)</span>
+              <div className="md3-field">
+                <label className="md3-field__label md3-label-large" htmlFor={`${id}-token`}>
+                  Token (env reference)
+                </label>
                 <input
+                  id={`${id}-token`}
                   className="md3-text-field"
                   placeholder="${SLACK_BOT_TOKEN}"
                   value={token}
-                  onChange={(e) => setToken(e.target.value)}
+                  {...fieldProps("token")}
+                  onChange={edit("token", setToken)}
                 />
-              </label>
+                {fieldError("token")}
+              </div>
             )}
 
             {kind === "slack_post_message" && (
               <>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">Channel</span>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-channel`}>
+                    Channel
+                  </label>
                   <input
+                    id={`${id}-channel`}
                     className="md3-text-field"
                     placeholder="#support"
                     value={channel}
-                    onChange={(e) => setChannel(e.target.value)}
+                    {...fieldProps("channel")}
+                    onChange={edit("channel", setChannel)}
                   />
-                </label>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">Text</span>
+                  {fieldError("channel")}
+                </div>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-text`}>
+                    Text
+                  </label>
                   <input
+                    id={`${id}-text`}
                     className="md3-text-field"
                     placeholder="{{ draft.text }}"
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    {...fieldProps("text")}
+                    onChange={edit("text", setText)}
                   />
-                </label>
+                  {fieldError("text")}
+                </div>
               </>
             )}
 
             {kind === "gmail_send" && (
               <>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">To</span>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-to`}>
+                    To
+                  </label>
                   <input
+                    id={`${id}-to`}
                     className="md3-text-field"
                     value={to}
-                    onChange={(e) => setTo(e.target.value)}
+                    {...fieldProps("to")}
+                    onChange={edit("to", setTo)}
                   />
-                </label>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">Subject</span>
+                  {fieldError("to")}
+                </div>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-subject`}>
+                    Subject
+                  </label>
                   <input
+                    id={`${id}-subject`}
                     className="md3-text-field"
                     value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
+                    {...fieldProps("subject")}
+                    onChange={edit("subject", setSubject)}
                   />
-                </label>
-                <label className="md3-field">
-                  <span className="md3-field__label md3-label-large">Body</span>
+                  {fieldError("subject")}
+                </div>
+                <div className="md3-field">
+                  <label className="md3-field__label md3-label-large" htmlFor={`${id}-body`}>
+                    Body
+                  </label>
                   <input
+                    id={`${id}-body`}
                     className="md3-text-field"
                     placeholder="{{ draft.text }}"
                     value={body}
-                    onChange={(e) => setBody(e.target.value)}
+                    {...fieldProps("body")}
+                    onChange={edit("body", setBody)}
                   />
-                </label>
+                  {fieldError("body")}
+                </div>
               </>
             )}
           </>
