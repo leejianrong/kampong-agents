@@ -995,11 +995,15 @@ export function App({
     }),
     [runSession.viewed?.input, runSession.replayNow],
   );
+  const saveErrorState = useMemo(
+    () => ({ message: saveError, clear: () => setSaveError(null) }),
+    [saveError],
+  );
   const upgrade = providedApi === undefined ? { source, apply: handlePatchSteps } : null;
 
   return (
     <UpgradeContext.Provider value={upgrade}>
-      <SaveErrorContext.Provider value={saveError}>
+      <SaveErrorContext.Provider value={saveErrorState}>
         <RunTrackerProvider value={runTracker}>
           <SampleDataContext.Provider value={sampleData}>
             <div className="md3-app">

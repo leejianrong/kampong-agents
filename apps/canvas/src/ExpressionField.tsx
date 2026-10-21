@@ -1,4 +1,5 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { FieldProblemsContext } from "./fieldProblems.js";
 import { useAutoHeight } from "./useAutoHeight.js";
 import { InsertData } from "./InsertData.js";
 import {
@@ -81,6 +82,7 @@ export function ExpressionField({
     }
   });
 
+  const registry = useContext(FieldProblemsContext);
   const { pieces, malformed } = piecesOf(value, lines);
   const problems: string[] = [];
   if (scope) {
@@ -93,6 +95,13 @@ export function ExpressionField({
       }
     }
   }
+
+  // The form this field is in asks before it saves (KAM-194): a field with a problem blocks the save.
+  const hasProblem = problems.length > 0;
+  useEffect(() => {
+    registry?.report(id, hasProblem ? input.current : null);
+    return () => registry?.report(id, null);
+  }, [registry, id, hasProblem]);
 
   // Completions come from the expression the cursor is in, so a `name:` before the colon gets none.
   let from = cursor;

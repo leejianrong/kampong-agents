@@ -531,7 +531,10 @@ overlaps at 480 pixels wide or more.
 If a save fails, the panel that was saving says so in its own words and keeps what you typed: "Could not save:
 agent.yaml is not writable (permission denied)", "the disk is full" or "agent.yaml is on a read-only file system".
 With no panel open, a banner says it, with **Dismiss**. A file that cannot be read is reported as a read failure
-instead ("Spec file could not be read").
+instead ("Spec file could not be read"). A failure shows once: a field that is already saying what is wrong (an
+expression that reads a name it cannot) stops the save in the form, with the field focused, instead of sending it to
+the server to be refused in the same words, and a message goes as soon as you change the input. **Retry** appears only
+where trying again can help, when the spec could not be loaded.
 
 Under the top bar sits the **Run bar**, always visible: the **Replay / Live** switch (local mode), **Run**, a chip with
 how the run on show went and how long it took, and **Runs**, a drawer of this session's runs (up to 20, newest first,

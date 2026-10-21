@@ -58,7 +58,9 @@ describe("StepsPanel: editing a branch", () => {
       target: { value: "a +" },
     });
     click("Save step");
-    expect(screen.getByRole("alert").textContent).toContain("if:");
+    // The problem is shown once, in the field, and the save went nowhere (KAM-194).
+    expect(screen.getAllByText(/Problem:/)).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(onPatch).not.toHaveBeenCalled();
   });
 

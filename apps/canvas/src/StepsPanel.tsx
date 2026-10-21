@@ -1,3 +1,4 @@
+import { FieldProblemsContext, useFieldProblems } from "./fieldProblems.js";
 import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useId, useRef, useState } from "react";
 import { VersionGate } from "./VersionGate.js";
@@ -222,6 +223,9 @@ export function StepsPanel({
     target && (spec.version === "1.1" || isSimple(target)) ? editingFor(target) : null,
   );
   const [errors, setErrors] = useState<string[]>([]);
+  // What is on screen no longer matches what failed once the person changes it (KAM-194).
+  const fieldProblems = useFieldProblems();
+  const clearErrors = () => setErrors((current) => (current.length > 0 ? [] : current));
   const [busy, setBusy] = useState(false);
   // Opening a form scrolls the panel back to the top: the Edit button sits in a list below the form, so a
   // scrolled panel would leave the form (and its sticky Save row) above the fold.
@@ -270,6 +274,12 @@ export function StepsPanel({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!editing || !current) return;
+    // A field that is already saying what is wrong is not sent to the server to be told again (KAM-194).
+    const invalid = fieldProblems.firstInvalid();
+    if (invalid) {
+      invalid.focus();
+      return;
+    }
     const result =
       editing.kind === "action" && isAction(current)
         ? buildActionStepEdit(editing.input, current, spec.version, scopeFor(spec, current))
@@ -299,498 +309,509 @@ export function StepsPanel({
     setBusy(true);
     const saved = await onPatch(result.patch);
     setBusy(false);
+    // A failed save is explained by the panel shell, in the server's words and beside the input that was kept (KAM-194).
     if (saved) close();
-    else setErrors(["Could not save the change. Your input is kept; try again."]);
   }
 
   return (
-    <section ref={top} className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
-      {only === undefined && (
-        <p className="md3-body-small md3-field__hint">
-          Edit a step in place: an action step's query, instructions, model, temperature and output
-          schema, a transform, validate or dedupe step's expressions, a tool step's tool, a stop
-          step's reason and status, or an approval step's message.
-        </p>
-      )}
-      {only !== undefined && target && !editing && modern && (
-        <p className="md3-body-small md3-field__hint" data-testid="step-not-editable">
-          {NOT_EDITABLE[target.kind] ?? "This step cannot be edited in a form here."}
-        </p>
-      )}
-      {!modern && <VersionGate what="Per-step settings and an output schema" />}
+    <FieldProblemsContext.Provider value={fieldProblems}>
+      <section ref={top} className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
+        {only === undefined && (
+          <p className="md3-body-small md3-field__hint">
+            Edit a step in place: an action step's query, instructions, model, temperature and
+            output schema, a transform, validate or dedupe step's expressions, a tool step's tool, a
+            stop step's reason and status, or an approval step's message.
+          </p>
+        )}
+        {only !== undefined && target && !editing && modern && (
+          <p className="md3-body-small md3-field__hint" data-testid="step-not-editable">
+            {NOT_EDITABLE[target.kind] ?? "This step cannot be edited in a form here."}
+          </p>
+        )}
+        {!modern && <VersionGate what="Per-step settings and an output schema" />}
 
-      {editing && editing.kind === "action" && current && isAction(current) && (
-        <form
-          onSubmit={(e) => void submit(e)}
-          aria-label={`Edit ${current.name}`}
-          className="md3-form md3-form--fill"
-        >
-          <span className="md3-title-small">{current.name}</span>
-          <InspectorTabs
-            setup={
-              <>
-                <PromptField
-                  label="What should the model do?"
-                  value={editing.input.query}
-                  spellCheck={false}
-                  placeholder="What this step asks the model; {{ step.field }} inserts a value"
-                  scope={scopeFor(spec, current)}
-                  onChange={(query) => patch({ query })}
-                />
-                <PromptField
-                  label="How it should behave (optional)"
-                  value={editing.input.instructions}
-                  placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
-                  onChange={(instructions) => patch({ instructions })}
-                />
-                <label className="md3-field">
-                  <span className="md3-body-small md3-field__label">Model</span>
-                  <input
-                    className="md3-text-field"
-                    value={editing.input.model}
-                    placeholder="A model of the agent's provider (blank keeps the agent's)"
-                    autoComplete="off"
+        {editing && editing.kind === "action" && current && isAction(current) && (
+          <form
+            onSubmit={(e) => void submit(e)}
+            onChange={clearErrors}
+            aria-label={`Edit ${current.name}`}
+            className="md3-form md3-form--fill"
+          >
+            <span className="md3-title-small">{current.name}</span>
+            <InspectorTabs
+              setup={
+                <>
+                  <PromptField
+                    label="What should the model do?"
+                    value={editing.input.query}
                     spellCheck={false}
-                    onChange={(e) => patch({ model: e.target.value })}
+                    placeholder="What this step asks the model; {{ step.field }} inserts a value"
+                    scope={scopeFor(spec, current)}
+                    onChange={(query) => patch({ query })}
                   />
-                </label>
-                <fieldset className="md3-schema__group">
-                  <legend className="md3-body-small">Shape of the answer (output schema)</legend>
-                  {editing.input.schema ? (
-                    <>
-                      <SchemaEditor
-                        root
-                        path="output_schema"
-                        draft={editing.input.schema}
-                        onChange={(schema) => patch({ schema })}
-                      />
+                  <PromptField
+                    label="How it should behave (optional)"
+                    value={editing.input.instructions}
+                    placeholder="Replaces the agent's role and goal for this step (blank keeps them)"
+                    onChange={(instructions) => patch({ instructions })}
+                  />
+                  <label className="md3-field">
+                    <span className="md3-body-small md3-field__label">Model</span>
+                    <input
+                      className="md3-text-field"
+                      value={editing.input.model}
+                      placeholder="A model of the agent's provider (blank keeps the agent's)"
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) => patch({ model: e.target.value })}
+                    />
+                  </label>
+                  <fieldset className="md3-schema__group">
+                    <legend className="md3-body-small">Shape of the answer (output schema)</legend>
+                    {editing.input.schema ? (
+                      <>
+                        <SchemaEditor
+                          root
+                          path="output_schema"
+                          draft={editing.input.schema}
+                          onChange={(schema) => patch({ schema })}
+                        />
+                        <button
+                          type="button"
+                          className="md3-button md3-button-text"
+                          onClick={() => patch({ schema: undefined })}
+                        >
+                          Remove output schema
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        className="md3-button md3-button-text"
-                        onClick={() => patch({ schema: undefined })}
+                        className="md3-button md3-button-tonal"
+                        onClick={() => patch({ schema: emptySchemaDraft("object") })}
                       >
-                        Remove output schema
+                        Add output schema
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="md3-button md3-button-tonal"
-                      onClick={() => patch({ schema: emptySchemaDraft("object") })}
-                    >
-                      Add output schema
-                    </button>
-                  )}
-                </fieldset>
-              </>
-            }
-            settings={
-              <label className="md3-field">
-                <span className="md3-body-small md3-field__label">Creativity (temperature)</span>
-                <input
-                  className="md3-text-field"
-                  value={editing.input.temperature}
-                  placeholder="0 to 2 (blank keeps the agent's)"
-                  autoComplete="off"
-                  onChange={(e) => patch({ temperature: e.target.value })}
-                />
-              </label>
-            }
-          />
-          <PanelError messages={errors} />
-          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
-        </form>
-      )}
-
-      {editing && editing.kind === "data" && current && isData(current) && (
-        <form
-          onSubmit={(e) => void submit(e)}
-          aria-label={`Edit ${current.name}`}
-          className="md3-form md3-form--fill"
-        >
-          <span className="md3-title-small">{current.name}</span>
-          <InspectorTabs
-            setup={
-              <>
-                {editing.input.kind === "transform" && (
-                  <fieldset className="md3-fieldset">
-                    <legend className="md3-label-large">Values to work out</legend>
-                    {editing.input.set.map((row, i) => (
-                      <div key={i} className="md3-setrow">
-                        <div className="md3-setrow__head">
-                          <label className="md3-field">
-                            <span className="md3-body-small md3-field__label">Name</span>
-                            <input
-                              className="md3-text-field"
-                              aria-label={`Value ${i + 1} name`}
-                              value={row.name}
-                              spellCheck={false}
-                              onChange={(e) => patchRow(i, { name: e.target.value })}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="md3-button md3-button-text"
-                            aria-label={`Remove value ${i + 1}`}
-                            onClick={() => removeRow(i)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        <ExpressionField
-                          label="How to work it out"
-                          accessibleName={`Value ${i + 1} expression`}
-                          value={row.expression}
-                          scope={scopeFor(spec, current)}
-                          multiline
-                          onChange={(expression) => patchRow(i, { expression })}
-                        />
-                      </div>
-                    ))}
-                    <button type="button" className="md3-button md3-button-tonal" onClick={addRow}>
-                      Add value
-                    </button>
+                    )}
                   </fieldset>
-                )}
-                {editing.input.kind === "validate" && (
-                  <>
-                    <ExpressionField
-                      label="Check that this is true"
-                      value={editing.input.assert}
-                      scope={scopeFor(spec, current)}
-                      onChange={(assert) => patchData({ assert })}
-                    />
-                    <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">If the check fails</span>
-                      <select
-                        className="md3-text-field"
-                        value={editing.input.onFail}
-                        onChange={(e) => patchData({ onFail: e.target.value })}
-                      >
-                        <option value="fail">Stop the run (fail)</option>
-                        <option value="skip">Skip this item (skip)</option>
-                      </select>
-                    </label>
-                    <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">
-                        Message when it fails (optional)
-                      </span>
-                      <input
-                        className="md3-text-field"
-                        value={editing.input.message}
-                        onChange={(e) => patchData({ message: e.target.value })}
-                      />
-                    </label>
-                  </>
-                )}
-                {editing.input.kind === "dedupe" && (
-                  <>
-                    <ExpressionField
-                      label="What makes an item the same (key)"
-                      value={editing.input.key}
-                      scope={scopeFor(spec, current)}
-                      onChange={(key) => patchData({ key })}
-                    />
-                    <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">
-                        Remember it for (e.g. 24h)
-                      </span>
-                      <input
-                        className="md3-text-field"
-                        value={editing.input.ttl}
-                        onChange={(e) => patchData({ ttl: e.target.value })}
-                      />
-                    </label>
-                  </>
-                )}
-              </>
-            }
-          />
-          <PanelError messages={errors} />
-          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
-        </form>
-      )}
-
-      {editing && editing.kind === "branch" && current && isBranch(current) && (
-        <form
-          onSubmit={(e) => void submit(e)}
-          aria-label={`Edit ${current.name}`}
-          className="md3-form md3-form--fill"
-        >
-          <span className="md3-title-small">{current.name}</span>
-          <InspectorTabs
-            setup={
-              <>
-                <ExpressionField
-                  label={
-                    editing.input.mode === "if"
-                      ? "Go this way when this is true"
-                      : "Choose by this value"
-                  }
-                  value={editing.input.expression}
-                  scope={scopeFor(spec, current)}
-                  onChange={(expression) =>
-                    setEditing((e) =>
-                      e && e.kind === "branch" ? { ...e, input: { ...e.input, expression } } : e,
-                    )
-                  }
-                />
-                <p className="md3-body-small md3-field__hint">
-                  The arms are the steps below it in this list: edit, delete or add to them there.
-                </p>
-              </>
-            }
-          />
-          <PanelError messages={errors} />
-          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
-        </form>
-      )}
-
-      {editing && editing.kind === "foreach" && current && isForEach(current) && (
-        <form
-          onSubmit={(e) => void submit(e)}
-          aria-label={`Edit ${current.name}`}
-          className="md3-form md3-form--fill"
-        >
-          <span className="md3-title-small">{current.name}</span>
-          <InspectorTabs
-            setup={
-              <>
-                <ExpressionField
-                  label="List to go through"
-                  value={editing.input.items}
-                  scope={scopeFor(spec, current)}
-                  onChange={(items) => patchLoop({ items })}
-                />
+                </>
+              }
+              settings={
                 <label className="md3-field">
-                  <span className="md3-body-small md3-field__label">Name for each item</span>
+                  <span className="md3-body-small md3-field__label">Creativity (temperature)</span>
                   <input
                     className="md3-text-field"
-                    value={editing.input.as}
-                    spellCheck={false}
-                    onChange={(e) => patchLoop({ as: e.target.value })}
-                  />
-                </label>
-              </>
-            }
-            settings={
-              <>
-                <label className="md3-field">
-                  <span className="md3-body-small md3-field__label">How many at once</span>
-                  <input
-                    className="md3-text-field"
-                    value={editing.input.concurrency}
-                    placeholder="1 to 32 (blank runs one at a time)"
+                    value={editing.input.temperature}
+                    placeholder="0 to 2 (blank keeps the agent's)"
                     autoComplete="off"
-                    onChange={(e) => patchLoop({ concurrency: e.target.value })}
+                    onChange={(e) => patch({ temperature: e.target.value })}
                   />
                 </label>
-                {editing.input.onError === "keep" ? (
-                  <p className="md3-body-small md3-field__hint">
-                    This loop sends a failed item to another step (on_error goto). That is edited in
-                    the YAML.
-                  </p>
-                ) : (
-                  <>
-                    <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">If an item fails</span>
-                      <select
-                        className="md3-text-field"
-                        value={editing.input.onError}
-                        onChange={(e) =>
-                          patchLoop({ onError: e.target.value as ForEachEditInput["onError"] })
-                        }
+              }
+            />
+            <PanelError messages={errors} />
+            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+          </form>
+        )}
+
+        {editing && editing.kind === "data" && current && isData(current) && (
+          <form
+            onSubmit={(e) => void submit(e)}
+            onChange={clearErrors}
+            aria-label={`Edit ${current.name}`}
+            className="md3-form md3-form--fill"
+          >
+            <span className="md3-title-small">{current.name}</span>
+            <InspectorTabs
+              setup={
+                <>
+                  {editing.input.kind === "transform" && (
+                    <fieldset className="md3-fieldset">
+                      <legend className="md3-label-large">Values to work out</legend>
+                      {editing.input.set.map((row, i) => (
+                        <div key={i} className="md3-setrow">
+                          <div className="md3-setrow__head">
+                            <label className="md3-field">
+                              <span className="md3-body-small md3-field__label">Name</span>
+                              <input
+                                className="md3-text-field"
+                                aria-label={`Value ${i + 1} name`}
+                                value={row.name}
+                                spellCheck={false}
+                                onChange={(e) => patchRow(i, { name: e.target.value })}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="md3-button md3-button-text"
+                              aria-label={`Remove value ${i + 1}`}
+                              onClick={() => removeRow(i)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <ExpressionField
+                            label="How to work it out"
+                            accessibleName={`Value ${i + 1} expression`}
+                            value={row.expression}
+                            scope={scopeFor(spec, current)}
+                            multiline
+                            onChange={(expression) => patchRow(i, { expression })}
+                          />
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="md3-button md3-button-tonal"
+                        onClick={addRow}
                       >
-                        <option value="">Default (stop the run)</option>
-                        <option value="fail">Stop the run (fail)</option>
-                        <option value="continue">Go on with the next item (continue)</option>
-                        <option value="retry">Try again (retry)</option>
-                      </select>
-                    </label>
-                    {editing.input.onError === "retry" && (
+                        Add value
+                      </button>
+                    </fieldset>
+                  )}
+                  {editing.input.kind === "validate" && (
+                    <>
+                      <ExpressionField
+                        label="Check that this is true"
+                        value={editing.input.assert}
+                        scope={scopeFor(spec, current)}
+                        onChange={(assert) => patchData({ assert })}
+                      />
                       <label className="md3-field">
-                        <span className="md3-body-small md3-field__label">Tries</span>
+                        <span className="md3-body-small md3-field__label">If the check fails</span>
+                        <select
+                          className="md3-text-field"
+                          value={editing.input.onFail}
+                          onChange={(e) => patchData({ onFail: e.target.value })}
+                        >
+                          <option value="fail">Stop the run (fail)</option>
+                          <option value="skip">Skip this item (skip)</option>
+                        </select>
+                      </label>
+                      <label className="md3-field">
+                        <span className="md3-body-small md3-field__label">
+                          Message when it fails (optional)
+                        </span>
                         <input
                           className="md3-text-field"
-                          value={editing.input.retries}
-                          autoComplete="off"
-                          onChange={(e) => patchLoop({ retries: e.target.value })}
+                          value={editing.input.message}
+                          onChange={(e) => patchData({ message: e.target.value })}
                         />
                       </label>
-                    )}
-                  </>
-                )}
-              </>
-            }
-          />
-          <PanelError messages={errors} />
-          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
-        </form>
-      )}
+                    </>
+                  )}
+                  {editing.input.kind === "dedupe" && (
+                    <>
+                      <ExpressionField
+                        label="What makes an item the same (key)"
+                        value={editing.input.key}
+                        scope={scopeFor(spec, current)}
+                        onChange={(key) => patchData({ key })}
+                      />
+                      <label className="md3-field">
+                        <span className="md3-body-small md3-field__label">
+                          Remember it for (e.g. 24h)
+                        </span>
+                        <input
+                          className="md3-text-field"
+                          value={editing.input.ttl}
+                          onChange={(e) => patchData({ ttl: e.target.value })}
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
+              }
+            />
+            <PanelError messages={errors} />
+            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+          </form>
+        )}
 
-      {editing && editing.kind === "simple" && current && isSimple(current) && (
-        <form
-          onSubmit={(e) => void submit(e)}
-          aria-label={`Edit ${current.name}`}
-          className="md3-form md3-form--fill"
-        >
-          <span className="md3-title-small">{current.name}</span>
-          <InspectorTabs
-            setup={
-              <>
-                {editing.input.kind === "tool" && (
+        {editing && editing.kind === "branch" && current && isBranch(current) && (
+          <form
+            onSubmit={(e) => void submit(e)}
+            onChange={clearErrors}
+            aria-label={`Edit ${current.name}`}
+            className="md3-form md3-form--fill"
+          >
+            <span className="md3-title-small">{current.name}</span>
+            <InspectorTabs
+              setup={
+                <>
+                  <ExpressionField
+                    label={
+                      editing.input.mode === "if"
+                        ? "Go this way when this is true"
+                        : "Choose by this value"
+                    }
+                    value={editing.input.expression}
+                    scope={scopeFor(spec, current)}
+                    onChange={(expression) =>
+                      setEditing((e) =>
+                        e && e.kind === "branch" ? { ...e, input: { ...e.input, expression } } : e,
+                      )
+                    }
+                  />
+                  <p className="md3-body-small md3-field__hint">
+                    The arms are the steps below it in this list: edit, delete or add to them there.
+                  </p>
+                </>
+              }
+            />
+            <PanelError messages={errors} />
+            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+          </form>
+        )}
+
+        {editing && editing.kind === "foreach" && current && isForEach(current) && (
+          <form
+            onSubmit={(e) => void submit(e)}
+            onChange={clearErrors}
+            aria-label={`Edit ${current.name}`}
+            className="md3-form md3-form--fill"
+          >
+            <span className="md3-title-small">{current.name}</span>
+            <InspectorTabs
+              setup={
+                <>
+                  <ExpressionField
+                    label="List to go through"
+                    value={editing.input.items}
+                    scope={scopeFor(spec, current)}
+                    onChange={(items) => patchLoop({ items })}
+                  />
                   <label className="md3-field">
-                    <span className="md3-body-small md3-field__label">Tool to call</span>
-                    <select
+                    <span className="md3-body-small md3-field__label">Name for each item</span>
+                    <input
                       className="md3-text-field"
-                      value={editing.input.tool}
-                      onChange={(e) => patchSimple({ tool: e.target.value })}
-                    >
-                      {!toolNames.includes(editing.input.tool) && (
-                        <option value={editing.input.tool}>
-                          {editing.input.tool} (not defined)
-                        </option>
-                      )}
-                      {toolNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {editing.input.kind === "stop" && (
-                  <>
-                    <PromptField
-                      label="Why the run ends here"
-                      value={editing.input.reason}
+                      value={editing.input.as}
                       spellCheck={false}
-                      placeholder="Why the run ends here; {{ step.field }} inserts a value"
-                      scope={scopeFor(spec, current)}
-                      onChange={(reason) => patchSimple({ reason })}
+                      onChange={(e) => patchLoop({ as: e.target.value })}
                     />
+                  </label>
+                </>
+              }
+              settings={
+                <>
+                  <label className="md3-field">
+                    <span className="md3-body-small md3-field__label">How many at once</span>
+                    <input
+                      className="md3-text-field"
+                      value={editing.input.concurrency}
+                      placeholder="1 to 32 (blank runs one at a time)"
+                      autoComplete="off"
+                      onChange={(e) => patchLoop({ concurrency: e.target.value })}
+                    />
+                  </label>
+                  {editing.input.onError === "keep" ? (
+                    <p className="md3-body-small md3-field__hint">
+                      This loop sends a failed item to another step (on_error goto). That is edited
+                      in the YAML.
+                    </p>
+                  ) : (
+                    <>
+                      <label className="md3-field">
+                        <span className="md3-body-small md3-field__label">If an item fails</span>
+                        <select
+                          className="md3-text-field"
+                          value={editing.input.onError}
+                          onChange={(e) =>
+                            patchLoop({ onError: e.target.value as ForEachEditInput["onError"] })
+                          }
+                        >
+                          <option value="">Default (stop the run)</option>
+                          <option value="fail">Stop the run (fail)</option>
+                          <option value="continue">Go on with the next item (continue)</option>
+                          <option value="retry">Try again (retry)</option>
+                        </select>
+                      </label>
+                      {editing.input.onError === "retry" && (
+                        <label className="md3-field">
+                          <span className="md3-body-small md3-field__label">Tries</span>
+                          <input
+                            className="md3-text-field"
+                            value={editing.input.retries}
+                            autoComplete="off"
+                            onChange={(e) => patchLoop({ retries: e.target.value })}
+                          />
+                        </label>
+                      )}
+                    </>
+                  )}
+                </>
+              }
+            />
+            <PanelError messages={errors} />
+            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+          </form>
+        )}
+
+        {editing && editing.kind === "simple" && current && isSimple(current) && (
+          <form
+            onSubmit={(e) => void submit(e)}
+            onChange={clearErrors}
+            aria-label={`Edit ${current.name}`}
+            className="md3-form md3-form--fill"
+          >
+            <span className="md3-title-small">{current.name}</span>
+            <InspectorTabs
+              setup={
+                <>
+                  {editing.input.kind === "tool" && (
                     <label className="md3-field">
-                      <span className="md3-body-small md3-field__label">End the run as</span>
+                      <span className="md3-body-small md3-field__label">Tool to call</span>
                       <select
                         className="md3-text-field"
-                        value={editing.input.status}
-                        onChange={(e) => patchSimple({ status: e.target.value })}
+                        value={editing.input.tool}
+                        onChange={(e) => patchSimple({ tool: e.target.value })}
                       >
-                        <option value="">Default (completed)</option>
-                        <option value="completed">completed</option>
-                        <option value="skipped">skipped</option>
+                        {!toolNames.includes(editing.input.tool) && (
+                          <option value={editing.input.tool}>
+                            {editing.input.tool} (not defined)
+                          </option>
+                        )}
+                        {toolNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
                       </select>
                     </label>
-                  </>
-                )}
-                {editing.input.kind === "approval" && (
-                  <PromptField
-                    label="Message for the approver"
-                    value={editing.input.message}
-                    spellCheck={false}
-                    placeholder="Shown to the approver; {{ step.field }} inserts a value"
-                    scope={scopeFor(spec, current)}
-                    onChange={(message) => patchSimple({ message })}
-                  />
-                )}
-              </>
-            }
-          />
-          <PanelError messages={errors} />
-          <PanelFooter save="Save step" disabled={busy} onCancel={close} />
-        </form>
-      )}
-
-      {only === undefined && (
-        <ul className="md3-doctor__list" data-testid="steps-list">
-          {refs.map((ref) => (
-            <DeletableRow
-              // Keyed by name, so a moved step's row (and the focus on its button) moves with it.
-              key={`${ref.name}#${refs.slice(0, refs.indexOf(ref)).filter((r) => r.name === ref.name).length}`}
-              spec={spec}
-              noun="step"
-              name={ref.name}
-              hint={`${ref.kind}${ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}`}
-              extra={insideCount(refs, ref)}
-              disabled={busy || editing !== null}
-              onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
-              onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
-              usedIn={usedIn(spec, { step: ref.name })}
-              move={
-                onMove &&
-                (() => {
-                  const { place, index, length } = listOf(refs, ref);
-                  return {
-                    canUp: index > 0,
-                    canDown: index < length - 1,
-                    run: (direction) =>
-                      onMove({
-                        op: "step.move",
-                        step: ref.name,
-                        to: { in: place, index: direction === "up" ? index - 1 : index + 1 },
-                      }),
-                  };
-                })()
+                  )}
+                  {editing.input.kind === "stop" && (
+                    <>
+                      <PromptField
+                        label="Why the run ends here"
+                        value={editing.input.reason}
+                        spellCheck={false}
+                        placeholder="Why the run ends here; {{ step.field }} inserts a value"
+                        scope={scopeFor(spec, current)}
+                        onChange={(reason) => patchSimple({ reason })}
+                      />
+                      <label className="md3-field">
+                        <span className="md3-body-small md3-field__label">End the run as</span>
+                        <select
+                          className="md3-text-field"
+                          value={editing.input.status}
+                          onChange={(e) => patchSimple({ status: e.target.value })}
+                        >
+                          <option value="">Default (completed)</option>
+                          <option value="completed">completed</option>
+                          <option value="skipped">skipped</option>
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  {editing.input.kind === "approval" && (
+                    <PromptField
+                      label="Message for the approver"
+                      value={editing.input.message}
+                      spellCheck={false}
+                      placeholder="Shown to the approver; {{ step.field }} inserts a value"
+                      scope={scopeFor(spec, current)}
+                      onChange={(message) => patchSimple({ message })}
+                    />
+                  )}
+                </>
               }
-            >
-              {(isAction(ref) ||
-                isData(ref) ||
-                isSimple(ref) ||
-                isForEach(ref) ||
-                isBranch(ref)) && (
-                <button
-                  type="button"
-                  className="md3-button md3-button-text"
-                  disabled={busy || editing !== null || (!modern && !isSimple(ref))}
-                  aria-label={`Edit ${ref.name}`}
-                  onClick={() => {
-                    setErrors([]);
-                    setEditing(editingFor(ref));
-                  }}
-                >
-                  Edit
-                </button>
-              )}
-              {NOT_EDITABLE[ref.kind] && (
-                <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
-              )}
-            </DeletableRow>
-          ))}
-        </ul>
-      )}
+            />
+            <PanelError messages={errors} />
+            <PanelFooter save="Save step" disabled={busy} onCancel={close} />
+          </form>
+        )}
 
-      {only === undefined && onEditTool && (
-        <>
-          <span className="md3-title-small">Tools</span>
-          <ul className="md3-doctor__list" data-testid="tools-list">
-            {(spec.agent.tools ?? []).map((tool, index) => (
+        {only === undefined && (
+          <ul className="md3-doctor__list" data-testid="steps-list">
+            {refs.map((ref) => (
               <DeletableRow
-                key={tool.name}
+                // Keyed by name, so a moved step's row (and the focus on its button) moves with it.
+                key={`${ref.name}#${refs.slice(0, refs.indexOf(ref)).filter((r) => r.name === ref.name).length}`}
                 spec={spec}
-                noun="tool"
-                name={tool.name}
-                hint={tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
+                noun="step"
+                name={ref.name}
+                hint={`${ref.kind}${ref.within.length > 0 ? ` in ${ref.within.join(" > ")}` : ""}`}
+                extra={insideCount(refs, ref)}
                 disabled={busy || editing !== null}
-                onRemove={onRemove && (() => onRemove({ op: "tool.remove", tool: tool.name }))}
-                onRename={
-                  onRename && ((to) => onRename({ op: "tool.rename", tool: tool.name, to }))
+                onRemove={onRemove && (() => onRemove({ op: "step.remove", step: ref.name }))}
+                onRename={onRename && ((to) => onRename({ op: "step.rename", step: ref.name, to }))}
+                usedIn={usedIn(spec, { step: ref.name })}
+                move={
+                  onMove &&
+                  (() => {
+                    const { place, index, length } = listOf(refs, ref);
+                    return {
+                      canUp: index > 0,
+                      canDown: index < length - 1,
+                      run: (direction) =>
+                        onMove({
+                          op: "step.move",
+                          step: ref.name,
+                          to: { in: place, index: direction === "up" ? index - 1 : index + 1 },
+                        }),
+                    };
+                  })()
                 }
-                usedIn={usedIn(spec, { tool: tool.name })}
               >
-                <button
-                  type="button"
-                  className="md3-button md3-button-text"
-                  disabled={busy || editing !== null}
-                  aria-label={`Edit tool ${tool.name}`}
-                  onClick={() => onEditTool(index)}
-                >
-                  Edit
-                </button>
+                {(isAction(ref) ||
+                  isData(ref) ||
+                  isSimple(ref) ||
+                  isForEach(ref) ||
+                  isBranch(ref)) && (
+                  <button
+                    type="button"
+                    className="md3-button md3-button-text"
+                    disabled={busy || editing !== null || (!modern && !isSimple(ref))}
+                    aria-label={`Edit ${ref.name}`}
+                    onClick={() => {
+                      setErrors([]);
+                      setEditing(editingFor(ref));
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+                {NOT_EDITABLE[ref.kind] && (
+                  <span className="md3-body-small md3-field__hint">{NOT_EDITABLE[ref.kind]}</span>
+                )}
               </DeletableRow>
             ))}
           </ul>
-        </>
-      )}
-    </section>
+        )}
+
+        {only === undefined && onEditTool && (
+          <>
+            <span className="md3-title-small">Tools</span>
+            <ul className="md3-doctor__list" data-testid="tools-list">
+              {(spec.agent.tools ?? []).map((tool, index) => (
+                <DeletableRow
+                  key={tool.name}
+                  spec={spec}
+                  noun="tool"
+                  name={tool.name}
+                  hint={tool.action === "component" ? `${tool.use} ${tool.op}` : tool.action}
+                  disabled={busy || editing !== null}
+                  onRemove={onRemove && (() => onRemove({ op: "tool.remove", tool: tool.name }))}
+                  onRename={
+                    onRename && ((to) => onRename({ op: "tool.rename", tool: tool.name, to }))
+                  }
+                  usedIn={usedIn(spec, { tool: tool.name })}
+                >
+                  <button
+                    type="button"
+                    className="md3-button md3-button-text"
+                    disabled={busy || editing !== null}
+                    aria-label={`Edit tool ${tool.name}`}
+                    onClick={() => onEditTool(index)}
+                  >
+                    Edit
+                  </button>
+                </DeletableRow>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    </FieldProblemsContext.Provider>
   );
 }

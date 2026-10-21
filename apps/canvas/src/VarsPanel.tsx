@@ -27,6 +27,8 @@ function describeVar(v: SpecVar): string {
 export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
   const [form, setForm] = useState<{ input: VarFormInput; editing: boolean } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  // What is on screen no longer matches what failed once the person changes it (KAM-194).
+  const clearErrors = () => setErrors((current) => (current.length > 0 ? [] : current));
   const [busy, setBusy] = useState(false);
   const names = Object.keys(vars ?? {});
   const supported = version === "1.1";
@@ -49,8 +51,8 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
     setBusy(true);
     const saved = await onSave(result.name, result.value);
     setBusy(false);
+    // A failed save is explained by the panel shell, in the server's words and beside the input that was kept (KAM-194).
     if (saved) close();
-    else setErrors(["Could not save the change. Your input is kept; try again."]);
   }
 
   async function remove(name: string) {
@@ -78,7 +80,12 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
       {!supported && <VersionGate what="Vars" />}
 
       {form && (
-        <form onSubmit={(e) => void submit(e)} aria-label="Spec var" className="md3-form">
+        <form
+          onSubmit={(e) => void submit(e)}
+          onChange={clearErrors}
+          aria-label="Spec var"
+          className="md3-form"
+        >
           <label className="md3-field">
             <span className="md3-body-small md3-field__label">Name</span>
             <input
