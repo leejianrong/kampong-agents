@@ -212,6 +212,46 @@ describe(
       expect(parsed.error).toBe("not sure about this one");
     });
 
+    // KAM-230: stdin closed with no answer at all (`kampong run ... < /dev/null`, or a pipe that ends) used to leave
+    // the question pending forever, so the process drained and exited 0 with nothing said: a pause that nobody
+    // answered looked like success. It is a failed run with a reason, and a non-zero exit.
+    it("stdin closed with no answer is a visible execution failure at exit 2, in JSON", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
+
+      const { code, stdout } = await runWithPipedStdin(
+        ["run", specPath, "--input", "refund #1", "--json"],
+        "",
+      );
+
+      expect(code).toBe(2); // EXIT_EXECUTION_FAILURE, not 0
+      const jsonLine = stdout
+        .trim()
+        .split("\n")
+        .find((line) => line.trim().startsWith("{"));
+      expect(jsonLine, `expected one JSON line on stdout, got:\n${stdout}`).toBeDefined();
+      const parsed = JSON.parse(jsonLine!) as { success: boolean; phase: string; error: string };
+      expect(parsed.success).toBe(false);
+      expect(parsed.phase).toBe("execution");
+      expect(parsed.error).toMatch(/approval.*parse|parse.*approval|check_charge|check/i);
+      expect(parsed.error).toMatch(/no answer|stdin/i);
+    });
+
+    it("stdin closed with no answer says so on stderr in the readable mode, and names --approve-all", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));
+
+      const { code, stdout, stderr } = await runWithPipedStdin(
+        ["run", specPath, "--input", "refund #1"],
+        "",
+      );
+
+      expect(code).toBe(2);
+      expect(stdout).not.toContain("Run completed");
+      expect(stderr).toMatch(/kampong run: execution failed: .*no answer/i);
+      expect(stderr).toContain("--approve-all");
+    });
+
     it("a piped 'y' answer approves and completes without hanging", async () => {
       const specPath = join(dir, "agent.yaml");
       writeFileSync(specPath, buildApprovalSpec(ollama.port, tool.port));

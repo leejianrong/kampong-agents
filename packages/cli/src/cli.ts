@@ -808,10 +808,29 @@ async function promptApproval(
     // without ever reaching the rejected-run report below. Asking once and
     // parsing the combined answer (`parseApprovalAnswer`) has no second
     // `question()` to strand a line against, so it can't hang either way.
-    const answer = await rl.question(
-      `\nApproval required at step "${pending.step}" (${pending.kind}): ${pending.reason}\n` +
-        `Approve? [y/N] (reject with a reason via "n:<reason>"): `,
-    );
+    //
+    // KAM-230: when stdin ends before any answer (`< /dev/null`, a pipe that closes), that one `question()` never
+    // settles, the event loop drains and the process used to exit 0 as if the run had succeeded. The interface's
+    // "close" event is the only signal, so it is raced against the answer: an unanswered approval is a failed run
+    // with a reason, never a silent success. (`rl.close()` in `finally` fires it too, after the answer has won.)
+    const unanswered = new Promise<never>((_, reject) => {
+      rl.once("close", () =>
+        reject(
+          new Error(
+            `approval required at step "${pending.step}" (${pending.kind}) but there was no answer: ` +
+              `stdin closed first. Answer it on a terminal, pipe "y" or "n:<reason>", or pass --approve-all.`,
+          ),
+        ),
+      );
+    });
+    unanswered.catch(() => {});
+    const answer = await Promise.race([
+      rl.question(
+        `\nApproval required at step "${pending.step}" (${pending.kind}): ${pending.reason}\n` +
+          `Approve? [y/N] (reject with a reason via "n:<reason>"): `,
+      ),
+      unanswered,
+    ]);
     return parseApprovalAnswer(answer);
   } finally {
     rl.close();
