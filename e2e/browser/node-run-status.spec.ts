@@ -98,11 +98,14 @@ for (const size of [
       // A word and an icon, not just a colour.
       await expect(passed.first()).toContainText("Passed");
       await expect(passed.first().locator('[aria-hidden="true"]')).toHaveText("✓");
-      await expect(badge(page, /Tool step fetch/)).toContainText("Passed");
-      // The template records no write for MSFT, so that one item fails in a replay and the loop carries on:
-      // the nested step is marked failed although the run completed, and nothing else is.
+      // The template's recorded answer for MSFT is Alpha Vantage's rate limit, so in a replay that one item fails
+      // at fetch and the loop carries on: the nested step is marked failed although the run completed, and the
+      // steps after it, which the other two items did run, passed.
+      await expect(page.getByTestId("run-error-row")).toHaveCount(1);
       await expect(page.locator('[data-status="failed"]')).toHaveCount(1);
-      await expect(badge(page, /Tool step write/)).toContainText("Failed");
+      await expect(badge(page, /Tool step fetch/)).toContainText("Failed");
+      await expect(badge(page, /Tool step write/)).toContainText("Passed");
+      await expect(badge(page, /Transform step report/)).toContainText("Passed");
 
       expect(readFileSync(join(keyed.dir, "agent.yaml"), "utf8")).toBe(keyed.spec);
       expect(readFileSync(layoutPath, "utf8")).toBe(layoutBefore);

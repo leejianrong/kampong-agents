@@ -778,6 +778,13 @@ export function App({
     }
   }, [openForm]);
   const shows = (form: OpenForm) => openForm === form || kept.includes(form);
+  // A failed node's "See message" (KAM-190). Stable, because the canvas rebuilds its nodes when it changes.
+  const showRunMessageRef = useRef<(id: string) => void>(() => {});
+  showRunMessageRef.current = (id) => {
+    if (openForm !== "run") toolbarForm("run");
+    runTracker.showMessage(id);
+  };
+  const showRunMessage = useCallback((id: string) => showRunMessageRef.current(id), []);
   useEffect(() => {
     if (openForm === "run") setRunOpened(true);
   }, [openForm]);
@@ -1050,10 +1057,7 @@ export function App({
                     version={spec?.version}
                     onInsert={spec ? insertFromEdge : undefined}
                     runStatus={runStatus}
-                    onShowRunMessage={(id) => {
-                      if (openForm !== "run") toolbarForm("run");
-                      runTracker.showMessage(id);
-                    }}
+                    onShowRunMessage={showRunMessage}
                   />
                 ) : (
                   <EmptyState
