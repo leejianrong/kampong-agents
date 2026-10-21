@@ -121,7 +121,7 @@ function RunBadge({
           type="button"
           className="md3-node__run-link nodrag nopan"
           data-testid="node-run-message"
-          aria-label={`See the message for ${nodeId.replace(/^workflow:/, "")} in Test Run`}
+          aria-label={`See message for ${nodeId.replace(/^workflow:/, "")} in Test Run`}
           onClick={(e) => {
             e.stopPropagation();
             onShowMessage(nodeId);
@@ -190,6 +190,15 @@ const KIND_LABEL: Record<SpecNode["kind"], string> = {
   workflow: "Workflow",
   guardrails: "Guardrails",
 };
+
+// KAM-200: the nodes are Tab stops in the order they are given to React Flow. The graph lists the tools right after the
+// trigger, but a person reads and runs trigger, steps in order, then the things the steps call and the limits, so
+// that is the order Tab takes. A stable sort by kind keeps each kind's own order.
+const TAB_RANK: Record<string, number> = { agent: 0, workflow: 1, tool: 2, guardrails: 3 };
+
+function inTabOrder<T extends { kind: string }>(nodes: readonly T[]): T[] {
+  return [...nodes].sort((a, b) => (TAB_RANK[a.kind] ?? 4) - (TAB_RANK[b.kind] ?? 4));
+}
 
 export function Canvas({
   graph,
@@ -264,6 +273,25 @@ export function Canvas({
   }, [graph]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
+  const flowWrap = useRef<HTMLDivElement>(null);
+
+  // KAM-200: Tab goes from the toolbar to the nodes in the order a run goes through them, not through every line first.
+  // React Flow makes each line a Tab stop and has no setting for "focusable, but not in the Tab order", so the lines are
+  // moved to tabindex -1 as they appear: a click, or a script, still focuses one and Enter on it still opens its picker,
+  // and a keyboard user adds a step at any place from the Add step form's Position choice.
+  useEffect(() => {
+    const root = flowWrap.current;
+    if (!root) return;
+    const demote = () => {
+      for (const line of root.querySelectorAll('.react-flow__edge[tabindex="0"]')) {
+        line.setAttribute("tabindex", "-1");
+      }
+    };
+    demote();
+    const observer = new MutationObserver(demote);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
   const pointed = hovered ?? focused;
   const linked = useMemo(
     () => (pointed !== null ? (links.get(pointed) ?? new Set<string>()) : new Set<string>()),
@@ -276,7 +304,7 @@ export function Canvas({
   // reconciliation work it doesn't need to.
   const nodes: Node[] = useMemo(
     () => [
-      ...graph.nodes.map((node) => {
+      ...inTabOrder(graph.nodes).map((node) => {
         const run = runStatus?.[node.id];
         return {
           id: node.id,
@@ -373,6 +401,7 @@ export function Canvas({
 
   return (
     <div
+      ref={flowWrap}
       className="md3-flow-wrap"
       onFocus={(e) => setFocused(nodeIdOf(e.target))}
       onBlur={() => setFocused(null)}

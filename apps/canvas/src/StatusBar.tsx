@@ -15,15 +15,19 @@ export function StatusBar({ actions }: { actions: ActionDescriptor[] }) {
           type="button"
           className="md3-statusbar__item"
           aria-pressed={item.pressed}
-          aria-label={item.badge ? `${item.label}, ${item.badge.words}` : undefined}
+          // The name starts with the words on the button, as WCAG 2.5.3 wants, then says what the count means.
+          aria-label={item.badge ? `${item.label} ${item.badge.words}` : undefined}
           data-testid={`status-${item.id}`}
           onClick={item.run}
         >
           {item.label}
           {item.badge && (
-            <span className="md3-statusbar__badge" aria-hidden="true">
-              {item.badge.count}
-            </span>
+            <>
+              {/* A space, so the words on the button read "Secrets 4" and the name "Secrets 4 missing" contains them. */}{" "}
+              <span className="md3-statusbar__badge" aria-hidden="true">
+                {item.badge.count}
+              </span>
+            </>
           )}
         </button>
       ))}

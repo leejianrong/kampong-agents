@@ -38,7 +38,7 @@ export function DoctorPanel({ run, onSetSecret }: DoctorPanelProps) {
   const warned = checks?.filter((c) => c.status === "warn").length ?? 0;
 
   return (
-    <section className="md3-doctor" aria-label="Checks" data-testid="doctor-panel">
+    <div className="md3-doctor" data-testid="doctor-panel">
       <div className="md3-doctor__head">
         <button
           type="button"
@@ -132,6 +132,6 @@ export function DoctorPanel({ run, onSetSecret }: DoctorPanelProps) {
           </ul>
         </>
       )}
-    </section>
+    </div>
   );
 }
