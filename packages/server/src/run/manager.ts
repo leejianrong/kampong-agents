@@ -1,7 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import {
   createAgentRun,
+  createComponentDispatcher,
+  createFirstPartyRegistry,
+  InProcessModuleRunner,
   type AgentRun,
+  type ComponentDispatcher,
   type ModelClient,
   type RunEvent,
   type RunState,
@@ -42,19 +46,50 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<RunEvent["type"]> = new Set([
 const DEFAULT_EVICT_AFTER_MS = 10 * 60 * 1000;
 
 /**
- * Version 1.1 specs are valid and run locally (KAN-1841), but this server does not run them yet: user
- * expressions on a shared server need a process boundary for memory (ADR-0027, spike result) that is not
- * built. The routes answer 422 with this message.
+ * A 1.1 feature the hosted server cannot run yet (KAM-203). Refused up front, by name, so a run never starts
+ * and then fails or silently does nothing partway: `dedupe` and the `schedule`/`poll` triggers need a
+ * workspace-scoped state store and a scheduler, and webhook `auth`/`when`/`map` need the ingress route to
+ * apply them (parts B and C of KAM-203).
  */
-export class UnsupportedSpecVersionError extends Error {
-  constructor() {
+export class UnsupportedOnHostedError extends Error {
+  constructor(feature: string) {
     super(
-      'This spec uses version "1.1" (expressions and vars), which the hosted server cannot run yet: ' +
-        "expressions need isolation before they run on a shared server. Run it locally with `kampong run`, " +
-        'or set version to "1.0" to run it here.',
+      `${feature} is not available on the hosted server yet. Run it locally with \`kampong run\`.`,
     );
-    this.name = "UnsupportedSpecVersionError";
+    this.name = "UnsupportedOnHostedError";
   }
+}
+
+function hasDedupeStep(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasDedupeStep);
+  if (node === null || typeof node !== "object") return false;
+  const o = node as Record<string, unknown>;
+  return o["type"] === "dedupe" || Object.values(o).some(hasDedupeStep);
+}
+
+/** The first hosted-unsupported feature the spec uses, or undefined. `webhook` also checks the trigger a deployment would fire. */
+export function hostedUnsupportedFeature(
+  spec: AgentSpec,
+  { webhook = false }: { webhook?: boolean } = {},
+): string | undefined {
+  if (hasDedupeStep(spec.agent.workflow)) return "A `dedupe` step";
+  const trigger = spec.agent.trigger;
+  if (webhook) {
+    if (trigger?.type === "schedule") return "The `schedule` trigger";
+    if (trigger?.type === "poll") return "The `poll` trigger";
+    if (trigger?.type === "webhook") {
+      const t = trigger as { auth?: unknown; preset?: unknown; when?: unknown; map?: unknown };
+      if (
+        t.auth !== undefined ||
+        t.preset !== undefined ||
+        t.when !== undefined ||
+        t.map !== undefined
+      ) {
+        return "Webhook `auth`, `preset`, `when` and `map`";
+      }
+    }
+  }
+  return undefined;
 }
 
 export class InvalidStoredSpecError extends Error {
@@ -65,7 +100,18 @@ export class InvalidStoredSpecError extends Error {
 }
 
 export interface HostedRunManagerOptions {
+  /**
+   * The environment a run's tools, components and `${ENV}` var defaults read. Defaults to EMPTY, never
+   * the server's `process.env`: a tenant's spec must not be able to name the server's own secrets
+   * (the database URL, the BYOK root key) in a tool header. Workspace-scoped tool secrets are a
+   * separate, not yet built, store; until then a tool that needs a secret fails visibly. Model keys are
+   * unaffected (they come from the BYOK vault, see `resolveWorkspaceModelClient`).
+   */
   env?: NodeJS.ProcessEnv;
+  /** The environment used to build the model client (provider base URL, BYOK root key). Defaults to `process.env`. */
+  modelEnv?: NodeJS.ProcessEnv;
+  /** Test-only seam: replaces the first-party component dispatcher. */
+  components?: ComponentDispatcher;
   fetchImpl?: ToolFetchImpl;
   /**
    * Test-only seam (mirrors packages/cli's `RunManagerOptions.createModel`):
@@ -76,6 +122,24 @@ export interface HostedRunManagerOptions {
   createModel?: (spec: AgentSpec) => ModelClient | Promise<ModelClient>;
   /** Test-only seam: how long a terminal run stays in the live map before eviction (default 10 minutes). */
   evictAfterMs?: number;
+}
+
+/** What a caller may supply for one run, like `kampong run --var` and a webhook's headers and body. */
+export interface StartRunOptions {
+  /** Values for the spec's `vars` (version 1.1); the engine checks names and types and fails the run visibly. */
+  vars?: Record<string, unknown>;
+  /** True when a deployment's webhook starts the run, so the trigger is checked too. */
+  viaWebhook?: boolean;
+  trigger?: { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> };
+}
+
+/**
+ * The only components a hosted run can use are the first-party `kampong/*` ones that ship with the server.
+ * A workspace cannot add a module component: that would run tenant-supplied code in the server process.
+ */
+function firstPartyDispatcher(): ComponentDispatcher {
+  const registry = createFirstPartyRegistry();
+  return createComponentDispatcher({ registry, runner: new InProcessModuleRunner(registry) });
 }
 
 export interface StartRunResult {
@@ -91,6 +155,7 @@ export class HostedRunManager {
   // the last one persisted (a late earlier write could otherwise clobber it).
   private readonly persistTails = new Map<string, Promise<void>>();
   private readonly evictAfterMs: number;
+  private readonly components = firstPartyDispatcher();
 
   constructor(
     private readonly db: DbClient,
@@ -111,7 +176,12 @@ export class HostedRunManager {
    * whatever `resolveWorkspaceModelClient` throws (e.g.
    * `WorkspaceApiKeyNotConfiguredError`) when the model client can't be built.
    */
-  async start(workspaceId: string, specId: string, input: string): Promise<StartRunResult> {
+  async start(
+    workspaceId: string,
+    specId: string,
+    input: string,
+    runOptions: StartRunOptions = {},
+  ): Promise<StartRunResult> {
     const source = await withWorkspaceScope(this.db, workspaceId, async (tx) => {
       const [row] = await tx
         .select({ yamlSource: specs.yamlSource })
@@ -128,8 +198,8 @@ export class HostedRunManager {
       throw new InvalidStoredSpecError(specId);
     }
     const spec = parsed.spec as AgentSpec;
-    // Before the workspace's model key is looked up, so a spec this server will not run is reported as that.
-    if (spec.version === "1.1") throw new UnsupportedSpecVersionError();
+    const unsupported = hostedUnsupportedFeature(spec, { webhook: runOptions.viaWebhook });
+    if (unsupported) throw new UnsupportedOnHostedError(unsupported);
 
     const model = this.options.createModel
       ? await this.options.createModel(spec)
@@ -137,13 +207,16 @@ export class HostedRunManager {
           db: this.db,
           workspaceId,
           spec,
-          env: this.options.env,
+          env: this.options.modelEnv,
         });
 
     const run = createAgentRun(spec, {
       model,
-      env: this.options.env,
+      env: this.options.env ?? {},
       fetchImpl: this.options.fetchImpl,
+      components: this.options.components ?? this.components,
+      ...(runOptions.vars ? { vars: runOptions.vars } : {}),
+      ...(runOptions.trigger ? { trigger: runOptions.trigger } : {}),
     });
     const initialState = run.getState();
 

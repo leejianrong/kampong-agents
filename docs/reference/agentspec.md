@@ -47,13 +47,16 @@ and lists each one:
 The result is loaded under the 1.1 rules first. If it would not load (a bare `{name}` placeholder, which 1.1 cannot
 resolve without the step's name, or a condition that is not in the old grammar), nothing is changed and the reasons
 are shown with their line numbers, so you fix them in the YAML and try again. The action is not offered in the hosted
-app, which does not run 1.1 specs yet.
+app yet.
 
 !!! note "Where a 1.1 spec runs"
 
     `kampong run`, `kampong dev` (the canvas test run), `kampong serve` and `kampong export` run a 1.1 spec.
-    The hosted server does not yet (expressions on a shared server need isolation first) and refuses it by
-    name. See `examples/incident-responder.yaml`.
+    The hosted server runs one too (KAM-203, ADR-0056): `POST /api/specs/:id/runs` takes an optional `vars`
+    object, like `--var`. Its tools and components read an empty environment, so a step that needs a secret
+    fails visibly until workspace secrets exist, and only the first-party `kampong/*` components resolve.
+    `dedupe`, deploying a `poll` or `schedule` trigger, and webhook `auth`/`when`/`map` are not available there yet: they are refused with a 422 that names the feature.
+    See `examples/incident-responder.yaml`.
 
 ### Expressions
 

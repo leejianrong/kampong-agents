@@ -10,8 +10,10 @@ import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
 import {
   HostedRunManager,
   InvalidStoredSpecError,
-  UnsupportedSpecVersionError,
+  UnsupportedOnHostedError,
+  hostedUnsupportedFeature,
 } from "../run/manager.js";
+import { parseSpec, type AgentSpec } from "@kampong/spec";
 
 // KAN-1436 (ADR-0022, ADR-0023): the managed "go live" core. Two distinct
 // surfaces, deliberately kept in one file since they share the `deployments`
@@ -54,10 +56,17 @@ export function registerDeploymentRoutes(
     try {
       const [row] = await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
         const [spec] = await tx
-          .select({ id: specs.id })
+          .select({ id: specs.id, yamlSource: specs.yamlSource })
           .from(specs)
           .where(and(eq(specs.id, specId), eq(specs.workspaceId, ctx.workspaceId)));
         if (!spec) throw new SpecNotFoundError(specId, ctx.workspaceId);
+        // A deployment that could never fire (a schedule or poll trigger) or would ignore the spec's webhook
+        // auth is refused here, not accepted and silently inert (KAM-203).
+        const parsed = parseSpec(spec.yamlSource);
+        if (parsed.success && parsed.spec) {
+          const unsupported = hostedUnsupportedFeature(parsed.spec as AgentSpec, { webhook: true });
+          if (unsupported) throw new UnsupportedOnHostedError(unsupported);
+        }
 
         return tx
           .insert(deployments)
@@ -79,6 +88,9 @@ export function registerDeploymentRoutes(
         return reply
           .code(404)
           .send({ success: false, error: `No spec "${specId}" in this workspace.` });
+      }
+      if (err instanceof UnsupportedOnHostedError) {
+        return reply.code(422).send({ success: false, error: err.message });
       }
       throw err;
     }
@@ -202,7 +214,9 @@ export function registerDeploymentRoutes(
         typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? "");
 
       try {
-        const { id, state } = await manager.start(workspaceId, row.specId, input);
+        const { id, state } = await manager.start(workspaceId, row.specId, input, {
+          viaWebhook: true,
+        });
         return reply.code(201).send({ success: true, id, state });
       } catch (err) {
         if (err instanceof SpecNotFoundError) {
@@ -213,7 +227,7 @@ export function registerDeploymentRoutes(
         }
         if (
           err instanceof InvalidStoredSpecError ||
-          err instanceof UnsupportedSpecVersionError ||
+          err instanceof UnsupportedOnHostedError ||
           err instanceof WorkspaceApiKeyNotConfiguredError
         ) {
           // A real misconfiguration on the deploying workspace's side (a spec
