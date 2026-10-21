@@ -55,7 +55,7 @@ app yet.
     The hosted server runs one too (KAM-203, ADR-0056): `POST /api/specs/:id/runs` takes an optional `vars`
     object, like `--var`. Its tools and components read an empty environment, so a step that needs a secret
     fails visibly until workspace secrets exist, and only the first-party `kampong/*` components resolve.
-    `dedupe`, deploying a `poll` or `schedule` trigger, and webhook `auth`/`when`/`map` are not available there yet: they are refused with a 422 that names the feature.
+    `dedupe` works on hosted: its keys live in a Postgres state store private to the workspace. Deploying a `poll` or `schedule` trigger, and webhook `auth`/`when`/`map` is not available there yet: they are refused with a 422 that names the feature.
     See `examples/incident-responder.yaml`.
 
 ### Expressions

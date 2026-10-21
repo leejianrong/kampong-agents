@@ -85,6 +85,20 @@
       "when": 1789734500000,
       "tag": "0011_enable_deployments_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792554487536,
+      "tag": "0012_state_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792554500000,
+      "tag": "0013_enable_state_entries_rls",
+      "breakpoints": true
     }
   ]
 }

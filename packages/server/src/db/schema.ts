@@ -6,6 +6,7 @@ import {
   timestamp,
   jsonb,
   boolean,
+  bigint,
   primaryKey,
   unique,
 } from "drizzle-orm/pg-core";
@@ -380,4 +381,23 @@ export const deployments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique().on(table.specId)],
+);
+
+// KAM-113 (ADR-0028, KAM-203): the hosted `StateStore` (src/run/pg-state-store.ts): the durable keyed store
+// the engine's `dedupe` step (and later persisted approvals and poll cursors) writes to. One row per
+// (workspace, key); the composite primary key makes a key private to its workspace, and RLS
+// (drizzle/0013_enable_state_entries_rls.sql) enforces the same in the database. `value` is the JSON the
+// engine stored. `expires_at` is epoch milliseconds (like the SQLite store, so one injectable clock drives
+// both and the shared contract suite runs against both); null means no expiry.
+export const stateEntries = pgTable(
+  "state_entries",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: jsonb("value").notNull(),
+    expiresAt: bigint("expires_at", { mode: "number" }),
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.key] })],
 );
