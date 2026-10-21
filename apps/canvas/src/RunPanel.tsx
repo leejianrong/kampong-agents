@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ApiClient, RunMode, RunOptionsResponse } from "./api.js";
 import type { RunState } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
+import { describeItem, failedItems } from "./runErrors.js";
 
 // The in-canvas test-run panel (PLAN.md Affordances "Test-run sandbox +
 // approval modal", SLICES.md V2 KAN-1107): starts a run against the spec
@@ -118,6 +119,10 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
     }
   }
 
+  // KAM-189: a run that finished but carried failed items on is amber, not green.
+  const failed = state?.status === "completed" ? failedItems(state.finalOutput) : [];
+  const completedWithErrors = failed.length > 0;
+
   const isRunning =
     starting || state?.status === "running" || state?.status === "awaiting_approval";
 
@@ -214,8 +219,14 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
           )}
           <div className="md3-body-medium" data-testid="run-status">
             Status:{" "}
-            <span className={`md3-status-pill md3-status-pill--${state.status}`}>
-              {state.status}
+            <span
+              className={`md3-status-pill md3-status-pill--${
+                completedWithErrors ? "completed_with_errors" : state.status
+              }`}
+            >
+              {completedWithErrors
+                ? `completed with ${failed.length} ${failed.length === 1 ? "error" : "errors"}`
+                : state.status}
             </span>
           </div>
           <ol data-testid="run-trace" className="md3-run-trace md3-body-medium">
@@ -227,11 +238,20 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
               </li>
             ))}
           </ol>
-          {state.status === "completed" && (
-            <pre data-testid="run-final-output" className="md3-code-block">
-              {JSON.stringify(state.finalOutput, null, 2)}
-            </pre>
-          )}
+          {completedWithErrors && <FailedItemsTable items={failed} />}
+          {state.status === "completed" &&
+            (completedWithErrors ? (
+              <details className="md3-run-raw">
+                <summary className="md3-body-medium">Full output</summary>
+                <pre data-testid="run-final-output" className="md3-code-block">
+                  {JSON.stringify(state.finalOutput, null, 2)}
+                </pre>
+              </details>
+            ) : (
+              <pre data-testid="run-final-output" className="md3-code-block">
+                {JSON.stringify(state.finalOutput, null, 2)}
+              </pre>
+            ))}
           {(state.status === "rejected" || state.status === "failed") && (
             <PanelError messages={[`Run ${state.status}: ${state.error}`]} testId="run-halted" />
           )}
@@ -244,6 +264,35 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
           onDecide={(approved, reason) => void handleDecide(approved, reason)}
         />
       )}
+    </div>
+  );
+}
+
+/** The items a loop carried on past (KAM-189): which one, which step failed, and why. */
+function FailedItemsTable({ items }: { items: ReturnType<typeof failedItems> }) {
+  return (
+    <div className="md3-run-errors" data-testid="run-errors">
+      <table className="md3-run-errors__table md3-body-small">
+        <thead>
+          <tr>
+            <th scope="col">Item</th>
+            <th scope="col">Step</th>
+            <th scope="col">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((f) => (
+            <tr key={`${f.loop}-${f.index}`} data-testid="run-error-row">
+              <td>{describeItem(f.item) || `#${f.index + 1}`}</td>
+              <td>
+                {f.loop}
+                {f.step && ` / ${f.step}`}
+              </td>
+              <td>{f.message}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

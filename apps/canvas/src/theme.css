@@ -284,6 +284,12 @@ select {
   color: var(--md-sys-color-on-primary-container);
 }
 
+/* Finished, but some items failed (KAM-189): the tertiary container, the same softer-than-error role as warnings. */
+.md3-status-pill--completed_with_errors {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
 .md3-status-pill--rejected,
 .md3-status-pill--failed {
   background: var(--md-sys-color-error-container);
@@ -2216,4 +2222,40 @@ select.md3-text-field {
   color: var(--md-sys-color-on-error-container);
   font-size: var(--md-type-body-medium-size);
   line-height: var(--md-type-body-medium-line);
+}
+
+/* ---- Failed items of a finished run (KAM-189) ---- */
+
+.md3-run-errors {
+  overflow-x: auto;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-medium);
+}
+
+.md3-run-errors__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.md3-run-errors__table th,
+.md3-run-errors__table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.md3-run-errors__table th {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  font-weight: 500;
+}
+
+.md3-run-errors__table tr + tr td {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-run-raw summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
 }

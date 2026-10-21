@@ -504,6 +504,11 @@ The local server backs this with `GET /api/run-options` (the modes open to the s
 tools a live run would call) and a `mode` (`replay` or `live`, default `live`) on `POST /api/runs`, whose response
 repeats the mode that ran. A replay with no fixtures is refused with 409.
 
+A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown as an amber
+**completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
+and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed
+items stays green and shows its output as before.
+
 #### Selecting a node on the canvas
 
 Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the
