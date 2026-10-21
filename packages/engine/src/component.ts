@@ -9,6 +9,7 @@ import type {
 } from "@kampong/spec";
 import {
   callHttpTool,
+  replayEnv,
   ToolCallError,
   type HttpToolCallOptions,
   type ToolFetchImpl,
@@ -604,7 +605,9 @@ async function runModule(
       get(slot) {
         const declared = slotOf(manifest, slot);
         const name = slotEnvName(manifest, slot, options.secretEnv);
-        const value = env[name];
+        // KAM-233: a replay (the fixture layer's fetch says so) never sends the request, so a slot that is
+        // not set reads as a placeholder the fixture layer redacts, exactly as it redacts the real value.
+        const value = (options.fetchImpl?.replay ? replayEnv(env) : env)[name];
         if (value === undefined || value === "") {
           throw new ToolCallError(
             `${label}: environment variable ${name} is not set (secret slot "${slot}")`,
