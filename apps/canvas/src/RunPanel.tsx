@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ApiClient, RunMode, RunOptionsResponse } from "./api.js";
 import type { RunState } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
+import { describeItem, failedItems } from "./runErrors.js";
+import { missingSecretNamesIn } from "./secretNames.js";
 
 // The in-canvas test-run panel (PLAN.md Affordances "Test-run sandbox +
 // approval modal", SLICES.md V2 KAN-1107): starts a run against the spec
@@ -15,6 +17,8 @@ export interface RunPanelProps {
   api: ApiClient;
   /** KAM-196: why a run cannot start right now (no workflow, no steps, a spec error). Shown instead of the Run button. */
   blockedReason?: string;
+  /** KAM-192: opens the Secrets panel on this name. Absent where there is no Secrets panel (hosted), so no button is offered. */
+  onSetSecret?: (name: string) => void;
 }
 
 /**
@@ -29,7 +33,7 @@ interface RunRecord {
 
 const MODE_LABEL: Record<RunMode, string> = { replay: "Replay", live: "Live" };
 
-export function RunPanel({ api, blockedReason }: RunPanelProps) {
+export function RunPanel({ api, blockedReason, onSetSecret }: RunPanelProps) {
   const [input, setInput] = useState("");
   const [state, setState] = useState<RunState | null>(null);
   const [record, setRecord] = useState<RunRecord | null>(null);
@@ -39,6 +43,8 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
   const [mode, setMode] = useState<RunMode>("live");
   const [confirmingLive, setConfirmingLive] = useState(false);
+  // KAM-191: the text of each declared var's field, for the next run only (the spec is never changed).
+  const [varText, setVarText] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -57,6 +63,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
         const loaded = await api.getRunOptions?.();
         if (cancelled || !loaded?.success) return;
         setOptions(loaded);
+        setVarText(Object.fromEntries((loaded.vars ?? []).map((v) => [v.name, v.default ?? ""])));
         setMode(loaded.defaultMode ?? "live");
       } catch {
         // A server that cannot describe its runs gets the plain panel: no switch, a live run as before.
@@ -68,6 +75,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
   }, [api]);
 
   const sideEffecting = (options?.tools ?? []).filter((t) => t.sideEffecting);
+  const declaredVars = options?.vars ?? [];
   const canChoose = (options?.modes?.length ?? 0) > 1;
 
   function handleSubmit(event: React.FormEvent) {
@@ -91,7 +99,16 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
     setStarting(true);
     setError(null);
     try {
-      const result = await api.startRun(input, options ? mode : undefined);
+      // Only the vars changed from their defaults go with the run; the rest keep resolving as the spec says.
+      const changed = Object.fromEntries(
+        declaredVars
+          .filter((v) => (varText[v.name] ?? "") !== (v.default ?? ""))
+          .map((v) => [v.name, varText[v.name] ?? ""]),
+      );
+      const result =
+        Object.keys(changed).length > 0
+          ? await api.startRun(input, options ? mode : undefined, changed)
+          : await api.startRun(input, options ? mode : undefined);
       if (!result.success || !result.id || !result.state) {
         setError(result.error ?? "Failed to start run.");
         return;
@@ -117,6 +134,19 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
       setError(result.error ?? "Failed to record approval decision.");
     }
   }
+
+  // KAM-189: a run that finished but carried failed items on is amber, not green.
+  const failed = state?.status === "completed" ? failedItems(state.finalOutput) : [];
+  const completedWithErrors = failed.length > 0;
+  // KAM-192: a credential the run could not find is set from here, not in a shell or a .env file.
+  const missingAtStart = onSetSecret ? missingSecretNamesIn([error ?? undefined]) : [];
+  const missingInRun = onSetSecret
+    ? missingSecretNamesIn([
+        state?.error,
+        ...(state?.trace.map((t) => t.error) ?? []),
+        ...failed.map((f) => f.message),
+      ])
+    : [];
 
   const isRunning =
     starting || state?.status === "running" || state?.status === "awaiting_approval";
@@ -155,6 +185,35 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
             onChange={(e) => setInput(e.target.value)}
           />
         </label>
+        {declaredVars.length > 0 && (
+          <fieldset className="md3-run-vars" data-testid="run-vars">
+            <legend className="md3-label-large">Vars</legend>
+            <p className="md3-body-small md3-run-mode-note">
+              Values for this run only. The spec keeps its defaults.
+            </p>
+            {declaredVars.map((v) => (
+              <label key={v.name} className="md3-field">
+                <span className="md3-field__label md3-label-large">
+                  {v.name}
+                  <span className="md3-body-small">
+                    {" "}
+                    (
+                    {v.type === "list" ? `list of ${v.items ?? "string"}, comma separated` : v.type}
+                    {v.default === undefined && ", required"})
+                  </span>
+                </span>
+                <input
+                  className="md3-text-field"
+                  data-testid={`run-var-${v.name}`}
+                  value={varText[v.name] ?? ""}
+                  disabled={isRunning}
+                  onChange={(e) => setVarText((t) => ({ ...t, [v.name]: e.target.value }))}
+                />
+                {v.description && <span className="md3-body-small">{v.description}</span>}
+              </label>
+            ))}
+          </fieldset>
+        )}
         {options && mode === "replay" && (
           <p className="md3-body-small md3-run-mode-note" data-testid="run-replay-note">
             Replay answers from the {options.fixtures?.count} recorded fixtures in{" "}
@@ -201,6 +260,7 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
 
       {blockedReason && <PanelError messages={[blockedReason]} testId="run-blocked" />}
       {error && <PanelError messages={[error]} testId="run-error" />}
+      {onSetSecret && <SetSecretActions names={missingAtStart} onSet={onSetSecret} />}
 
       {state && (
         <>
@@ -214,8 +274,14 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
           )}
           <div className="md3-body-medium" data-testid="run-status">
             Status:{" "}
-            <span className={`md3-status-pill md3-status-pill--${state.status}`}>
-              {state.status}
+            <span
+              className={`md3-status-pill md3-status-pill--${
+                completedWithErrors ? "completed_with_errors" : state.status
+              }`}
+            >
+              {completedWithErrors
+                ? `completed with ${failed.length} ${failed.length === 1 ? "error" : "errors"}`
+                : state.status}
             </span>
           </div>
           <ol data-testid="run-trace" className="md3-run-trace md3-body-medium">
@@ -227,14 +293,24 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
               </li>
             ))}
           </ol>
-          {state.status === "completed" && (
-            <pre data-testid="run-final-output" className="md3-code-block">
-              {JSON.stringify(state.finalOutput, null, 2)}
-            </pre>
-          )}
+          {completedWithErrors && <FailedItemsTable items={failed} />}
+          {state.status === "completed" &&
+            (completedWithErrors ? (
+              <details className="md3-run-raw">
+                <summary className="md3-body-medium">Full output</summary>
+                <pre data-testid="run-final-output" className="md3-code-block">
+                  {JSON.stringify(state.finalOutput, null, 2)}
+                </pre>
+              </details>
+            ) : (
+              <pre data-testid="run-final-output" className="md3-code-block">
+                {JSON.stringify(state.finalOutput, null, 2)}
+              </pre>
+            ))}
           {(state.status === "rejected" || state.status === "failed") && (
             <PanelError messages={[`Run ${state.status}: ${state.error}`]} testId="run-halted" />
           )}
+          {onSetSecret && <SetSecretActions names={missingInRun} onSet={onSetSecret} />}
         </>
       )}
 
@@ -244,6 +320,54 @@ export function RunPanel({ api, blockedReason }: RunPanelProps) {
           onDecide={(approved, reason) => void handleDecide(approved, reason)}
         />
       )}
+    </div>
+  );
+}
+
+/** One button per credential the run could not find, each opening the Secrets panel on that name (KAM-192). */
+function SetSecretActions({ names, onSet }: { names: string[]; onSet: (name: string) => void }) {
+  if (names.length === 0) return null;
+  return (
+    <div className="md3-run-secrets" data-testid="run-set-secret">
+      {names.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className="md3-button md3-button-tonal"
+          onClick={() => onSet(name)}
+        >
+          {names.length === 1 ? "Set it here" : `Set ${name} here`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The items a loop carried on past (KAM-189): which one, which step failed, and why. */
+function FailedItemsTable({ items }: { items: ReturnType<typeof failedItems> }) {
+  return (
+    <div className="md3-run-errors" data-testid="run-errors">
+      <table className="md3-run-errors__table md3-body-small">
+        <thead>
+          <tr>
+            <th scope="col">Item</th>
+            <th scope="col">Step</th>
+            <th scope="col">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((f) => (
+            <tr key={`${f.loop}-${f.index}`} data-testid="run-error-row">
+              <td>{describeItem(f.item) || `#${f.index + 1}`}</td>
+              <td>
+                {f.loop}
+                {f.step && ` / ${f.step}`}
+              </td>
+              <td>{f.message}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

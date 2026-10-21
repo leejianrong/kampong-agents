@@ -893,6 +893,12 @@ export function App({
     setMissingSecrets(countMissing(rows));
     return rows;
   }, []);
+  // KAM-192: "Set it here" on a run or check error opens the Secrets panel with that name's form ready.
+  const [secretFocus, setSecretFocus] = useState<{ name: string; nonce: number } | undefined>();
+  function openSecret(name: string) {
+    setSecretFocus((previous) => ({ name, nonce: (previous?.nonce ?? 0) + 1 }));
+    toolbarForm("variables");
+  }
   const listSecrets = useCallback(() => api.listSecrets!().then(tally), [api, tally]);
 
   // KAM-215: Ctrl/Cmd+K opens the command palette from anywhere, including a text field.
@@ -1179,7 +1185,13 @@ export function App({
             )}
             {openForm === "run" && (
               <Panel title="Test Run" onClose={() => setOpenForm(null)}>
-                <RunPanel api={api} blockedReason={runBlockedReason} />
+                <RunPanel
+                  api={api}
+                  blockedReason={runBlockedReason}
+                  {...(api.listSecrets &&
+                    api.setSecret &&
+                    api.removeSecret && { onSetSecret: openSecret })}
+                />
               </Panel>
             )}
             {shows("vars") && spec && (
@@ -1241,6 +1253,7 @@ export function App({
               >
                 <SecretsPanel
                   list={listSecrets}
+                  focus={secretFocus}
                   save={(name, value) => api.setSecret!(name, value).then(tally)}
                   remove={(name) => api.removeSecret!(name).then(tally)}
                 />
@@ -1248,7 +1261,12 @@ export function App({
             )}
             {openForm === "checks" && api.runDoctor && (
               <Panel title="Checks" onClose={() => setOpenForm(null)}>
-                <DoctorPanel run={(options) => api.runDoctor!(options)} />
+                <DoctorPanel
+                  run={(options) => api.runDoctor!(options)}
+                  {...(api.listSecrets &&
+                    api.setSecret &&
+                    api.removeSecret && { onSetSecret: openSecret })}
+                />
               </Panel>
             )}
             {openForm === "templates" && templates.length > 0 && (

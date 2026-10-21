@@ -51,7 +51,9 @@ spec never holds a value, only the `${ENV_VAR}` name. Don't paste these into cha
 commits.
 
 You can also set them from the canvas: **Secrets** in the status bar (with a count of the names that have no value yet) lists every name the spec needs (including the
-Slack token, which the Slack component reads on its own), and lets you set or replace a value. Values
+Slack token, which the Slack component reads on its own, and the secret a webhook trigger checks, such as
+`GITHUB_WEBHOOK_SECRET`), and lets you set or replace a value. When a test run or a check says a variable is not set,
+its error has a **Set it here** button that opens Secrets on that name. Values
 are saved to `.kampong/secrets.env` on this machine and are never shown again. This applies to the canvas
 (`kampong dev`, `make up`); `kampong run` and `kampong serve` still read the process environment.
 

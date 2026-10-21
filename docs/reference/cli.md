@@ -134,7 +134,9 @@ copies nothing; copy the folder yourself, or choose the template in `kampong dev
 ## `kampong doctor`
 
 Checks a spec before you run it: that its components resolve and are pinned, what permissions they ask
-for, and that each credential's environment variable is set (names only, never values).
+for, and that each credential's environment variable is set (names only, never values). A webhook trigger that
+checks a bearer token or signature also needs its `secret_env` set, or it refuses every request; doctor warns when
+it is not.
 
 ```sh
 kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--probe] [--json]

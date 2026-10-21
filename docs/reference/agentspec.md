@@ -504,6 +504,25 @@ The local server backs this with `GET /api/run-options` (the modes open to the s
 tools a live run would call) and a `mode` (`replay` or `live`, default `live`) on `POST /api/runs`, whose response
 repeats the mode that ran. A replay with no fixtures is refused with 409.
 
+A spec that declares `vars` (version 1.1) gets a **Vars** group in Test Run: one field per var, prefilled with its
+default (a list as comma-separated text). Edit one to run with a different value, the same as `kampong run --var
+name=value`: only the vars you changed are sent, as `vars` on `POST /api/runs` (text, parsed as the declared type,
+so a value that is not a number for a `number` var fails the run and names the var), and the spec file is not
+touched. A var named in `vars` but not declared in the spec is refused with 400. `GET /api/run-options` lists the
+declared `vars` with their defaults. Hosted mode shows no var fields yet, because the hosted server does not run
+1.1 specs.
+
+When a run, or a failed item in it, says an environment variable is not set (a missing model key, a connector
+credential), the error gets a **Set it here** button. It opens **Secrets** with the form for that name ready, so you
+set the value there instead of in a shell or `.env`. The **Checks** panel offers the same on a failing or warning
+check. **Secrets** also lists the secret a webhook trigger checks (`auth.secret_env`, or the one a `preset` needs) as
+**Needed, not set** until it has a value. Hosted mode has no Secrets panel here, so it shows no button.
+
+A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown as an amber
+**completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
+and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed
+items stays green and shows its output as before.
+
 #### Selecting a node on the canvas
 
 Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the

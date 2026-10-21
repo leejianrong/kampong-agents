@@ -53,6 +53,60 @@ describe("secrets endpoints", () => {
     expect(res.json().secrets).toEqual([{ name: "DEMO_KEY", referenced: true, source: "unset" }]);
   });
 
+  // KAM-192: the secret a webhook trigger checks is never written as ${NAME}, so it was missing from the list.
+  it("lists the secret a webhook trigger checks, needed and not set", async () => {
+    writeFileSync(
+      join(dir, "agent.yaml"),
+      SPEC.replace('version: "1.0"', 'version: "1.1"').replace(
+        "  workflow:",
+        `  trigger:
+    type: webhook
+    preset: github
+    auth:
+      secret_env: GITHUB_WEBHOOK_SECRET
+  workflow:`,
+      ),
+    );
+    await boot();
+    const res = await app!.inject({ method: "GET", url: "/api/secrets" });
+    expect(res.json().secrets).toContainEqual({
+      name: "GITHUB_WEBHOOK_SECRET",
+      referenced: true,
+      source: "unset",
+    });
+    await put("GITHUB_WEBHOOK_SECRET", "whsec");
+    const after = await app!.inject({ method: "GET", url: "/api/secrets" });
+    expect(after.json().secrets).toContainEqual({
+      name: "GITHUB_WEBHOOK_SECRET",
+      referenced: true,
+      source: "saved",
+    });
+  });
+
+  it("lists the secret of a bearer webhook, and none for an open one", async () => {
+    const withTrigger = (trigger: string) =>
+      SPEC.replace('version: "1.0"', 'version: "1.1"').replace(
+        "  workflow:",
+        `  trigger:\n${trigger}\n  workflow:`,
+      );
+    writeFileSync(
+      join(dir, "agent.yaml"),
+      withTrigger(
+        "    type: webhook\n    auth:\n      type: bearer\n      secret_env: ${HOOK_TOKEN}",
+      ),
+    );
+    await boot();
+    const names = async () =>
+      (await app!.inject({ method: "GET", url: "/api/secrets" }))
+        .json()
+        .secrets.map((r: { name: string }) => r.name);
+    expect(await names()).toContain("HOOK_TOKEN");
+    await app!.close();
+    writeFileSync(join(dir, "agent.yaml"), withTrigger("    type: webhook"));
+    await boot();
+    expect(await names()).toEqual(["DEMO_KEY"]);
+  });
+
   it("lists the credential a first-party component reads through its slot", async () => {
     writeFileSync(
       join(dir, "agent.yaml"),

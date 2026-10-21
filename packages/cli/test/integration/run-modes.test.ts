@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -170,5 +170,90 @@ describe("test run modes (KAM-188)", () => {
       payload: { input: "", mode: "dry" },
     });
     expect(bad.statusCode).toBe(400);
+  });
+
+  // KAM-191: values for the spec's vars, for one run, as `kampong run --var` gives them.
+  describe("vars on a test run (KAM-191)", () => {
+    it("lists the declared vars with their defaults as text", async () => {
+      await server(copyTemplate());
+      const body = (await app.inject({ method: "GET", url: "/api/run-options" })).json();
+      expect(body.vars).toEqual([
+        {
+          name: "symbols",
+          type: "list",
+          items: "string",
+          description: expect.any(String),
+          default: "AAPL, MSFT, NVDA",
+        },
+        expect.objectContaining({ name: "threshold", type: "number", default: "1.5" }),
+        expect.objectContaining({
+          name: "slack_channel",
+          type: "string",
+          default: "#market-alerts",
+        }),
+      ]);
+    });
+
+    it("lists no vars for a spec without any", async () => {
+      const specPath = join(dir, "agent.yaml");
+      writeFileSync(specPath, POST_SOURCE);
+      await server(specPath);
+      const body = (await app.inject({ method: "GET", url: "/api/run-options" })).json();
+      expect(body.vars).toEqual([]);
+    });
+
+    it("runs with the given value, and leaves the spec on disk as it was", async () => {
+      const specPath = copyTemplate();
+      const before = readFileSync(specPath, "utf8");
+      await server(specPath);
+      const start = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: { input: "", mode: "replay", vars: { symbols: "AAPL, MSFT" } },
+      });
+      expect(start.json()).toMatchObject({ success: true });
+      const state = await settled(start.json().id);
+      expect(state.status).toBe("completed");
+      expect(state.finalOutput.each_symbol.count).toBe(2);
+      expect(readFileSync(specPath, "utf8")).toBe(before);
+
+      // The next run, with no vars, is back on the defaults.
+      const again = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: { input: "", mode: "replay" },
+      });
+      expect((await settled(again.json().id)).finalOutput.each_symbol.count).toBe(3);
+    });
+
+    it("fails the run, naming the var, when a value is not the declared type", async () => {
+      await server(copyTemplate());
+      const start = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: { input: "", mode: "replay", vars: { threshold: "high" } },
+      });
+      const state = await settled(start.json().id);
+      expect(state.status).toBe("failed");
+      expect(state.error).toContain("threshold");
+    });
+
+    it("refuses a var the spec does not declare, and a non-object", async () => {
+      await server(copyTemplate());
+      const unknown = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: { input: "", mode: "replay", vars: { nope: "1" } },
+      });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json().error).toContain("nope");
+      expect(unknown.json().error).toContain("symbols");
+      const wrong = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: { input: "", mode: "replay", vars: ["symbols"] },
+      });
+      expect(wrong.statusCode).toBe(400);
+    });
   });
 });
