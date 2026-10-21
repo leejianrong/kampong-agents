@@ -16,6 +16,7 @@ import type { DbClient } from "../db/client.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
+import { PgStateStore } from "./pg-state-store.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 
 // KAN-1231 (ADR-0014): the hosted, durable successor to packages/cli's
@@ -47,8 +48,7 @@ const DEFAULT_EVICT_AFTER_MS = 10 * 60 * 1000;
 
 /**
  * A 1.1 feature the hosted server cannot run yet (KAM-203). Refused up front, by name, so a run never starts
- * and then fails or silently does nothing partway: `dedupe` and the `schedule`/`poll` triggers need a
- * workspace-scoped state store and a scheduler, and webhook `auth`/`when`/`map` need the ingress route to
+ * and then fails or silently does nothing partway: the `schedule`/`poll` triggers need a scheduler, and webhook `auth`/`when`/`map` need the ingress route to
  * apply them (parts B and C of KAM-203).
  */
 export class UnsupportedOnHostedError extends Error {
@@ -60,19 +60,11 @@ export class UnsupportedOnHostedError extends Error {
   }
 }
 
-function hasDedupeStep(node: unknown): boolean {
-  if (Array.isArray(node)) return node.some(hasDedupeStep);
-  if (node === null || typeof node !== "object") return false;
-  const o = node as Record<string, unknown>;
-  return o["type"] === "dedupe" || Object.values(o).some(hasDedupeStep);
-}
-
 /** The first hosted-unsupported feature the spec uses, or undefined. `webhook` also checks the trigger a deployment would fire. */
 export function hostedUnsupportedFeature(
   spec: AgentSpec,
   { webhook = false }: { webhook?: boolean } = {},
 ): string | undefined {
-  if (hasDedupeStep(spec.agent.workflow)) return "A `dedupe` step";
   const trigger = spec.agent.trigger;
   if (webhook) {
     if (trigger?.type === "schedule") return "The `schedule` trigger";
@@ -215,6 +207,10 @@ export class HostedRunManager {
       env: this.options.env ?? {},
       fetchImpl: this.options.fetchImpl,
       components: this.options.components ?? this.components,
+      // A `dedupe` step remembers its keys here (KAM-113): Postgres, scoped to this workspace under RLS. It is
+      // only a handle (every call opens its own scoped transaction), so a workflow with no dedupe step never
+      // touches the table.
+      state: new PgStateStore(this.db, workspaceId),
       ...(runOptions.vars ? { vars: runOptions.vars } : {}),
       ...(runOptions.trigger ? { trigger: runOptions.trigger } : {}),
     });

@@ -10,7 +10,9 @@ import {
   createComponentDispatcher,
   createFirstPartyRegistry,
   InProcessModuleRunner,
+  SqliteStateStore,
   type ModelClient,
+  type StateStore,
   type RunState,
 } from "@kampong/engine";
 import { parseSpec } from "@kampong/spec";
@@ -121,6 +123,7 @@ describe.skipIf(!DATABASE_URL)(
       cookie: string,
       source: string,
       vars?: Record<string, unknown>,
+      input = "",
     ): Promise<RunState> {
       const created = await app.inject({
         method: "POST",
@@ -133,7 +136,7 @@ describe.skipIf(!DATABASE_URL)(
         method: "POST",
         url: `/api/specs/${created.json().id}/runs`,
         headers: { cookie },
-        payload: { input: "", ...(vars ? { vars } : {}) },
+        payload: { input, ...(vars ? { vars } : {}) },
       });
       expect(start.statusCode, start.body).toBe(201);
       const runId = start.json().id;
@@ -151,7 +154,11 @@ describe.skipIf(!DATABASE_URL)(
       throw new Error("run did not finish in time");
     }
 
-    async function localRun(source: string, vars?: Record<string, unknown>): Promise<RunState> {
+    async function localRun(
+      source: string,
+      vars?: Record<string, unknown>,
+      extra: { input?: string; state?: StateStore } = {},
+    ): Promise<RunState> {
       const parsed = parseSpec(source);
       expect(parsed.success, JSON.stringify(parsed.errors)).toBe(true);
       const registry = createFirstPartyRegistry();
@@ -164,7 +171,8 @@ describe.skipIf(!DATABASE_URL)(
           runner: new InProcessModuleRunner(registry),
         }),
         ...(vars ? { vars } : {}),
-      }).start("");
+        ...(extra.state ? { state: extra.state } : {}),
+      }).start(extra.input ?? "");
     }
 
     const cases: { name: string; vars?: Record<string, unknown>; alerts: number }[] = [
@@ -206,8 +214,8 @@ describe.skipIf(!DATABASE_URL)(
       expect(hosted.error).toMatch(/vars\.threshold/);
     });
 
-    // The hosted server has no state store or scheduler yet (KAM-203 parts B and C). What it cannot run is
-    // refused up front, by name, never started and then silently skipped or failed partway.
+    // The hosted server has no scheduler yet and does not apply webhook auth (KAM-203 part C). What it cannot
+    // run is refused up front, by name, never started and then silently skipped or failed partway.
     const spec11 = (trigger: string, step = "") => `version: "1.1"
 agent:
   id: unsupported
@@ -222,7 +230,7 @@ ${trigger}  workflow:
 ${step}`;
     const DEDUPE_STEP = `    - step: once
       type: dedupe
-      once: { key: "shape.value", ttl: "24h" }
+      once: { key: "input", ttl: "24h" }
 `;
 
     async function createSpec(cookie: string, source: string): Promise<string> {
@@ -236,18 +244,37 @@ ${step}`;
       return created.json().id;
     }
 
-    it("refuses to run a spec with a dedupe step, by name, before any step runs", async () => {
+    it("a dedupe step gives the same result on hosted (Postgres) as locally (SQLite): first run goes on, a repeat ends early, a new key goes on", async () => {
+      const source = spec11("", DEDUPE_STEP);
+      const inputs = ["order-1", "order-1", "order-2"];
+
+      const store = new SqliteStateStore({ path: ":memory:" });
+      const local: RunState[] = [];
+      for (const input of inputs)
+        local.push(await localRun(source, undefined, { input, state: store }));
+      await store.close();
+
       const { cookie } = await newUserWithWorkspace();
-      const id = await createSpec(cookie, spec11("", DEDUPE_STEP));
-      const res = await app.inject({
-        method: "POST",
-        url: `/api/specs/${id}/runs`,
-        headers: { cookie },
-        payload: { input: "" },
-      });
-      expect(res.statusCode).toBe(422);
-      expect(res.json().error).toMatch(/`dedupe` step is not available on the hosted server yet/);
-    });
+      const hosted: RunState[] = [];
+      for (const input of inputs) hosted.push(await hostedRun(cookie, source, undefined, input));
+
+      expect(local.map((r) => r.status)).toEqual(["completed", "completed", "completed"]);
+      expect(local[1]!.skipped).toBeDefined();
+      expect(local[0]!.skipped).toBeUndefined();
+      expect(local[2]!.skipped).toBeUndefined();
+      expect(hosted.map(outcome)).toEqual(
+        JSON.parse(JSON.stringify(local.map(outcome))) as ReturnType<typeof outcome>[],
+      );
+    }, 30_000);
+
+    it("dedupe keys are per workspace: another workspace's first run with the same key is not a repeat", async () => {
+      const source = spec11("", DEDUPE_STEP);
+      const a = await newUserWithWorkspace();
+      const b = await newUserWithWorkspace();
+      expect((await hostedRun(a.cookie, source, undefined, "same")).skipped).toBeUndefined();
+      expect((await hostedRun(a.cookie, source, undefined, "same")).skipped).toBeDefined();
+      expect((await hostedRun(b.cookie, source, undefined, "same")).skipped).toBeUndefined();
+    }, 30_000);
 
     it("refuses to deploy a schedule or poll trigger instead of accepting a deployment that never fires", async () => {
       const { cookie } = await newUserWithWorkspace();

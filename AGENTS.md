@@ -54,8 +54,8 @@ claim it, and keep it in the active cycle (see KAM-150).
 - **Spec versions:** `"1.0"` keeps the original `{step.field}` syntax and string conditions and must keep
   validating. New step kinds (`transform`, `validate`, `dedupe`, `foreach`, `branch`, `stop`), `vars`,
   schedule/webhook auth and `output_schema` are `"1.1"` only. Each carries its own YAML line in errors.
-  The hosted server runs 1.1 specs (ADR-0056) except `dedupe`, `poll`/`schedule` triggers and webhook auth
-  presets, which wait on a workspace-scoped state store (KAM-203). (ADR-0027)
+  The hosted server runs 1.1 specs (ADR-0056) except `poll`/`schedule` triggers and webhook auth
+  presets (KAM-203). `dedupe` works there, on a Postgres state store scoped per workspace under RLS. (ADR-0027)
 - **Exported projects vendor the engine files** (parity-tested copies, e.g. `workflow.ts`, `run.ts`,
   `schedule.ts`), so a change to a vendored file must keep the parity tests passing. (ADR-0010)
 - **Local-first, no telemetry by default.** Secrets never go in a spec: only `${ENV_VAR}` placeholders
