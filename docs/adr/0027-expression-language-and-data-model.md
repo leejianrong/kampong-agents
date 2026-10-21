@@ -190,7 +190,7 @@ A version 1.1 spec runs in `kampong run`, `kampong dev` and `kampong serve`.
   mitigation from the spike, completed at run time.
 - **Run inputs.** `kampong run` takes `--var name=value` (an undeclared name is a usage error) and
   `--header name=value`; `kampong serve` passes the webhook's headers and JSON body.
-- **Not yet.** The hosted server refuses a 1.1 spec (422, by name): expressions on a shared server need the
+- **Hosted (superseded by ADR-0056).** The hosted server refused a 1.1 spec (422, by name): expressions on a shared server need the
   process boundary the spike found memory limits require. `kampong export` handles one (KAM-111): the exported
   runtime carries the evaluator (and pins `jsonata`), `npm start` takes `--var` and `--header` like `kampong
   run`, and the exported webhook server passes the request headers (credential-looking ones dropped) and

@@ -7,11 +7,7 @@ import { InvalidWorkspaceIdError, withWorkspaceScope } from "../db/workspace-sco
 import { deployments, specs } from "../db/schema.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
-import {
-  HostedRunManager,
-  InvalidStoredSpecError,
-  UnsupportedSpecVersionError,
-} from "../run/manager.js";
+import { HostedRunManager, InvalidStoredSpecError } from "../run/manager.js";
 
 // KAN-1436 (ADR-0022, ADR-0023): the managed "go live" core. Two distinct
 // surfaces, deliberately kept in one file since they share the `deployments`
@@ -213,7 +209,6 @@ export function registerDeploymentRoutes(
         }
         if (
           err instanceof InvalidStoredSpecError ||
-          err instanceof UnsupportedSpecVersionError ||
           err instanceof WorkspaceApiKeyNotConfiguredError
         ) {
           // A real misconfiguration on the deploying workspace's side (a spec

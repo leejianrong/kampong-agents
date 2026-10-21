@@ -5,11 +5,7 @@ import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
-import {
-  HostedRunManager,
-  InvalidStoredSpecError,
-  UnsupportedSpecVersionError,
-} from "../run/manager.js";
+import { HostedRunManager, InvalidStoredSpecError } from "../run/manager.js";
 
 // KAN-1231/KAN-1425 (ADR-0014, SLICES.md V5 build-plan step 11): the
 // workspace-scoped, durable hosted-execution routes -- start a run of one of
@@ -32,7 +28,7 @@ export function registerRunRoutes(
   { db, auth, manager }: RunRoutesDeps,
 ): void {
   // POST /api/specs/:id/runs -- start a run of this workspace's spec.
-  app.post<{ Params: { id: string }; Body: { input?: unknown } }>(
+  app.post<{ Params: { id: string }; Body: { input?: unknown; vars?: unknown } }>(
     "/api/specs/:id/runs",
     async (request, reply) => {
       const ctx = await authorizeWorkspace(auth, db, request, reply);
@@ -45,8 +41,25 @@ export function registerRunRoutes(
           .send({ success: false, error: "`input` (a string) is required to start a run." });
       }
 
+      // `vars` is `kampong run --var` for the hosted API: an object of typed values for a 1.1 spec's `vars`.
+      // The engine checks the names and types and fails the run visibly, so only the shape is checked here.
+      const vars = request.body?.vars;
+      if (
+        vars !== undefined &&
+        (vars === null || typeof vars !== "object" || Array.isArray(vars))
+      ) {
+        return reply
+          .code(400)
+          .send({ success: false, error: "`vars` must be an object of var values." });
+      }
+
       try {
-        const { id, state } = await manager.start(ctx.workspaceId, request.params.id, input);
+        const { id, state } = await manager.start(
+          ctx.workspaceId,
+          request.params.id,
+          input,
+          vars ? { vars: vars as Record<string, unknown> } : {},
+        );
         return reply.code(201).send({ success: true, id, state });
       } catch (err) {
         if (err instanceof SpecNotFoundError) {
@@ -54,7 +67,7 @@ export function registerRunRoutes(
             .code(404)
             .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
         }
-        if (err instanceof InvalidStoredSpecError || err instanceof UnsupportedSpecVersionError) {
+        if (err instanceof InvalidStoredSpecError) {
           return reply.code(422).send({ success: false, error: err.message });
         }
         if (err instanceof WorkspaceApiKeyNotConfiguredError) {
