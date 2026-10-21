@@ -12,7 +12,6 @@ import {
   createModelFixtures,
   createMastraModelClient,
   createModuleFixtures,
-  desugarLegacyTool,
   instantClock,
   Pacer,
   type ModelClient,
@@ -25,7 +24,6 @@ import {
   componentDispatcherFor,
   lockComponents,
   lockPathFor,
-  registryFor,
   resolveExportComponents,
 } from "./components.js";
 import {
@@ -37,6 +35,7 @@ import {
 } from "@kampong/exporter";
 import { runDoctor, type ConnectFn } from "./doctor.js";
 import { listTemplates } from "./templates.js";
+import { collectRunSecrets, defaultFixturesDir } from "./run-options.js";
 import { createDevServer } from "./server.js";
 import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
@@ -727,56 +726,6 @@ function parseRunArgs(args: string[]): { ok: true; value: RunArgs } | { ok: fals
       headers: { ...headers },
     },
   };
-}
-
-function defaultFixturesDir(specPath: string): string {
-  return join(dirname(specPath), ".kampong", "fixtures");
-}
-
-const ENV_VAR_PATTERN = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
-
-/** Every resolved BYOK secret currently in play, so the mock/record layer never writes one to a fixture (AGENTS.md's secrets convention). */
-function collectSecrets(spec: AgentSpec, env: NodeJS.ProcessEnv): string[] {
-  const secrets: string[] = [];
-  const apiKey = spec.agent.model?.api_key;
-  const match = apiKey ? ENV_VAR_PATTERN.exec(apiKey) : null;
-  if (match) {
-    const value = env[match[1]!];
-    if (value) secrets.push(value);
-  }
-  return secrets;
-}
-
-/**
- * `collectSecrets` plus the value of every secret slot a component tool reads (a slot remapped with
- * `secrets:`, else the component's own default variable). A tool result can carry such a value into a model
- * prompt, so the model fixture layer redacts it from a recording exactly as the tool layer does; without this a
- * replay (where the tool fixture says `[REDACTED]`) would ask for a prompt that was recorded with the live value.
- */
-async function collectRunSecrets(
-  spec: AgentSpec,
-  specPath: string,
-  env: NodeJS.ProcessEnv,
-): Promise<string[]> {
-  const secrets = collectSecrets(spec, env);
-  const registry = registryFor(specPath);
-  for (const declared of spec.agent.tools ?? []) {
-    const tool = desugarLegacyTool(declared) ?? declared;
-    if (tool.action !== "component") continue;
-    const at = tool.use.lastIndexOf("@");
-    try {
-      const { manifest } = await registry.resolve(tool.use.slice(0, at), tool.use.slice(at + 1));
-      for (const [slot, def] of Object.entries(manifest.auth?.slots ?? {})) {
-        const mapped = tool.secrets?.[slot];
-        const name = mapped ? (ENV_VAR_PATTERN.exec(mapped)?.[1] ?? mapped) : def.env;
-        const value = env[name];
-        if (value) secrets.push(value);
-      }
-    } catch {
-      // A component that cannot be resolved fails the run on its own, with a better message than this.
-    }
-  }
-  return secrets;
 }
 
 /**

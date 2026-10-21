@@ -18,6 +18,7 @@ import {
   type ToolFetchImpl,
 } from "@kampong/engine";
 import type { AgentSpec } from "@kampong/spec";
+import type { ReplayDeps } from "./run-options.js";
 
 // Holds the in-flight test runs `kampong dev`'s server exposes over HTTP
 // (PLAN.md Shape S5, SLICES.md V2 KAN-1107). Runs are process-local and
@@ -148,8 +149,10 @@ export class RunManager {
     spec: AgentSpec,
     input: string,
     trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
+    /** KAM-188: `replay` answers tool and model calls from recorded fixtures instead of the real services. */
+    replay?: ReplayDeps,
   ): Promise<StartRunResult> {
-    const run = this.createRun(spec, trigger);
+    const run = this.createRun(spec, trigger, replay);
     const id = this.register(spec, run);
     // Fire-and-forget: workflow.ts (packages/engine) already catches every
     // real failure mode itself and yields a "failed" RunEvent instead of
@@ -177,12 +180,14 @@ export class RunManager {
   private createRun(
     spec: AgentSpec,
     trigger?: { headers?: Record<string, string>; fields?: Record<string, unknown> },
+    replay?: ReplayDeps,
   ): AgentRun {
     return createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
       components: this.options.components,
       model: this.options.createModel?.(spec),
+      ...(replay ? replay : {}),
       ...(trigger ? { trigger } : {}),
       ...(this.options.persistApprovals
         ? {

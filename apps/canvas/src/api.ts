@@ -123,8 +123,35 @@ export interface StartRunResponse {
   success: boolean;
   id?: string;
   state?: RunState;
+  /** The mode the server ran it in (KAM-188); absent from a server that has only live runs. */
+  mode?: RunMode;
   errors?: SpecErrorDto[];
   error?: string;
+}
+
+/** How a test run reaches its tools and model: replay answers from recorded fixtures, live calls the real services (KAM-188). */
+export type RunMode = "replay" | "live";
+
+/** One tool a run would call, as `GET /api/run-options` describes it. */
+export interface RunOptionsToolDto {
+  name: string;
+  describes: string;
+  effect: "read" | "write" | "destructive" | "unknown";
+  /** A live run could change something outside the project. */
+  sideEffecting: boolean;
+  requiresApproval: boolean;
+  recorded: boolean;
+}
+
+/** What the open spec can do on a test run: the modes open to it and what a live run would call. */
+export interface RunOptionsResponse {
+  success: boolean;
+  error?: string;
+  modes?: RunMode[];
+  defaultMode?: RunMode;
+  fixtures?: { available: boolean; dir?: string; count: number };
+  tools?: RunOptionsToolDto[];
+  modelCalls?: boolean;
 }
 
 export interface ApproveRunResponse {
@@ -240,7 +267,12 @@ export interface ApiClient {
   listSecrets?(): Promise<SecretStatusDto[]>;
   setSecret?(name: string, value: string): Promise<SecretStatusDto[]>;
   removeSecret?(name: string): Promise<SecretStatusDto[]>;
-  startRun(input: string): Promise<StartRunResponse>;
+  /**
+   * The modes a test run can use and, for a live run, the tools it would call (KAM-188). Only the local
+   * server can replay recorded fixtures; the hosted client omits this, so the panel shows no mode switch.
+   */
+  getRunOptions?(): Promise<RunOptionsResponse>;
+  startRun(input: string, mode?: RunMode): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
 }
@@ -439,8 +471,13 @@ export function createApiClient(baseUrl = ""): ApiClient {
       return () => source.close();
     },
 
-    async startRun(input: string): Promise<StartRunResponse> {
-      const res = await fetch(`${baseUrl}/api/runs`, jsonInit({ input }));
+    async getRunOptions(): Promise<RunOptionsResponse> {
+      const res = await fetch(`${baseUrl}/api/run-options`);
+      return (await res.json()) as RunOptionsResponse;
+    },
+
+    async startRun(input: string, mode?: RunMode): Promise<StartRunResponse> {
+      const res = await fetch(`${baseUrl}/api/runs`, jsonInit(mode ? { input, mode } : { input }));
       return (await res.json()) as StartRunResponse;
     },
 

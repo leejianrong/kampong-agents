@@ -488,6 +488,22 @@ bar** along the bottom holds the workflow's settings, each opening its panel: **
 number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
 overlaps at 480 pixels wide or more.
 
+#### Test Run: Replay or Live
+
+**Run** opens Test Run, which has a **Replay / Live** switch (local mode). **Replay** answers every tool,
+connector and model call from recorded fixtures, so it needs no keys and no network and shows the recorded
+results; it is the default whenever fixtures exist, in `.kampong/fixtures` or in a `fixtures/` folder beside the
+spec (the `market-etl` template ships them). **Live** calls the real services. It shows a red **LIVE** banner
+listing each tool the run would call and whether it only reads or changes something outside the project, and a
+live run with a tool that changes things asks you to confirm before it starts. Which tools change things comes
+from the HTTP method (anything but GET or HEAD) or, for a component, the `effect` of the operation. The result
+states the mode it ran in, **Replay (recorded fixtures)** or **LIVE**. With no fixtures only Live is offered. The
+hosted server cannot replay yet, so hosted mode shows no switch and runs as before.
+
+The local server backs this with `GET /api/run-options` (the modes open to the spec, the fixtures found and the
+tools a live run would call) and a `mode` (`replay` or `live`, default `live`) on `POST /api/runs`, whose response
+repeats the mode that ran. A replay with no fixtures is refused with 409.
+
 #### Selecting a node on the canvas
 
 Click a node (or Tab to it and press Enter) to open it in the side panel. The panel shows the same form as the
