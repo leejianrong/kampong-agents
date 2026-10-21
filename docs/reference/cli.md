@@ -88,6 +88,10 @@ kampong run <spec>.yaml --input "<text>" [options]
 Without `--approve-all`, a paused run prompts on stdin. Answer `y`/`yes` to approve; anything else
 rejects. Reject with a reason via `n:<reason>`, like `n:looks risky`.
 
+If stdin ends before an answer (`< /dev/null`, or a pipe that closes with nothing on it), the run fails with
+exit code 2 and a message that says the approval had no answer. It never exits 0 as if it had succeeded. In a
+script, pipe `y` or `n:<reason>`, or pass `--approve-all`.
+
 ## `kampong serve`
 
 Runs a spec as a long-lived service: the self-host and deploy path. The same engine and spec as
