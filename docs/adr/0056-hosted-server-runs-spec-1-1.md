@@ -33,8 +33,8 @@ Reading the code for KAM-203 found the bounds are mostly in place and one gap is
 
 ## Not done here
 
-`dedupe` now works (KAM-113: `state_entries` under FORCE RLS, `PgStateStore`). `poll`, `schedule` and webhook auth
-presets need trigger wiring (KAM-203 later parts); until then they are refused up front with a 422 naming the feature (`UnsupportedOnHostedError`). Outbound HTTP from tools has no private-address (SSRF) guard; a hosted tool can reach addresses inside the
+`dedupe` now works (KAM-113: `state_entries` under FORCE RLS, `PgStateStore`). Webhook auth, `when` and `map` work (ADR-0057). `poll`, `schedule` and a webhook's
+`respond: sync` need a scheduler or a held request (later); until then they are refused up front with a 422 naming the feature (`UnsupportedOnHostedError`). Outbound HTTP from tools has no private-address (SSRF) guard; a hosted tool can reach addresses inside the
 server's network. This predates 1.1 and is flagged for its own card.
 
 ## Consequences

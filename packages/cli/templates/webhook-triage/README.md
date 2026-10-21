@@ -69,6 +69,6 @@ survives a restart. Slack buttons need the app's interactivity URL and `SLACK_SI
 
 - `kampong run` takes the alert as `--input` and does not apply the trigger's authentication or `when`; those
   apply to `kampong serve` and an exported project's server.
-- Version 1.1 spec: the hosted server does not run 1.1 specs yet (KAM-203), so this runs locally or self-hosted
-  for now.
+- On the hosted server the `secret_env` name is just a label: deploying generates the webhook secret and shows
+  it once (see ADR-0057), so `ALERT_WEBHOOK_TOKEN` is not read from any environment there.
 - Only environment variable names appear in the spec (`secret_env`, `${SLACK_BOT_TOKEN}`), never values.
