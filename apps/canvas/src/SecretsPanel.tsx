@@ -77,6 +77,16 @@ export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
   const adding = editing === "";
   const target = adding ? newName.trim() : (editing ?? "");
   const canSave = !busy && NAME.test(target) && value !== "";
+  // KAM-197: Save is disabled until there is something it can save; say what is missing.
+  const saveBlockedBecause = busy
+    ? "Saving, one moment."
+    : target === ""
+      ? "Enter a name to save."
+      : !NAME.test(target)
+        ? "A name uses letters, digits and underscores, and starts with a letter or an underscore."
+        : value === ""
+          ? "Enter a value to save."
+          : undefined;
 
   return (
     <section className="md3-doctor" aria-label="Secrets" data-testid="secrets-panel">
@@ -133,7 +143,12 @@ export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
               onChange={(e) => setValue(e.target.value)}
             />
           </label>
-          <PanelFooter save="Save" disabled={!canSave} onCancel={finishEditing} />
+          <PanelFooter
+            save="Save"
+            disabled={!canSave}
+            {...(saveBlockedBecause && { disabledReason: saveBlockedBecause })}
+            onCancel={finishEditing}
+          />
         </form>
       )}
 

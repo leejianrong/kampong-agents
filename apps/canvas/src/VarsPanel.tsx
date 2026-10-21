@@ -148,7 +148,12 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
             />
           </label>
           <PanelError messages={errors} />
-          <PanelFooter save="Save var" disabled={busy} onCancel={close} />
+          <PanelFooter
+            save="Save var"
+            disabled={busy}
+            disabledReason="Saving, one moment."
+            onCancel={close}
+          />
         </form>
       )}
 
