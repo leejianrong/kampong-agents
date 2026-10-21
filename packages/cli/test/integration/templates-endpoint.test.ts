@@ -55,7 +55,7 @@ describe("the template gallery routes", () => {
     }>;
     expect(list.map((t) => t.name)).toEqual(listTemplates().map((t) => t.name));
     expect(list.map((t) => t.name)).toEqual(
-      expect.arrayContaining(["market-etl", "support-triage"]),
+      expect.arrayContaining(["market-etl", "support-triage", "webhook-triage"]),
     );
     for (const t of list) {
       expect(t.title, t.name).not.toBe(t.name);

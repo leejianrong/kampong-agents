@@ -1,0 +1,15 @@
+{
+  "toolName": "kampong/slack.post_message",
+  "method": "POST",
+  "url": "https://slack.com/api/chat.postMessage",
+  "requestBody": "{\"channel\":\"#oncall\",\"text\":\"Checkout is failing 38% of payments since 09:14 UTC. First check the latest deploy and the payment provider status page.\"}",
+  "status": 200,
+  "body": {
+    "ok": true,
+    "channel": "C0ONCALXX",
+    "ts": "1760000000.000100"
+  },
+  "bodyRaw": "{\"ok\":true,\"channel\":\"C0ONCALXX\",\"ts\":\"1760000000.000100\"}",
+  "bodyFormat": "utf8",
+  "contentType": "application/json"
+}

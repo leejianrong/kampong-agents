@@ -128,8 +128,8 @@ kampong templates [--json]
 `--json` prints an array of `{ name, title, description, stepKinds, runsOffline, path }`. `title` and
 `description` come from the folder's `template.json` (a friendly name and a plain-language description of the
 job); `stepKinds` and `runsOffline` are worked out from the spec and the `fixtures/` folder. The command
-copies nothing; copy the folder yourself, or choose the template in `kampong dev` (see above). Today there are two: `market-etl`, a scheduled price pipeline (see
-[Scheduled data pipelines](../tutorial/pipelines.md)), and `support-triage`, an inbox assistant that drafts replies.
+copies nothing; copy the folder yourself, or choose the template in `kampong dev` (see above). Today there are three: `market-etl`, a scheduled price pipeline (see
+[Scheduled data pipelines](../tutorial/pipelines.md)), `support-triage`, an inbox assistant that drafts replies, and `webhook-triage`, an alert webhook where a model decides and a person approves the Slack post.
 
 ## `kampong doctor`
 
