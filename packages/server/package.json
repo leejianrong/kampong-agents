@@ -13,7 +13,7 @@
     "db:migrate": "node dist/db/migrate.js"
   },
   "dependencies": {
-    "@better-auth/sso": "1.7.7",
+    "@better-auth/sso": "1.7.11",
     "@fastify/static": "^10.1.6",
     "@kampong/canvas-app": "*",
     "@kampong/engine": "*",
