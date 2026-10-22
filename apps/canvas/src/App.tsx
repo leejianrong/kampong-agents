@@ -192,7 +192,7 @@ export function App({
   // KAM-182: draft panels that have been opened (kept mounted), and which of them had something typed in.
   const [kept, setKept] = useState<OpenForm[]>([]);
   const typedIn = useRef(new Set<OpenForm>());
-  const sidePane = useRef<HTMLDivElement>(null);
+  const sidePane = useRef<HTMLElement>(null);
   // KAM-181: a save was just made (so the next different source is its result), and the feedback for it.
   const savedAt = useRef(0);
   const sourceRef = useRef("");
@@ -1024,7 +1024,7 @@ export function App({
                   api.removeSecret && { onSetSecret: openSecret })}
               />
               <div className="md3-app__main">
-                <div className="md3-app__canvas-pane">
+                <main className="md3-app__canvas-pane" aria-label="Workflow canvas">
                   {saveError !== null && openForm === null && selected === null && (
                     <div
                       role="alert"
@@ -1141,8 +1141,9 @@ export function App({
                       />
                     )}
                   </div>
-                </div>
-                <div
+                </main>
+                <aside
+                  aria-label="Details"
                   ref={sidePane}
                   className="md3-app__side-pane"
                   onInputCapture={() => {
@@ -1415,7 +1416,7 @@ export function App({
                       onImport={() => setOpenForm("import")}
                     />
                   )}
-                </div>
+                </aside>
               </div>
               <StatusBar actions={actions} />
               <Snackbar message={toast?.text ?? null} />

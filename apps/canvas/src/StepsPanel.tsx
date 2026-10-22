@@ -229,7 +229,7 @@ export function StepsPanel({
   const [busy, setBusy] = useState(false);
   // Opening a form scrolls the panel back to the top: the Edit button sits in a list below the form, so a
   // scrolled panel would leave the form (and its sticky Save row) above the fold.
-  const top = useRef<HTMLElement>(null);
+  const top = useRef<HTMLDivElement>(null);
   const editingKey = editing?.key;
   useEffect(() => {
     if (editingKey !== undefined) top.current?.scrollIntoView?.({ block: "start" });
@@ -315,7 +315,7 @@ export function StepsPanel({
 
   return (
     <FieldProblemsContext.Provider value={fieldProblems}>
-      <section ref={top} className="md3-doctor" aria-label="Steps" data-testid="steps-panel">
+      <div ref={top} className="md3-doctor" data-testid="steps-panel">
         {only === undefined && (
           <p className="md3-body-small md3-field__hint">
             Edit a step in place: an action step's query, instructions, model, temperature and
@@ -836,7 +836,7 @@ export function StepsPanel({
             </ul>
           </>
         )}
-      </section>
+      </div>
     </FieldProblemsContext.Provider>
   );
 }

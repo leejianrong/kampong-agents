@@ -228,7 +228,7 @@ for (const size of [
 
     test("Secrets counts the ones the workflow reads that have no value", async ({ page }) => {
       await expect(
-        page.getByRole("contentinfo").getByRole("button", { name: /^Secrets, \d+ missing$/ }),
+        page.getByRole("contentinfo").getByRole("button", { name: /^Secrets \d+ missing$/ }),
       ).toBeVisible();
     });
 

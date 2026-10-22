@@ -150,12 +150,12 @@ describe("run bar", () => {
 describe("status bar", () => {
   it("offers Vars, Secrets, Guardrails, Checks and Trigger in a footer, each opening its panel", async () => {
     await open(full);
-    await screen.findByRole("button", { name: "Secrets, 2 missing" });
+    await screen.findByRole("button", { name: "Secrets 2 missing" });
     const bar = screen.getByRole("contentinfo");
     const names = within(bar)
       .getAllByRole("button")
       .map((b) => b.textContent);
-    expect(names).toEqual(["Vars", "Secrets2", "Guardrails", "Checks", "Trigger"]);
+    expect(names).toEqual(["Vars", "Secrets 2", "Guardrails", "Checks", "Trigger"]);
     for (const [button, panel] of [
       [/^Vars$/, "Spec Vars"],
       [/^Secrets/, "Secrets"],

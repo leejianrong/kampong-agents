@@ -89,7 +89,7 @@ export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
           : undefined;
 
   return (
-    <section className="md3-doctor" aria-label="Secrets" data-testid="secrets-panel">
+    <div className="md3-doctor" data-testid="secrets-panel">
       <div className="md3-doctor__head">
         <button
           type="button"
@@ -192,7 +192,7 @@ export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
 

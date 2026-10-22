@@ -695,10 +695,19 @@ groups (do work, work with data, control the flow), each with a one-line descrip
 knows words such as _loop_ or _if_), press `/` anywhere outside a text field to jump to it, use the arrow keys and
 `Enter` to choose, and the form opens with that kind at the end of the workflow. On a narrow window the palette starts
 as a **Steps** button and opens over the canvas. A **+** on a line between two steps (it shows when you hover the
-line; with the keyboard, focus the line and press `Enter`) opens the same picker, and the form opens with **Add to**
+line, and a line that has been clicked takes `Enter`) opens the same picker, and the form opens with **Add to**
 and **Position** already set to just before the step the line leads to: between two steps, at the start of a loop's
 body, or at the start of a branch arm. The save is a single `step.insert`, so the YAML changes by one inserted block.
 `Esc` closes the picker.
+
+Keyboard and screen reader use (KAM-200): `Tab` goes from the top bar to the palette and then to the nodes in the order
+a run goes through them (the trigger, the steps with the ones inside a loop or branch where they run, then the tools and
+the guardrails); the lines between them are not Tab stops, so a workflow of twenty steps is not forty stops. A step goes
+in at any place from the Add step form's **Position** choice, which is the keyboard way. The canvas is the page's `main`
+landmark and the side panels are its `aside`; the page has one `h1` (the workflow's name), every panel is a landmark
+with its own name, and the status bar's Secrets button is named "Secrets 4 missing" so its name contains the words on
+it. A browser test runs axe over the canvas and every panel at 900x700 and 1440x900 and fails on any critical, serious
+or moderate finding.
 
 A branch's arms are nodes of their own the same way: each arm step is set in from its branch and marked with the arm
 it is in, the branch leads to the first step of each arm on a line labelled `then`, `else`, `case <value>` or

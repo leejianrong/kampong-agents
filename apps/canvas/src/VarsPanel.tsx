@@ -62,7 +62,7 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
   }
 
   return (
-    <section className="md3-doctor" aria-label="Spec vars" data-testid="vars-panel">
+    <div className="md3-doctor" data-testid="vars-panel">
       <div className="md3-doctor__head">
         <button
           type="button"
@@ -197,6 +197,6 @@ export function VarsPanel({ version, vars, onSave, onRemove }: VarsPanelProps) {
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }

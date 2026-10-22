@@ -138,7 +138,7 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
 
   return (
     <FieldProblemsContext.Provider value={fieldProblems}>
-      <section className="md3-doctor" aria-label="Trigger" data-testid="trigger-panel">
+      <div className="md3-doctor" data-testid="trigger-panel">
         <div className="md3-doctor__head">
           {(["webhook", "schedule", "poll"] as const).map((type) => (
             <button
@@ -387,7 +387,7 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
             </li>
           </ul>
         )}
-      </section>
+      </div>
     </FieldProblemsContext.Provider>
   );
 }
