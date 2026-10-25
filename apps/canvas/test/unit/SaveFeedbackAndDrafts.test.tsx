@@ -62,7 +62,7 @@ function setup() {
 }
 
 const openPanel = (name: RegExp | string) => fireEvent.click(screen.getByRole("button", { name }));
-const ready = () => waitFor(() => expect(screen.getByText(/Workflow: greet/)).toBeTruthy());
+const ready = () => waitFor(() => expect(screen.getByText("greet")).toBeTruthy());
 const type = (label: string, value: string) =>
   fireEvent.input(screen.getByLabelText(label, { exact: false }), { target: { value } });
 const panelOnShow = (name: string) => screen.queryAllByRole("region", { name })[0] ?? null;

@@ -11,7 +11,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toolUsage, type InsertionMarker, type SpecGraph, type SpecNode } from "@kampong/spec";
 import {
   EdgeInsertContext,
@@ -20,6 +20,7 @@ import {
   type InsertEdgeData,
 } from "./InsertEdge.js";
 import type { StepKind } from "./stepKinds.js";
+import { NodeCard } from "./nodeCard.js";
 import { STATUS_ICON, STATUS_LABEL, type NodeRunInfo } from "./runStatus.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
@@ -65,24 +66,6 @@ const EDGE_TYPES = { insert: InsertEdge };
 const MARKER_ID = "insertion-marker";
 /** A workflow with more nodes than this gets a minimap (KAM-187). */
 const MINIMAP_OVER = 15;
-
-/** A node's title: one line, cut with an ellipsis, the whole text as its tooltip (KAM-187). */
-function Title({ text }: { text: string }) {
-  return (
-    <div className="md3-label-large md3-node__title" title={text}>
-      {text}
-    </div>
-  );
-}
-
-/** A line of detail under a title: at most two lines, the whole text as its tooltip (KAM-187). */
-function Meta({ text }: { text: string }) {
-  return (
-    <div className="md3-foreach__meta md3-node__meta" title={text}>
-      {text}
-    </div>
-  );
-}
 
 /**
  * A node's run status (KAM-190): an icon and a word, never colour alone, on the node's top edge so the node does not
@@ -183,13 +166,6 @@ function edgeEnd(node: SpecNode | undefined, fallback: string): string {
 /** What starts a run, from the graph (KAM-184); "Manual" for a graph that predates the field. */
 const triggerLabelOf = (node: SpecNode): string =>
   typeof node.data.triggerLabel === "string" ? node.data.triggerLabel : "Manual";
-
-const KIND_LABEL: Record<SpecNode["kind"], string> = {
-  agent: "Trigger",
-  tool: "Tool",
-  workflow: "Workflow",
-  guardrails: "Guardrails",
-};
 
 // KAM-200: the nodes are Tab stops in the order they are given to React Flow. The graph lists the tools right after the
 // trigger, but a person reads and runs trigger, steps in order, then the things the steps call and the limits, so
@@ -312,7 +288,7 @@ export function Canvas({
           data: {
             label: run ? (
               <>
-                {nodeLabel(node)}
+                <NodeCard node={node} />
                 <RunBadge
                   nodeId={node.id}
                   info={run}
@@ -320,7 +296,7 @@ export function Canvas({
                 />
               </>
             ) : (
-              nodeLabel(node)
+              <NodeCard node={node} />
             ),
           },
           selected: selectedId === node.id,
@@ -449,102 +425,6 @@ export function Canvas({
   );
 }
 
-function branchLabel(node: SpecNode): ReactNode {
-  const b = node.data.branch as { if?: string; switch?: string };
-  return (
-    <div className="md3-foreach">
-      <Title text={`Branch: ${String(node.data.step)}`} />
-      <Meta text={b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`} />
-      <Meta text="arms are below" />
-    </div>
-  );
-}
-
-function stopLabel(node: SpecNode): ReactNode {
-  const stop = node.data.stop as { reason?: string; status?: string };
-  return (
-    <div>
-      <Title text={`Stop: ${String(node.data.step)}`} />
-      <Meta
-        text={`ends the run as ${stop.status ?? "skipped"}${
-          stop.reason !== undefined ? `: ${stop.reason}` : ""
-        }`}
-      />
-    </div>
-  );
-}
-
-function foreachLabel(node: SpecNode): ReactNode {
-  const loop = node.data.foreach as {
-    items: string;
-    as: string;
-    concurrency?: number;
-    on_error?: string | { retry?: { n: number } };
-    steps?: unknown[];
-  };
-  const policy =
-    typeof loop.on_error === "object" && loop.on_error?.retry
-      ? `retry ${loop.on_error.retry.n}`
-      : String(loop.on_error ?? "fail");
-  return (
-    <div className="md3-foreach">
-      <Title text={`Foreach: ${String(node.data.step)}`} />
-      <Meta
-        text={`over ${loop.items} as ${loop.as} \u00b7 on_error ${policy}${
-          loop.concurrency !== undefined ? ` \u00b7 concurrency ${loop.concurrency}` : ""
-        }`}
-      />
-      <Meta
-        text={`${(loop.steps ?? []).length} ${
-          (loop.steps ?? []).length === 1 ? "step" : "steps"
-        } inside, below`}
-      />
-    </div>
-  );
-}
-
-// What a data step does, in a line under its title (KAM-152). Long expressions are cut so a node stays small.
-const clip = (text: string, n = 48) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
-
-function transformSummary(node: SpecNode): string {
-  const names = Object.keys((node.data.set as Record<string, string> | undefined) ?? {});
-  return names.length === 0 ? "" : clip(`sets ${names.join(", ")}`);
-}
-function validateSummary(node: SpecNode): string {
-  const on = node.data.on_fail === "skip" ? "skip" : "fail";
-  return `${clip(`asserts ${String(node.data.assert ?? "")}`)} · on fail ${on}`;
-}
-function dedupeSummary(node: SpecNode): string {
-  const once = (node.data.once ?? {}) as { key?: string; ttl?: string };
-  return clip(`once per ${once.key ?? "?"} for ${once.ttl ?? "?"}`);
-}
-
-function dataLabel(kind: string, step: string, summary: string): ReactNode {
-  if (summary === "") return <Title text={`${kind}: ${step}`} />;
-  return (
-    <div>
-      <Title text={`${kind}: ${step}`} />
-      <Meta text={summary} />
-    </div>
-  );
-}
-
-function nodeLabel(node: SpecNode): ReactNode {
-  const label = ownLabel(node);
-  if (!node.parent) return label;
-  // A foreach body step says which loop it is in, so the grouping reads even when the nodes are dragged apart.
-  return (
-    <div>
-      <div>{label}</div>
-      <Meta
-        text={`in ${node.parent.replace(/^workflow:/, "")}${
-          node.arm !== undefined ? ` \u00b7 ${node.arm}` : ""
-        }`}
-      />
-    </div>
-  );
-}
-
 const STEP_KIND_WORD: Record<string, string> = {
   tool: "Tool",
   approval: "Approval",
@@ -576,26 +456,4 @@ function nodeAriaLabel(node: SpecNode): string {
     what += `, in ${node.parent.replace(/^workflow:/, "")}${arm}`;
   }
   return what;
-}
-
-function ownLabel(node: SpecNode): ReactNode {
-  // Workflow nodes read their step kind from the data so the new first-class
-  // tool/approval steps (KAN-1429) are distinguishable on the canvas; action
-  // and condition steps keep the existing "Workflow: <step>" label.
-  if (node.kind === "workflow") {
-    if (node.data.foreach) return foreachLabel(node);
-    if (node.data.branch) return branchLabel(node);
-    if (node.data.stop) return stopLabel(node);
-    const step = String(node.data.step ?? node.id);
-    if (node.data.type === "tool") return <Title text={`Tool step: ${step}`} />;
-    if (node.data.type === "approval") return <Title text={`Approval: ${step}`} />;
-    if (node.data.type === "transform") return dataLabel("Transform", step, transformSummary(node));
-    if (node.data.type === "validate") return dataLabel("Validate", step, validateSummary(node));
-    if (node.data.type === "dedupe") return dataLabel("Dedupe", step, dedupeSummary(node));
-    return <Title text={`Workflow: ${step}`} />;
-  }
-  if (node.kind === "agent") return <Title text={triggerLabelOf(node)} />;
-  const kind = KIND_LABEL[node.kind];
-  const name = String(node.data.name ?? node.data.step ?? node.id);
-  return <Title text={`${kind}: ${name}`} />;
 }

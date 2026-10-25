@@ -161,9 +161,9 @@ describe("canvas against a real local server (no mocks)", () => {
 
     // the canvas reflects all three additions, not just the file on disk
     await waitFor(() => {
-      expect(screen.getByText(/Tool: check_status/)).toBeTruthy();
-      expect(screen.getByText(/Workflow: evaluate_policy/)).toBeTruthy();
-      expect(screen.getByText(/Guardrails:/)).toBeTruthy();
+      expect(screen.getByText("check_status")).toBeTruthy();
+      expect(screen.getByText("evaluate_policy")).toBeTruthy();
+      expect(screen.getByText("Guardrails", { selector: ".md3-node__title" })).toBeTruthy();
     });
   });
 
@@ -224,7 +224,7 @@ ops:
         with: { title: "Broken login", priority: 2 },
       },
     ]);
-    await waitFor(() => expect(screen.getByText(/Tool: make_ticket/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("make_ticket")).toBeTruthy());
   });
 
   it("builds a two-step agent with a confidence-gated action step and a conditional guardrail branch entirely on the canvas (KAN-1175)", async () => {
@@ -278,8 +278,8 @@ ops:
 
     // the canvas reflects both additions, not just the file on disk
     await waitFor(() => {
-      expect(screen.getByText(/Workflow: evaluate_policy/)).toBeTruthy();
-      expect(screen.getByText(/Workflow: handle_approval/)).toBeTruthy();
+      expect(screen.getByText("evaluate_policy")).toBeTruthy();
+      expect(screen.getByText("handle_approval")).toBeTruthy();
     });
   });
 
@@ -445,7 +445,7 @@ agent:
     const onDisk = readFileSync(specPath, "utf8");
     expect(onDisk.split("\n")[0]).toMatch(/^# yaml-language-server: \$schema=/);
     expect(parseSpec(onDisk).success).toBe(true);
-    expect(screen.getByText(/Workflow: answer/)).toBeTruthy();
+    expect(screen.getByText("answer")).toBeTruthy();
   });
 
   it("adds the first step to a workflow: [] from the empty state (KAM-196)", async () => {
@@ -465,7 +465,7 @@ agent:
 
     await waitFor(() => expect(screen.queryByTestId("empty-state")).toBeNull());
     expect(parseSpec(readFileSync(specPath, "utf8")).success).toBe(true);
-    expect(screen.getByText(/Workflow: first/)).toBeTruthy();
+    expect(screen.getByText("first")).toBeTruthy();
   });
 
   // KAM-171 (ADR-0055): delete a step or tool from the Edit Steps list, against the real server.

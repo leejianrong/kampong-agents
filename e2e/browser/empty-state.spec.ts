@@ -79,7 +79,9 @@ for (const size of [
       await page.goto(URL);
       await page.getByTestId("start-blank").click();
       await expect(page.getByTestId("empty-state")).toHaveCount(0);
-      await expect(page.getByText(/Workflow: answer/)).toBeVisible();
+      await expect(
+        page.locator(".react-flow__node").getByText("answer", { exact: true }),
+      ).toBeVisible();
       const onDisk = readFileSync(specPath, "utf8");
       expect(onDisk.split("\n")[0]).toMatch(
         /^# yaml-language-server: \$schema=\S*agent-spec\.v1\.0\.schema\.json$/,
@@ -107,7 +109,9 @@ for (const size of [
       await form.getByLabel("Step ID").fill("first");
       await form.getByLabel("Action").fill("check_knowledge");
       await form.getByRole("button", { name: "Save step" }).click();
-      await expect(page.getByText(/Workflow: first/)).toBeVisible();
+      await expect(
+        page.locator(".react-flow__node").getByText("first", { exact: true }),
+      ).toBeVisible();
       await expect(page.getByTestId("empty-state")).toHaveCount(0);
     });
 
@@ -116,14 +120,18 @@ for (const size of [
     }) => {
       writeFileSync(specPath, ONE_STEP);
       await page.goto(URL);
-      await expect(page.getByText(/Workflow: parse/)).toBeVisible();
+      await expect(
+        page.locator(".react-flow__node").getByText("parse", { exact: true }),
+      ).toBeVisible();
 
       writeFileSync(specPath, `${ONE_STEP}  tools: [unclosed\n`);
       const summary = page.getByTestId("spec-errors-summary");
       await expect(summary).toContainText("Showing the last valid version");
       await expect(summary).toContainText(/fix line \d+/);
       await expect(summary).toContainText("Saves are paused");
-      await expect(page.getByText(/Workflow: parse/)).toBeVisible();
+      await expect(
+        page.locator(".react-flow__node").getByText("parse", { exact: true }),
+      ).toBeVisible();
       expect(await page.evaluate(noHorizontalScroll)).toBe(true);
     });
   });

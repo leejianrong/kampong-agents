@@ -60,7 +60,9 @@ test("capture docs screenshots", async ({ page }) => {
   expect(created.ok()).toBeTruthy();
   await page.reload();
   await page.getByRole("button", { name: /Refund Agent/ }).click();
-  await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
+  await expect(page.locator('.react-flow__node[data-id^="agent:"] .md3-node__title')).toHaveText(
+    "Manual",
+  );
   await shot(page, "canvas-editor");
 
   // The Add Tool form open on the canvas.

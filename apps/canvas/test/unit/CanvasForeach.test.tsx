@@ -55,17 +55,17 @@ describe("Canvas foreach node", () => {
       graph.nodes.map((n, i) => [n.id, { x: n.column * 260, y: i * 120 }]),
     );
     render(<Canvas graph={graph} layout={layout} />);
-    expect(screen.getByText("Foreach: each")).toBeTruthy();
+    expect(screen.getByText("each")).toBeTruthy();
     expect(screen.getByText(/over trigger\.symbols as symbol/)).toBeTruthy();
     expect(screen.getByText(/on_error continue/)).toBeTruthy();
     expect(screen.getByText(/concurrency 2/)).toBeTruthy();
     // Each body step is a node of its own (KAM-153), marked with the loop it is in.
-    expect(screen.getByText("Tool step: fetch")).toBeTruthy();
-    expect(screen.getByText("Transform: shape")).toBeTruthy();
+    expect(screen.getByText("fetch")).toBeTruthy();
+    expect(screen.getByText("shape")).toBeTruthy();
     expect(screen.getAllByText("in each")).toHaveLength(2);
     expect(document.querySelectorAll(".md3-node--nested")).toHaveLength(2);
     // A step after the loop still renders.
-    expect(screen.getByText("Workflow: after")).toBeTruthy();
+    expect(screen.getByText("after")).toBeTruthy();
   });
 });
 

@@ -76,7 +76,9 @@ for (const size of [
     test.beforeEach(async ({ page }) => {
       writeFileSync(file, SPEC);
       await page.goto(URL);
-      await expect(page.locator('.react-flow__node[data-id^="agent:"]')).toHaveText("Manual");
+      await expect(
+        page.locator('.react-flow__node[data-id^="agent:"] .md3-node__title'),
+      ).toHaveText("Manual");
     });
 
     test("Ctrl+K opens it, the box has focus, Esc closes it and focus goes back", async ({
