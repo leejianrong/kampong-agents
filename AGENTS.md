@@ -63,6 +63,9 @@ claim it, and keep it in the active cycle (see KAM-150).
 - **An unavailable local model (Ollama) is a hard, visible error**, never a silent fallback to a paid API.
 - **Model calls: prefer OpenRouter, then any OpenAI-compatible endpoint, over a direct Anthropic key.**
   `mastra-projects/` goes through OpenRouter only (its ADR-0005).
+- **Canvas v2:** small category-coloured cards flowing left to right, detail in one docked inspector, results on the
+  nodes; mockups in `docs/design/canvas-v2`. The assistant (chat builder) proposes validated edits over an
+  OpenAI-compatible endpoint and applies nothing until the user does. (ADR-0059, ADR-0060)
 - **Frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation, state layers);
   see the `material-design-3` skill.
 - **First user: a non-technical person who can prompt an LLM.** Hosted is the business; a paid enterprise licence
@@ -129,7 +132,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0058).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0060).
 - Every bug or flake becomes a regression test before the fix.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 

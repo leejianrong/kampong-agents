@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>After a Replay run</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1b2420}
+.n{position:absolute;box-sizing:border-box;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 1px 2px rgba(20,40,32,.06),0 6px 16px rgba(20,40,32,.07);display:flex;align-items:center;gap:12px;padding:0 14px;width:260px;height:68px}
+.ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tx{min-width:0;flex:1}
+.t{font-size:14px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12px;line-height:16px;color:#55625b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#55625b}
+.pt{position:absolute;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid #9fb0a8;box-sizing:border-box}
+.amber{background:#fff0d0;color:#855400}.violet{background:#ebe5ff;color:#5334c0}.teal{background:#d3f0ec;color:#0a6760}.blue{background:#dbe8ff;color:#1c4d99}.rose{background:#ffdfe5;color:#9f1f3d}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:14px;font-size:12px;font-weight:500;color:#33403a;background:#fff;border:1px solid #d9e0dc}
+.ok{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#d9f2e4;color:#10543a;border:1px solid #b7e2cb}
+.bad{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#ffdede;color:#8a1c1c;border:1px solid #f0b4b4}
+.cnt{position:absolute;font-size:11px;font-weight:600;color:#10543a;background:#fff;border:1px solid #b7e2cb;border-radius:9px;padding:1px 8px}
+.btn{height:36px;border-radius:18px;display:inline-flex;align-items:center;gap:6px;padding:0 16px;font-size:13px;font-weight:600;border:0;font-family:inherit}
+.ib{width:34px;height:34px;border-radius:17px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;color:#33403a}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.row{display:flex;align-items:center;gap:10px;height:36px;padding:0 14px;font-size:13px}
+.dot{width:16px;height:16px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:18px;background:#f1f4f2;border-radius:10px;padding:12px 14px;color:#1b2420;white-space:pre}
+</style>
+</helmet>
+<div style="width:1440px;height:1000px;position:relative;background:#f3f6f4;overflow:hidden">
+
+<!-- top bar -->
+<div style="position:absolute;left:0;top:0;width:1440px;height:56px;background:#fff;border-bottom:1px solid #d9e0dc;display:flex;align-items:center;padding:0 20px;box-sizing:border-box;gap:16px">
+<div style="width:30px;height:30px;border-radius:9px;background:#1f6f5c;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center">K</div>
+<div style="font-size:13px;color:#55625b">Workflows <span style="padding:0 6px">/</span></div>
+<div style="font-size:15px;font-weight:600">Market ETL</div>
+<span class="chip" style="height:24px;background:#e4f3ec;border-color:#e4f3ec;color:#14543f">Saved</span>
+<div style="flex:1;display:flex;justify-content:center">
+<div style="display:flex;background:#eef2f0;border-radius:18px;padding:3px">
+<div style="padding:6px 18px;border-radius:15px;background:#fff;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)">Editor</div>
+<div style="padding:6px 18px;font-size:13px;font-weight:500;color:#55625b">Runs</div>
+<div style="padding:6px 18px;font-size:13px;font-weight:500;color:#55625b">Checks</div>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;height:32px;border-radius:16px;padding:0 14px;background:#fff1d6;color:#7a4d00;font-size:13px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a4d00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>Completed with 1 error · 0.7 s</div>
+<div style="display:flex;border:1px solid #c5cfca;border-radius:18px;padding:2px">
+<div style="padding:6px 14px;border-radius:15px;background:#d3ebe2;font-size:12px;font-weight:600;color:#14543f">Replay</div>
+<div style="padding:6px 14px;font-size:12px;font-weight:500;color:#55625b">Live</div>
+</div>
+<button class="btn" style="background:#1f6f5c;color:#fff"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M6 3l15 9-15 9z"/></svg>Run again</button>
+</div>
+
+<!-- canvas -->
+<div style="position:absolute;left:0;top:56px;width:1440px;height:644px;background-color:#f3f6f4;background-image:radial-gradient(#c9d3ce 1.2px,transparent 1.2px);background-size:22px 22px;overflow:hidden">
+<div style="position:absolute;left:300px;top:6px;width:1100px;height:804px;transform:scale(.78);transform-origin:0 0">
+
+<svg width="1100" height="804" style="position:absolute;left:0;top:0" aria-hidden="true">
+<defs><marker id="ag" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1L6 4L1 7" fill="none" stroke="#2e8f6b" stroke-width="1.6"/></marker></defs>
+<g fill="none" stroke="#2e8f6b" stroke-width="2.5" marker-end="url(#ag)">
+<path d="M520 108V148"/>
+<path d="M520 274V316"/>
+<path d="M520 386V428"/>
+<path d="M520 514C520 540 430 536 430 564"/>
+<path d="M520 640V688"/>
+</g>
+<path d="M520 514C520 540 610 536 610 564" fill="none" stroke="#b7c4bd" stroke-width="2" stroke-dasharray="3 5"/>
+<path d="M270 240H388" fill="none" stroke="#0a6760" stroke-width="2" stroke-dasharray="5 5"/>
+</svg>
+
+<div class="cnt" style="left:532px;top:118px">1 item</div>
+<div class="cnt" style="left:532px;top:285px">2 items</div>
+<div class="cnt" style="left:532px;top:397px">2 items</div>
+<div class="cnt" style="left:440px;top:522px">1 item</div>
+<div class="cnt" style="left:532px;top:655px">2 items</div>
+
+<div class="n" style="left:390px;top:40px">
+<div class="ic amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+<div class="tx"><div class="k">Trigger</div><div class="t">Schedule</div><div class="s">Every 6 hours, weekdays</div></div>
+<div class="ok">Done</div>
+</div>
+
+<div style="position:absolute;left:330px;top:150px;width:380px;height:490px;border-radius:20px;border:2px solid #f0c9a0;background:rgba(255,255,255,.55);box-sizing:border-box">
+<div style="height:42px;display:flex;align-items:center;gap:10px;padding:0 16px">
+<div class="ic rose" style="width:26px;height:26px;border-radius:8px"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/></svg></div>
+<div style="font-size:13px;font-weight:600">Loop · each symbol</div>
+<div class="s" style="margin-left:auto;color:#7a4d00;font-weight:600">3 of 3 · 1 failed</div>
+</div>
+</div>
+
+<div style="position:absolute;left:70px;top:212px;width:200px;height:56px;box-sizing:border-box;border-radius:28px;background:#fff;border:1.5px dashed #0a6760;display:flex;align-items:center;gap:10px;padding:0 14px">
+<div class="ic teal" style="width:30px;height:30px;border-radius:15px"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div class="tx"><div class="t" style="font-size:13px">Alpha Vantage</div><div class="s">Tool · daily prices</div></div>
+</div>
+
+<div class="n" style="left:390px;top:206px;border:2px solid #c23b3b;background:#fffafa">
+<div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s" style="color:#8a1c1c">MSFT: rate limited. 2 of 3 ok</div></div>
+<div class="bad">1 failed</div>
+</div>
+
+<div class="n" style="left:390px;top:318px">
+<div class="ic blue"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+<div class="tx"><div class="k">Validate</div><div class="t">Check the price is sane</div><div class="s">2 passed</div></div>
+<div class="ok">✓ 2</div>
+</div>
+
+<div class="n" style="left:390px;top:430px;height:84px;align-items:flex-start;padding-top:14px">
+<div class="ic rose"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9c0 6-12 3-12 6"/></svg></div>
+<div class="tx"><div class="k">Branch</div><div class="t">Big move?</div>
+<div style="margin-top:4px;font-size:12px;color:#55625b">1 went <b style="color:#9f1f3d">then</b>, 1 went else</div></div>
+<div class="ok">✓ 2</div>
+</div>
+
+<div class="n" style="left:345px;top:566px;width:170px;height:56px;padding:0 10px;gap:8px">
+<div class="ic" style="width:30px;height:30px;border-radius:9px;background:#4a154b;color:#fff"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div>
+<div class="tx"><div class="t" style="font-size:13px">Alert on Slack</div><div class="s">1 message sent</div></div>
+<div class="ok" style="right:8px">✓</div>
+</div>
+<div style="position:absolute;left:545px;top:572px;width:130px;height:44px;box-sizing:border-box;border-radius:12px;border:1.5px dashed #b7c4bd;display:flex;align-items:center;justify-content:center;font-size:12px;color:#55625b;background:rgba(255,255,255,.7)">carry on · 1</div>
+
+<div class="n" style="left:390px;top:690px">
+<div class="ic blue"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+<div class="tx"><div class="k">Tool step</div><div class="t">Save the report</div><div class="s">2 rows written</div></div>
+<div class="ok">✓ 2</div>
+</div>
+</div>
+</div>
+
+<!-- run panel -->
+<div style="position:absolute;left:0;top:700px;width:1440px;height:300px;background:#fff;border-top:1px solid #d9e0dc;display:flex;flex-direction:column">
+<div style="height:44px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid #e3e9e5">
+<div style="font-size:14px;font-weight:600">Run log</div>
+<span class="chip" style="color:#10543a;background:#e4f3ec;border-color:#e4f3ec">Replay · recorded data</span>
+<div style="font-size:12px;color:#55625b">Started 18:42:10 · 0.7 s · 5 steps · 1 error</div>
+<div style="margin-left:auto;display:flex;gap:4px"><button class="ib" aria-label="Collapse run log"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div>
+</div>
+<div style="flex:1;display:flex;min-height:0">
+<div style="width:400px;border-right:1px solid #e3e9e5;padding:6px 0;box-sizing:border-box">
+<div class="row"><div class="dot" style="background:#d9f2e4;color:#10543a">✓</div>Schedule<span style="margin-left:auto;color:#55625b;font-size:12px">2 ms</span></div>
+<div class="row" style="padding-left:30px"><div class="dot" style="background:#d9f2e4;color:#10543a">✓</div>Fetch price · AAPL<span style="margin-left:auto;color:#55625b;font-size:12px">180 ms</span></div>
+<div class="row" style="padding-left:30px"><div class="dot" style="background:#d9f2e4;color:#10543a">✓</div>Fetch price · NVDA<span style="margin-left:auto;color:#55625b;font-size:12px">164 ms</span></div>
+<div class="row" style="padding-left:30px;background:#ffeeee;border-left:3px solid #c23b3b"><div class="dot" style="background:#ffdede;color:#8a1c1c">!</div><b>Fetch price · MSFT</b><span style="margin-left:auto;color:#55625b;font-size:12px">212 ms</span></div>
+<div class="row" style="padding-left:30px"><div class="dot" style="background:#d9f2e4;color:#10543a">✓</div>Check the price is sane<span style="margin-left:auto;color:#55625b;font-size:12px">3 ms</span></div>
+<div class="row" style="padding-left:30px"><div class="dot" style="background:#d9f2e4;color:#10543a">✓</div>Alert on Slack<span style="margin-left:auto;color:#55625b;font-size:12px">41 ms</span></div>
+</div>
+<div style="flex:1;padding:14px 20px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;min-width:0">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="font-size:14px;font-weight:600">Fetch price · MSFT</div>
+<span class="chip" style="background:#ffdede;border-color:#f0b4b4;color:#8a1c1c;height:24px">Failed · rate limited</span>
+<div style="margin-left:auto;display:flex;background:#eef2f0;border-radius:16px;padding:2px;font-size:12px;font-weight:600"><div style="padding:5px 14px;border-radius:14px;background:#fff">Input</div><div style="padding:5px 14px;color:#55625b">Output</div><div style="padding:5px 14px;color:#55625b">Error</div></div>
+</div>
+<div style="display:flex;gap:16px;min-height:0">
+<div class="code" style="flex:1;height:130px;box-sizing:border-box">{
+  "symbol": "MSFT",
+  "function": "TIME_SERIES_DAILY"
+}</div>
+<div style="flex:1;font-size:13px;line-height:20px;color:#33403a;border:1px solid #f0b4b4;border-radius:10px;padding:12px 14px;background:#fffafa">
+<b style="color:#8a1c1c">The recorded answer is a rate limit.</b> The loop carried on with the other two symbols, as this step is set to skip and continue. To avoid it live, space the calls out.
+<div style="margin-top:8px;color:#1f6f5c;font-weight:600">Open step settings · Add pacing</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
