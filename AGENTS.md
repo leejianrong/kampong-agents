@@ -108,6 +108,11 @@ npm run test:integration # cross-module layer; integration-db needs Postgres (se
 npm run test:e2e         # full-stack acceptance (installs and runs generated projects)
 npm run test:e2e:browser # Playwright
 npm test                 # unit + integration
+make try-demo            # look at the app, no Docker/keys: market-etl in .try/demo, Replay-ready (make try: blank)
+make try-reset           # delete .try/
+make try-hosted          # hosted server on a throwaway Postgres (needs Docker)
+make e2e-browser         # Playwright: playwright.local.config.ts, then hosted-flow if Docker works
+make verify              # the full manual gate in order, one summary line per stage
 ```
 
 **Run `npm run build` first on a fresh checkout.** Cross-package imports resolve through each
