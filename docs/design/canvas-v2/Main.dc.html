@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Editing a workflow</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1b2420}
+.n{position:absolute;box-sizing:border-box;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 1px 2px rgba(20,40,32,.06),0 6px 16px rgba(20,40,32,.07);display:flex;align-items:center;gap:12px;padding:0 14px;width:260px;height:68px}
+.ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tx{min-width:0;flex:1}
+.t{font-size:14px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12px;line-height:16px;color:#55625b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#55625b}
+.pt{position:absolute;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid #9fb0a8;box-sizing:border-box}
+.amber{background:#fff0d0;color:#855400}.violet{background:#ebe5ff;color:#5334c0}.teal{background:#d3f0ec;color:#0a6760}.blue{background:#dbe8ff;color:#1c4d99}.rose{background:#ffdfe5;color:#9f1f3d}.orange{background:#ffe5d1;color:#964210}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:14px;font-size:12px;font-weight:500;color:#33403a;background:#fff;border:1px solid #d9e0dc}
+.tab{padding:12px 14px;font-size:13px;font-weight:500;color:#55625b}
+.fld{border:1px solid #c5cfca;border-radius:10px;background:#fff;padding:0 12px;height:40px;display:flex;align-items:center;font-size:13px;box-sizing:border-box}
+.lab{font-size:12px;font-weight:600;color:#33403a;margin-bottom:6px}
+.btn{height:36px;border-radius:18px;display:inline-flex;align-items:center;gap:6px;padding:0 16px;font-size:13px;font-weight:600;border:0;font-family:inherit}
+.ib{width:34px;height:34px;border-radius:17px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;color:#33403a}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;position:relative;background:#f3f6f4;overflow:hidden">
+
+<!-- top bar -->
+<div style="position:absolute;left:0;top:0;width:1440px;height:56px;background:#fff;border-bottom:1px solid #d9e0dc;display:flex;align-items:center;padding:0 20px;box-sizing:border-box;gap:16px">
+<div style="width:30px;height:30px;border-radius:9px;background:#1f6f5c;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center">K</div>
+<div style="font-size:13px;color:#55625b">Workflows <span style="padding:0 6px">/</span></div>
+<div style="font-size:15px;font-weight:600">Market ETL</div>
+<span class="chip" style="height:24px;background:#e4f3ec;border-color:#e4f3ec;color:#14543f">Saved</span>
+<div style="flex:1;display:flex;justify-content:center">
+<div style="display:flex;background:#eef2f0;border-radius:18px;padding:3px">
+<div style="padding:6px 18px;border-radius:15px;background:#fff;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.1)">Editor</div>
+<div style="padding:6px 18px;font-size:13px;font-weight:500;color:#55625b">Runs</div>
+<div style="padding:6px 18px;font-size:13px;font-weight:500;color:#55625b">Checks</div>
+</div>
+</div>
+<div style="display:flex;border:1px solid #c5cfca;border-radius:18px;padding:2px">
+<div style="padding:6px 14px;border-radius:15px;background:#d3ebe2;font-size:12px;font-weight:600;color:#14543f">Replay</div>
+<div style="padding:6px 14px;font-size:12px;font-weight:500;color:#55625b">Live</div>
+</div>
+<button class="btn" style="background:#1f6f5c;color:#fff"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M6 3l15 9-15 9z"/></svg>Run</button>
+<button class="ib" aria-label="More actions"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg></button>
+</div>
+
+<!-- canvas -->
+<div style="position:absolute;left:0;top:56px;width:1100px;height:804px;background-color:#f3f6f4;background-image:radial-gradient(#c9d3ce 1.2px,transparent 1.2px);background-size:22px 22px;overflow:hidden">
+
+<svg width="1100" height="804" style="position:absolute;left:0;top:0" aria-hidden="true">
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1L6 4L1 7" fill="none" stroke="#7d8f86" stroke-width="1.6"/></marker></defs>
+<g fill="none" stroke="#7d8f86" stroke-width="2" marker-end="url(#ar)">
+<path d="M520 108V148"/>
+<path d="M520 274V316"/>
+<path d="M520 386V428"/>
+<path d="M520 514C520 540 430 536 430 564"/>
+<path d="M520 514C520 540 610 536 610 564"/>
+<path d="M520 640V688"/>
+</g>
+<path d="M270 240H388" fill="none" stroke="#0a6760" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#ar)"/>
+</svg>
+
+<!-- trigger -->
+<div class="n" style="left:390px;top:40px">
+<div class="ic amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+<div class="tx"><div class="k">Trigger</div><div class="t">Schedule</div><div class="s">Every 6 hours, weekdays</div></div>
+<div class="pt" style="bottom:-6px"></div>
+</div>
+
+<!-- loop group -->
+<div style="position:absolute;left:330px;top:150px;width:380px;height:490px;border-radius:20px;border:2px dashed #a9bbb2;background:rgba(255,255,255,.55);box-sizing:border-box">
+<div style="height:42px;display:flex;align-items:center;gap:10px;padding:0 16px">
+<div class="ic rose" style="width:26px;height:26px;border-radius:8px"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/></svg></div>
+<div style="font-size:13px;font-weight:600">Loop · each symbol</div>
+<div class="s" style="margin-left:auto">3 symbols</div>
+</div>
+</div>
+
+<!-- tool pill (tool the step uses) -->
+<div style="position:absolute;left:70px;top:212px;width:200px;height:56px;box-sizing:border-box;border-radius:28px;background:#fff;border:1.5px dashed #0a6760;display:flex;align-items:center;gap:10px;padding:0 14px">
+<div class="ic teal" style="width:30px;height:30px;border-radius:15px"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div class="tx"><div class="t" style="font-size:13px">Alpha Vantage</div><div class="s">Tool · daily prices</div></div>
+</div>
+
+<!-- fetch price (selected) -->
+<div class="n" style="left:390px;top:206px;border:2px solid #1f6f5c;box-shadow:0 0 0 5px rgba(31,111,92,.16),0 6px 16px rgba(20,40,32,.1)">
+<div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Get the daily close for the symbol</div></div>
+<div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div>
+</div>
+
+<!-- floating toolbar for selected node -->
+<div style="position:absolute;left:586px;top:160px;height:36px;border-radius:18px;background:#fff;border:1px solid #d9e0dc;box-shadow:0 4px 12px rgba(20,40,32,.12);display:flex;align-items:center;padding:0 2px">
+<button class="ib" aria-label="Run this step with sample data"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></button>
+<button class="ib" aria-label="Duplicate step"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></svg></button>
+<button class="ib" aria-label="Delete step"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+</div>
+
+<!-- validate -->
+<div class="n" style="left:390px;top:318px">
+<div class="ic blue"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+<div class="tx"><div class="k">Validate</div><div class="t">Check the price is sane</div><div class="s">close &gt; 0 · skip item if not</div></div>
+<div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div>
+</div>
+
+<!-- branch -->
+<div class="n" style="left:390px;top:430px;height:84px;align-items:flex-start;padding-top:14px">
+<div class="ic rose"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9c0 6-12 3-12 6"/></svg></div>
+<div class="tx"><div class="k">Branch</div><div class="t">Big move?</div>
+<div style="margin-top:4px;display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f1f4f2;border-radius:6px;padding:2px 6px;color:#33403a">abs(change_pct) ≥ vars.threshold</div></div>
+<div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div>
+</div>
+<div style="position:absolute;left:402px;top:538px;font-size:11px;font-weight:600;color:#9f1f3d;background:#ffdfe5;border-radius:9px;padding:1px 8px">then</div>
+<div style="position:absolute;left:624px;top:538px;font-size:11px;font-weight:600;color:#55625b;background:#e8eeea;border-radius:9px;padding:1px 8px">else</div>
+
+<!-- arms -->
+<div class="n" style="left:345px;top:566px;width:170px;height:56px;padding:0 10px;gap:8px">
+<div class="ic" style="width:30px;height:30px;border-radius:9px;background:#4a154b;color:#fff"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div>
+<div class="tx"><div class="t" style="font-size:13px">Alert on Slack</div><div class="s">#market-alerts</div></div>
+</div>
+<div style="position:absolute;left:545px;top:572px;width:130px;height:44px;box-sizing:border-box;border-radius:12px;border:1.5px dashed #a9bbb2;display:flex;align-items:center;justify-content:center;font-size:12px;color:#55625b;background:rgba(255,255,255,.7)">carry on</div>
+
+<!-- save report -->
+<div class="n" style="left:390px;top:690px">
+<div class="ic blue"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+<div class="tx"><div class="k">Tool step</div><div class="t">Save the report</div><div class="s">Write rows to Supabase</div></div>
+<div class="pt" style="top:-6px"></div>
+</div>
+
+<!-- add step floating button + zoom -->
+<button class="btn" style="position:absolute;left:20px;top:20px;background:#fff;color:#1f6f5c;border:1px solid #c5cfca;box-shadow:0 2px 6px rgba(20,40,32,.1)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1f6f5c" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add step</button>
+<div style="position:absolute;left:20px;bottom:20px;display:flex;flex-direction:column;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 2px 6px rgba(20,40,32,.1)">
+<button class="ib" style="border-radius:14px 14px 0 0" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ib" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+<button class="ib" style="border-radius:0 0 14px 14px" aria-label="Fit to view"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+</div>
+<div style="position:absolute;left:76px;bottom:20px;display:flex;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 2px 6px rgba(20,40,32,.1)">
+<button class="ib" style="border-radius:14px 0 0 14px" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3"/></svg></button>
+<button class="ib" style="border-radius:0 14px 14px 0" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 000 12h3"/></svg></button>
+</div>
+</div>
+
+<!-- inspector -->
+<div style="position:absolute;left:1100px;top:56px;width:340px;height:804px;background:#fff;border-left:1px solid #d9e0dc;box-sizing:border-box;display:flex;flex-direction:column">
+<div style="padding:16px 20px 0;display:flex;gap:12px;align-items:center">
+<div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div style="flex:1;min-width:0"><div class="k">Tool step</div><div style="font-size:16px;font-weight:600">Fetch price</div></div>
+<button class="ib" aria-label="Close inspector"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div>
+<div style="display:flex;padding:8px 8px 0;border-bottom:1px solid #d9e0dc">
+<div class="tab" style="color:#1f6f5c;font-weight:600;border-bottom:2px solid #1f6f5c">Setup</div>
+<div class="tab">Output</div><div class="tab">Test</div><div class="tab">Settings</div>
+</div>
+<div style="padding:20px;display:flex;flex-direction:column;gap:18px">
+<div><div class="lab">Tool</div><div class="fld" style="justify-content:space-between"><span>Alpha Vantage · daily prices</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#55625b" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+<div><div class="lab">Symbol</div>
+<div class="fld" style="gap:8px"><span style="background:#dbe8ff;color:#1c4d99;border-radius:8px;padding:2px 8px;font-size:12px;font-weight:600">each symbol</span></div>
+<div style="font-size:12px;color:#1f6f5c;font-weight:600;margin-top:6px">+ Insert data from an earlier step</div></div>
+<div><div class="lab">If it fails</div><div class="fld" style="justify-content:space-between"><span>Skip this item and carry on</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#55625b" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+<div><div class="lab">Retries</div><div class="fld" style="width:96px">2</div></div>
+<div style="border-top:1px solid #e3e9e5;padding-top:14px;font-size:12px;color:#55625b">Advanced: timeout, pacing, caching <span style="color:#1f6f5c;font-weight:600">Show</span></div>
+</div>
+<div style="margin-top:auto;padding:14px 20px;border-top:1px solid #d9e0dc;display:flex;gap:10px;justify-content:flex-end">
+<button class="btn" style="background:#fff;color:#1f6f5c;border:1px solid #c5cfca">Cancel</button>
+<button class="btn" style="background:#1f6f5c;color:#fff">Save step</button>
+</div>
+</div>
+
+<!-- status bar -->
+<div style="position:absolute;left:0;top:860px;width:1440px;height:40px;background:#fff;border-top:1px solid #d9e0dc;display:flex;align-items:center;gap:8px;padding:0 20px;box-sizing:border-box">
+<span class="chip">Vars · 3</span>
+<span class="chip" style="border-color:#e6b4b4;color:#8a1c1c">Secrets · 4 missing</span>
+<span class="chip">Guardrails</span>
+<span class="chip" style="color:#14543f">Checks · all passed</span>
+<span class="chip">Every 6 hours</span>
+<div style="margin-left:auto;font-size:12px;color:#55625b">Replay uses recorded data: no keys needed</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

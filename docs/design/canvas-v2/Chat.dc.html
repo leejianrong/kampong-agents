@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Build from a prompt</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1b2420}
+.n{position:absolute;box-sizing:border-box;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 1px 2px rgba(20,40,32,.06),0 6px 16px rgba(20,40,32,.07);display:flex;align-items:center;gap:12px;padding:0 14px;width:260px;height:68px}
+.new{border:2px solid #2e8f6b;box-shadow:0 0 0 5px rgba(46,143,107,.16),0 6px 16px rgba(20,40,32,.08)}
+.ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tx{min-width:0;flex:1}
+.t{font-size:14px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12px;line-height:16px;color:#55625b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#55625b}
+.pt{position:absolute;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid #9fb0a8;box-sizing:border-box}
+.amber{background:#fff0d0;color:#855400}.violet{background:#ebe5ff;color:#5334c0}.teal{background:#d3f0ec;color:#0a6760}.blue{background:#dbe8ff;color:#1c4d99}.rose{background:#ffdfe5;color:#9f1f3d}
+.nb{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;font-size:11px;font-weight:700;background:#2e8f6b;color:#fff}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:14px;font-size:12px;font-weight:500;color:#33403a;background:#fff;border:1px solid #d9e0dc}
+.btn{height:36px;border-radius:18px;display:inline-flex;align-items:center;gap:6px;padding:0 16px;font-size:13px;font-weight:600;border:0;font-family:inherit}
+.ib{width:34px;height:34px;border-radius:17px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;color:#33403a}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.plan{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#f3f6f4;font-size:13px}
+.plan .ic{width:28px;height:28px;border-radius:8px}
+.plan .ic svg{width:16px;height:16px}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;position:relative;background:#f3f6f4;overflow:hidden">
+
+<!-- chat panel -->
+<div style="position:absolute;left:0;top:0;width:440px;height:900px;background:#fff;border-right:1px solid #d9e0dc;display:flex;flex-direction:column;box-sizing:border-box">
+<div style="height:56px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid #d9e0dc;box-sizing:border-box">
+<div style="width:30px;height:30px;border-radius:9px;background:#1f6f5c;color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center">K</div>
+<div style="font-size:15px;font-weight:600">Assistant</div>
+<div style="margin-left:auto;font-size:12px;color:#55625b">New chat</div>
+</div>
+<div style="flex:1;padding:20px;display:flex;flex-direction:column;gap:16px;overflow:hidden">
+<div style="align-self:flex-end;max-width:340px;background:#d3ebe2;color:#0f3d30;border-radius:18px 18px 4px 18px;padding:12px 16px;font-size:14px;line-height:21px">Every weekday morning, get the price for AAPL, NVDA and MSFT, and Slack me if any of them moved more than 5%.</div>
+
+<div style="font-size:14px;line-height:21px;color:#1b2420">Here is what I would build. Nothing changes on your canvas until you apply it.</div>
+
+<div style="border:1px solid #d9e0dc;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#55625b">Plan · 4 steps</div>
+<div class="plan"><div class="ic amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><span><b>Schedule</b> · weekdays at 08:00</span></div>
+<div class="plan"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><span><b>Fetch price</b> for each of 3 symbols</span></div>
+<div class="plan"><div class="ic rose"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9c0 6-12 3-12 6"/></svg></div><span><b>Branch</b> if the move is 5% or more</span></div>
+<div class="plan"><div class="ic" style="background:#4a154b;color:#fff"><svg viewBox="0 0 24 24"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div><span><b>Slack</b> message to you</span></div>
+<div style="font-size:12px;color:#7a4d00;background:#fff1d6;border-radius:10px;padding:8px 10px;line-height:17px">Needs one thing from you: a price data key and a Slack token. Replay will still run without them.</div>
+<div style="display:flex;gap:8px;margin-top:4px">
+<button class="btn" style="background:#1f6f5c;color:#fff">Apply to canvas</button>
+<button class="btn" style="background:#fff;color:#1f6f5c;border:1px solid #c5cfca">Change the plan</button>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#10543a;background:#e4f3ec;border-radius:12px;padding:10px 14px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10543a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+Applied: 4 steps added. <span style="margin-left:auto;font-weight:600">Undo</span>
+</div>
+<div style="font-size:14px;line-height:21px">Try it with recorded data first. It needs no keys.</div>
+<div><button class="btn" style="background:#1f6f5c;color:#fff"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M6 3l15 9-15 9z"/></svg>Run in Replay</button></div>
+</div>
+
+<div style="padding:14px 20px 20px;border-top:1px solid #e3e9e5">
+<div style="display:flex;gap:8px;margin-bottom:10px">
+<span class="chip">Add a Slack approval</span><span class="chip">Run every hour instead</span>
+</div>
+<div style="border:1px solid #c5cfca;border-radius:16px;padding:12px 14px;box-sizing:border-box;height:96px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="font-size:14px;color:#55625b">Describe a change or ask a question</div>
+<div style="display:flex;align-items:center;gap:10px">
+<div style="display:flex;background:#eef2f0;border-radius:14px;padding:2px;font-size:12px;font-weight:600"><div style="padding:4px 12px;border-radius:12px;background:#fff">Build</div><div style="padding:4px 12px;color:#55625b">Ask</div></div>
+<button class="ib" style="margin-left:auto;background:#1f6f5c;color:#fff" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- canvas -->
+<div style="position:absolute;left:440px;top:0;width:1000px;height:56px;background:#fff;border-bottom:1px solid #d9e0dc;display:flex;align-items:center;padding:0 20px;box-sizing:border-box;gap:16px">
+<div style="font-size:13px;color:#55625b">Workflows <span style="padding:0 6px">/</span></div>
+<div style="font-size:15px;font-weight:600">Morning price check</div>
+<span class="chip" style="height:24px;background:#fff1d6;border-color:#fff1d6;color:#7a4d00">Unsaved</span>
+<div style="margin-left:auto;display:flex;border:1px solid #c5cfca;border-radius:18px;padding:2px">
+<div style="padding:6px 14px;border-radius:15px;background:#d3ebe2;font-size:12px;font-weight:600;color:#14543f">Replay</div>
+<div style="padding:6px 14px;font-size:12px;font-weight:500;color:#55625b">Live</div>
+</div>
+<button class="btn" style="background:#fff;color:#1f6f5c;border:1px solid #c5cfca">Save</button>
+<button class="btn" style="background:#1f6f5c;color:#fff">Run</button>
+</div>
+
+<div style="position:absolute;left:440px;top:56px;width:1000px;height:844px;background-color:#f3f6f4;background-image:radial-gradient(#c9d3ce 1.2px,transparent 1.2px);background-size:22px 22px;overflow:hidden">
+<svg width="1000" height="844" style="position:absolute;left:0;top:0" aria-hidden="true">
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M1 1L6 4L1 7" fill="none" stroke="#7d8f86" stroke-width="1.6"/></marker></defs>
+<g fill="none" stroke="#7d8f86" stroke-width="2" marker-end="url(#ar)">
+<path d="M500 168V228"/>
+<path d="M500 338V398"/>
+<path d="M500 484C500 520 370 510 370 546"/>
+</g>
+<path d="M500 484C500 520 630 510 630 546" fill="none" stroke="#b7c4bd" stroke-width="2" stroke-dasharray="3 5"/>
+</svg>
+
+<div class="n new" style="left:370px;top:100px"><div class="ic amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div class="tx"><div class="k">Trigger</div><div class="t">Schedule</div><div class="s">Weekdays at 08:00</div></div><div class="nb">New</div><div class="pt" style="bottom:-6px"></div></div>
+
+<div class="n new" style="left:370px;top:270px"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step · each of 3</div><div class="t">Fetch price</div><div class="s">AAPL, NVDA, MSFT</div></div><div class="nb">New</div><div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div></div>
+
+<div class="n new" style="left:370px;top:400px;height:84px;align-items:flex-start;padding-top:14px"><div class="ic rose"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9c0 6-12 3-12 6"/></svg></div><div class="tx"><div class="k">Branch</div><div class="t">Moved 5% or more?</div><div style="margin-top:4px;display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f1f4f2;border-radius:6px;padding:2px 6px;color:#33403a">abs(change_pct) ≥ 5</div></div><div class="nb">New</div><div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div></div>
+
+<div class="n new" style="left:285px;top:548px;width:170px;height:56px;padding:0 10px;gap:8px"><div class="ic" style="width:30px;height:30px;border-radius:9px;background:#4a154b;color:#fff"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div><div class="tx"><div class="t" style="font-size:13px">Tell me on Slack</div><div class="s" style="color:#7a4d00">Needs a token</div></div><div class="nb" style="right:8px">New</div></div>
+<div style="position:absolute;left:565px;top:554px;width:130px;height:44px;box-sizing:border-box;border-radius:12px;border:1.5px dashed #b7c4bd;display:flex;align-items:center;justify-content:center;font-size:12px;color:#55625b;background:rgba(255,255,255,.7)">carry on</div>
+
+<div style="position:absolute;left:50%;margin-left:-190px;bottom:24px;width:380px;height:48px;border-radius:24px;background:#1b2420;color:#fff;display:flex;align-items:center;padding:0 8px 0 20px;box-sizing:border-box;font-size:13px;gap:12px;box-shadow:0 6px 18px rgba(0,0,0,.25)">
+<span>4 steps added by the assistant</span>
+<span style="margin-left:auto;font-weight:700;color:#a8e6c9;padding:8px 14px">Undo</span>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Node and edge kit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Inter',system-ui,sans-serif;color:#1b2420}
+.n{position:absolute;box-sizing:border-box;background:#fff;border:1px solid #d9e0dc;border-radius:14px;box-shadow:0 1px 2px rgba(20,40,32,.06),0 6px 16px rgba(20,40,32,.07);display:flex;align-items:center;gap:12px;padding:0 14px;width:248px;height:68px}
+.ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:none}
+.ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tx{min-width:0;flex:1}
+.t{font-size:14px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12px;line-height:16px;color:#55625b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#55625b}
+.pt{position:absolute;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid #9fb0a8;box-sizing:border-box}
+.amber{background:#fff0d0;color:#855400}.violet{background:#ebe5ff;color:#5334c0}.teal{background:#d3f0ec;color:#0a6760}.blue{background:#dbe8ff;color:#1c4d99}.rose{background:#ffdfe5;color:#9f1f3d}.orange{background:#ffe5d1;color:#964210}
+.ok{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#d9f2e4;color:#10543a;border:1px solid #b7e2cb}
+.bad{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#ffdede;color:#8a1c1c;border:1px solid #f0b4b4}
+.warn{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#fff1d6;color:#7a4d00;border:1px solid #f0d49a}
+.run{position:absolute;right:12px;top:-11px;height:22px;border-radius:11px;padding:0 9px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;background:#dbe8ff;color:#1c4d99;border:1px solid #b3ccf5}
+.h{position:absolute;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#55625b}
+.lb{position:absolute;font-size:12px;color:#55625b}
+.num{position:absolute;width:22px;height:22px;border-radius:11px;background:#1b2420;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.lg{position:absolute;left:48px;width:520px;display:flex;gap:12px;font-size:13px;line-height:18px;color:#33403a}
+.lg b{flex:none;width:22px;height:22px;border-radius:11px;background:#1b2420;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.pr{position:absolute;top:864px;width:316px;font-size:13px;line-height:19px;color:#33403a}
+.pr b{display:block;font-size:14px;margin-bottom:4px;color:#1b2420}
+</style>
+</helmet>
+<div style="width:1440px;height:1000px;position:relative;background:#f7f9f8;overflow:hidden">
+
+<div style="position:absolute;left:48px;top:32px;font-size:26px;font-weight:700">Node and edge kit</div>
+<div style="position:absolute;left:48px;top:68px;font-size:14px;color:#55625b">Small cards you can read at a glance. Colour says the category, the glyph says the kind, and detail lives in the side panel.</div>
+
+<!-- anatomy -->
+<div class="h" style="left:48px;top:112px">Anatomy</div>
+<div style="position:absolute;left:88px;top:190px;width:260px;height:68px;transform:scale(1.5);transform-origin:0 0">
+<div class="n" style="left:0;top:0;width:260px">
+<div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
+<div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Get the daily close for the symbol</div></div>
+<div class="ok">✓ 3</div>
+<div class="pt" style="top:-6px"></div><div class="pt" style="bottom:-6px"></div>
+</div>
+</div>
+<svg width="520" height="320" style="position:absolute;left:0;top:130px" aria-hidden="true">
+<g stroke="#1b2420" stroke-width="1" fill="none">
+<path d="M139 62V40"/>
+<path d="M480 87H520"/><path d="M480 108H520"/><path d="M480 129H520"/>
+<path d="M468 72V50"/>
+<path d="M283 165V190"/>
+</g>
+</svg>
+<div class="num" style="left:128px;top:152px">1</div>
+<div class="num" style="left:512px;top:206px">2</div>
+<div class="num" style="left:512px;top:227px">3</div>
+<div class="num" style="left:512px;top:248px">4</div>
+<div class="num" style="left:457px;top:158px">5</div>
+<div class="num" style="left:272px;top:318px">6</div>
+
+<div class="lg" style="top:352px"><b>1</b><span><strong>Icon tile.</strong> The colour is the category; the glyph is the kind. Connectors show their own logo.</span></div>
+<div class="lg" style="top:386px"><b>2</b><span><strong>Kind label.</strong> Tells you what sort of step this is without opening it.</span></div>
+<div class="lg" style="top:420px"><b>3</b><span><strong>Name.</strong> Yours to change; one line, full text on hover.</span></div>
+<div class="lg" style="top:454px"><b>4</b><span><strong>Summary.</strong> Written from the settings, and where a problem shows first: “needs a key”.</span></div>
+<div class="lg" style="top:488px"><b>5</b><span><strong>Status.</strong> Appears after a run: an icon and a word, never colour alone.</span></div>
+<div class="lg" style="top:522px"><b>6</b><span><strong>Ports.</strong> Drag to connect. Hover an edge to get a + that inserts a step.</span></div>
+
+<!-- kinds -->
+<div class="h" style="left:620px;top:112px">Kinds and categories</div>
+
+<div class="n" style="left:620px;top:140px"><div class="ic amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div class="tx"><div class="k">Trigger</div><div class="t">Schedule</div><div class="s">Every 6 hours</div></div></div>
+<div class="n" style="left:888px;top:140px"><div class="ic amber"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg></div><div class="tx"><div class="k">Trigger</div><div class="t">Webhook</div><div class="s">POST /hooks/refunds</div></div></div>
+<div class="n" style="left:1156px;top:140px"><div class="ic violet"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg></div><div class="tx"><div class="k">AI action</div><div class="t">Classify the email</div><div class="s">Urgent, normal or spam</div></div></div>
+
+<div class="n" style="left:620px;top:228px"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Call the pricing API</div><div class="s">GET /v1/quote</div></div></div>
+<div class="n" style="left:888px;top:228px"><div class="ic orange"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11l2 2 4-4"/></svg></div><div class="tx"><div class="k">Approval</div><div class="t">Ask the team lead</div><div class="s">In Slack · waits up to 1 day</div></div></div>
+<div class="n" style="left:1156px;top:228px"><div class="ic" style="background:#4a154b;color:#fff"><svg viewBox="0 0 24 24"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div><div class="tx"><div class="k">Slack</div><div class="t">Post a message</div><div class="s">#market-alerts</div></div></div>
+
+<div class="n" style="left:620px;top:316px"><div class="ic blue"><svg viewBox="0 0 24 24"><path d="M4 7h10M10 3l4 4-4 4M20 17H10M14 13l-4 4 4 4"/></svg></div><div class="tx"><div class="k">Transform</div><div class="t">Shape the row</div><div class="s">Sets 4 values</div></div></div>
+<div class="n" style="left:888px;top:316px"><div class="ic blue"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="tx"><div class="k">Validate</div><div class="t">Check the price</div><div class="s">close &gt; 0 · skip if not</div></div></div>
+<div class="n" style="left:1156px;top:316px"><div class="ic blue"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></svg></div><div class="tx"><div class="k">Dedupe</div><div class="t">Drop repeats</div><div class="s">By message id</div></div></div>
+
+<div class="n" style="left:620px;top:404px"><div class="ic rose"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 01-3 3H3"/></svg></div><div class="tx"><div class="k">Loop</div><div class="t">Each symbol</div><div class="s">Over 3 symbols</div></div></div>
+<div class="n" style="left:888px;top:404px"><div class="ic rose"><svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9c0 6-12 3-12 6"/></svg></div><div class="tx"><div class="k">Branch</div><div class="t">Big move?</div><div class="s">2 arms</div></div></div>
+<div class="n" style="left:1156px;top:404px"><div class="ic rose"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></div><div class="tx"><div class="k">Stop</div><div class="t">Nothing to do</div><div class="s">Ends the run cleanly</div></div></div>
+
+<!-- states -->
+<div class="h" style="left:48px;top:560px">States</div>
+
+<div class="lb" style="left:48px;top:590px">Idle</div>
+<div class="n" style="left:48px;top:612px"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Daily close</div></div></div>
+<div class="lb" style="left:320px;top:590px">Hover: ports and a + appear</div>
+<div class="n" style="left:320px;top:612px;box-shadow:0 2px 4px rgba(20,40,32,.1),0 12px 24px rgba(20,40,32,.14)"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Daily close</div></div><div class="pt" style="top:-6px;border-color:#1f6f5c"></div><div class="pt" style="bottom:-6px;border-color:#1f6f5c"></div></div>
+<div class="lb" style="left:592px;top:590px">Selected</div>
+<div class="n" style="left:592px;top:612px;border:2px solid #1f6f5c;box-shadow:0 0 0 5px rgba(31,111,92,.16)"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Daily close</div></div></div>
+<div class="lb" style="left:864px;top:590px">Running</div>
+<div class="n" style="left:864px;top:612px;border:2px solid #1c4d99;overflow:visible"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Daily close</div></div><div class="run"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1c4d99" stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 019 9"/></svg>Running</div><div style="position:absolute;left:14px;right:14px;bottom:6px;height:3px;border-radius:2px;background:#dbe8ff"><div style="width:42%;height:3px;border-radius:2px;background:#1c4d99"></div></div></div>
+
+<div class="lb" style="left:48px;top:704px">Passed</div>
+<div class="n" style="left:48px;top:726px"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">3 ok</div></div><div class="ok">✓ Passed</div></div>
+<div class="lb" style="left:320px;top:704px">Failed: the reason is on the card</div>
+<div class="n" style="left:320px;top:726px;border:2px solid #c23b3b;background:#fffafa"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s" style="color:#8a1c1c">Rate limited</div></div><div class="bad">! Failed</div></div>
+<div class="lb" style="left:592px;top:704px">Needs setup: found before you run</div>
+<div class="n" style="left:592px;top:726px;border-color:#f0d49a"><div class="ic" style="background:#4a154b;color:#fff"><svg viewBox="0 0 24 24"><path d="M9 4v10M15 10v10M4 9h10M10 15h10"/></svg></div><div class="tx"><div class="k">Slack</div><div class="t">Post a message</div><div class="s" style="color:#7a4d00">Needs SLACK_BOT_TOKEN</div></div><div class="warn">▲ Needs key</div></div>
+<div class="lb" style="left:864px;top:704px">Switched off</div>
+<div class="n" style="left:864px;top:726px;border:1.5px dashed #a9bbb2;box-shadow:none;background:#f1f4f2;opacity:.8"><div class="ic teal"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><div class="tx"><div class="k">Tool step</div><div class="t">Fetch price</div><div class="s">Skipped on every run</div></div></div>
+
+<!-- edges -->
+<div class="h" style="left:1176px;top:560px">Edges</div>
+<svg width="216" height="250" style="position:absolute;left:1176px;top:584px" aria-hidden="true">
+<g fill="none" stroke-width="2.5" stroke-linecap="round">
+<path d="M4 22H90" stroke="#7d8f86"/>
+<path d="M4 72H90" stroke="#1c4d99" stroke-dasharray="3 6"/>
+<path d="M4 122H90" stroke="#2e8f6b"/>
+<path d="M4 172H90" stroke="#c23b3b"/>
+<path d="M4 222H90" stroke="#0a6760" stroke-dasharray="5 5" stroke-width="2"/>
+</g>
+</svg>
+<div class="lb" style="left:1282px;top:596px;color:#33403a">Idle</div>
+<div class="lb" style="left:1282px;top:646px;color:#33403a">Running · dashes flow</div>
+<div class="lb" style="left:1282px;top:696px;color:#33403a">Passed · “3 items”</div>
+<div class="lb" style="left:1282px;top:746px;color:#33403a">Failed path</div>
+<div class="lb" style="left:1282px;top:796px;color:#33403a">Tool link · dashed</div>
+
+<!-- principles -->
+<div style="position:absolute;left:48px;top:840px;width:1344px;height:1px;background:#d9e0dc"></div>
+<div class="h" style="left:48px;top:852px;display:none">Principles</div>
+<div class="pr" style="left:48px"><b>Overview on the canvas, detail in the panel</b>Cards stay small and readable. Settings open in one side panel, never a modal.</div>
+<div class="pr" style="left:424px"><b>Never colour alone</b>Every state has an icon and a word as well as a colour.</div>
+<div class="pr" style="left:800px"><b>Problems show before you run</b>Missing keys and broken references appear on the card, not in a failed run.</div>
+<div class="pr" style="left:1176px"><b>Runs live on the nodes</b>Status, item counts and the failing message sit where you were already looking.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
