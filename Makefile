@@ -6,7 +6,8 @@
 COMPOSE := docker compose
 
 .PHONY: help up down restart logs build shell ps clean \
-        install check test test-unit test-integration test-e2e lint fmt typecheck
+        install check test test-unit test-integration test-e2e lint fmt typecheck \
+        try try-demo try-reset try-hosted e2e-browser verify
 
 help:
 	@echo "Docker stack (see README.md#run-with-docker):"
@@ -27,6 +28,16 @@ help:
 	@echo "  make lint           eslint"
 	@echo "  make fmt            prettier --check"
 	@echo "  make typecheck      tsc --noEmit per package"
+	@echo ""
+	@echo "Try it out (no Docker, no API keys; scratch folders live in .try/):"
+	@echo "  make try            Canvas on an empty folder (first-run tips); builds only if stale"
+	@echo "  make try-demo       Canvas on the market-etl template, ready to Replay"
+	@echo "  make try-reset      Delete .try/"
+	@echo "  make try-hosted     Hosted server on a throwaway Postgres (needs Docker)"
+	@echo ""
+	@echo "Full manual verification:"
+	@echo "  make e2e-browser    Playwright suite (hosted-flow on a throwaway Postgres if Docker works)"
+	@echo "  make verify         check, test-e2e, e2e-browser in order; one summary line per stage"
 
 # --- Docker stack -----------------------------------------------------
 
@@ -97,3 +108,23 @@ fmt:
 
 typecheck:
 	npm run typecheck
+
+# --- Try it out (no Docker) and full verification ----------------------
+
+try:
+	scripts/try.sh blank
+
+try-demo:
+	scripts/try.sh demo
+
+try-reset:
+	rm -rf .try
+
+try-hosted:
+	scripts/try-hosted.sh
+
+e2e-browser:
+	scripts/e2e-browser.sh
+
+verify:
+	scripts/verify.sh

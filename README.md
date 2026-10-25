@@ -42,7 +42,8 @@ natural-language generation are roadmap. [`SLICES.md`](./SLICES.md) has the per-
 
 ## Quick start
 
-Needs Node 22 or newer.
+Needs Node 22 or newer. Just want to look? `make try-demo` opens the canvas on the `market-etl` template, ready to
+Replay, with no keys and no Docker (`make try` starts on an empty folder; `make try-reset` clears both).
 
 ```sh
 npm install
