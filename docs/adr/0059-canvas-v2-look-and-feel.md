@@ -25,8 +25,13 @@ run results sit on the nodes; there is one obvious next action.
    validate, dedupe), flow (rose: loop, branch, stop), approval (orange). Colour is never the only signal:
    states carry an icon and a word too. Material Design 3 roles stay the base; the greens and greys do not change.
 3. **Left to right.** Wide screens fit a long pipeline better, and n8n, Gumloop and Opus all do it. Edges leave
-   the right port and enter the left. Positions already saved in `.kampong/layout.json` (ADR-0006) keep working;
-   whether dragging persists is still KAM-186. Tab order keeps following run order.
+   the right port and enter the left; a step's column is how many steps lie before it, a branch's later arms drop
+   to rows below, and tools sit in a row under the first step that calls them. A workflow opens on its first four
+   steps at a readable zoom (at least 0.8), not the whole of it; the Fit control still fits everything. Tab order
+   keeps following run order. Today `.kampong/layout.json` (ADR-0006) is only a cache of the automatic layout,
+   because dragging is not saved (KAM-186), so the new layout is recomputed from the graph and stamped with a
+   reserved `$layout` entry; a file without it is the old top-to-bottom layout and is replaced. If KAM-186
+   decides to persist dragging, pinned positions will override the automatic ones.
 4. **A loop is a group around its steps**, collapsible; a branch card shows its condition and labelled arms;
    a tool a step uses is a dashed pill linked by a dashed edge.
 5. **Edges and status show the run.** Idle grey, running animated dashes (reduced motion respected), passed

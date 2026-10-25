@@ -155,3 +155,28 @@ export function routeEdge(from: Point, to: Point, obstacles: Rect[]): Route {
     detoured: true,
   };
 }
+
+/** Swaps the x and y of every coordinate pair in an absolute SVG path made of M, L, C and Q commands. */
+function transposePath(path: string): string {
+  return path.replace(/([MLCQ])((?:\s*-?\d+(?:\.\d+)?)+)/g, (_, cmd: string, nums: string) => {
+    const n = nums.trim().split(/\s+/);
+    const out: string[] = [];
+    for (let i = 0; i + 1 < n.length; i += 2) out.push(n[i + 1]!, n[i]!);
+    return `${cmd} ${out.join(" ")} `;
+  });
+}
+
+const flip = (p: Point): Point => ({ x: p.y, y: p.x });
+
+/**
+ * KAM-238: the same routing for a flow that runs left to right. A line leaves the right of a step and enters the
+ * left of the next; it is worked out in the transposed plane, where the rules above hold unchanged, and turned back.
+ */
+export function routeEdgeAcross(from: Point, to: Point, obstacles: Rect[]): Route {
+  const r = routeEdge(
+    flip(from),
+    flip(to),
+    obstacles.map((o) => ({ x: o.y, y: o.x, width: o.height, height: o.width })),
+  );
+  return { path: transposePath(r.path).trim(), mid: flip(r.mid), detoured: r.detoured };
+}

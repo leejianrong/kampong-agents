@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openPanel } from "./harness/bars.js";
+import { fitAll, openPanel } from "./harness/bars.js";
 
 // KAM-211: click a node to open its inspector (the matching form in the docked panel); Esc closes it, Delete
 // removes the step or tool through the KAM-171 flow, Ctrl+D duplicates it. Real browser against `kampong dev`, at
@@ -126,6 +126,7 @@ for (const size of [
       await expect(node(page, "workflow:parse")).toBeVisible();
       // This fixture is over 15 nodes, so the minimap (KAM-187) shows; at this width it can cover the node clicked.
       await page.addStyleTag({ content: ".react-flow__minimap { display: none }" });
+      await fitAll(page);
     });
 
     test("clicking a node opens the matching form, for every kind of node", async ({ page }) => {
@@ -250,6 +251,7 @@ for (const size of [
       await page.getByRole("button", { name: "Duplicate tool spare", exact: true }).click();
       await expect(node(page, "tool:spare_copy")).toBeVisible();
 
+      await fitAll(page);
       await node(page, "workflow:loop").click();
       await page.getByRole("button", { name: "Duplicate step loop", exact: true }).click();
       await expect(node(page, "workflow:loop_copy")).toBeVisible();

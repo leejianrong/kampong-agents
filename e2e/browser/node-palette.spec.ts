@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openPanel } from "./harness/bars.js";
+import { fitAll, openPanel } from "./harness/bars.js";
 
 // KAM-213: the step palette (left rail, search, `/`) and the "+" on a line, in a real browser against
 // `kampong dev`. A step is inserted between two others, inside a foreach and into a branch arm, and the file
@@ -113,6 +113,7 @@ for (const size of [
       await page.setViewportSize(size);
       await page.goto(URL);
       await expect(page.locator('[data-id="workflow:report"]')).toBeVisible();
+      await fitAll(page);
     });
 
     test("a step goes between two others from the + on the line", async ({ page }) => {

@@ -3,6 +3,7 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { fitAll } from "./harness/bars.js";
 
 // KAM-185: in the market-etl layout no line passes behind a node, a tool and the steps that call it light each
 // other up on hover and on keyboard focus, and a line is named by its steps' labels, not internal ids. Real browser
@@ -91,21 +92,23 @@ for (const size of [
       expect(await crossings(page)).toEqual([]);
     });
 
-    test("the tools sit in a lane beside the run, not between the trigger and its first step", async ({
+    test("the run flows left to right and the tools sit in a row under it, out of the way of every line", async ({
       page,
     }) => {
+      await fitAll(page);
       const trigger = (await node(page, "agent:market-etl").boundingBox())!;
       const first = (await node(page, "workflow:each_symbol").boundingBox())!;
+      expect(first.x).toBeGreaterThan(trigger.x + trigger.width);
       for (const tool of ["fetch_daily", "upsert_price", "post_alert"]) {
         const box = (await node(page, `tool:${tool}`).boundingBox())!;
-        expect(box.x + box.width).toBeLessThanOrEqual(trigger.x + 1);
+        expect(box.y).toBeGreaterThan(trigger.y + trigger.height);
       }
-      expect(first.y).toBeGreaterThan(trigger.y);
     });
 
     test("hovering a tool lights the steps that call it, and a step lights its tool", async ({
       page,
     }) => {
+      await fitAll(page);
       const linked = page.locator(".react-flow__node.md3-node--linked");
       await expect(linked).toHaveCount(0);
 

@@ -40,3 +40,12 @@ export async function openPanel(page: Page, name: string): Promise<void> {
   }
   throw new Error(`No canvas action named ${name}`);
 }
+
+/**
+ * A workflow opens on its first steps (KAM-238), so a spec that clicks a step further along fits the whole
+ * graph first with the canvas's Fit control. Cards are small at that zoom, but every one is on screen.
+ */
+export async function fitAll(page: Page): Promise<void> {
+  await page.locator(".react-flow__controls-fitview").click();
+  await page.waitForTimeout(400);
+}

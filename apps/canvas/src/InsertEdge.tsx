@@ -1,7 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, useStore, type EdgeProps } from "@xyflow/react";
 import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { routeEdge, type Rect } from "./edgeRoute.js";
+import { routeEdgeAcross, type Rect } from "./edgeRoute.js";
 import { StepPicker } from "./StepPicker.js";
 import type { StepKind } from "./stepKinds.js";
 
@@ -130,7 +130,7 @@ export function InsertEdge(props: EdgeProps) {
         ];
         return { x, y, width, height };
       });
-    return routeEdge({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, obstacles);
+    return routeEdgeAcross({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, obstacles);
   }, [signature, sourceX, sourceY, targetX, targetY]);
   // A labelled line (a branch arm) keeps its label at the middle, so the "+" sits nearer the step it leads to.
   const labelled = label !== undefined && label !== "";

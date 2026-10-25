@@ -1,3 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { autoLayoutGraph, isCurrentLayout, LAYOUT_MARK } from "../../src/layout.js";
+import { specToGraph } from "../../src/graph.js";
+import { parseSpec } from "../../src/index.js";
 import { describe, expect, it } from "vitest";
 import { withAutoLayout, type LayoutMap } from "../../src/layout.js";
 
@@ -78,5 +83,43 @@ describe("withAutoLayout", () => {
     // The new node goes after the highest occupied row (240), not into the
     // empty row 1 (y: 140).
     expect(next["workflow:fourth"]).toEqual({ x: 520, y: 380 });
+  });
+});
+
+// KAM-238 (ADR-0059): the canvas flows left to right.
+
+describe("autoLayoutGraph", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "packages/cli/templates/market-etl/agent.yaml"),
+    "utf8",
+  );
+  const graph = specToGraph(parseSpec(source).spec!);
+  const layout = autoLayoutGraph(graph);
+
+  it("puts each step one column right of the one before it, on one row", () => {
+    const run = ["agent:market_etl", "workflow:each_symbol", "workflow:fetch", "workflow:check"];
+    const trigger = graph.nodes.find((n) => n.kind === "agent")!.id;
+    const ids = [trigger, ...run.slice(1)];
+    const xs = ids.map((id) => layout[id]!.x);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    expect(new Set(xs).size).toBe(xs.length);
+    expect(new Set(ids.map((id) => layout[id]!.y)).size).toBe(1);
+  });
+
+  it("gives no two nodes the same place", () => {
+    const places = Object.entries(layout)
+      .filter(([id]) => id !== LAYOUT_MARK)
+      .map(([, p]) => `${p.x},${p.y}`);
+    expect(new Set(places).size).toBe(places.length);
+  });
+
+  it("puts a tool under the first step that calls it", () => {
+    expect(layout["tool:fetch_daily"]!.x).toBe(layout["workflow:fetch"]!.x);
+    expect(layout["tool:fetch_daily"]!.y).toBeGreaterThan(layout["workflow:fetch"]!.y);
+  });
+
+  it("is marked as the current layout, which an old top-to-bottom one is not", () => {
+    expect(isCurrentLayout(layout)).toBe(true);
+    expect(isCurrentLayout({ a: { x: 0, y: 0 } })).toBe(false);
   });
 });

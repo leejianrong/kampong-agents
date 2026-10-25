@@ -123,7 +123,8 @@ for (const size of [
         [...document.querySelectorAll(".react-flow__node.md3-node")]
           .filter((n) => {
             const r = n.getBoundingClientRect();
-            return [...n.querySelectorAll("*")].some(
+            // The ports sit on the node's edge by design.
+            return [...n.querySelectorAll("*:not(.react-flow__handle)")].some(
               (c) => c.getBoundingClientRect().right > r.right + 1,
             );
           })
