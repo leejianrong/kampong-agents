@@ -563,15 +563,124 @@ select.md3-text-field {
   font-size: var(--md-type-body-small-size);
 }
 
+/* KAM-237 (ADR-0059): a node is a small card. The category tints the icon tile only; the card itself is the plain
+   surface, so the colour never has to carry the meaning (the kind is written on it as well). */
+:root {
+  --kg-trigger-bg: #fff0d0;
+  --kg-trigger-fg: #855400;
+  --kg-ai-bg: #ebe5ff;
+  --kg-ai-fg: #5334c0;
+  --kg-tool-bg: #d3f0ec;
+  --kg-tool-fg: #0a6760;
+  --kg-data-bg: #dbe8ff;
+  --kg-data-fg: #1c4d99;
+  --kg-flow-bg: #ffdfe5;
+  --kg-flow-fg: #9f1f3d;
+  --kg-approval-bg: #ffe5d1;
+  --kg-approval-fg: #964210;
+  --kg-guard-bg: #e6e9e8;
+  --kg-guard-fg: #33403a;
+}
+
 .md3-node {
-  width: auto;
-  min-width: 150px;
-  max-width: 220px;
-  padding: 0.625rem 0.875rem !important;
+  width: 240px;
+  min-height: 68px;
+  padding: 0.5rem 0.75rem !important;
+  border: 1px solid var(--md-sys-color-outline-variant) !important;
+  border-radius: 14px !important;
+  background-color: var(--md-sys-color-surface-container-lowest, #fff) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  box-shadow:
+    0 1px 2px rgb(20 40 32 / 6%),
+    0 6px 16px rgb(20 40 32 / 7%);
   font-size: var(--md-type-body-medium-size) !important;
   font-family: inherit;
   text-align: left !important;
   white-space: normal;
+}
+
+.kg-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.kg-card__tile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--kg-tile-bg);
+  color: var(--kg-tile-fg);
+}
+
+.kg-card__tile svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.kg-card__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kg-card__kind {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1rem;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.kg-card__summary {
+  font-size: var(--md-type-body-small-size);
+  line-height: var(--md-type-body-small-line);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.kg-card--trigger {
+  --kg-tile-bg: var(--kg-trigger-bg);
+  --kg-tile-fg: var(--kg-trigger-fg);
+}
+
+.kg-card--ai {
+  --kg-tile-bg: var(--kg-ai-bg);
+  --kg-tile-fg: var(--kg-ai-fg);
+}
+
+.kg-card--tool {
+  --kg-tile-bg: var(--kg-tool-bg);
+  --kg-tile-fg: var(--kg-tool-fg);
+}
+
+.kg-card--data {
+  --kg-tile-bg: var(--kg-data-bg);
+  --kg-tile-fg: var(--kg-data-fg);
+}
+
+.kg-card--flow {
+  --kg-tile-bg: var(--kg-flow-bg);
+  --kg-tile-fg: var(--kg-flow-fg);
+}
+
+.kg-card--approval {
+  --kg-tile-bg: var(--kg-approval-bg);
+  --kg-tile-fg: var(--kg-approval-fg);
+}
+
+.kg-card--guard {
+  --kg-tile-bg: var(--kg-guard-bg);
+  --kg-tile-fg: var(--kg-guard-fg);
 }
 
 /* Labels stay inside their node (KAM-187): a title is one line with an ellipsis, a detail line at most two. The
@@ -616,24 +725,6 @@ select.md3-text-field {
   stroke: var(--md-sys-color-surface-container);
 }
 
-.md3-node--agent {
-  background-color: var(--md-sys-color-primary-container) !important;
-  color: var(--md-sys-color-on-primary-container) !important;
-  border-color: var(--md-sys-color-primary) !important;
-}
-
-.md3-node--tool {
-  background-color: var(--md-sys-color-secondary-container) !important;
-  color: var(--md-sys-color-on-secondary-container) !important;
-  border-color: var(--md-sys-color-secondary) !important;
-}
-
-.md3-node--workflow {
-  background-color: var(--md-sys-color-tertiary-container) !important;
-  color: var(--md-sys-color-on-tertiary-container) !important;
-  border-color: var(--md-sys-color-tertiary) !important;
-}
-
 /* A foreach node (KAN-1858): the loop's summary, then its nested steps as a numbered list on a tonal inset. */
 .md3-foreach__meta {
   margin-top: 0.125rem;
@@ -655,12 +746,6 @@ select.md3-text-field {
 .md3-branch__arm {
   margin-top: 0.375rem;
   font-weight: 500;
-}
-
-.md3-node--guardrails {
-  background-color: var(--md-sys-color-error-container) !important;
-  color: var(--md-sys-color-on-error-container) !important;
-  border-color: var(--md-sys-color-error) !important;
 }
 
 /* ---- YAML preview split screen (YamlPreview.tsx) ---- */

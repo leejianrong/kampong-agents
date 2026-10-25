@@ -47,12 +47,12 @@ describe("Canvas data-step nodes", () => {
       graph.nodes.map((n, i) => [n.id, { x: n.column * 260, y: i * 120 }]),
     );
     render(<Canvas graph={graph} layout={layout} />);
-    expect(screen.getByText("Transform: shape")).toBeTruthy();
+    expect(screen.getByText("shape")).toBeTruthy();
     expect(screen.getByText("sets title, price")).toBeTruthy();
-    expect(screen.getByText("Validate: check")).toBeTruthy();
+    expect(screen.getByText("check")).toBeTruthy();
     const validate = screen.getByText(/^asserts \$exists/);
     expect(validate.textContent).toMatch(/….*· on fail skip$/);
-    expect(screen.getByText("Dedupe: once")).toBeTruthy();
+    expect(screen.getByText("once")).toBeTruthy();
     expect(screen.getByText("once per shape.title for 24h")).toBeTruthy();
   });
 });

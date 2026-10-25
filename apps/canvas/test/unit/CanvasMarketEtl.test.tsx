@@ -32,7 +32,7 @@ describe("the market-etl template on the canvas", () => {
       graph.nodes.map((n, i) => [n.id, { x: n.column * 260, y: i * 120 }]),
     );
     render(<Canvas graph={graph} layout={layout} />);
-    expect(screen.getByText("Foreach: each_symbol")).toBeTruthy();
+    expect(screen.getByText("each_symbol")).toBeTruthy();
     expect(screen.getByText(/over vars\.symbols as symbol/)).toBeTruthy();
     expect(screen.getByText(/on_error continue/)).toBeTruthy();
     const items = [...document.querySelectorAll(".md3-node--nested")].map((node) =>

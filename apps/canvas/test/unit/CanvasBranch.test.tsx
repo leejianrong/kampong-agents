@@ -63,12 +63,12 @@ describe("Canvas branch node", () => {
       graph.nodes.map((n, i) => [n.id, { x: n.column * 260, y: i * 120 }]),
     );
     render(<Canvas graph={graph} layout={layout} />);
-    expect(screen.getByText("Branch: route")).toBeTruthy();
+    expect(screen.getByText("route")).toBeTruthy();
     expect(screen.getByText("switch trigger.kind")).toBeTruthy();
     // Each arm step is a node of its own (KAM-154), marked with its branch and arm.
-    expect(screen.getByText("Tool step: answer")).toBeTruthy();
-    expect(screen.getByText("Stop: ignore")).toBeTruthy();
-    expect(screen.getByText("Branch: nested")).toBeTruthy();
+    expect(screen.getByText("answer")).toBeTruthy();
+    expect(screen.getByText("ignore")).toBeTruthy();
+    expect(screen.getByText("nested")).toBeTruthy();
     const nested = [...document.querySelectorAll(".md3-node--nested")].map((n) =>
       n.getAttribute("data-id"),
     );
@@ -86,7 +86,7 @@ describe("Canvas branch node", () => {
       "case dup",
       "default",
     ]);
-    expect(screen.getByText("Stop: halt")).toBeTruthy();
+    expect(screen.getByText("halt")).toBeTruthy();
     expect(screen.getByText(/ends the run as completed: all done/)).toBeTruthy();
   });
 });

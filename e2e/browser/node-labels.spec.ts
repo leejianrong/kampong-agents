@@ -77,7 +77,7 @@ for (const size of [
 
     test("the trigger node is labelled by type and follows a trigger save", async ({ page }) => {
       const trigger = node(page, "agent:labels");
-      await expect(trigger).toHaveText("Manual");
+      await expect(trigger.locator(".md3-node__title")).toHaveText("Manual");
       await expect(trigger).toHaveAttribute("aria-label", "Trigger, Manual");
 
       // Enter on the focused node opens it (at this zoom the node is a few pixels wide).
@@ -87,17 +87,18 @@ for (const size of [
       await page.getByLabel("Runs").selectOption("every");
       await page.getByPlaceholder("6h").fill("6h");
       await page.getByRole("button", { name: "Save trigger" }).click();
-      await expect(trigger).toHaveText("Schedule: every 6h");
+      await expect(trigger.locator(".md3-node__title")).toHaveText("Schedule");
+      await expect(trigger.locator(".kg-card__summary")).toHaveText("every 6h");
       await expect(trigger).toHaveAttribute("aria-label", "Trigger, Schedule: every 6h");
 
       await page.getByRole("button", { name: "Use webhook" }).click();
       await page.getByLabel("Preset").selectOption("github");
       await page.getByLabel("Secret variable name").fill("GH_SECRET");
       await page.getByRole("button", { name: "Save trigger" }).click();
-      await expect(trigger).toHaveText("Webhook (GitHub)");
+      await expect(trigger.locator(".md3-node__title")).toHaveText("Webhook (GitHub)");
 
       await page.getByRole("button", { name: "Remove trigger" }).click();
-      await expect(trigger).toHaveText("Manual");
+      await expect(trigger.locator(".md3-node__title")).toHaveText("Manual");
     });
 
     test("a long step id is cut inside its node, with a tooltip and the full accessible name", async ({
@@ -106,7 +107,7 @@ for (const size of [
       const long = node(page, `workflow:${LONG}`);
       await expect(long).toHaveAttribute("aria-label", `Transform step ${LONG}`);
       const title = long.locator(".md3-node__title");
-      await expect(title).toHaveAttribute("title", `Transform: ${LONG}`);
+      await expect(title).toHaveAttribute("title", LONG);
       // The text is cut, not spilled: its box is narrower than its text, and the node is no wider than its cap.
       const cut = await title.evaluate((el) => el.scrollWidth > el.clientWidth);
       expect(cut).toBe(true);
@@ -115,7 +116,7 @@ for (const size of [
         const t = document.querySelector(".react-flow__viewport")!.getAttribute("style") ?? "";
         return Number(/scale\(([\d.]+)\)/.exec(t)?.[1] ?? 1);
       });
-      expect(box!.width / scale).toBeLessThanOrEqual(222);
+      expect(box!.width / scale).toBeLessThanOrEqual(242);
 
       // Nothing inside any node reaches past its right edge.
       const overflowing = await page.evaluate(() =>

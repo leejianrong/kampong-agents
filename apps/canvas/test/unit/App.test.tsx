@@ -57,7 +57,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText(/^Manual$/)).toBeTruthy();
     });
-    expect(screen.getByText(/Workflow: greet/)).toBeTruthy();
+    expect(screen.getByText("greet")).toBeTruthy();
   });
 
   it("keeps the YAML in a drawer for developers, closed until opened (KAM-202)", async () => {
