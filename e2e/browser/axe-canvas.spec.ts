@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { fitAll } from "./harness/bars.js";
 
 // KAM-200: axe finds no critical, serious or moderate issue on the canvas or on any panel open over it, the page has
 // one main landmark and one h1, and Tab goes from the toolbar to the nodes in the order a run goes through them,
@@ -64,6 +65,7 @@ for (const size of [
       await page.goto(URL);
       await expect(node(page, "workflow:report")).toBeVisible();
       await page.addStyleTag({ content: ".react-flow__minimap { display: none }" });
+      await fitAll(page);
     });
 
     test("axe finds nothing serious or moderate on the canvas, the YAML drawer or any open panel", async ({

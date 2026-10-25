@@ -10,7 +10,7 @@ import {
 } from "./ops.js";
 import { parseSpec, type SpecError } from "./parse.js";
 import { specToGraph } from "./graph.js";
-import { withAutoLayout, type LayoutMap } from "./layout.js";
+import { autoLayoutGraph, type LayoutMap } from "./layout.js";
 
 // KAN-1224 (ADR-0014's `SpecRepository` decision, ADR-0005's original "local-
 // mode-specific code is isolated behind an interface the hosted backend
@@ -207,8 +207,7 @@ export function staleResult(
 }
 
 /**
- * Parses the current spec, auto-assigning + persisting layout for any node missing one
- * (ADR-0006). Generic over any `SpecRepository` (this used to be a method on `SpecStore` alone) --
+ * Parses the current spec and lays its graph out left to right (ADR-0006, ADR-0059), persisting the result. Generic over any `SpecRepository` (this used to be a method on `SpecStore` alone) --
  * both the filesystem- and Postgres-backed implementations get this behavior for free rather than
  * reimplementing the same parse-graph-autolayout orchestration on top of their own I/O.
  */
@@ -221,10 +220,7 @@ export async function loadWithLayout(
 
   if (result.success && result.spec) {
     const graph = specToGraph(result.spec);
-    const next = withAutoLayout(
-      layout,
-      graph.nodes.map((n) => ({ id: n.id, column: n.column })),
-    );
+    const next = autoLayoutGraph(graph);
     if (JSON.stringify(next) !== JSON.stringify(layout)) {
       await repo.writeLayout(next);
       layout = next;

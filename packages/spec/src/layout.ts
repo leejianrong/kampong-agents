@@ -2,6 +2,8 @@
 // live in `.kampong/layout.json`, never in the spec YAML, so the spec stays
 // hand-authorable and diff-clean for a developer who never opens the canvas.
 
+import { toolUsage, type SpecGraph } from "./graph.js";
+
 export interface NodePosition {
   x: number;
   y: number;
@@ -10,6 +12,8 @@ export interface NodePosition {
 export type LayoutMap = Record<string, NodePosition>;
 
 const SPACING = { x: 260, y: 140 };
+// The left-to-right layout: a column is a 240 px card and an 80 px gap.
+const FLOW = { x: 320, y: 140 };
 
 export function parseLayout(source: string): LayoutMap {
   if (!source.trim()) return {};
@@ -65,4 +69,71 @@ export function withAutoLayout(
     maxYByColumn[row] = y;
   }
   return next;
+}
+
+/**
+ * KAM-238 (ADR-0059): the canvas flows left to right. A node's column is how many steps lie before it, and a
+ * branch's second and later arms drop to rows below the first. Until dragging is saved (KAM-186) the stored
+ * positions are only a cache of this layout, so the layout is recomputed from the graph rather than appended to.
+ *
+ * `LAYOUT_MARK` is a reserved entry (not a node) that says which layout produced the stored positions; a layout
+ * without it is the old top-to-bottom one and is replaced.
+ */
+export const LAYOUT_MARK = "$layout";
+const LAYOUT_VERSION = 2;
+
+export function isCurrentLayout(layout: LayoutMap): boolean {
+  return layout[LAYOUT_MARK]?.x === LAYOUT_VERSION;
+}
+
+export function autoLayoutGraph(graph: SpecGraph): LayoutMap {
+  const out: LayoutMap = { [LAYOUT_MARK]: { x: LAYOUT_VERSION, y: 0 } };
+  const flow = graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
+  const flowIds = new Set(flow.map((n) => n.id));
+  const preds = new Map<string, string[]>();
+  for (const e of graph.edges) {
+    if (!flowIds.has(e.source) || !flowIds.has(e.target)) continue;
+    preds.set(e.target, [...(preds.get(e.target) ?? []), e.source]);
+  }
+
+  const depth = new Map<string, number>();
+  const row = new Map<string, number>();
+  const taken = new Set<string>();
+  const children = new Map<string, number>();
+  let lowest = 0;
+
+  for (const { id } of flow) {
+    const ps = preds.get(id) ?? [];
+    const d = ps.length === 0 ? 0 : Math.max(...ps.map((p) => depth.get(p) ?? 0)) + 1;
+    let r = 0;
+    if (ps.length > 1) {
+      r = Math.min(...ps.map((p) => row.get(p) ?? 0));
+    } else if (ps.length === 1) {
+      const parent = ps[0]!;
+      const claimed = children.get(parent) ?? 0;
+      children.set(parent, claimed + 1);
+      r = claimed === 0 ? (row.get(parent) ?? 0) : lowest + 1;
+    }
+    while (taken.has(`${d},${r}`)) r++;
+    taken.add(`${d},${r}`);
+    depth.set(id, d);
+    row.set(id, r);
+    lowest = Math.max(lowest, r);
+    out[id] = { x: d * FLOW.x, y: r * FLOW.y };
+  }
+
+  const usage = toolUsage(graph);
+  const usedX = new Set<number>();
+  for (const node of graph.nodes) {
+    if (node.kind !== "tool") continue;
+    const anchor = usage[node.id]?.[0];
+    let x = anchor !== undefined ? (out[anchor]?.x ?? 0) : 0;
+    while (usedX.has(x)) x += FLOW.x;
+    usedX.add(x);
+    out[node.id] = { x, y: (lowest + 1) * FLOW.y };
+  }
+  for (const node of graph.nodes) {
+    if (node.kind === "guardrails") out[node.id] = { x: 0, y: -FLOW.y };
+  }
+  return out;
 }

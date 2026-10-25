@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { curveHits, curvePoints, routeEdge, type Rect } from "../../src/edgeRoute.js";
+import {
+  curveHits,
+  curvePoints,
+  routeEdge,
+  routeEdgeAcross,
+  type Rect,
+} from "../../src/edgeRoute.js";
 
 // KAM-185: a line between two steps never passes behind a node.
 
@@ -32,5 +38,25 @@ describe("routeEdge", () => {
     const nodes = [node(100, 180), node(-60, 100, 120, 200)];
     const lane = routeEdge(from, to, nodes).mid.x;
     expect(nodes.every((r) => lane < r.x || lane > r.x + r.width)).toBe(true);
+  });
+});
+
+// KAM-238: a flow that runs left to right leaves the right of a step and enters the left of the next.
+describe("routeEdgeAcross", () => {
+  it("is a plain curve from right to left when nothing is in the way", () => {
+    const route = routeEdgeAcross({ x: 240, y: 30 }, { x: 320, y: 30 }, []);
+    expect(route.detoured).toBe(false);
+    expect(route.path.startsWith("M 240 30")).toBe(true);
+    expect(route.path.endsWith("320 30")).toBe(true);
+    expect(route.mid).toEqual({ x: 280, y: 30 });
+  });
+
+  it("goes round a node standing between the two ends", () => {
+    const obstacle = { x: 280, y: -20, width: 100, height: 100 };
+    const route = routeEdgeAcross({ x: 240, y: 30 }, { x: 480, y: 30 }, [obstacle]);
+    expect(route.detoured).toBe(true);
+    const nums = route.path.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    expect(nums.slice(0, 2)).toEqual([240, 30]);
+    expect(nums.slice(-2)).toEqual([480, 30]);
   });
 });

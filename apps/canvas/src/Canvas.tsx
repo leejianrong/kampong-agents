@@ -1,6 +1,7 @@
 import {
   Background,
   BackgroundVariant,
+  Position,
   Controls,
   MiniMap,
   ReactFlow,
@@ -64,6 +65,12 @@ export interface CanvasProps {
 const EDGE_TYPES = { insert: InsertEdge };
 
 const MARKER_ID = "insertion-marker";
+/**
+ * KAM-238: a long workflow opens on its first steps at a size you can read, not the whole of it at a quarter
+ * zoom. Up to this many steps in run order are fitted; a shorter one is fitted whole.
+ */
+const FIT_HEAD = 4;
+const MIN_READABLE_ZOOM = 0.8;
 /** A workflow with more nodes than this gets a minimap (KAM-187). */
 const MINIMAP_OVER = 15;
 
@@ -278,6 +285,15 @@ export function Canvas({
   // controlled component and recreating fresh node/edge objects on every
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
+  const fitViewOptions = useMemo(() => {
+    const run = graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
+    return {
+      padding: 0.15,
+      minZoom: MIN_READABLE_ZOOM,
+      maxZoom: 1,
+      ...(run.length > FIT_HEAD && { nodes: run.slice(0, FIT_HEAD).map((n) => ({ id: n.id })) }),
+    };
+  }, [graph]);
   const nodes: Node[] = useMemo(
     () => [
       ...inTabOrder(graph.nodes).map((node) => {
@@ -285,6 +301,8 @@ export function Canvas({
         return {
           id: node.id,
           position: layout[node.id] ?? { x: 0, y: 0 },
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
           data: {
             label: run ? (
               <>
@@ -317,9 +335,11 @@ export function Canvas({
                 x: (layout[marker.anchor] ?? { x: 0, y: 0 }).x,
                 y:
                   (layout[marker.anchor] ?? { x: 0, y: 0 }).y +
-                  (marker.side === "above" ? -48 : 70),
+                  (marker.side === "above" ? -52 : 104),
               },
               data: { label: marker.label },
+              sourcePosition: Position.Right,
+              targetPosition: Position.Left,
               className: "md3-node md3-node--marker",
               draggable: false,
               selectable: false,
@@ -388,6 +408,7 @@ export function Canvas({
           edges={edges}
           edgeTypes={EDGE_TYPES}
           fitView
+          fitViewOptions={fitViewOptions}
           minZoom={0.1}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -409,7 +430,7 @@ export function Canvas({
           multiSelectionKeyCode={null}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-          <Controls />
+          <Controls fitViewOptions={{ padding: 0.15, minZoom: 0.05 }} />
           {graph.nodes.length > MINIMAP_OVER && (
             <MiniMap
               pannable
