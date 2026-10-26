@@ -402,7 +402,7 @@ agent:
     await waitFor(() => screen.getByText(/^Manual$/));
 
     fireEvent.click(
-      within(screen.getByRole("contentinfo")).getByRole("button", { name: /^Trigger$/ }),
+      within(screen.getByRole("contentinfo")).getByRole("button", { name: /^Trigger/ }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Add webhook" }));
     const when = () => screen.getByLabelText("When", { exact: false });

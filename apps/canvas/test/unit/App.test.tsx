@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.js";
 import { chooseFromMenu } from "./menu.js";
@@ -322,7 +322,9 @@ describe("App", () => {
       );
       render(<App />);
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Checks" }));
+      fireEvent.click(
+        within(screen.getByRole("contentinfo")).getByRole("button", { name: "Checks" }),
+      );
       fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
       expect(await screen.findByText("X is not set")).toBeTruthy();
       expect(JSON.parse(calls.find((c) => c.url.endsWith("/api/doctor"))!.body!)).toEqual({});
@@ -369,7 +371,7 @@ describe("App", () => {
     it("opens from the toolbar and saves the first var as a vars block", async () => {
       const applied = appWith(withVersion("1.1"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Vars/ }));
       fireEvent.click(screen.getByRole("button", { name: "Add var" }));
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "symbols" } });
       fireEvent.change(screen.getByLabelText("Type"), { target: { value: "list" } });
@@ -390,7 +392,7 @@ describe("App", () => {
     it("adds to an existing block and removes the last var along with the block", async () => {
       const applied = appWith(withVersion("1.1", { only: { type: "string" } }));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Vars/ }));
       fireEvent.click(screen.getByRole("button", { name: "Remove only" }));
       await waitFor(() => expect(applied).toHaveLength(1));
       expect(applied[0]).toEqual([{ op: "remove", path: ["vars"] }]);
@@ -399,7 +401,7 @@ describe("App", () => {
     it("is gated on a 1.0 spec", async () => {
       appWith(withVersion("1.0"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Vars" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Vars/ }));
       expect(
         screen.getByTestId("vars-panel").querySelector("[role=status]")!.textContent,
       ).toContain("Vars need spec version");
@@ -433,7 +435,7 @@ describe("App", () => {
     it("opens from the toolbar and sets agent.trigger", async () => {
       const applied = appWith(withTrigger("1.1"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Trigger/ }));
       fireEvent.click(screen.getByRole("button", { name: "Add schedule" }));
       fireEvent.change(screen.getByLabelText("Cron", { exact: false }), {
         target: { value: "0 9 * * *" },
@@ -448,7 +450,7 @@ describe("App", () => {
     it("removes an existing trigger", async () => {
       const applied = appWith(withTrigger("1.1", { type: "webhook" }));
       await waitFor(() => expect(screen.getByText(/^Webhook$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Trigger/ }));
       fireEvent.click(screen.getByRole("button", { name: "Remove trigger" }));
       await waitFor(() => expect(applied).toHaveLength(1));
       expect(applied[0]).toEqual([{ op: "remove", path: ["agent", "trigger"] }]);
@@ -457,7 +459,7 @@ describe("App", () => {
     it("is gated on a 1.0 spec", async () => {
       appWith(withTrigger("1.0"));
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
-      fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Trigger/ }));
       expect(
         screen.getByTestId("draft-trigger").querySelector("[role=status]")!.textContent,
       ).toContain("need spec version");

@@ -39,6 +39,10 @@ export interface ActionDescriptor {
   disabled?: boolean;
   /** A small count beside the label, with the words a screen reader says for it. */
   badge?: { count: number; words: string };
+  /** What the setting is now, in a few words after the label ("3", "Every 6 hours"); part of the name. */
+  detail?: string;
+  /** The chip needs attention (a secret that is missing): drawn in the error colours as well as worded. */
+  tone?: "warn";
   run: () => void;
 }
 
@@ -54,6 +58,9 @@ export interface ActionContext {
   noSpecYet: boolean;
   /** Secrets the workflow reads that have no value; undefined until known. */
   missingSecrets?: number;
+  /** How many vars the spec declares, and what starts a run in words ("Every 6 hours"): shown on the status chips. */
+  varCount?: number;
+  triggerSummary?: string;
   /** Opens a panel, or closes it when it is already open. */
   toggleForm: (form: OpenForm) => void;
   toggleYaml: () => void;
@@ -126,13 +133,17 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
 
   if (!ctx.noSpecYet) {
     actions.push(
-      form("vars", "vars", "status", "Vars", { keywords: ["variables", "spec vars"] }),
+      form("vars", "vars", "status", "Vars", {
+        keywords: ["variables", "spec vars"],
+        ...(ctx.varCount ? { detail: String(ctx.varCount) } : {}),
+      }),
       ...(ctx.hasSecrets
         ? [
             form("secrets", "variables", "status", "Secrets", {
               keywords: ["keys", "tokens", "env"],
               ...(ctx.missingSecrets
                 ? {
+                    tone: "warn" as const,
                     badge: {
                       count: ctx.missingSecrets,
                       words: `${ctx.missingSecrets} missing`,
@@ -150,6 +161,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
         : []),
       form("trigger", "trigger", "status", "Trigger", {
         keywords: ["schedule", "webhook", "poll"],
+        ...(ctx.triggerSummary ? { detail: ctx.triggerSummary } : {}),
       }),
       form("add-step", "workflow", "menu", "Add step", {
         title: "Add a step by choosing its kind and place",

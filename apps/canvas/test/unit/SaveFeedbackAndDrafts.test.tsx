@@ -73,20 +73,20 @@ describe("drafts and Esc (KAM-182)", () => {
   it("keeps a typed var name when another panel is opened and comes back", async () => {
     setup();
     await ready();
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     openPanel("Add var");
     type("Name", "keepme");
-    openPanel(/^Trigger$/);
+    openPanel(/^Trigger/);
     expect(panelOnShow("Spec Vars")).toBeNull();
     expect(panelOnShow("Trigger")).toBeTruthy();
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("keepme");
   });
 
   it("Esc closes a panel with nothing typed straight away", async () => {
     setup();
     await ready();
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     expect(panelOnShow("Spec Vars")).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(panelOnShow("Spec Vars")).toBeNull();
@@ -96,7 +96,7 @@ describe("drafts and Esc (KAM-182)", () => {
   it("Esc on a panel with typed input asks; Keep editing keeps it, Discard drops the draft", async () => {
     setup();
     await ready();
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     openPanel("Add var");
     type("Name", "half");
     fireEvent.keyDown(window, { key: "Escape" });
@@ -110,7 +110,7 @@ describe("drafts and Esc (KAM-182)", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(panelOnShow("Spec Vars")).toBeNull();
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     expect(screen.queryByLabelText("Name")).toBeNull();
   });
 
@@ -142,7 +142,7 @@ describe("save feedback (KAM-181)", () => {
     expect(region.textContent).toBe("");
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    openPanel(/^Vars$/);
+    openPanel(/^Vars/);
     openPanel("Add var");
     type("Name", "symbols");
     fireEvent.click(screen.getByRole("button", { name: "Save var" }));

@@ -13,6 +13,7 @@ import {
   setVarPatch,
   specWarnings,
   toolEditPatch,
+  triggerSummary,
   type AgentSpec,
   type ComponentCatalog,
   type Guardrails,
@@ -1092,6 +1093,8 @@ export function App({
     hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
     noSpecYet: emptyKind === "new",
     ...(missingSecrets !== undefined && { missingSecrets }),
+    varCount: Object.keys(spec?.vars ?? {}).length,
+    ...(spec?.agent.trigger && { triggerSummary: triggerSummary(spec.agent.trigger) }),
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
     toggleYaml: () => setYamlOpen((open) => !open),
     startRun: runSession.requestRun,
@@ -1127,6 +1130,10 @@ export function App({
                 saveState={saveState}
                 actions={actions}
                 {...(onNavigateBack && { onBack: onNavigateBack })}
+                editorActive={openForm !== "run" && openForm !== "checks"}
+                onEditor={() => {
+                  if (openForm === "run" || openForm === "checks") toolbarForm(null);
+                }}
               />
               <RunControls
                 session={runSession}
@@ -1582,7 +1589,16 @@ export function App({
                 open={runLogOpen}
                 onToggle={() => setRunLogOpen((v) => !v)}
               />
-              <StatusBar actions={actions} />
+              <StatusBar
+                actions={actions}
+                note={
+                  runSession.options
+                    ? runSession.mode === "replay"
+                      ? "Replay uses recorded data: no keys needed"
+                      : "Live runs call real services"
+                    : undefined
+                }
+              />
               <Snackbar message={toast?.text ?? null} />
               {paletteOpen && (
                 <CommandPalette

@@ -239,7 +239,7 @@ for (const width of [1440, 1100, 900]) {
     expect(m.hscroll).toBe(false);
     expect(m.panelButtonsInside).toBe(true);
     await expect(
-      page.getByRole("contentinfo").getByRole("button", { name: "Trigger", exact: true }),
+      page.getByRole("contentinfo").getByRole("button", { name: /^Trigger/ }),
     ).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: /^Secrets/ })).toBeVisible();
   });

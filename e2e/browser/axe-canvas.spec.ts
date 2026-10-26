@@ -84,7 +84,7 @@ for (const size of [
       await page.getByRole("button", { name: "Test Run", exact: true }).click();
       await expectClean(page, "Test Run with a finished run");
 
-      for (const status of [/^Trigger$/, /^Vars$/, /^Guardrails$/, /^Checks$/, /^Secrets/]) {
+      for (const status of [/^Trigger/, /^Vars/, /^Guardrails$/, /^Checks$/, /^Secrets/]) {
         await page.getByRole("contentinfo").getByRole("button", { name: status }).click();
         await expect(page.getByRole("region", { name: /./ }).last()).toBeVisible();
         await expectClean(page, `the ${status} panel`);
@@ -105,7 +105,7 @@ for (const size of [
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await page
         .getByRole("contentinfo")
-        .getByRole("button", { name: /^Trigger$/ })
+        .getByRole("button", { name: /^Trigger/ })
         .click();
       // Two landmarks with one name are what axe's landmark-unique finds, with a panel open over the canvas.
       const results = await new AxeBuilder({ page })
@@ -137,8 +137,9 @@ for (const size of [
           }),
         );
       }
-      // The top bar comes first.
-      expect(stops[0]).toContain("show YAML");
+      // The top bar comes first: the Editor / Test Run / Checks switch, then the YAML toggle.
+      expect(stops[0]).toContain("Editor");
+      expect(stops.slice(0, 5).join("\n")).toContain("show YAML");
       // No line is a stop.
       expect(stops.filter((s) => s.includes("Line from"))).toEqual([]);
       // The nodes come in run order: the trigger, then the loop, then the steps inside it as they run.
