@@ -12,11 +12,11 @@ const MENU: Record<string, string> = {
 };
 
 const STATUS: Record<string, RegExp> = {
-  "Spec Vars": /^Vars$/,
-  Vars: /^Vars$/,
+  "Spec Vars": /^Vars/,
+  Vars: /^Vars/,
   "Set Guardrails": /^Guardrails$/,
   Guardrails: /^Guardrails$/,
-  Trigger: /^Trigger$/,
+  Trigger: /^Trigger/,
   Secrets: /^Secrets/,
   Checks: /^Checks$/,
 };

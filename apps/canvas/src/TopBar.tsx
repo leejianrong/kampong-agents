@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { ActionDescriptor } from "./actions.js";
 
-// The run bar (KAM-214): the workflow's name, whether it is saved, Run, the YAML drawer toggle and a menu for
-// everything that is not frequent. It spans the window above the canvas and the side pane. A top app bar in M3.
+// The top bar (KAM-214, KAM-246): where you are (a breadcrumb back to the workflows when there is a list of them,
+// the workflow's name, whether it is saved), a switch between the Editor and the two panels you read results in
+// (Test Run, Checks), the YAML drawer toggle and a menu for everything that is not frequent. It spans the window
+// above the canvas and the side pane. A top app bar in M3.
 
 export type SaveState = "saved" | "paused" | "failed";
 
@@ -17,18 +19,32 @@ export interface TopBarProps {
   saveState: SaveState;
   actions: ActionDescriptor[];
   onBack?: () => void;
+  /** The canvas is what is on show: neither Test Run nor Checks is open. */
+  editorActive?: boolean;
+  /** Back to the canvas: closes Test Run or Checks. */
+  onEditor?: () => void;
 }
 
-export function TopBar({ name, saveState, actions, onBack }: TopBarProps) {
+export function TopBar({ name, saveState, actions, onBack, editorActive, onEditor }: TopBarProps) {
   const run = actions.find((a) => a.surface === "run");
+  const checks = actions.find((a) => a.id === "checks");
   const yaml = actions.find((a) => a.surface === "yaml");
   const menu = actions.filter((a) => a.surface === "menu");
   return (
     <header className="md3-runbar">
       {onBack && (
-        <button className="md3-button md3-button-text" onClick={onBack} data-testid="back-to-specs">
-          ← Specs
-        </button>
+        <>
+          <button
+            className="md3-button md3-button-text md3-runbar__crumb"
+            onClick={onBack}
+            data-testid="back-to-specs"
+          >
+            Workflows
+          </button>
+          <span className="md3-runbar__slash" aria-hidden="true">
+            /
+          </span>
+        </>
       )}
       <h1 className="md3-title-large md3-runbar__title" title={name}>
         {name}
@@ -41,6 +57,24 @@ export function TopBar({ name, saveState, actions, onBack }: TopBarProps) {
         {SAVE_WORDS[saveState]}
       </span>
       <span className="md3-runbar__spacer" />
+      {(run || checks) && (
+        <div className="md3-runbar__views" role="group" aria-label="View">
+          {onEditor && (
+            <button
+              type="button"
+              className="md3-runbar__view"
+              aria-pressed={editorActive}
+              data-testid="view-editor"
+              onClick={onEditor}
+            >
+              Editor
+            </button>
+          )}
+          {run && <ViewButton action={run} testId="view-run" />}
+          {checks && <ViewButton action={checks} testId="view-checks" />}
+        </div>
+      )}
+      <span className="md3-runbar__spacer" />
       {yaml && (
         <BarButton
           action={yaml}
@@ -49,9 +83,24 @@ export function TopBar({ name, saveState, actions, onBack }: TopBarProps) {
           testId="yaml-drawer-toggle"
         />
       )}
-      {run && <BarButton action={run} variant="filled" />}
       <ActionMenu items={menu} />
     </header>
+  );
+}
+
+function ViewButton({ action, testId }: { action: ActionDescriptor; testId: string }) {
+  return (
+    <button
+      type="button"
+      className="md3-runbar__view"
+      aria-pressed={action.pressed}
+      aria-label={action.ariaLabel}
+      title={action.title}
+      data-testid={testId}
+      onClick={action.run}
+    >
+      {action.label}
+    </button>
   );
 }
 
@@ -62,7 +111,7 @@ function BarButton({
   testId,
 }: {
   action: ActionDescriptor;
-  variant: "tonal" | "filled";
+  variant: "tonal";
   className?: string;
   testId?: string;
 }) {

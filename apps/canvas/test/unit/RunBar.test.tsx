@@ -147,6 +147,54 @@ describe("run bar", () => {
   });
 });
 
+describe("top bar views (KAM-246)", () => {
+  it("switches between the Editor and the two panels you read results in", async () => {
+    await open(full);
+    const bar = screen.getByRole("banner");
+    const views = within(bar).getByRole("group", { name: "View" });
+    const editor = within(views).getByRole("button", { name: "Editor" });
+    const run = within(views).getByRole("button", { name: "Test Run" });
+    const checks = within(views).getByRole("button", { name: "Checks" });
+    expect(editor.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(run);
+    expect(run.getAttribute("aria-pressed")).toBe("true");
+    expect(editor.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(checks);
+    expect(screen.getAllByRole("region", { name: "Checks" }).length).toBeGreaterThan(0);
+    expect(run.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(editor);
+    expect(screen.queryByRole("region", { name: "Checks" })).toBeNull();
+    expect(editor.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("status chips (KAM-246)", () => {
+  const ctx = {
+    openForm: null,
+    yamlOpen: false,
+    hasSecrets: true,
+    hasChecks: true,
+    noSpecYet: false,
+    toggleForm: () => {},
+    toggleYaml: () => {},
+    download: () => {},
+  };
+  const chip = (id: string, extra = {}) =>
+    buildActions({ ...ctx, ...extra }).find((a) => a.id === id);
+
+  it("says how many vars there are and what starts a run, and marks missing secrets", () => {
+    expect(chip("vars", { varCount: 3 })?.detail).toBe("3");
+    expect(chip("vars", { varCount: 0 })?.detail).toBeUndefined();
+    expect(chip("trigger", { triggerSummary: "Every 6 hours" })?.detail).toBe("Every 6 hours");
+    expect(chip("trigger")?.detail).toBeUndefined();
+    expect(chip("secrets", { missingSecrets: 4 })).toMatchObject({
+      tone: "warn",
+      badge: { count: 4, words: "4 missing" },
+    });
+    expect(chip("secrets", { missingSecrets: 0 })?.tone).toBeUndefined();
+  });
+});
+
 describe("status bar", () => {
   it("offers Vars, Secrets, Guardrails, Checks and Trigger in a footer, each opening its panel", async () => {
     await open(full);
