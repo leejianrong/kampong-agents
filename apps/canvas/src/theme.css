@@ -3158,3 +3158,11 @@ select.md3-text-field {
   font-size: var(--md-type-label-small-size, 0.6875rem);
   font-weight: 600;
 }
+
+/* Small supporting text in the assistant (KAM-250, KAM-205). `.md3-body-small` has no rule of its own, so this one does. */
+.kg-small {
+  margin: 0;
+  font-size: var(--md-type-body-small-size);
+  line-height: 1.25;
+  color: var(--md-sys-color-on-surface-variant);
+}

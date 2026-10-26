@@ -24,6 +24,11 @@ export interface AssistantPanelProps {
   /** Back to the step list. */
   onClose: () => void;
   hidden?: boolean;
+  /**
+   * A description to send as soon as the assistant is ready (KAM-205): the empty state's "Build it for me" starts a
+   * blank workflow, opens this panel and hands the text over. A new `nonce` sends it again.
+   */
+  initialPrompt?: { text: string; nonce: number };
 }
 
 type Plan = Extract<AssistantAnswer, { success: true }>;
@@ -108,6 +113,7 @@ export function AssistantPanel({
   onMarkNew,
   onClose,
   hidden = false,
+  initialPrompt,
 }: AssistantPanelProps) {
   const [status, setStatus] = useState<AssistantStatus | undefined>(undefined);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -151,9 +157,9 @@ export function AssistantPanel({
       prev.map((m) => (m.id === id && m.kind === "plan" ? { ...m, ...change } : m)),
     );
 
-  async function send(event?: FormEvent) {
+  async function send(event?: FormEvent, override?: string) {
     event?.preventDefault();
-    const prompt = text.trim();
+    const prompt = (override ?? text).trim();
     if (prompt === "" || busy || !api.askAssistant) return;
     setText("");
     setBusy(true);
@@ -256,6 +262,14 @@ export function AssistantPanel({
 
   const configured = status?.configured === true;
 
+  // The empty state hands over what the person described; it is sent once, as soon as the endpoint is known.
+  const sentInitial = useRef(0);
+  useEffect(() => {
+    if (!initialPrompt || !configured || sentInitial.current === initialPrompt.nonce) return;
+    sentInitial.current = initialPrompt.nonce;
+    void send(undefined, initialPrompt.text);
+  }, [initialPrompt, configured]);
+
   return (
     <aside
       id="assistant-panel"
@@ -272,17 +286,17 @@ export function AssistantPanel({
       </div>
 
       {status === undefined && (
-        <p className="md3-body-small" role="status">
+        <p className="kg-small" role="status">
           Checking the assistant…
         </p>
       )}
       {status && !status.configured && (
         <div className="kg-chat__setup" role="status" data-testid="assistant-setup">
-          <p className="md3-body-small">{status.error}</p>
+          <p className="kg-small">{status.error}</p>
         </div>
       )}
       {status?.configured && showNotice && (
-        <p className="kg-chat__notice md3-body-small" data-testid="assistant-notice">
+        <p className="kg-chat__notice kg-small" data-testid="assistant-notice">
           Asking sends your request and this workflow (its text, never your keys) to{" "}
           <strong>{status.host}</strong>, model {status.model}. Nothing changes until you press
           Apply.
@@ -298,7 +312,7 @@ export function AssistantPanel({
         tabIndex={0}
       >
         {messages.length === 0 && configured && (
-          <p className="md3-body-small kg-chat__hint">
+          <p className="kg-small kg-chat__hint">
             Say what you want in plain words, for example “every weekday morning, fetch the price of
             AAPL and Slack me if it moved more than 5%”. I will show a plan first.
           </p>
@@ -314,7 +328,7 @@ export function AssistantPanel({
           }
           if (m.kind === "note") {
             return (
-              <p key={m.id} className="md3-body-small">
+              <p key={m.id} className="kg-small">
                 {m.text}
               </p>
             );
@@ -383,7 +397,7 @@ export function AssistantPanel({
           );
         })}
         {busy && (
-          <p className="md3-body-small kg-chat__busy" role="status">
+          <p className="kg-small kg-chat__busy" role="status">
             Working…
           </p>
         )}
@@ -405,7 +419,7 @@ export function AssistantPanel({
           onKeyDown={onKeyDown}
         />
         <div className="kg-chat__send">
-          <span className="md3-body-small">Enter sends, Shift+Enter adds a line</span>
+          <span className="kg-small">Enter sends, Shift+Enter adds a line</span>
           <button
             type="submit"
             className="md3-button md3-button-filled"

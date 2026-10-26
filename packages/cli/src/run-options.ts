@@ -92,6 +92,15 @@ export function replayFixturesDirFor(specPath: string): string | undefined {
   return undefined;
 }
 
+/**
+ * True when running the workflow reaches nothing outside itself: no tool and no model step. Such a workflow has
+ * nothing to record, so replay is open to it with no fixtures (KAM-205: a workflow just built from a description
+ * can be tried at once, with no keys).
+ */
+export function callsNothingOutside(spec: AgentSpec): boolean {
+  return (spec.agent.tools ?? []).length === 0 && !hasModelStep(spec.agent.workflow);
+}
+
 /** What a replay run needs in place of the real network and model. */
 export interface ReplayDeps {
   fetchImpl: ToolFetchImpl;
@@ -209,12 +218,13 @@ export async function describeRunOptions(spec: AgentSpec, specPath: string): Pro
       recorded: files.some((f) => prefixes.some((p) => f.startsWith(p))),
     };
   });
-  const available = dir !== undefined;
+  const recorded = dir !== undefined;
+  const available = recorded || callsNothingOutside(spec);
   return {
     modes: available ? ["replay", "live"] : ["live"],
     defaultMode: available ? "replay" : "live",
     fixtures: {
-      available,
+      available: recorded,
       ...(dir && { dir: relative(process.cwd(), dir) || "." }),
       count: files.length,
     },

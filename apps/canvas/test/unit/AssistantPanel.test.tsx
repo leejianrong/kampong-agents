@@ -197,6 +197,50 @@ describe("AssistantPanel", () => {
   });
 });
 
+describe("AssistantPanel: a description handed over by the empty state (KAM-205)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(cleanup);
+
+  const make = (status: AssistantStatus) => {
+    const api = {
+      assistantStatus: vi.fn(async () => status),
+      askAssistant: vi.fn(async () => PLAN),
+      applyOps: vi.fn(async () => OK),
+      replaceSource: vi.fn(async () => OK),
+    };
+    const props = {
+      api,
+      source: "",
+      onChanged: async () => undefined,
+      onMarkNew: () => undefined,
+      onClose: () => undefined,
+    };
+    return { api, props };
+  };
+
+  it("sends it once, as soon as the assistant is ready, and shows the plan", async () => {
+    const { api, props } = make(READY);
+    const { rerender } = render(
+      <AssistantPanel {...props} initialPrompt={{ text: "build me a thing", nonce: 1 }} />,
+    );
+    await screen.findByLabelText("Proposed plan");
+    expect(api.askAssistant).toHaveBeenCalledTimes(1);
+    expect(api.askAssistant).toHaveBeenCalledWith("build me a thing");
+    // A re-render with the same hand-over does not send it again.
+    rerender(<AssistantPanel {...props} initialPrompt={{ text: "build me a thing", nonce: 1 }} />);
+    expect(api.askAssistant).toHaveBeenCalledTimes(1);
+    // Nothing was applied: the person reviews the plan first.
+    expect(api.applyOps).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when there is no endpoint", async () => {
+    const { api, props } = make({ configured: false, error: "Set it up." });
+    render(<AssistantPanel {...props} initialPrompt={{ text: "x", nonce: 1 }} />);
+    await screen.findByTestId("assistant-setup");
+    expect(api.askAssistant).not.toHaveBeenCalled();
+  });
+});
+
 describe("newNodeIds", () => {
   it("names the cards a plan adds, not a variable or the settings", () => {
     expect(
