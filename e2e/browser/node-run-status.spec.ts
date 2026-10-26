@@ -97,7 +97,7 @@ for (const size of [
       const passed = page.locator('[data-testid="node-run-status"][data-status="passed"]');
       await expect(passed.first()).toBeVisible();
       // A word and an icon, not just a colour.
-      await expect(passed.first()).toContainText("Passed");
+      await expect(passed.first()).toContainText("Done");
       await expect(passed.first().locator('[aria-hidden="true"]')).toHaveText("✓");
       // The template's recorded answer for MSFT is Alpha Vantage's rate limit, so in a replay that one item fails
       // at fetch and the loop carries on: the nested step is marked failed although the run completed, and the
@@ -111,9 +111,16 @@ for (const size of [
       await expect(pill("passed").first()).toContainText("Passed, 2 items");
       await expect(page.getByTestId("run-error-row")).toHaveCount(1);
       await expect(page.locator('[data-status="failed"]')).toHaveCount(1);
-      await expect(badge(page, /Tool step fetch/)).toContainText("Failed");
-      await expect(badge(page, /Tool step write/)).toContainText("Passed");
-      await expect(badge(page, /Transform step report/)).toContainText("Passed");
+      await expect(badge(page, /Tool step fetch/)).toContainText("1 failed");
+      await expect(badge(page, /Tool step write/)).toContainText("Done");
+      await expect(badge(page, /Transform step report/)).toContainText("Done");
+      // KAM-242: why it failed is on the card itself, with no panel open.
+      await expect(
+        page
+          .getByLabel(/Tool step fetch/)
+          .first()
+          .getByTestId("card-reason"),
+      ).toBeVisible();
 
       expect(readFileSync(join(keyed.dir, "agent.yaml"), "utf8")).toBe(keyed.spec);
       expect(readFileSync(layoutPath, "utf8")).toBe(layoutBefore);
@@ -137,7 +144,14 @@ for (const size of [
       });
 
       const failed = badge(page, /Tool step fetch/);
-      await expect(failed).toContainText("Failed");
+      // A credential that is not set is "Needs key", not a bug, and the card says which one.
+      await expect(failed).toContainText("Needs key");
+      await expect(
+        page
+          .getByLabel(/Tool step fetch/)
+          .first()
+          .getByTestId("card-reason"),
+      ).toContainText("not set");
       await expect(failed.locator('[aria-hidden="true"]')).toHaveText("✕");
 
       // Another panel on show: the link brings Test Run back and lands on the message.
@@ -161,7 +175,7 @@ for (const size of [
       await expect(page.getByTestId("run-status")).toContainText("completed with 3 errors", {
         timeout: 20000,
       });
-      await expect(badge(page, /Tool step fetch/)).toContainText("Failed");
+      await expect(badge(page, /Tool step fetch/)).toContainText("Needs key");
       expect(readFileSync(join(keyless.dir, "agent.yaml"), "utf8")).toBe(keyless.spec);
     });
   });

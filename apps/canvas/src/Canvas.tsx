@@ -41,7 +41,7 @@ import {
   loopGroups,
   type LoopGroup,
 } from "./loopGroups.js";
-import { STATUS_ICON, STATUS_LABEL, type NodeRunInfo } from "./runStatus.js";
+import { STATUS_ICON, pillText, reasonLine, type NodeRunInfo } from "./runStatus.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
 // Workflow -> Guardrails"). Node color roles map to Material Design 3
@@ -124,7 +124,7 @@ function RunBadge({
         <span aria-hidden="true" className="md3-node__run-icon">
           {STATUS_ICON[info.status]}
         </span>
-        {STATUS_LABEL[info.status]}
+        {pillText(info)}
         {info.runs !== undefined && ` (${info.runs}x)`}
         {seconds}
       </span>
@@ -392,7 +392,11 @@ export function Canvas({
           data: {
             label: run ? (
               <>
-                <NodeCard node={node} brand={tiles[node.id]} />
+                <NodeCard
+                  node={node}
+                  brand={tiles[node.id]}
+                  {...(run.status === "failed" && { reason: reasonLine(run.message) })}
+                />
                 <RunBadge
                   nodeId={node.id}
                   info={run}
@@ -405,7 +409,11 @@ export function Canvas({
           },
           selected: selectedId === node.id,
           ...(sizes[node.id] !== undefined && { measured: sizes[node.id] }),
-          ariaLabel: nodeAriaLabel(node) + (run ? `. ${STATUS_LABEL[run.status]}` : ""),
+          ariaLabel:
+            nodeAriaLabel(node) +
+            (run
+              ? `. ${pillText(run)}${run.status === "failed" && reasonLine(run.message) ? `: ${reasonLine(run.message)}` : ""}`
+              : ""),
           className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
             flashed?.id === node.id ? " md3-node--flash" : ""
           }${linked.has(node.id) ? " md3-node--linked" : ""}${

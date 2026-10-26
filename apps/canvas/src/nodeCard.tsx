@@ -257,7 +257,16 @@ export function NodeIcon({ name }: { name: IconName }) {
 }
 
 /** The card a node draws inside React Flow's own node box (the box keeps the ports, focus and selection). */
-export function NodeCard({ node, brand }: { node: SpecNode; brand?: Brand | undefined }) {
+export function NodeCard({
+  node,
+  brand,
+  reason,
+}: {
+  node: SpecNode;
+  brand?: Brand | undefined;
+  /** Why the step failed in the run on screen (KAM-242): takes the place of the summary, in the error colour. */
+  reason?: string | undefined;
+}) {
   const info = cardInfo(node);
   const nested =
     node.parent === undefined
@@ -282,7 +291,16 @@ export function NodeCard({ node, brand }: { node: SpecNode; brand?: Brand | unde
         <div className="md3-label-large md3-node__title" title={info.name}>
           {info.name}
         </div>
-        {info.summary !== "" && (
+        {reason !== undefined && (
+          <div
+            className="kg-card__summary kg-card__reason"
+            data-testid="card-reason"
+            title={reason}
+          >
+            {reason}
+          </div>
+        )}
+        {reason === undefined && info.summary !== "" && (
           <div className="kg-card__summary md3-node__meta" title={info.summary}>
             {info.summary}
           </div>

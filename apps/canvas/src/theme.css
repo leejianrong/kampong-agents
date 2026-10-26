@@ -2968,3 +2968,12 @@ select.md3-text-field {
 .kg-edge-pill[data-hidden="true"] {
   visibility: hidden;
 }
+
+/* A failed step says why on its card, where the eye already is (KAM-242). */
+.kg-card__reason {
+  color: var(--md-sys-color-error);
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
