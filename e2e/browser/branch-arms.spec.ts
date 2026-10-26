@@ -46,6 +46,33 @@ agent:
         done: "true"
 `;
 
+// KAM-240: the condition is a code chip on the branch card, each arm is labelled where it leaves the card, and an
+// arm with no steps (or a missing else) is a dashed line carrying on to the next step.
+const EMPTY_ARM = `version: "1.1"
+agent:
+  id: gate
+  name: Gate
+  role: Support
+  goal: Route messages.
+  tools:
+    - name: reply
+      action: http_request
+      method: POST
+      url: "https://x.example/reply"
+  workflow:
+    - step: check
+      branch:
+        if: trigger.urgent = true
+        then:
+          - step: page
+            type: tool
+            tool: reply
+    - step: wrap
+      type: transform
+      set:
+        done: "true"
+`;
+
 test.beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kampong-arms-"));
   file = join(dir, "agent.yaml");
@@ -99,6 +126,28 @@ for (const size of [
     const source = readFileSync(file, "utf8");
     expect(source).toContain("- step: noted");
     expect(source).toContain("# Triage");
+  });
+
+  test(`a branch shows its condition and labels its arms at ${size.width}x${size.height}`, async ({
+    page,
+  }) => {
+    writeFileSync(file, EMPTY_ARM);
+    await page.setViewportSize(size);
+    await page.goto(URL);
+    const chip = page.locator('[data-id="workflow:check"]').getByTestId("branch-condition");
+    await expect(chip).toHaveText("if trigger.urgent = true");
+    await expect(page.locator('[data-id="workflow:page"]')).toBeVisible();
+    // then leaves toward its step; the missing else is a dashed carry-on straight to the step after.
+    const labels = page.locator(".react-flow__edge-text");
+    await expect(labels.filter({ hasText: /^then$/ })).toHaveCount(1);
+    await expect(labels.filter({ hasText: /^else$/ })).toHaveCount(1);
+    const carry = page.locator(".react-flow__edge.kg-edge--carry");
+    await expect(carry).toHaveCount(1);
+    await expect(carry).toHaveAttribute("aria-label", /from check to wrap \(else\)/);
+    const dash = await carry
+      .locator(".react-flow__edge-path")
+      .evaluate((el) => getComputedStyle(el).strokeDasharray);
+    expect(dash).not.toBe("none");
   });
 
   test(`the switch form's Save is in view at ${size.width}x${size.height}`, async ({ page }) => {
