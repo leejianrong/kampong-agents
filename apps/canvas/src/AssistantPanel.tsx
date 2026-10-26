@@ -36,12 +36,14 @@ export interface AssistantPanelProps {
   initialPrompt?: { text: string; nonce: number };
 }
 
-type Plan = Extract<AssistantAnswer, { success: true }>;
+type Plan = Extract<AssistantAnswer, { success: true; mode: "build" }>;
+type Mode = "build" | "ask";
 type PlanState = "pending" | "applied" | "undone" | "discarded";
 
 type Message =
   | { id: number; kind: "user"; text: string }
   | { id: number; kind: "plan"; plan: Plan; state: PlanState; before?: string; revision?: string }
+  | { id: number; kind: "answer"; text: string }
   | { id: number; kind: "error"; text: string; details?: string[] }
   | { id: number; kind: "note"; text: string };
 
@@ -125,6 +127,8 @@ export function AssistantPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  // Build proposes edits to review; Ask answers a question and changes nothing (KAM-251).
+  const [mode, setMode] = useState<Mode>("build");
   const [showNotice, setShowNotice] = useState(() => !noticed());
   const nextId = useRef(1);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -180,8 +184,10 @@ export function AssistantPanel({
     remember();
     setShowNotice(false);
     try {
-      const answer = await api.askAssistant(prompt);
-      if (answer.success) {
+      const answer = await api.askAssistant(prompt, mode);
+      if (answer.success && answer.mode === "ask") {
+        add({ kind: "answer", text: answer.answer });
+      } else if (answer.success) {
         add({ kind: "plan", plan: answer, state: "pending" });
       } else {
         add({
@@ -349,6 +355,15 @@ export function AssistantPanel({
               </div>
             );
           }
+          if (m.kind === "answer") {
+            return (
+              <div key={m.id} className="kg-chat__msg kg-chat__answer" aria-label="Answer">
+                {m.text.split(/\n{2,}/).map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+              </div>
+            );
+          }
           if (m.kind === "note") {
             return (
               <p key={m.id} className="kg-small">
@@ -430,8 +445,21 @@ export function AssistantPanel({
       </div>
 
       <form className="kg-chat__form" onSubmit={(e) => void send(e)}>
+        <div role="group" aria-label="What should the assistant do" className="kg-chat__modes">
+          {(["build", "ask"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`md3-button ${mode === m ? "md3-button-tonal" : "md3-button-text"}`}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+            >
+              {m === "build" ? "Build" : "Ask"}
+            </button>
+          ))}
+        </div>
         <label className="md3-label-large" htmlFor="assistant-input">
-          Describe a change
+          {mode === "build" ? "Describe a change" : "Ask about this workflow"}
         </label>
         <textarea
           id="assistant-input"
@@ -440,7 +468,13 @@ export function AssistantPanel({
           rows={3}
           value={text}
           disabled={!configured}
-          placeholder={configured ? "What should it do?" : "Set up the assistant first"}
+          placeholder={
+            !configured
+              ? "Set up the assistant first"
+              : mode === "build"
+                ? "What should it do?"
+                : "What does the second step do?"
+          }
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />

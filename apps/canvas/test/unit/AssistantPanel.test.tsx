@@ -14,6 +14,7 @@ const READY: AssistantStatus = {
 
 const PLAN: AssistantAnswer = {
   success: true,
+  mode: "build",
   summary: "Adds a summary step.",
   ops: [{ op: "step.insert", place: { in: "workflow" }, step: { step: "summarize", action: "x" } }],
   diff: {
@@ -94,7 +95,7 @@ describe("AssistantPanel", () => {
   it("shows a plan for a prompt and changes nothing until Apply", async () => {
     const { api, ask, onMarkNew } = setup();
     await ask("add a summary");
-    expect(api.askAssistant).toHaveBeenCalledWith("add a summary");
+    expect(api.askAssistant).toHaveBeenCalledWith("add a summary", "build");
     expect(screen.getByText("Adds a summary step.")).toBeTruthy();
     const rows = screen.getByRole("list", { name: "What this changes" }).textContent;
     expect(rows).toContain("AddStepsummarize");
@@ -117,7 +118,7 @@ describe("AssistantPanel", () => {
     expect(api.askAssistant).not.toHaveBeenCalled();
     fireEvent.keyDown(box, { key: "Enter" });
     await screen.findByLabelText("Proposed plan");
-    expect(api.askAssistant).toHaveBeenCalledWith("hello");
+    expect(api.askAssistant).toHaveBeenCalledWith("hello", "build");
   });
 
   it("applies the plan's ops against the revision it was made for, marks what is new, and refreshes", async () => {
@@ -226,6 +227,45 @@ describe("AssistantPanel", () => {
     expect(api.applyOps).not.toHaveBeenCalled();
   });
 
+  it("answers a question in Ask mode and changes nothing: no plan, no Apply, no preview", async () => {
+    const { api, onPreview, onMarkNew } = setup({
+      answer: {
+        success: true,
+        mode: "ask",
+        answer: "The get step fetches the page.\n\nIt reads nothing.",
+      },
+    });
+    const box = await screen.findByLabelText("Describe a change");
+    await waitFor(() => expect((box as HTMLTextAreaElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByRole("button", { name: "Ask" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.change(screen.getByLabelText("Ask about this workflow"), {
+      target: { value: "what does get do?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const answer = await screen.findByLabelText("Answer");
+    expect(answer.textContent).toContain("The get step fetches the page.");
+    expect(answer.querySelectorAll("p")).toHaveLength(2);
+    expect(api.askAssistant).toHaveBeenCalledWith("what does get do?", "ask");
+    expect(screen.queryByLabelText("Proposed plan")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Apply to canvas" })).toBeNull();
+    expect(api.applyOps).not.toHaveBeenCalled();
+    expect(api.replaceSource).not.toHaveBeenCalled();
+    expect(onPreview).not.toHaveBeenCalledWith(
+      expect.objectContaining({ source: expect.anything() }),
+    );
+    expect(onMarkNew).not.toHaveBeenCalledWith(expect.arrayContaining(["workflow:summarize"]));
+  });
+
+  it("asks in Build mode by default, and switches back", async () => {
+    const { api, ask } = setup();
+    await ask("build it");
+    expect(api.askAssistant).toHaveBeenCalledWith("build it", "build");
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    expect(screen.getByRole("button", { name: "Build" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("goes back to the step list", async () => {
     const { onClose } = setup();
     fireEvent.click(await screen.findByRole("button", { name: "Steps" }));
@@ -261,7 +301,7 @@ describe("AssistantPanel: a description handed over by the empty state (KAM-205)
     );
     await screen.findByLabelText("Proposed plan");
     expect(api.askAssistant).toHaveBeenCalledTimes(1);
-    expect(api.askAssistant).toHaveBeenCalledWith("build me a thing");
+    expect(api.askAssistant).toHaveBeenCalledWith("build me a thing", "build");
     // A re-render with the same hand-over does not send it again.
     rerender(<AssistantPanel {...props} initialPrompt={{ text: "build me a thing", nonce: 1 }} />);
     expect(api.askAssistant).toHaveBeenCalledTimes(1);

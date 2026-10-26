@@ -229,8 +229,10 @@ export interface AssistantDiffDto {
 
 /** What the assistant answered (KAM-249): a plan to review, or why there is none. Nothing is applied by asking. */
 export type AssistantAnswer =
+  | { success: true; mode: "ask"; answer: string }
   | {
       success: true;
+      mode: "build";
       summary: string;
       ops: SpecOp[];
       diff: AssistantDiffDto;
@@ -290,7 +292,7 @@ export interface ApiClient {
    * that does not apply are expected outcomes, not throws). Local server only; the hosted client omits both.
    */
   assistantStatus?(): Promise<AssistantStatus>;
-  askAssistant?(prompt: string): Promise<AssistantAnswer>;
+  askAssistant?(prompt: string, mode?: "build" | "ask"): Promise<AssistantAnswer>;
   /**
    * Pins one installed component, as `kampong lock` does (KAN-1901). A re-pin that widens what the
    * component may do is refused unless `allowWiderPermissions` is set. Local server only.
@@ -487,8 +489,8 @@ export function createApiClient(baseUrl = ""): ApiClient {
       return (await res.json()) as AssistantStatus;
     },
 
-    async askAssistant(prompt: string): Promise<AssistantAnswer> {
-      const res = await fetch(`${baseUrl}/api/assistant`, jsonInit({ prompt }));
+    async askAssistant(prompt: string, mode = "build"): Promise<AssistantAnswer> {
+      const res = await fetch(`${baseUrl}/api/assistant`, jsonInit({ prompt, mode }));
       // Every answer here is one the panel shows, so a refusal resolves; only a reply that is not ours throws.
       if (res.status === 200 || (res.status >= 400 && res.status < 600)) {
         const body = (await res.json().catch(() => undefined)) as
