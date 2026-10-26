@@ -29,6 +29,8 @@ import {
 import type { StepKind } from "./stepKinds.js";
 import { NodeCard } from "./nodeCard.js";
 import { connectorBrands } from "./connectorBrand.js";
+import { ToolLinkEdge } from "./ToolLinkEdge.js";
+import { edgeRun, edgeRunText } from "./edgeRun.js";
 import { CollapsedLoop, LoopGroupNode, type LoopGroupData } from "./loopGroupNode.js";
 import {
   applyCollapse,
@@ -81,7 +83,7 @@ export interface CanvasProps {
 }
 
 // Defined once so @xyflow/react does not see a new map on each render.
-const EDGE_TYPES = { insert: InsertEdge };
+const EDGE_TYPES = { insert: InsertEdge, toolLink: ToolLinkEdge };
 const NODE_TYPES = { loopGroup: LoopGroupNode };
 
 const MARKER_ID = "insertion-marker";
@@ -452,24 +454,63 @@ export function Canvas({
 
   const edges: Edge[] = useMemo(() => {
     const byId = new Map(view.graph.nodes.map((n) => [n.id, n]));
-    return view.graph.edges.map((edge): Edge => {
+    // The node whose run result a line shows: the step it leads into (a collapsed loop's first step).
+    const resultOf = (id: string): NodeRunInfo | undefined => {
+      const group = view.collapsed.find((c) => c.group.id === id);
+      return runStatus?.[group ? group.group.members[0]! : id];
+    };
+    const runLines = view.graph.edges.map((edge): Edge => {
       const into = edge.target.startsWith("workflow:") ? edge.target.slice("workflow:".length) : "";
       const insertable = onInsert !== undefined && into !== "";
       // A line is named by its steps' labels, not their internal ids (KAM-185).
       const from = edgeEnd(byId.get(edge.source), edge.source);
       const to = edgeEnd(byId.get(edge.target), edge.target);
-      const name = `Line from ${from} to ${to}${edge.label !== undefined ? ` (${edge.label})` : ""}`;
+      const run = edgeRun(resultOf(edge.target));
+      const said = run ? `. ${edgeRunText(run)}` : "";
+      const name = `Line from ${from} to ${to}${edge.label !== undefined ? ` (${edge.label})` : ""}${said}`;
+      const data: InsertEdgeData = {
+        ...(insertable && { before: into }),
+        ...(run && { run }),
+      };
       return {
         id: edge.id,
         source: edge.source,
         target: edge.target,
         type: "insert",
+        ...(run && {
+          className: `kg-edge kg-edge--${run.state}`,
+          animated: run.state === "running",
+        }),
         ...(edge.label !== undefined && { label: edge.label }),
-        ...(insertable && { data: { before: into } satisfies InsertEdgeData }),
+        ...(Object.keys(data).length > 0 && { data }),
         ariaLabel: insertable ? `${name}. Press Enter to insert a step before ${into}.` : name,
       };
     });
-  }, [view, onInsert]);
+    // A tool a step uses hangs off the step by a dashed line. A step inside a collapsed loop links from its card.
+    const shown = new Set(view.graph.nodes.map((n) => n.id));
+    const seen = new Set<string>();
+    const toolLines: Edge[] = [];
+    for (const [tool, steps] of Object.entries(toolUsage(graph))) {
+      for (const step of steps) {
+        const holder = shown.has(step)
+          ? step
+          : view.collapsed.find((c) => c.group.members.includes(step))?.group.id;
+        if (holder === undefined || !shown.has(tool) || seen.has(`${holder}|${tool}`)) continue;
+        seen.add(`${holder}|${tool}`);
+        toolLines.push({
+          id: `link:${holder}->${tool}`,
+          source: holder,
+          target: tool,
+          type: "toolLink",
+          className: "kg-edge kg-edge--tool",
+          selectable: false,
+          focusable: false,
+          ariaLabel: `Tool link from ${edgeEnd(byId.get(holder), holder)} to ${edgeEnd(byId.get(tool), tool)}`,
+        });
+      }
+    }
+    return [...runLines, ...toolLines];
+  }, [view, onInsert, runStatus, graph]);
 
   // Enter (or a click) on a line selects it; that opens its picker.
   const onEdgesChange = (changes: EdgeChange[]) => {

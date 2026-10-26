@@ -102,6 +102,13 @@ for (const size of [
       // The template's recorded answer for MSFT is Alpha Vantage's rate limit, so in a replay that one item fails
       // at fetch and the loop carries on: the nested step is marked failed although the run completed, and the
       // steps after it, which the other two items did run, passed.
+      // KAM-241: the lines carry the run too, as counts in words as well as colour. Three items reached fetch and one
+      // failed there; the two that went on passed everywhere after it.
+      const pill = (state: string) =>
+        page.locator(`[data-testid="edge-run-pill"][data-state="${state}"]`);
+      await expect(pill("failed")).toHaveCount(1);
+      await expect(pill("failed")).toContainText("Failed for at least one of 3 items");
+      await expect(pill("passed").first()).toContainText("Passed, 2 items");
       await expect(page.getByTestId("run-error-row")).toHaveCount(1);
       await expect(page.locator('[data-status="failed"]')).toHaveCount(1);
       await expect(badge(page, /Tool step fetch/)).toContainText("Failed");

@@ -55,7 +55,10 @@ async function crossings(page: Page): Promise<string[]> {
       r: n.getBoundingClientRect(),
     }));
     const hits: string[] = [];
-    for (const edge of document.querySelectorAll<SVGGElement>(".react-flow__edge")) {
+    // A tool link is a dashed hanger from a step to its tool and may cross a card; it is not a run line.
+    for (const edge of document.querySelectorAll<SVGGElement>(
+      ".react-flow__edge:not(.kg-edge--tool)",
+    )) {
       const id = edge.dataset.id!;
       const [source, target] = id.split("->");
       const path = edge.querySelector<SVGPathElement>("path.react-flow__edge-path")!;
@@ -134,6 +137,22 @@ for (const size of [
       await expect(node(page, "workflow:alert")).toHaveClass(/md3-node--linked/);
       await node(page, "workflow:report").focus();
       await expect(page.locator(".react-flow__node.md3-node--linked")).toHaveCount(0);
+    });
+
+    test("a tool hangs off each step that calls it by a dashed teal link", async ({ page }) => {
+      const links = page.locator(".react-flow__edge.kg-edge--tool");
+      await expect(links).not.toHaveCount(0);
+      const dash = await links
+        .first()
+        .locator("path.react-flow__edge-path")
+        .evaluate((el) => getComputedStyle(el).strokeDasharray);
+      expect(dash).not.toBe("none");
+      for (const name of await links.evaluateAll((els) =>
+        els.map((e) => e.getAttribute("aria-label") ?? ""),
+      )) {
+        expect(name).toMatch(/^Tool link from /);
+        expect(name).not.toMatch(/workflow:|agent:|tool:/);
+      }
     });
 
     test("a line is named by its steps' labels, not internal ids", async ({ page }) => {
