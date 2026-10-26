@@ -29,6 +29,8 @@ export interface ComponentToolFormProps {
    */
   initial?: Extract<Tool, { action: "component" }>;
   components: ComponentCatalogEntry[];
+  /** For a new tool: the component to start on, as `id@version` (a Connectors tile, KAM-244). */
+  initialUse?: string;
   /** Problems loading components (a manifest in the wrong place, say), shown so a missing one is explained. */
   problems?: string[];
   /** `{{ step.field }}` references to earlier steps' declared outputs. */
@@ -88,6 +90,7 @@ const EFFECT_HINT = {
 
 export function ComponentToolForm({
   initial,
+  initialUse,
   components,
   problems = [],
   references = [],
@@ -98,7 +101,14 @@ export function ComponentToolForm({
 }: ComponentToolFormProps) {
   const editing = initial !== undefined;
   const [name, setName] = useState(initial?.name ?? "");
-  const [use, setUse] = useState(initial?.use ?? (components[0] ? refOf(components[0]) : ""));
+  const [use, setUse] = useState(
+    initial?.use ??
+      (initialUse !== undefined && components.some((c) => refOf(c) === initialUse)
+        ? initialUse
+        : components[0]
+          ? refOf(components[0])
+          : ""),
+  );
   const entry = components.find((c) => refOf(c) === use);
   const opNames = entry ? Object.keys(entry.ops) : [];
   const [op, setOp] = useState(initial?.op ?? opNames[0] ?? "");

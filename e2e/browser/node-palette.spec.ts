@@ -217,6 +217,32 @@ for (const size of [
       expect(wide).toBe(false);
     });
 
+    test("the palette is tiles in four groups, with a chip for where a step goes and the description as a tooltip", async ({
+      page,
+    }) => {
+      // A narrow window keeps the rail shut until `/` opens it.
+      await page.locator("body").press("/");
+      const palette = page.getByTestId("step-palette");
+      for (const name of ["Do work", "Work with data", "Control the flow", "Connectors"]) {
+        await expect(palette.getByRole("group", { name })).toBeAttached();
+      }
+      await expect(palette.getByTestId("picker-where")).toHaveText("Goes at the end");
+      const tile = palette.getByRole("option", { name: "Transform", exact: true });
+      await expect(tile).toHaveAttribute("title", /without asking the model/);
+      // A connector tile opens Add Tool on that connector: the first-party Slack component, once.
+      await expect(palette.getByRole("option", { name: "Slack", exact: true })).toHaveCount(1);
+      await palette.getByRole("option", { name: "Slack", exact: true }).click();
+      await expect(page.getByLabel("Component")).toHaveValue(/^kampong\/slack@/);
+    });
+
+    test("a line's + names where the step goes and offers steps only", async ({ page }) => {
+      await edge(page, "workflow:shape->workflow:route").focus();
+      await page.keyboard.press("Enter");
+      const picker = page.getByRole("dialog", { name: "Insert a step before route" });
+      await expect(picker.getByTestId("picker-where")).toHaveText("Goes before route");
+      await expect(picker.getByRole("group", { name: "Connectors" })).toHaveCount(0);
+    });
+
     test("the toolbar button still opens the plain form", async ({ page }) => {
       await openPanel(page, "Add Workflow Step");
       await expect(page.getByRole("button", { name: "Action", exact: true })).toHaveAttribute(

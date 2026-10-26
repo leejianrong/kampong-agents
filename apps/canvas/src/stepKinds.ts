@@ -101,3 +101,100 @@ export function pickableKinds(version?: string): StepKind[] {
     (k) => !(k === "condition" && version === "1.1"),
   );
 }
+
+/** A tool kind the Add Tool form can open on (KAM-244). */
+export type ToolStart = {
+  kind: "http_request" | "slack_post_message" | "gmail_send" | "component";
+  /** For a component: its `id@version`, chosen when the form opens. */
+  use?: string;
+};
+
+/** A tile in the picker's Connectors group: choosing it opens Add Tool on that connector. */
+export interface ConnectorOption {
+  id: string;
+  label: string;
+  what: string;
+  /** Letter and colour of its tile (ADR-0059 §7); without a colour the tile keeps the tool colours. */
+  brand?: { label: string; color?: string };
+  keywords: string;
+  start: ToolStart;
+}
+
+/** The connectors every spec has: the built-in tools. Installed components are added after these. */
+export const BUILT_IN_CONNECTORS: ConnectorOption[] = [
+  {
+    id: "slack",
+    label: "Slack",
+    what: "Post a message to a Slack channel.",
+    brand: { label: "S", color: "#4A154B" },
+    keywords: "chat channel message notify post",
+    start: { kind: "slack_post_message" },
+  },
+  {
+    id: "gmail",
+    label: "Gmail",
+    what: "Send an email.",
+    brand: { label: "G", color: "#B3261E" },
+    keywords: "email mail send message",
+    start: { kind: "gmail_send" },
+  },
+  {
+    id: "http",
+    label: "Web request",
+    what: "Call any web address and keep what comes back.",
+    keywords: "http api url get post fetch endpoint",
+    start: { kind: "http_request" },
+  },
+];
+
+export const CONNECTORS_GROUP = { id: "connectors", label: "Connectors" } as const;
+
+const versionParts = (v: string) => v.split(".").map((n) => Number.parseInt(n, 10) || 0);
+
+/** True when version `a` is newer than `b`, comparing the numbers in each part. */
+function isNewer(a: string, b: string): boolean {
+  const x = versionParts(a);
+  const y = versionParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
+
+/**
+ * The tiles of the Connectors group: the built-in tools and the installed components. Only the newest version of
+ * a component gets a tile, and a built-in tile gives way to a component of the same name (Slack, Gmail).
+ */
+export function connectorOptions(
+  components: {
+    id: string;
+    version: string;
+    title?: string;
+    description?: string;
+    permissionsSummary: string;
+    brand?: { label: string; color?: string };
+  }[],
+): ConnectorOption[] {
+  const newest = new Map<string, (typeof components)[number]>();
+  for (const c of components) {
+    const had = newest.get(c.id);
+    if (!had || isNewer(c.version, had.version)) newest.set(c.id, c);
+  }
+  const nameOf = (id: string) => id.slice(id.indexOf("/") + 1);
+  const covered = new Set([...newest.keys()].map(nameOf));
+  return [
+    ...BUILT_IN_CONNECTORS.filter((b) => !covered.has(b.id)),
+    ...[...newest.values()].map((c): ConnectorOption => {
+      const name = nameOf(c.id);
+      return {
+        id: `${c.id}@${c.version}`,
+        label: c.title ?? name,
+        what: c.description ?? c.permissionsSummary,
+        brand: c.brand ?? { label: (name[0] ?? "?").toUpperCase() },
+        keywords: `${c.id} component connector`,
+        start: { kind: "component", use: `${c.id}@${c.version}` },
+      };
+    }),
+  ];
+}

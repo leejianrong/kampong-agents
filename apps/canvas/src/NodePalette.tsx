@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { StepPicker } from "./StepPicker.js";
-import type { StepKind } from "./stepKinds.js";
+import type { ConnectorOption, StepKind, ToolStart } from "./stepKinds.js";
 
 // The left rail of step kinds (KAM-213): search, then pick a kind to add it at the end of the workflow (the form
 // that opens has the Position chooser). `/` focuses the search from anywhere that is not a text field. On a
@@ -12,6 +12,9 @@ export interface NodePaletteProps {
   onChoose: (kind: StepKind) => void;
   /** Opens the Add Tool form: a tool is not a step, so it has its own button under the step list. */
   onAddTool?: () => void;
+  /** The Connectors group (KAM-244): built-in and installed connectors, each opening Add Tool on its kind. */
+  connectors?: ConnectorOption[];
+  onChooseConnector?: (start: ToolStart) => void;
   /** Swaps this rail for the assistant's (KAM-250); the button shows only where the server has one. */
   onOpenAssistant?: () => void;
   /** Open on mount even in a narrow window: set when the person has just come back from the assistant. */
@@ -34,6 +37,8 @@ export function NodePalette({
   version,
   onChoose,
   onAddTool,
+  connectors,
+  onChooseConnector,
   onOpenAssistant,
   startOpen = false,
 }: NodePaletteProps) {
@@ -128,6 +133,8 @@ export function NodePalette({
         ref={search}
         version={version}
         label="Search steps"
+        where="Goes at the end"
+        {...(connectors && onChooseConnector && { connectors, onChooseConnector })}
         onChoose={onChoose}
         onEscape={() => search.current?.blur()}
       />
