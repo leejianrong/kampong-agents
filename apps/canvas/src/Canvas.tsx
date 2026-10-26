@@ -523,6 +523,11 @@ export function Canvas({
       const from = edgeEnd(byId.get(edge.source), edge.source);
       const to = edgeEnd(byId.get(edge.target), edge.target);
       const run = edgeRun(resultOf(edge.target));
+      // An arm with no steps (or a missing else/default) runs on to the step after the branch: a dashed carry-on.
+      const carryOn =
+        edge.label !== undefined &&
+        byId.get(edge.source)?.data.branch !== undefined &&
+        byId.get(edge.target)?.parent !== edge.source;
       const said = run ? `. ${edgeRunText(run)}` : "";
       const name = `Line from ${from} to ${to}${edge.label !== undefined ? ` (${edge.label})` : ""}${said}`;
       const data: InsertEdgeData = {
@@ -537,6 +542,9 @@ export function Canvas({
         ...(run && {
           className: `kg-edge kg-edge--${run.state}`,
           animated: run.state === "running",
+        }),
+        ...(carryOn && {
+          className: `${run ? `kg-edge kg-edge--${run.state} ` : ""}kg-edge--carry`,
         }),
         ...(edge.label !== undefined && { label: edge.label }),
         ...(Object.keys(data).length > 0 && { data }),

@@ -31,6 +31,8 @@ export interface CardInfo {
   name: string;
   /** One line from the step's settings; "" when it has nothing to add. */
   summary: string;
+  /** The summary is an expression, so the card shows it as a code chip (a branch's condition). */
+  code?: boolean;
   icon: IconName;
 }
 
@@ -132,6 +134,7 @@ export function cardInfo(node: SpecNode): CardInfo {
       kind: "Branch",
       name: step,
       summary: b.if !== undefined ? `if ${b.if}` : `switch ${b.switch}`,
+      code: true,
       icon: "branch",
     };
   }
@@ -320,7 +323,11 @@ export function NodeCard({
           </div>
         )}
         {reason === undefined && info.summary !== "" && (
-          <div className="kg-card__summary md3-node__meta" title={info.summary}>
+          <div
+            className={`kg-card__summary md3-node__meta${info.code ? " kg-card__chip" : ""}`}
+            title={info.summary}
+            {...(info.code && { "data-testid": "branch-condition" })}
+          >
             {info.summary}
           </div>
         )}
