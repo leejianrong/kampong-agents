@@ -3,6 +3,7 @@ id: kampong/gmail-imap
 version: 1.0.0
 title: Gmail (IMAP)
 description: Read a Gmail inbox and write reply drafts over IMAP with an app password. Nothing is marked read until you say so, and a draft is threaded under the message it answers.
+brand: { label: "G", color: "#8C1D18" }
 license: Apache-2.0
 entry: ./index.mjs
 deps:

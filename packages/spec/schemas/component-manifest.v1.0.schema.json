@@ -22,6 +22,21 @@
         "description": {
           "type": "string"
         },
+        "brand": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,2}$"
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
+          },
+          "required": ["label", "color"],
+          "additionalProperties": false
+        },
         "license": {
           "type": "string"
         },
@@ -405,6 +420,21 @@
         },
         "description": {
           "type": "string"
+        },
+        "brand": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,2}$"
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
+          },
+          "required": ["label", "color"],
+          "additionalProperties": false
         },
         "license": {
           "type": "string"

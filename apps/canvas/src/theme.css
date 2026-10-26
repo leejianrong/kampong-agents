@@ -2893,3 +2893,14 @@ select.md3-text-field {
 .md3-node--collapsed-loop {
   border-style: dashed !important;
 }
+
+/* A connector's tile (KAM-247): a letter or two, on the component's own colour when it has one. */
+.kg-card__tile--brand {
+  font-weight: 700;
+}
+
+.kg-card__letter {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}

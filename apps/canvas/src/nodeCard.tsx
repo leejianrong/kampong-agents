@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { SpecNode } from "@kampong/spec";
+import type { Brand } from "./connectorBrand.js";
 
 // KAM-237 (ADR-0059): every node is a small card: a tinted icon tile, a small-caps kind, the step's name and one
 // line saying what it does. The colour is the category and the glyph is the kind; neither is the only signal,
@@ -256,7 +257,7 @@ export function NodeIcon({ name }: { name: IconName }) {
 }
 
 /** The card a node draws inside React Flow's own node box (the box keeps the ports, focus and selection). */
-export function NodeCard({ node }: { node: SpecNode }) {
+export function NodeCard({ node, brand }: { node: SpecNode; brand?: Brand | undefined }) {
   const info = cardInfo(node);
   const nested =
     node.parent === undefined
@@ -264,8 +265,17 @@ export function NodeCard({ node }: { node: SpecNode }) {
       : `in ${node.parent.replace(/^workflow:/, "")}${node.arm !== undefined ? ` · ${node.arm}` : ""}`;
   return (
     <div className={`kg-card kg-card--${info.category}`}>
-      <div className="kg-card__tile">
-        <NodeIcon name={info.icon} />
+      <div
+        className={`kg-card__tile${brand ? " kg-card__tile--brand" : ""}`}
+        {...(brand?.color !== undefined && { style: { background: brand.color, color: "#fff" } })}
+      >
+        {brand ? (
+          <span className="kg-card__letter" data-testid="connector-tile">
+            {brand.label}
+          </span>
+        ) : (
+          <NodeIcon name={info.icon} />
+        )}
       </div>
       <div className="kg-card__text">
         <div className="kg-card__kind">{info.kind}</div>
