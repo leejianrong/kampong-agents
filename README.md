@@ -68,6 +68,7 @@ kampong run agent.yaml --input "..."    # headless run; --tools replay for offli
 kampong serve agent.yaml                # webhook, scheduled or polling service (POST /webhook, run-now)
 kampong export agent.yaml ./out         # standalone TypeScript project: cd ./out && npm install && npm start
 kampong doctor agent.yaml               # preflight: components, credentials, fixtures
+# with OPENROUTER_API_KEY set, `kampong dev` also offers an assistant that plans edits from a prompt (docs/reference/cli.md)
 ```
 
 Run `kampong dev` in an empty folder and the canvas opens a "Start a new workflow" screen; **Start blank**

@@ -12,6 +12,10 @@ export interface NodePaletteProps {
   onChoose: (kind: StepKind) => void;
   /** Opens the Add Tool form: a tool is not a step, so it has its own button under the step list. */
   onAddTool?: () => void;
+  /** Swaps this rail for the assistant's (KAM-250); the button shows only where the server has one. */
+  onOpenAssistant?: () => void;
+  /** Open on mount even in a narrow window: set when the person has just come back from the assistant. */
+  startOpen?: boolean;
 }
 
 const NARROW = 1100;
@@ -26,8 +30,14 @@ function isTyping(target: EventTarget | null): boolean {
   );
 }
 
-export function NodePalette({ version, onChoose, onAddTool }: NodePaletteProps) {
-  const [open, setOpen] = useState(() => window.innerWidth >= NARROW);
+export function NodePalette({
+  version,
+  onChoose,
+  onAddTool,
+  onOpenAssistant,
+  startOpen = false,
+}: NodePaletteProps) {
+  const [open, setOpen] = useState(() => startOpen || window.innerWidth >= NARROW);
   const search = useRef<HTMLInputElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const focusSearch = useRef(false);
@@ -67,6 +77,16 @@ export function NodePalette({ version, onChoose, onAddTool }: NodePaletteProps) 
         >
           Steps
         </button>
+        {onOpenAssistant && (
+          <button
+            type="button"
+            className="md3-button md3-button-tonal md3-palette__open"
+            aria-controls="assistant-panel"
+            onClick={onOpenAssistant}
+          >
+            Assistant
+          </button>
+        )}
       </div>
     );
   }
@@ -94,6 +114,16 @@ export function NodePalette({ version, onChoose, onAddTool }: NodePaletteProps) 
           Hide
         </button>
       </div>
+      {onOpenAssistant && (
+        <button
+          type="button"
+          className="md3-button md3-button-tonal"
+          aria-controls="assistant-panel"
+          onClick={onOpenAssistant}
+        >
+          Build with the assistant
+        </button>
+      )}
       <StepPicker
         ref={search}
         version={version}

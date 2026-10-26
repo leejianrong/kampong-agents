@@ -261,11 +261,14 @@ export function NodeCard({
   node,
   brand,
   reason,
+  isNew,
 }: {
   node: SpecNode;
   brand?: Brand | undefined;
   /** Why the step failed in the run on screen (KAM-242): takes the place of the summary, in the error colour. */
   reason?: string | undefined;
+  /** The assistant's last Apply added this step (KAM-250). */
+  isNew?: boolean | undefined;
 }) {
   const info = cardInfo(node);
   const nested =
@@ -274,6 +277,11 @@ export function NodeCard({
       : `in ${node.parent.replace(/^workflow:/, "")}${node.arm !== undefined ? ` · ${node.arm}` : ""}`;
   return (
     <div className={`kg-card kg-card--${info.category}`}>
+      {isNew && (
+        <span className="kg-card__new" data-testid="card-new">
+          New
+        </span>
+      )}
       <div
         className={`kg-card__tile${brand ? " kg-card__tile--brand" : ""}`}
         {...(brand?.color !== undefined && { style: { background: brand.color, color: "#fff" } })}

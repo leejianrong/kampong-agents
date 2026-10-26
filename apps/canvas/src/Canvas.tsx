@@ -79,6 +79,8 @@ export interface CanvasProps {
   runStatus?: Record<string, NodeRunInfo>;
   /** Brands of the installed components by `id@version` (KAM-247); a component without one gets its initial. */
   brands?: Record<string, ComponentBrand>;
+  /** Nodes the assistant's last Apply added (KAM-250): each wears a "New" mark. */
+  markedNew?: string[];
   /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
   onShowRunMessage?: (id: string) => void;
 }
@@ -236,6 +238,7 @@ export function Canvas({
   runStatus,
   onShowRunMessage,
   brands,
+  markedNew,
 }: CanvasProps) {
   const [openEdge, setOpenEdge] = useState<string | null>(null);
   // KAM-239: loops the person has opened or closed, by the foreach step's node id; the rest follow their default.
@@ -398,6 +401,7 @@ export function Canvas({
     ];
   };
   const tiles = useMemo(() => connectorBrands(graph, brands), [graph, brands]);
+  const fresh = useMemo(() => new Set(markedNew ?? []), [markedNew]);
   const nodes: Node[] = useMemo(
     () => [
       ...inTabOrder(view.graph.nodes).flatMap((node) => {
@@ -413,6 +417,7 @@ export function Canvas({
                 <NodeCard
                   node={node}
                   brand={tiles[node.id]}
+                  isNew={fresh.has(node.id)}
                   {...(run.status === "failed" && { reason: reasonLine(run.message) })}
                 />
                 <RunBadge
@@ -422,7 +427,7 @@ export function Canvas({
                 />
               </>
             ) : (
-              <NodeCard node={node} brand={tiles[node.id]} />
+              <NodeCard node={node} brand={tiles[node.id]} isNew={fresh.has(node.id)} />
             ),
           },
           selected: selectedId === node.id,
@@ -475,7 +480,19 @@ export function Canvas({
           ]
         : []),
     ],
-    [view, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage, tiles],
+    [
+      view,
+      layout,
+      marker,
+      flashed,
+      selectedId,
+      sizes,
+      linked,
+      runStatus,
+      onShowRunMessage,
+      tiles,
+      fresh,
+    ],
   );
 
   const edges: Edge[] = useMemo(() => {
