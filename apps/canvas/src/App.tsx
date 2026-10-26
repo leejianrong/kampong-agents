@@ -63,6 +63,7 @@ import { RunTrackerProvider, useRunTrackerStore } from "./runTracker.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
 import { NodePalette } from "./NodePalette.js";
+import { AssistantPanel } from "./AssistantPanel.js";
 import { spotBeforeStep } from "./insertSpot.js";
 import type { StepKind } from "./stepKinds.js";
 import { Panel, SaveErrorContext } from "./Panel.js";
@@ -182,6 +183,10 @@ export function App({
   // KAM-211: the node whose inspector is open, whether the side pane has typed input that is not saved yet,
   // and the move (another node, the empty canvas, a toolbar button) waiting on "discard your changes?".
   const [selected, setSelected] = useState<string | null>(null);
+  // KAM-250: which rail is open on the left, and the nodes the assistant's last Apply added.
+  const [leftPane, setLeftPane] = useState<"steps" | "assistant">("steps");
+  const cameFromAssistant = useRef(false);
+  const [newNodes, setNewNodes] = useState<string[]>([]);
   const [pending, setPending] = useState<
     | { select: string | null }
     | { form: OpenForm | null; drop?: OpenForm }
@@ -1109,11 +1114,32 @@ export function App({
                   )}
 
                   <div className="md3-app__canvas-surface">
-                    {emptyKind === null && spec && (
+                    {emptyKind === null && spec && api.askAssistant && (
+                      <AssistantPanel
+                        api={api}
+                        source={source}
+                        onChanged={refresh}
+                        onMarkNew={(ids) => {
+                          setNewNodes(ids);
+                          // Bring the first new card into view; the canvas waits for it to arrive.
+                          if (ids[0] !== undefined) setFocus({ id: ids[0], nonce: Date.now() });
+                        }}
+                        onClose={() => {
+                          cameFromAssistant.current = true;
+                          setLeftPane("steps");
+                        }}
+                        hidden={leftPane !== "assistant"}
+                      />
+                    )}
+                    {emptyKind === null && spec && (leftPane === "steps" || !api.askAssistant) && (
                       <NodePalette
                         version={spec.version}
                         onChoose={(kind) => requestInsert({ kind })}
                         onAddTool={() => toolbarForm("tool")}
+                        startOpen={cameFromAssistant.current}
+                        {...(api.askAssistant && {
+                          onOpenAssistant: () => setLeftPane("assistant"),
+                        })}
                       />
                     )}
                     {emptyKind === null ? (
@@ -1130,6 +1156,7 @@ export function App({
                         runStatus={runStatus}
                         onShowRunMessage={showRunMessage}
                         brands={componentBrands}
+                        markedNew={newNodes}
                       />
                     ) : (
                       <EmptyState

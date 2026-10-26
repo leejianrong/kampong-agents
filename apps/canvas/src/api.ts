@@ -216,6 +216,29 @@ export interface TemplateSummary {
   runsOffline: boolean;
 }
 
+/** Where the assistant would send a prompt (KAM-250), or why it cannot yet. Never holds a key. */
+export type AssistantStatus =
+  | { configured: true; host: string; model: string; from: string }
+  | { configured: false; code?: string; error: string };
+
+export interface AssistantDiffDto {
+  added: { kind: "step" | "tool" | "var" | "agent"; name: string }[];
+  changed: { kind: "step" | "tool" | "var" | "agent"; name: string }[];
+  removed: { kind: "step" | "tool" | "var" | "agent"; name: string }[];
+}
+
+/** What the assistant answered (KAM-249): a plan to review, or why there is none. Nothing is applied by asking. */
+export type AssistantAnswer =
+  | {
+      success: true;
+      summary: string;
+      ops: SpecOp[];
+      diff: AssistantDiffDto;
+      /** The revision the plan was made against; sending it back makes applying refuse if the file changed. */
+      revision: string;
+    }
+  | { success: false; code: string; error: string; errors?: string[] };
+
 export interface ApiClient {
   loadSpec(): Promise<LoadSpecResponse>;
   applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse>;
@@ -259,6 +282,13 @@ export interface ApiClient {
    * server has them; the hosted client omits this and the form hides the Component kind.
    */
   listComponents?(): Promise<ComponentCatalog>;
+  /**
+   * The workflow assistant (KAM-250, ADR-0060). `assistantStatus` says where a prompt would go; `askAssistant`
+   * sends one and resolves with a plan or the reason there is none (a refusal, an unreachable endpoint and a plan
+   * that does not apply are expected outcomes, not throws). Local server only; the hosted client omits both.
+   */
+  assistantStatus?(): Promise<AssistantStatus>;
+  askAssistant?(prompt: string): Promise<AssistantAnswer>;
   /**
    * Pins one installed component, as `kampong lock` does (KAN-1901). A re-pin that widens what the
    * component may do is refused unless `allowWiderPermissions` is set. Local server only.
@@ -442,6 +472,43 @@ export function createApiClient(baseUrl = ""): ApiClient {
       // A refusal (the update widens permissions, the component is missing) is an answer with a message,
       // not a failure of the request, so the form can show it.
       return (await res.json()) as PinComponentResponse;
+    },
+
+    async assistantStatus(): Promise<AssistantStatus> {
+      const res = await fetch(`${baseUrl}/api/assistant`, withCredentials());
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Could not reach the assistant (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
+      return (await res.json()) as AssistantStatus;
+    },
+
+    async askAssistant(prompt: string): Promise<AssistantAnswer> {
+      const res = await fetch(`${baseUrl}/api/assistant`, jsonInit({ prompt }));
+      // Every answer here is one the panel shows, so a refusal resolves; only a reply that is not ours throws.
+      if (res.status === 200 || (res.status >= 400 && res.status < 600)) {
+        const body = (await res.json().catch(() => undefined)) as
+          (AssistantAnswer & { errors?: unknown }) | undefined;
+        if (body && typeof body === "object" && "success" in body) {
+          if (body.success) return body;
+          const errors = Array.isArray(body.errors) ? body.errors.map(String) : undefined;
+          return {
+            success: false,
+            code:
+              typeof (body as { code?: unknown }).code === "string"
+                ? (body as { code: string }).code
+                : "error",
+            error:
+              typeof (body as { error?: unknown }).error === "string"
+                ? (body as { error: string }).error
+                : "The assistant could not answer.",
+            ...(errors && { errors }),
+          };
+        }
+      }
+      throw new ApiError(`The assistant answered unexpectedly (HTTP ${res.status}).`, res.status);
     },
 
     async runDoctor(options = {}): Promise<DoctorCheckDto[]> {

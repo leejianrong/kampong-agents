@@ -70,11 +70,13 @@ async function open(page: import("@playwright/test").Page, step: string) {
 /** Every textarea in the open form shows all of its text and fills the panel's width. */
 async function expectFitsAndFills(page: import("@playwright/test").Page) {
   const boxes = await page.evaluate(() =>
-    [...document.querySelectorAll("form textarea")].map((t) => ({
-      name: t.getAttribute("aria-label") ?? t.closest("label")?.textContent ?? "",
-      clipped: t.scrollHeight > t.clientHeight + 1,
-      width: Math.round(t.getBoundingClientRect().width),
-    })),
+    [...document.querySelectorAll("form textarea")]
+      .filter((t) => !t.closest("[hidden]")) // the assistant's folded-away panel has a form too
+      .map((t) => ({
+        name: t.getAttribute("aria-label") ?? t.closest("label")?.textContent ?? "",
+        clipped: t.scrollHeight > t.clientHeight + 1,
+        width: Math.round(t.getBoundingClientRect().width),
+      })),
   );
   expect(boxes.length).toBeGreaterThan(0);
   for (const box of boxes) {

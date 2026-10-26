@@ -206,6 +206,13 @@ The endpoint is the first of these that is set:
 The model is `KAMPONG_ASSISTANT_MODEL`, or else the workflow's `model.name`. A direct Anthropic key is not used:
 set OpenRouter, or an endpoint of your own. Values can be saved in the Secrets panel instead of the environment.
 
+In the canvas, **Build with the assistant** (on narrow windows, **Assistant**) in the step rail opens the assistant's
+panel. Describe what you want and press Enter; it answers with a plan, listed as Add, Change and Remove rows. Nothing
+changes until you press **Apply to canvas**; the steps it adds then wear a **New** mark, and one **Undo** puts the file
+back as it was before that Apply (it refuses if the file has changed since, so it never throws away other edits). The
+panel says where a request goes before your first one. It only appears where the server has an assistant (`kampong
+dev`, not the hosted app).
+
 `POST /api/assistant` with `{ "prompt": "..." }` returns `{ success, summary, ops, diff, source, revision }`. `ops`
 are the same operations `PUT /api/spec` takes (ADR-0055), checked first against the workflow on a copy, so a plan
 that would not load is never returned; `diff` lists the steps, tools and vars it adds, changes and removes. Nothing
