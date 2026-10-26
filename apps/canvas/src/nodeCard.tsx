@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { SpecNode } from "@kampong/spec";
+import type { PreviewMark } from "@kampong/spec";
 import type { Brand } from "./connectorBrand.js";
 
 // KAM-237 (ADR-0059): every node is a small card: a tinted icon tile, a small-caps kind, the step's name and one
@@ -205,6 +206,8 @@ export function cardInfo(node: SpecNode): CardInfo {
   };
 }
 
+const MARK_WORD: Record<PreviewMark, string> = { add: "Add", change: "Change", remove: "Remove" };
+
 const PATHS: Record<IconName, ReactNode> = {
   clock: (
     <>
@@ -262,6 +265,7 @@ export function NodeCard({
   brand,
   reason,
   isNew,
+  mark,
 }: {
   node: SpecNode;
   brand?: Brand | undefined;
@@ -269,6 +273,8 @@ export function NodeCard({
   reason?: string | undefined;
   /** The assistant's last Apply added this step (KAM-250). */
   isNew?: boolean | undefined;
+  /** What the plan on show would do to this step (KAM-206): a word as well as a colour. */
+  mark?: PreviewMark | undefined;
 }) {
   const info = cardInfo(node);
   const nested =
@@ -277,6 +283,11 @@ export function NodeCard({
       : `in ${node.parent.replace(/^workflow:/, "")}${node.arm !== undefined ? ` · ${node.arm}` : ""}`;
   return (
     <div className={`kg-card kg-card--${info.category}`}>
+      {mark && (
+        <span className={`kg-card__mark kg-card__mark--${mark}`} data-testid="card-mark">
+          {MARK_WORD[mark]}
+        </span>
+      )}
       {isNew && (
         <span className="kg-card__new" data-testid="card-new">
           New

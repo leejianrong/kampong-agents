@@ -214,7 +214,9 @@ tools or model steps replays only once it has recordings (run it live, or `--too
 
 In the canvas, **Build with the assistant** (on narrow windows, **Assistant**) in the step rail opens the assistant's
 panel. Describe what you want and press Enter; it answers with a plan, listed as Add, Change and Remove rows. Nothing
-changes until you press **Apply to canvas**; the steps it adds then wear a **New** mark, and one **Undo** puts the file
+changes until you press **Apply to canvas**, but the plan is drawn on the canvas meanwhile: the steps it adds, changes and
+removes are outlined and marked **Add**, **Change** and **Remove** (a follow-up request shows what it would change in
+the workflow you already have). A new request sets a waiting plan aside; the steps it adds then wear a **New** mark, and one **Undo** puts the file
 back as it was before that Apply (it refuses if the file has changed since, so it never throws away other edits). The
 panel says where a request goes before your first one. It only appears where the server has an assistant (`kampong
 dev`, not the hosted app).

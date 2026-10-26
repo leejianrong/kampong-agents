@@ -18,6 +18,7 @@ import {
   toolUsage,
   type ComponentBrand,
   type InsertionMarker,
+  type PreviewMark,
   type SpecGraph,
   type SpecNode,
 } from "@kampong/spec";
@@ -81,6 +82,8 @@ export interface CanvasProps {
   brands?: Record<string, ComponentBrand>;
   /** Nodes the assistant's last Apply added (KAM-250): each wears a "New" mark. */
   markedNew?: string[];
+  /** The plan on show (KAM-206): what it adds, changes and removes, by node id. The graph passed in is the preview. */
+  marks?: Record<string, PreviewMark>;
   /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
   onShowRunMessage?: (id: string) => void;
 }
@@ -239,6 +242,7 @@ export function Canvas({
   onShowRunMessage,
   brands,
   markedNew,
+  marks,
 }: CanvasProps) {
   const [openEdge, setOpenEdge] = useState<string | null>(null);
   // KAM-239: loops the person has opened or closed, by the foreach step's node id; the rest follow their default.
@@ -418,6 +422,7 @@ export function Canvas({
                   node={node}
                   brand={tiles[node.id]}
                   isNew={fresh.has(node.id)}
+                  mark={marks?.[node.id]}
                   {...(run.status === "failed" && { reason: reasonLine(run.message) })}
                 />
                 <RunBadge
@@ -427,17 +432,25 @@ export function Canvas({
                 />
               </>
             ) : (
-              <NodeCard node={node} brand={tiles[node.id]} isNew={fresh.has(node.id)} />
+              <NodeCard
+                node={node}
+                brand={tiles[node.id]}
+                isNew={fresh.has(node.id)}
+                mark={marks?.[node.id]}
+              />
             ),
           },
           selected: selectedId === node.id,
           ...(sizes[node.id] !== undefined && { measured: sizes[node.id] }),
           ariaLabel:
             nodeAriaLabel(node) +
+            (marks?.[node.id] ? `. The plan would ${marks[node.id]} this` : "") +
             (run
               ? `. ${pillText(run)}${run.status === "failed" && reasonLine(run.message) ? `: ${reasonLine(run.message)}` : ""}`
               : ""),
           className: `md3-node md3-node--${node.kind}${node.parent ? " md3-node--nested" : ""}${
+            marks?.[node.id] ? ` md3-node--preview-${marks[node.id]}` : ""
+          }${
             flashed?.id === node.id ? " md3-node--flash" : ""
           }${linked.has(node.id) ? " md3-node--linked" : ""}${
             run ? ` md3-node--run-${run.status}` : ""
@@ -492,6 +505,7 @@ export function Canvas({
       onShowRunMessage,
       tiles,
       fresh,
+      marks,
     ],
   );
 

@@ -25,6 +25,7 @@ const PLAN: AssistantAnswer = {
     removed: [],
   },
   revision: "rev1",
+  source: "PROPOSED",
 };
 
 const OK: ApplyOpsResponse = { success: true, revision: "rev2" };
@@ -46,6 +47,7 @@ function setup(
   const onChanged = vi.fn(async () => undefined);
   const onMarkNew = vi.fn();
   const onClose = vi.fn();
+  const onPreview = vi.fn();
   const utils = render(
     <AssistantPanel
       api={api}
@@ -53,6 +55,7 @@ function setup(
       onChanged={onChanged}
       onMarkNew={onMarkNew}
       onClose={onClose}
+      onPreview={onPreview}
     />,
   );
   const ask = async (text = "do it") => {
@@ -62,7 +65,7 @@ function setup(
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByLabelText("Proposed plan");
   };
-  return { api, onChanged, onMarkNew, onClose, ask, ...utils };
+  return { api, onChanged, onMarkNew, onClose, onPreview, ask, ...utils };
 }
 
 describe("AssistantPanel", () => {
@@ -160,6 +163,39 @@ describe("AssistantPanel", () => {
       "changed after I made this plan",
     );
     expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it("hands the waiting plan to the canvas to preview, and takes it back when it is decided", async () => {
+    const { ask, onPreview } = setup();
+    await ask();
+    const plan = PLAN as { source: string; diff: unknown };
+    expect(onPreview).toHaveBeenLastCalledWith({ source: plan.source, diff: plan.diff });
+    fireEvent.click(screen.getByRole("button", { name: "Apply to canvas" }));
+    await screen.findByText(/Applied/);
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+  });
+
+  it("takes the preview back on Discard, and when a new request replaces the plan", async () => {
+    const { ask, onPreview } = setup();
+    await ask();
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onPreview).toHaveBeenLastCalledWith(null);
+
+    const send = async (text: string, plans: number) => {
+      fireEvent.change(screen.getByLabelText("Describe a change"), { target: { value: text } });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(screen.getAllByLabelText("Proposed plan")).toHaveLength(plans));
+    };
+    await send("again", 2);
+    expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ source: "PROPOSED" }));
+    // A new request sets the waiting plan aside: only the newest is on the canvas.
+    await send("and another", 3);
+    const plans = screen.getAllByLabelText("Proposed plan");
+    expect(plans.map((p) => p.getAttribute("data-state"))).toEqual([
+      "discarded",
+      "discarded",
+      "pending",
+    ]);
   });
 
   it("discards a plan without writing anything", async () => {
