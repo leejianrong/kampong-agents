@@ -122,6 +122,25 @@ for (const size of [
           .getByTestId("card-reason"),
       ).toBeVisible();
 
+      // KAM-243: the run log under the canvas has a row per step and per loop item. The failed item's row is picked
+      // with its error showing, and the Input tab shows the item that failed.
+      const log = page.getByTestId("run-log");
+      await expect(log).toBeVisible();
+      await expect(log.getByTestId("run-log-summary")).toContainText("1 error");
+      const failedRows = log.locator('[data-testid="run-log-row"][data-row-status="failed"]');
+      await expect(failedRows).toHaveCount(1);
+      await expect(failedRows).toContainText("MSFT");
+      await expect(failedRows).toHaveAttribute("aria-current", "true");
+      await expect(log.getByTestId("run-log-error")).toBeVisible();
+      await log.getByTestId("run-log-tab-input").click();
+      await expect(log.getByTestId("run-log-input")).toContainText("MSFT");
+      await expect(
+        log.locator('[data-testid="run-log-row"][data-row-status="passed"]').nth(2),
+      ).toBeVisible();
+      await log.getByTestId("run-log-toggle").click();
+      await expect(log.getByTestId("run-log-row")).toHaveCount(0);
+      await log.getByTestId("run-log-toggle").click();
+
       expect(readFileSync(join(keyed.dir, "agent.yaml"), "utf8")).toBe(keyed.spec);
       expect(readFileSync(layoutPath, "utf8")).toBe(layoutBefore);
     });
@@ -154,17 +173,29 @@ for (const size of [
       ).toContainText("not set");
       await expect(failed.locator('[aria-hidden="true"]')).toHaveText("✕");
 
-      // Another panel on show: the link brings Test Run back and lands on the message.
+      // Another panel on show: the link picks the step's row in the run log, with its error.
       await openPanel(page, "Checks");
+      const log = page.getByTestId("run-log");
+      await log.getByTestId("run-log-toggle").click();
+      await expect(log.getByTestId("run-log-row")).toHaveCount(0);
       await page
         .getByLabel(/Tool step fetch/)
         .first()
         .getByTestId("node-run-message")
         .click();
-      await expect(page.getByRole("region", { name: "Test Run" })).toBeVisible();
-      const row = page.locator('[data-testid="run-error-row"][data-run-step="fetch"]').first();
-      await expect(row).toBeFocused();
-      await expect(row).toContainText("ALPHAVANTAGE_API_KEY");
+      const row = log.locator('[data-testid="run-log-row"][data-run-step="fetch"]').first();
+      await expect(row).toHaveAttribute("aria-current", "true");
+      await expect(log.getByTestId("run-log-error")).toContainText("ALPHAVANTAGE_API_KEY");
+      // Clicking the failed node itself does the same.
+      await log.getByTestId("run-log-toggle").click();
+      await expect(log.getByTestId("run-log-row")).toHaveCount(0);
+      await page
+        .getByLabel(/Tool step fetch/)
+        .first()
+        .getByText("fetch", { exact: true })
+        .click();
+      await expect(row).toHaveAttribute("aria-current", "true");
+      await openPanel(page, "Test Run");
 
       // The next run clears the marks as it starts; a second live run fails them again from a clean slate.
       await page.getByRole("button", { name: "Run", exact: true }).click();
