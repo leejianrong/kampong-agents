@@ -3,6 +3,7 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState }
 import { createPortal } from "react-dom";
 import { routeEdgeAcross, type Rect } from "./edgeRoute.js";
 import { StepPicker } from "./StepPicker.js";
+import { edgeRunPill, edgeRunText, type EdgeRun } from "./edgeRun.js";
 import type { StepKind } from "./stepKinds.js";
 
 // A line between two steps with a "+" on it (KAM-213). The "+" shows when the line is hovered or has focus, and
@@ -26,6 +27,8 @@ export const EdgeInsertContext = createContext<EdgeInsertState | null>(null);
 export interface InsertEdgeData extends Record<string, unknown> {
   /** The step the new one goes in front of, for the button's name. Without it the line has no "+". */
   before?: string;
+  /** What the run on screen did along this line (KAM-241): drawn as a pill with the count. */
+  run?: EdgeRun;
 }
 
 /** Every node but the two ends and the insertion marker, as `id:x,y,w,h` so a store selector can compare it as a string. */
@@ -136,7 +139,11 @@ export function InsertEdge(props: EdgeProps) {
   const labelled = label !== undefined && label !== "";
   const x = labelled && !route.detoured ? sourceX + (targetX - sourceX) * 0.8 : route.mid.x;
   const y = labelled && !route.detoured ? sourceY + (targetY - sourceY) * 0.8 : route.mid.y;
+  // The pill sits a little before the middle of the line, so it clears a branch label and the "+" there.
+  const pillX = route.detoured ? route.mid.x : sourceX + (targetX - sourceX) * 0.3;
+  const pillY = route.detoured ? route.mid.y : sourceY + (targetY - sourceY) * 0.3;
   const insertBefore = (props.data as InsertEdgeData | undefined)?.before;
+  const run = (props.data as InsertEdgeData | undefined)?.run;
   const before = insertBefore ?? "this step";
   const isOpen = state?.openId === id;
   const visible = isOpen || state?.hoverId === id;
@@ -149,6 +156,23 @@ export function InsertEdge(props: EdgeProps) {
         {...(label !== undefined && { label, labelX: route.mid.x, labelY: route.mid.y })}
         interactionWidth={24}
       />
+      {run && (
+        <EdgeLabelRenderer>
+          <div
+            className={`kg-edge-pill kg-edge-pill--${run.state} nodrag nopan`}
+            style={{
+              transform: `translate(-50%, -50%) translate(${pillX}px, ${pillY}px)`,
+            }}
+            data-testid="edge-run-pill"
+            data-state={run.state}
+            data-hidden={visible}
+            title={edgeRunText(run)}
+          >
+            <span aria-hidden="true">{edgeRunPill(run)}</span>
+            <span className="md3-visually-hidden">{edgeRunText(run)}</span>
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {state && insertBefore !== undefined && (
         <EdgeLabelRenderer>
           <div

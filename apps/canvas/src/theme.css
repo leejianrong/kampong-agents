@@ -2904,3 +2904,67 @@ select.md3-text-field {
   letter-spacing: -0.02em;
   line-height: 1;
 }
+
+/* Lines show the run (KAM-241): idle grey, passed green, failed red, running animated dashes. The pill on a line
+   carries the same state in words and a count, so colour is never the only signal. */
+.md3-flow-wrap .react-flow__edge.kg-edge--passed .react-flow__edge-path {
+  stroke: var(--md-sys-color-primary);
+  stroke-width: 2;
+}
+
+.md3-flow-wrap .react-flow__edge.kg-edge--failed .react-flow__edge-path {
+  stroke: var(--md-sys-color-error);
+  stroke-width: 2;
+}
+
+.md3-flow-wrap .react-flow__edge.kg-edge--running .react-flow__edge-path {
+  stroke: var(--md-sys-color-primary);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md3-flow-wrap .react-flow__edge.animated path {
+    animation: none;
+  }
+}
+
+.md3-flow-wrap .react-flow__edge.kg-edge--tool {
+  pointer-events: none;
+}
+
+.md3-flow-wrap .react-flow__edge.kg-edge--tool .react-flow__edge-path {
+  stroke: var(--kg-tool-fg);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.7;
+}
+
+.kg-edge-pill {
+  position: absolute;
+  padding: 1px 7px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-lowest, #fff);
+  color: var(--md-sys-color-on-surface);
+  font-size: var(--md-type-body-small-size);
+  font-weight: 600;
+  line-height: 1.25rem;
+  pointer-events: all;
+  white-space: nowrap;
+}
+
+.kg-edge-pill--passed {
+  border-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+
+.kg-edge-pill--failed {
+  border-color: var(--md-sys-color-error);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.kg-edge-pill[data-hidden="true"] {
+  visibility: hidden;
+}
