@@ -206,6 +206,12 @@ The endpoint is the first of these that is set:
 The model is `KAMPONG_ASSISTANT_MODEL`, or else the workflow's `model.name`. A direct Anthropic key is not used:
 set OpenRouter, or an endpoint of your own. Values can be saved in the Secrets panel instead of the environment.
 
+On an empty canvas the assistant is the first choice: describe the workflow in the box, **Build it for me** starts a
+blank workflow and hands your description over, and you review the plan before anything is added. The box is there
+whenever the server has an assistant, and says what to set up when there is no endpoint yet. A workflow with no tool
+and no model step calls nothing outside itself, so its test run offers **Replay** with no recorded data; one with
+tools or model steps replays only once it has recordings (run it live, or `--tools record`, first).
+
 In the canvas, **Build with the assistant** (on narrow windows, **Assistant**) in the step rail opens the assistant's
 panel. Describe what you want and press Enter; it answers with a plan, listed as Add, Change and Remove rows. Nothing
 changes until you press **Apply to canvas**; the steps it adds then wear a **New** mark, and one **Undo** puts the file

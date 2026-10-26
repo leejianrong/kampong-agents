@@ -119,6 +119,53 @@ describe("test run modes (KAM-188)", () => {
     ]);
   });
 
+  it("offers replay with no fixtures to a workflow that calls nothing outside itself, and replays it (KAM-205)", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(
+      specPath,
+      `version: "1.1"
+agent:
+  id: calc
+  name: Calc
+  role: R
+  goal: G
+  workflow:
+    - step: shape
+      type: transform
+      set:
+        total: "1 + 2"
+`,
+    );
+    await server(specPath);
+    const body = (await app.inject({ method: "GET", url: "/api/run-options" })).json();
+    expect(body).toMatchObject({
+      modes: ["replay", "live"],
+      defaultMode: "replay",
+      fixtures: { available: false, count: 0 },
+      modelCalls: false,
+    });
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: { input: "", mode: "replay" },
+    });
+    expect(start.statusCode).toBe(200);
+    const state = await settled(start.json().id);
+    expect(state.status).toBe("completed");
+  });
+
+  it("still says live only for a workflow with a tool and no recording", async () => {
+    const specPath = join(dir, "agent.yaml");
+    writeFileSync(specPath, POST_SOURCE);
+    await server(specPath);
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: { input: "", mode: "replay" },
+    });
+    expect(start.statusCode).toBe(409);
+  });
+
   it("finds fixtures in .kampong/fixtures too", async () => {
     const specPath = join(dir, "agent.yaml");
     writeFileSync(specPath, POST_SOURCE);

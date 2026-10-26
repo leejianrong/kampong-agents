@@ -30,6 +30,7 @@ import {
   ApiError,
   createApiClient,
   type ApiClient,
+  type AssistantStatus,
   type SecretStatusDto,
   type SpecErrorDto,
   type TemplateSummary,
@@ -186,6 +187,9 @@ export function App({
   // KAM-250: which rail is open on the left, and the nodes the assistant's last Apply added.
   const [leftPane, setLeftPane] = useState<"steps" | "assistant">("steps");
   const cameFromAssistant = useRef(false);
+  // KAM-205: what the empty state's box handed to the assistant, and what the assistant says it can do there.
+  const [autoPrompt, setAutoPrompt] = useState<{ text: string; nonce: number } | undefined>();
+  const [emptyAssistant, setEmptyAssistant] = useState<AssistantStatus | undefined>();
   const [newNodes, setNewNodes] = useState<string[]>([]);
   const [pending, setPending] = useState<
     | { select: string | null }
@@ -371,6 +375,19 @@ export function App({
         ? "steps"
         : null;
 
+  // KAM-205: the empty state offers the assistant, so it asks once what the assistant can do.
+  useEffect(() => {
+    if (emptyKind !== "new" || !api.assistantStatus || emptyAssistant !== undefined) return;
+    let cancelled = false;
+    api
+      .assistantStatus()
+      .then((status) => !cancelled && setEmptyAssistant(status))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, emptyKind, emptyAssistant]);
+
   // Why a test run cannot start, in words, or undefined when it can.
   const parseErrorLine = errors.find((e) => e.line !== undefined)?.line;
   const runBlockedReason =
@@ -401,6 +418,39 @@ export function App({
         return;
       }
       setStartBlankError(err instanceof Error ? err.message : "Could not start blank.");
+    } finally {
+      setStartingBlank(false);
+    }
+  }
+
+  // KAM-205: "Build it for me" on the empty canvas. The endpoint is checked first, so nothing is written for a
+  // request that cannot be answered; then a blank workflow is started and the assistant gets the description.
+  async function handleBuildFromPrompt(prompt: string) {
+    if (startingBlank) return;
+    setStartingBlank(true);
+    setStartBlankError(null);
+    try {
+      const status = await api.assistantStatus?.();
+      if (status && !status.configured) {
+        setStartBlankError(status.error);
+        return;
+      }
+      const result = await api.startBlank();
+      if (!result.success) {
+        setStartBlankError(
+          (result.errors ?? []).map((e) => e.message).join("; ") || "Could not start.",
+        );
+        return;
+      }
+      await refresh();
+      setLeftPane("assistant");
+      setAutoPrompt({ text: prompt, nonce: Date.now() });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      setStartBlankError(err instanceof Error ? err.message : "Could not start.");
     } finally {
       setStartingBlank(false);
     }
@@ -1129,6 +1179,7 @@ export function App({
                           setLeftPane("steps");
                         }}
                         hidden={leftPane !== "assistant"}
+                        {...(autoPrompt && { initialPrompt: autoPrompt })}
                       />
                     )}
                     {emptyKind === null && spec && (leftPane === "steps" || !api.askAssistant) && (
@@ -1164,6 +1215,13 @@ export function App({
                         busy={startingBlank}
                         error={startBlankError}
                         onStartBlank={() => void handleStartBlank()}
+                        {...(api.askAssistant &&
+                          emptyKind === "new" &&
+                          emptyAssistant && {
+                            assistant: emptyAssistant,
+                            onBuildFromPrompt: (prompt: string) =>
+                              void handleBuildFromPrompt(prompt),
+                          })}
                         onAddStep={() => setOpenForm("workflow")}
                         templates={
                           api.startFromTemplate && templates.length > 0 ? (

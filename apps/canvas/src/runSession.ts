@@ -76,7 +76,13 @@ export function useRunSession(
   const [input, setInput] = useState("");
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
   const [optionsPending, setOptionsPending] = useState(() => api.getRunOptions !== undefined);
-  const [mode, setMode] = useState<RunMode>("live");
+  const [mode, setModeState] = useState<RunMode>("live");
+  // Whether the person has picked a mode (KAM-205): until they have, the bar follows what the spec offers by default.
+  const picked = useRef(false);
+  const setMode = (next: RunMode) => {
+    picked.current = true;
+    setModeState(next);
+  };
   const [confirmingLive, setConfirmingLive] = useState(false);
   const [varText, setVarTextState] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +94,6 @@ export function useRunSession(
   trackerRef.current = tracker;
   // What the options last said each var defaulted to, so a refetch keeps what was typed and resets the rest.
   const defaultsRef = useRef<Record<string, string>>({});
-  const loadedOnce = useRef(false);
 
   // Closes the SSE subscription on unmount too, not just on the next start.
   useEffect(() => () => unsubscribeRef.current?.(), []);
@@ -107,8 +112,6 @@ export function useRunSession(
           setOptions(null);
           return;
         }
-        const first = !loadedOnce.current;
-        loadedOnce.current = true;
         setOptions(loaded);
         const declared = loaded.vars ?? [];
         const before = defaultsRef.current;
@@ -122,9 +125,12 @@ export function useRunSession(
             }),
           ),
         );
-        // The first load takes the spec's default; a later one keeps the choice while it is still open to the spec.
-        setMode((current) =>
-          !first && loaded.modes?.includes(current) ? current : (loaded.defaultMode ?? "live"),
+        // The spec's default, unless the person chose a mode and it is still open to the spec. A workflow that was
+        // live only (it had a model step) and is now replayable moves to Replay on its own.
+        setModeState((current) =>
+          picked.current && loaded.modes?.includes(current)
+            ? current
+            : (loaded.defaultMode ?? "live"),
         );
       } catch {
         // A server that cannot describe its runs gets the plain bar: no switch, a live run as before.

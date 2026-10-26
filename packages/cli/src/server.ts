@@ -26,7 +26,13 @@ import { envNamesIn, runDoctor, type DoctorOptions } from "./doctor.js";
 import { SecretStore, validateSecret } from "./secrets.js";
 import { copyTemplateFixtures, listTemplates, templateSource } from "./templates.js";
 import { RunManager, type RunManagerOptions } from "./run-manager.js";
-import { describeRunOptions, replayDepsFor, replayFixturesDirFor } from "./run-options.js";
+import {
+  callsNothingOutside,
+  defaultFixturesDir,
+  describeRunOptions,
+  replayDepsFor,
+  replayFixturesDirFor,
+} from "./run-options.js";
 
 // KAN-1216: SpecStore.readSource()/applyPatchAndSave() throw the raw Node fs
 // error (ENOENT when the spec file is deleted/renamed out from under a
@@ -669,7 +675,10 @@ export function createDevServer({
         // KAM-188: a replay answers from the recorded fixtures, so it needs no keys and touches no service.
         let replay;
         if (mode === "replay") {
-          const dir = replayFixturesDirFor(specPath);
+          // A workflow that calls nothing outside itself has nothing to record: its replay reads no fixture at all.
+          const dir =
+            replayFixturesDirFor(specPath) ??
+            (callsNothingOutside(spec as AgentSpec) ? defaultFixturesDir(specPath) : undefined);
           if (!dir) {
             reply.code(409);
             return {
