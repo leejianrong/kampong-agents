@@ -13,6 +13,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { CardToolbar } from "./CardToolbar.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   toolUsage,
@@ -57,6 +58,9 @@ import { STATUS_ICON, pillText, reasonLine, type NodeRunInfo } from "./runStatus
 // text as its tooltip, and the node's own accessible name (`ariaLabel`) is always the full name. A workflow of
 // more than MINIMAP_OVER nodes gets a minimap so a long one stays navigable.
 
+/** What the card toolbar can ask for (KAM-245). */
+export type NodeAction = "duplicate" | "delete";
+
 export interface CanvasProps {
   graph: SpecGraph;
   layout: Record<string, { x: number; y: number }>;
@@ -84,6 +88,8 @@ export interface CanvasProps {
   markedNew?: string[];
   /** The plan on show (KAM-206): what it adds, changes and removes, by node id. The graph passed in is the preview. */
   marks?: Record<string, PreviewMark>;
+  /** The selected step or tool's floating toolbar (KAM-245): Duplicate or Delete. Without it there is no toolbar. */
+  onNodeAction?: (action: NodeAction, id: string) => void;
   /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
   onShowRunMessage?: (id: string) => void;
 }
@@ -240,6 +246,7 @@ export function Canvas({
   version,
   runStatus,
   onShowRunMessage,
+  onNodeAction,
   brands,
   markedNew,
   marks,
@@ -410,6 +417,15 @@ export function Canvas({
     () => [
       ...inTabOrder(view.graph.nodes).flatMap((node) => {
         const run = runStatus?.[node.id];
+        const toolbar =
+          onNodeAction !== undefined &&
+          selectedId === node.id &&
+          (node.kind === "workflow" || node.kind === "tool") ? (
+            <CardToolbar
+              what={`${node.kind === "tool" ? "tool" : "step"} ${String(node.data.step ?? node.data.name ?? node.id)}`}
+              onAction={(action) => onNodeAction(action, node.id)}
+            />
+          ) : null;
         const card: Node = {
           id: node.id,
           position: view.layout[node.id] ?? { x: 0, y: 0 },
@@ -418,6 +434,7 @@ export function Canvas({
           data: {
             label: run ? (
               <>
+                {toolbar}
                 <NodeCard
                   node={node}
                   brand={tiles[node.id]}
@@ -432,12 +449,15 @@ export function Canvas({
                 />
               </>
             ) : (
-              <NodeCard
-                node={node}
-                brand={tiles[node.id]}
-                isNew={fresh.has(node.id)}
-                mark={marks?.[node.id]}
-              />
+              <>
+                {toolbar}
+                <NodeCard
+                  node={node}
+                  brand={tiles[node.id]}
+                  isNew={fresh.has(node.id)}
+                  mark={marks?.[node.id]}
+                />
+              </>
             ),
           },
           selected: selectedId === node.id,
@@ -503,6 +523,7 @@ export function Canvas({
       linked,
       runStatus,
       onShowRunMessage,
+      onNodeAction,
       tiles,
       fresh,
       marks,
