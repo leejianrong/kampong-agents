@@ -39,6 +39,8 @@ const FIELD_NAMES: Record<string, string> = {
 type ToolKind = "http_request" | "slack_post_message" | "gmail_send" | "component";
 
 export interface ToolFormProps {
+  /** Which kind a new tool starts as, and for a component which one (KAM-244: a Connectors tile in the palette). */
+  start?: { kind: ToolKind; use?: string };
   /**
    * A tool to edit (KAM-175). The form starts from its values, its kind and name are fixed (a rename also has to
    * change the steps that call it), and Save hands back the rebuilt tool for the caller to diff against this one.
@@ -63,6 +65,7 @@ export interface ToolFormProps {
 }
 
 export function ToolForm({
+  start,
   initial,
   components,
   componentProblems,
@@ -75,7 +78,7 @@ export function ToolForm({
   const http = initial?.action === "http_request" ? httpToolToDraft(initial) : undefined;
   const slack = initial?.action === "slack_post_message" ? initial : undefined;
   const gmail = initial?.action === "gmail_send" ? initial : undefined;
-  const [kind, setKind] = useState<ToolKind>(initial?.action ?? "http_request");
+  const [kind, setKind] = useState<ToolKind>(initial?.action ?? start?.kind ?? "http_request");
   const [name, setName] = useState(initial?.name ?? "");
   const [method, setMethod] = useState(http?.method ?? "GET");
   const [url, setUrl] = useState(http?.url ?? "");
@@ -189,6 +192,7 @@ export function ToolForm({
     return (
       <ComponentToolForm
         initial={initial?.action === "component" ? initial : undefined}
+        {...(start?.use !== undefined && { initialUse: start.use })}
         // Re-mounted when the installed list changes, so the first selection follows what is there now
         // rather than what was there when the form opened.
         key={(components ?? []).map((c) => `${c.id}@${c.version}`).join(",")}

@@ -66,6 +66,7 @@ import { deriveNodeStatuses } from "./runStatus.js";
 import { brandsFromCatalog } from "./connectorBrand.js";
 import { RunTrackerProvider, useRunTrackerStore } from "./runTracker.js";
 import { ToolForm } from "./ToolForm.js";
+import { connectorOptions, type ToolStart } from "./stepKinds.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
 import { NodePalette } from "./NodePalette.js";
 import { AssistantPanel } from "./AssistantPanel.js";
@@ -337,17 +338,31 @@ export function App({
     return unsubscribe;
   }, [api, refresh]);
 
+  // KAM-244: the Connectors tiles in the palette, and the one Add Tool should start on.
+  const [toolStart, setToolStart] = useState<ToolStart | undefined>();
+  const connectors = connectorOptions(catalog?.components ?? []);
+
   const usesComponents = spec?.agent.tools?.some((t) => t.action === "component") === true;
   useEffect(() => {
     const toolOpen =
       openForm === "tool" || openForm === "edit-tool" || selected?.startsWith("tool:");
     // KAM-247: a spec that uses a component also needs the catalog once, for the component's tile.
-    if (!(toolOpen || (catalog === undefined && usesComponents)) || !api.listComponents) return;
+    // KAM-244: the palette's Connectors group lists installed components too, so the catalog is read once for it.
+    if (
+      !(toolOpen || (catalog === undefined && (usesComponents || spec !== null))) ||
+      !api.listComponents
+    )
+      return;
     let cancelled = false;
     api
       .listComponents()
       .then((result) => {
-        if (!cancelled) setCatalog(result);
+        if (cancelled) return;
+        setCatalog(
+          Array.isArray(result?.components)
+            ? result
+            : { components: [], problems: ["Could not list components: unexpected answer."] },
+        );
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -361,7 +376,7 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [api, openForm, selected, usesComponents]);
+  }, [api, openForm, selected, usesComponents, spec !== null]);
 
   const componentBrands = useMemo(
     () => (catalog ? brandsFromCatalog(catalog.components) : undefined),
@@ -1215,7 +1230,15 @@ export function App({
                       <NodePalette
                         version={spec.version}
                         onChoose={(kind) => requestInsert({ kind })}
-                        onAddTool={() => toolbarForm("tool")}
+                        onAddTool={() => {
+                          setToolStart(undefined);
+                          toolbarForm("tool");
+                        }}
+                        connectors={connectors}
+                        onChooseConnector={(start) => {
+                          setToolStart(start);
+                          toolbarForm("tool");
+                        }}
                         startOpen={cameFromAssistant.current}
                         {...(api.askAssistant && {
                           onOpenAssistant: () => setLeftPane("assistant"),
@@ -1344,6 +1367,7 @@ export function App({
                   {openForm === "tool" && (
                     <Panel title="Add Tool" onClose={requestClose}>
                       <ToolForm
+                        {...(toolStart && { start: toolStart })}
                         components={catalog?.components}
                         componentProblems={catalog?.problems}
                         references={references}

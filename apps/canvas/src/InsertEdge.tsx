@@ -62,12 +62,14 @@ const MARGIN = 8;
 function EdgePopover({
   anchor,
   label,
+  where,
   version,
   onChoose,
   onEscape,
 }: {
   anchor: HTMLElement | null;
   label: string;
+  where: string;
   version?: string;
   onChoose: (kind: StepKind) => void;
   onEscape: () => void;
@@ -106,6 +108,7 @@ function EdgePopover({
       <StepPicker
         version={version}
         label="Search steps to insert"
+        where={where}
         autoFocus
         onChoose={onChoose}
         onEscape={onEscape}
@@ -203,6 +206,7 @@ export function InsertEdge(props: EdgeProps) {
               <EdgePopover
                 anchor={button.current}
                 label={`Insert a step before ${before}`}
+                where={`Goes before ${before}`}
                 version={state.version}
                 onChoose={(kind) => state.choose(id, kind)}
                 onEscape={() => state.close(true)}

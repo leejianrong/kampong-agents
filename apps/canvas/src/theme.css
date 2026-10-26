@@ -2094,24 +2094,48 @@ select.md3-text-field {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.md3-picker__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
+  gap: 0.375rem;
+  padding: 0 0.125rem;
+}
+
 .md3-picker__option {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--md-shape-corner-small);
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.125rem;
+  border-radius: var(--md-shape-corner-medium);
   color: var(--md-sys-color-on-surface);
+  text-align: center;
   cursor: pointer;
 }
 
-.md3-picker__what {
-  font-size: var(--md-type-body-small-size);
-  line-height: var(--md-type-body-small-line);
-  color: var(--md-sys-color-on-surface-variant);
+.md3-picker__tilewrap {
+  display: flex;
 }
 
-/* State layer: hover and the keyboard's active row read the same. */
+.md3-picker__label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.md3-picker__where {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  padding: 0 0.625rem;
+  border-radius: 999px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  line-height: 1.5rem;
+}
+
+/* State layer: hover and the keyboard's active tile read the same. */
 .md3-picker__option:hover,
 .md3-picker__option[aria-selected="true"] {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
