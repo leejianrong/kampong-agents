@@ -45,6 +45,8 @@ export interface NodeInspectorProps {
   ) => Promise<RemoveOutcome>;
   /** Makes the copy. Resolves with messages when it was refused. */
   onDuplicate: () => Promise<string[] | void>;
+  /** The card toolbar's Duplicate or Delete (KAM-245): a new `nonce` asks again. Acted on once, when it arrives. */
+  command?: { action: "duplicate" | "delete"; nonce: number };
   /** Close with nothing left to ask: after a save or a cancel. */
   onClose: () => void;
   /** Close because the user asked to (Esc, Close): the app asks first when there is unsaved input. */
@@ -90,6 +92,20 @@ export function NodeInspector(props: NodeInspectorProps) {
   useEffect(() => {
     panel.current?.focus();
   }, []);
+
+  // The card toolbar asks through the same handlers as the buttons and keys below. A command that was already
+  // there when this inspector opened belongs to the last one.
+  const handled = useRef(props.command?.nonce ?? 0);
+  useEffect(() => {
+    const command = props.command;
+    if (!command || command.nonce === handled.current) return;
+    handled.current = command.nonce;
+    if (!canActOn) return;
+    if (command.action === "delete") {
+      if (remove.stage === "idle") remove.start();
+    } else void duplicate();
+    // Only a new command acts; the handlers change on every render.
+  }, [props.command?.nonce]);
 
   // The latest handlers, read by one listener for the life of the inspector.
   const latest = useRef({ remove, duplicate, onRequestClose, canActOn });

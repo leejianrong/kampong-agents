@@ -258,6 +258,38 @@ for (const size of [
       await expect(node(page, "workflow:scratch_copy")).toBeVisible();
     });
 
+    test("the selected card has a floating toolbar: Duplicate copies, Delete asks first", async ({
+      page,
+    }) => {
+      // Only the selected card has one, and the inspector docks beside the canvas, which stays visible.
+      await expect(page.getByTestId("card-toolbar")).toHaveCount(0);
+      await node(page, "workflow:scratch").click();
+      const bar = page.getByRole("toolbar", { name: "Actions for step scratch" });
+      await expect(bar).toBeVisible();
+      await expect(page.getByTestId("card-toolbar")).toHaveCount(1);
+      await expect(node(page, "workflow:scratch")).toBeVisible();
+      const inside = await bar.boundingBox();
+      const card = await node(page, "workflow:scratch").boundingBox();
+      // It floats above the card, not over the inspector.
+      expect(inside!.y + inside!.height).toBeLessThanOrEqual(card!.y + 1);
+
+      await bar.getByRole("button", { name: "Duplicate" }).click();
+      await expect(node(page, "workflow:scratch_copy")).toBeVisible();
+      await expect(
+        page.getByRole("toolbar", { name: "Actions for step scratch_copy" }),
+      ).toBeVisible();
+
+      await page
+        .getByRole("toolbar", { name: "Actions for step scratch_copy" })
+        .getByRole("button", { name: "Delete" })
+        .click();
+      const confirm = page.getByRole("group", { name: "Delete step scratch_copy?" });
+      await expect(confirm.getByRole("button", { name: "Delete step" })).toBeFocused();
+      expect(readFileSync(file, "utf8")).toContain("scratch_copy"); // nothing goes until the confirm
+      await page.keyboard.press("Enter");
+      await expect(node(page, "workflow:scratch_copy")).toHaveCount(0);
+    });
+
     test("unsaved input is not discarded silently when another node is clicked", async ({
       page,
     }) => {

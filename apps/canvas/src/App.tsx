@@ -796,6 +796,15 @@ export function App({
     else if (previous !== null) returnFocusTo.current = previous;
   }
 
+  // KAM-245: the card toolbar's Duplicate and Delete go to the inspector, which already knows how to ask first.
+  const [nodeCommand, setNodeCommand] = useState<{
+    action: "duplicate" | "delete";
+    nonce: number;
+  }>();
+  function askNodeAction(action: "duplicate" | "delete") {
+    setNodeCommand((c) => ({ action, nonce: (c?.nonce ?? 0) + 1 }));
+  }
+
   function requestSelect(id: string | null) {
     if (id !== null && id === selected) return;
     if (id === null && selected === null) return;
@@ -1258,6 +1267,7 @@ export function App({
                         onInsert={spec && !planView ? insertFromEdge : undefined}
                         runStatus={planView ? undefined : runStatus}
                         onShowRunMessage={showRunMessage}
+                        {...(!planView && { onNodeAction: askNodeAction })}
                         brands={componentBrands}
                         markedNew={planView ? undefined : newNodes}
                         {...(planView && { marks: planView.marks })}
@@ -1356,6 +1366,7 @@ export function App({
                           }
                           onRemove={handleRemove}
                           onDuplicate={() => handleDuplicate(selected)}
+                          {...(nodeCommand && { command: nodeCommand })}
                           onClose={() => applySelect(null)}
                           onRequestClose={() => (pending ? setPending(null) : requestSelect(null))}
                         />
