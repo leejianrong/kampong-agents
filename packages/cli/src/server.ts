@@ -7,13 +7,20 @@ import {
   DEFAULT_SCHEMA_PATH,
   isBlankSource,
   loadWithLayout,
+  parseSpec,
   type AgentSpec,
   type SpecOp,
   type SpecRepository,
 } from "@kampong/spec";
 import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
-import { SpecStore } from "./spec-store.js";
+import { SpecStore, revisionOf } from "./spec-store.js";
+import {
+  assistantHost,
+  proposeEdits,
+  resolveAssistantConfig,
+  type FetchLike,
+} from "./assistant.js";
 import { componentCatalogFor, componentDispatcherFor, lockUses } from "./components.js";
 import { envNamesIn, runDoctor, type DoctorOptions } from "./doctor.js";
 import { SecretStore, validateSecret } from "./secrets.js";
@@ -132,13 +139,15 @@ export interface CreateDevServerOptions {
   /** Test-only seam, forwarded to RunManager -- see its docstring. Production callers omit this. */
   run?: RunManagerOptions;
   /** Test-only seams for the doctor routes (the environment, the dial and the probe's fetch). */
-  doctor?: Partial<Pick<DoctorOptions, "env" | "connect" | "probeFetch">>;
+  doctor?: Partial<Pick<DoctorOptions, "env" | "connect" | "probeFetch" | "assistantFetch">>;
   /**
    * Host names the server answers to besides loopback (`kampong dev --host`). `"*"` when it was bound to
    * every interface on purpose. Anything else is refused, which is what stops a web page that rebinds
    * its own name to 127.0.0.1 from calling these endpoints as if it were the canvas.
    */
   allowedHosts?: string[];
+  /** Test-only seam: the fetch the assistant calls its endpoint with (the real `fetch` otherwise). */
+  assistantFetch?: FetchLike;
 }
 
 export function createDevServer({
@@ -148,6 +157,7 @@ export function createDevServer({
   run: runOptions,
   doctor: doctorOptions,
   allowedHosts = [],
+  assistantFetch,
 }: CreateDevServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   // Typed as the `SpecRepository` interface (KAN-1224, ADR-0014), not the
@@ -332,6 +342,89 @@ export function createDevServer({
       return { success: true, checks };
     },
   );
+
+  // KAM-249 (ADR-0060): the workflow assistant. GET says where a prompt would be sent, so the canvas can tell the
+  // person before their first use; it never holds a key. POST asks the configured OpenAI-compatible endpoint for
+  // a plan and returns it as validated ops: nothing is applied or written here, the canvas applies them through
+  // PUT /api/spec when the person says so, and `revision` lets that write refuse if the file changed meanwhile.
+  const assistantEnv = () => doctorOptions?.env ?? process.env;
+  app.get("/api/assistant", async () => {
+    let spec: AgentSpec | undefined;
+    try {
+      const loaded = await loadWithLayout(store);
+      if (loaded.success) spec = loaded.spec as AgentSpec;
+    } catch {
+      // No file yet: the endpoint may still be configured from the environment.
+    }
+    const resolved = resolveAssistantConfig(assistantEnv(), spec);
+    return resolved.ok
+      ? {
+          configured: true,
+          host: assistantHost(resolved.config),
+          model: resolved.config.model,
+          from: resolved.config.from,
+        }
+      : { configured: false, code: resolved.code, error: resolved.error };
+  });
+
+  app.post<{ Body: { prompt?: unknown } }>("/api/assistant", async (request, reply) => {
+    const prompt = request.body?.prompt;
+    if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > 4000) {
+      reply.code(400);
+      return { success: false, error: "Say what you want in 1 to 4000 characters." };
+    }
+    let source: string;
+    try {
+      source = await store.readSource();
+    } catch (err) {
+      if (isNotFound(err)) {
+        reply.code(409);
+        return { success: false, error: "There is no workflow yet. Start one first." };
+      }
+      const { status, body } = specFileErrorResponse(err, specPath);
+      reply.code(status);
+      return body;
+    }
+    if (isBlankSource(source)) {
+      reply.code(409);
+      return { success: false, error: "There is no workflow yet. Start one first." };
+    }
+    const loaded = parseSpec(source);
+    if (!loaded.success || !loaded.spec) {
+      reply.code(422);
+      return { success: false, errors: loaded.errors };
+    }
+    const resolved = resolveAssistantConfig(assistantEnv(), loaded.spec);
+    if (!resolved.ok) {
+      reply.code(503);
+      return { success: false, code: resolved.code, error: resolved.error };
+    }
+    const catalog = await componentCatalogFor(specPath);
+    const result = await proposeEdits(
+      resolved.config,
+      {
+        prompt: prompt.trim(),
+        source,
+        components: catalog.components.map((c) => ({
+          use: `${c.id}@${c.version}`,
+          ops: Object.keys(c.ops),
+        })),
+      },
+      assistantFetch,
+    );
+    if (result.success) return { ...result, revision: revisionOf(source) };
+    if (result.kind === "unavailable") {
+      reply.code(502);
+      return { success: false, code: "unavailable", error: result.error };
+    }
+    reply.code(422);
+    return {
+      success: false,
+      code: "invalid",
+      error: "The assistant's plan could not be applied, so nothing was changed.",
+      errors: result.errors,
+    };
+  });
 
   // KAM-196: "Start blank". Writes the minimal valid spec (with the schema pragma) when there is no spec yet or
   // the file is empty, and refuses to touch one that has content. Choosing a template (KAM-216) is the next route.

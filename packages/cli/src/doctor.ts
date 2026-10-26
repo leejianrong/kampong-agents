@@ -23,6 +23,7 @@ import {
   type ComponentManifest,
 } from "@kampong/spec";
 import { componentsDirFor, lockPathFor, readLockfile, registryFor } from "./components.js";
+import { assistantHost, resolveAssistantConfig, type FetchLike } from "./assistant.js";
 
 // `kampong doctor` (KAN-1836): a read-only preflight of what would stop a run. It reports names of
 // environment variables, never their values, and makes no network call unless `online` is set.
@@ -31,7 +32,7 @@ export type CheckStatus = "pass" | "warn" | "fail";
 
 export interface DoctorCheck {
   status: CheckStatus;
-  area: "spec" | "component" | "env" | "fixtures" | "network";
+  area: "spec" | "component" | "env" | "fixtures" | "network" | "assistant";
   message: string;
 }
 
@@ -52,6 +53,8 @@ export interface DoctorOptions {
   probe?: boolean;
   /** Test seam for the probe's HTTP calls; the real `fetch` otherwise. */
   probeFetch?: ToolFetchImpl;
+  /** Test seam for the assistant endpoint probe; the real `fetch` otherwise. */
+  assistantFetch?: FetchLike;
   /** Told each environment variable name the spec needs, however it is reached (a `${NAME}` or a component's secret slot). */
   onEnvName?: (name: string) => void;
 }
@@ -467,6 +470,41 @@ export async function runDoctor(
     // Independent requests: run together, report in the order the tools were declared.
     for (const result of await Promise.all([...probes.values()].map(probeOne))) {
       if (result) checks.push(result);
+    }
+  }
+
+  // The workflow assistant (KAM-249): nothing is said when it is not set up, since it is optional. When it is, the
+  // check names where a prompt and the workflow would go, and with `probe` asks the endpoint for its models, which
+  // sends the key (so it waits for that flag, like a credential's probe). The host is dialled with the others.
+  const assistant = resolveAssistantConfig(env, spec);
+  if (!assistant.ok) {
+    if (assistant.code !== "not_configured") add("warn", "assistant", assistant.error);
+  } else {
+    const { config } = assistant;
+    const host = assistantHost(config);
+    addHost(urlTarget(config.baseUrl));
+    add(
+      "pass",
+      "assistant",
+      `the assistant would send prompts and the workflow to ${host} (model ${config.model}), set up through ${config.from}`,
+    );
+    if (options.probe) {
+      try {
+        const res = await (options.assistantFetch ?? fetch)(`${config.baseUrl}/models`, {
+          headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
+          signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
+        });
+        if (res.ok) add("pass", "assistant", `${host} answered the model list`);
+        else if (res.status === 401 || res.status === 403) {
+          add("fail", "assistant", `${host} refused the assistant's key (${res.status})`);
+        } else add("warn", "assistant", `${host} answered ${res.status} to the model list`);
+      } catch (err) {
+        add(
+          "fail",
+          "assistant",
+          `${host} could not be asked: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 

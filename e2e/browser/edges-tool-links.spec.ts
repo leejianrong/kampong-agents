@@ -155,6 +155,16 @@ for (const size of [
       }
     });
 
+    test("draws its lines on every load, not just most", async ({ page }) => {
+      // Lines were missing about one load in thirty at 900x700: the ports React Flow measured were dropped when the
+      // canvas handed a size back, and never measured again. Twenty loads would catch it about half the time.
+      for (let i = 0; i < 20; i++) {
+        await page.reload();
+        await expect(node(page, "workflow:report")).toBeAttached();
+        await expect(page.locator(".react-flow__edge").first()).toBeAttached();
+      }
+    });
+
     test("a line is named by its steps' labels, not internal ids", async ({ page }) => {
       const names = await page
         .locator(".react-flow__edge")
