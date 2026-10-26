@@ -55,6 +55,7 @@ import {
   type RemoveOutcome,
   type RenameOutcome,
 } from "./DeleteControl.js";
+import { RunLog } from "./RunLog.js";
 import { RunPanel } from "./RunPanel.js";
 import { RunControls } from "./RunControls.js";
 import { CoachMarks } from "./CoachMarks.js";
@@ -783,6 +784,11 @@ export function App({
   function requestSelect(id: string | null) {
     if (id !== null && id === selected) return;
     if (id === null && selected === null) return;
+    // Clicking a node the run failed on picks its row in the run log (KAM-243).
+    if (id !== null && runStatus[id]?.status === "failed") {
+      setRunLogOpen(true);
+      runTracker.showMessage(id);
+    }
     if (unsavedInput()) setPending({ select: id });
     else applySelect(id);
   }
@@ -885,9 +891,11 @@ export function App({
   }, [openForm]);
   const shows = (form: OpenForm) => openForm === form || kept.includes(form);
   // A failed node's "See message" (KAM-190). Stable, because the canvas rebuilds its nodes when it changes.
+  // The bottom run log (KAM-243) opens on it and picks the node's row.
+  const [runLogOpen, setRunLogOpen] = useState(true);
   const showRunMessageRef = useRef<(id: string) => void>(() => {});
   showRunMessageRef.current = (id) => {
-    if (openForm !== "run") toolbarForm("run");
+    setRunLogOpen(true);
     runTracker.showMessage(id);
   };
   const showRunMessage = useCallback((id: string) => showRunMessageRef.current(id), []);
@@ -1534,6 +1542,11 @@ export function App({
                   )}
                 </aside>
               </div>
+              <RunLog
+                session={runSession}
+                open={runLogOpen}
+                onToggle={() => setRunLogOpen((v) => !v)}
+              />
               <StatusBar actions={actions} />
               <Snackbar message={toast?.text ?? null} />
               {paletteOpen && (
