@@ -70,6 +70,17 @@ test.beforeAll(async () => {
       received.push(body);
       res.setHeader("content-type", "application/json");
       const wantsChange = body.includes("make it one sentence");
+      // Ask mode sends the explaining prompt and takes plain text back.
+      if (body.includes("You explain workflows")) {
+        res.end(
+          JSON.stringify({
+            choices: [
+              { message: { content: "The get step calls fetch_page and keeps what it returns." } },
+            ],
+          }),
+        );
+        return;
+      }
       res.end(
         JSON.stringify({
           choices: [{ message: { content: JSON.stringify(wantsChange ? CHANGE : PLAN) } }],
@@ -171,6 +182,21 @@ for (const size of [
       await expect(panel).toContainText("Undone");
       await expect(node(page, "workflow:summarize")).toHaveCount(0);
       expect(onDisk()).toBe(SPEC);
+    });
+
+    test("Ask mode answers a question about the workflow and changes nothing", async ({ page }) => {
+      const panel = page.getByTestId("assistant-panel");
+      await panel.getByRole("button", { name: "Ask", exact: true }).click();
+      await panel.getByLabel("Ask about this workflow").fill("what does the get step do?");
+      await panel.getByLabel("Ask about this workflow").press("Enter");
+      await expect(panel.getByLabel("Answer")).toContainText("The get step calls fetch_page");
+      await expect(panel.getByLabel("Proposed plan")).toHaveCount(0);
+      await expect(panel.getByRole("button", { name: "Apply to canvas" })).toHaveCount(0);
+      await expect(page.getByTestId("card-mark")).toHaveCount(0);
+      await expect(page.getByTestId("card-new")).toHaveCount(0);
+      expect(onDisk()).toBe(SPEC);
+      expect(received[0]).toContain("what does the get step do?");
+      await expectClean(page, "the assistant with an answer");
     });
 
     test("Discard takes the drawn plan off the canvas and leaves the file alone", async ({

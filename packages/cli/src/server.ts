@@ -16,6 +16,7 @@ import { isFirstPartyId, type RunEvent } from "@kampong/engine";
 import { SpecFileWatcher, type FileWatchEvent } from "./file-watcher.js";
 import { SpecStore, revisionOf } from "./spec-store.js";
 import {
+  answerQuestion,
   assistantHost,
   proposeEdits,
   resolveAssistantConfig,
@@ -373,64 +374,83 @@ export function createDevServer({
       : { configured: false, code: resolved.code, error: resolved.error };
   });
 
-  app.post<{ Body: { prompt?: unknown } }>("/api/assistant", async (request, reply) => {
-    const prompt = request.body?.prompt;
-    if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > 4000) {
-      reply.code(400);
-      return { success: false, error: "Say what you want in 1 to 4000 characters." };
-    }
-    let source: string;
-    try {
-      source = await store.readSource();
-    } catch (err) {
-      if (isNotFound(err)) {
+  app.post<{ Body: { prompt?: unknown; mode?: unknown } }>(
+    "/api/assistant",
+    async (request, reply) => {
+      const prompt = request.body?.prompt;
+      const mode = request.body?.mode ?? "build";
+      if (mode !== "build" && mode !== "ask") {
+        reply.code(400);
+        return { success: false, error: 'mode must be "build" or "ask".' };
+      }
+      if (typeof prompt !== "string" || prompt.trim() === "" || prompt.length > 4000) {
+        reply.code(400);
+        return { success: false, error: "Say what you want in 1 to 4000 characters." };
+      }
+      let source: string;
+      try {
+        source = await store.readSource();
+      } catch (err) {
+        if (isNotFound(err)) {
+          reply.code(409);
+          return { success: false, error: "There is no workflow yet. Start one first." };
+        }
+        const { status, body } = specFileErrorResponse(err, specPath);
+        reply.code(status);
+        return body;
+      }
+      if (isBlankSource(source)) {
         reply.code(409);
         return { success: false, error: "There is no workflow yet. Start one first." };
       }
-      const { status, body } = specFileErrorResponse(err, specPath);
-      reply.code(status);
-      return body;
-    }
-    if (isBlankSource(source)) {
-      reply.code(409);
-      return { success: false, error: "There is no workflow yet. Start one first." };
-    }
-    const loaded = parseSpec(source);
-    if (!loaded.success || !loaded.spec) {
+      const loaded = parseSpec(source);
+      if (!loaded.success || !loaded.spec) {
+        reply.code(422);
+        return { success: false, errors: loaded.errors };
+      }
+      const resolved = resolveAssistantConfig(assistantEnv(), loaded.spec);
+      if (!resolved.ok) {
+        reply.code(503);
+        return { success: false, code: resolved.code, error: resolved.error };
+      }
+      // Ask mode (KAM-251): an answer in words. It builds no plan and returns no ops, whatever the model says.
+      if (mode === "ask") {
+        const asked = await answerQuestion(
+          resolved.config,
+          { prompt: prompt.trim(), source },
+          assistantFetch,
+        );
+        if (asked.success) return { success: true, mode: "ask", answer: asked.answer };
+        reply.code(502);
+        return { success: false, code: "unavailable", error: asked.error };
+      }
+      const catalog = await componentCatalogFor(specPath);
+      const result = await proposeEdits(
+        resolved.config,
+        {
+          prompt: prompt.trim(),
+          source,
+          components: catalog.components.map((c) => ({
+            use: `${c.id}@${c.version}`,
+            ops: Object.keys(c.ops),
+          })),
+        },
+        assistantFetch,
+      );
+      if (result.success) return { ...result, mode: "build", revision: revisionOf(source) };
+      if (result.kind === "unavailable") {
+        reply.code(502);
+        return { success: false, code: "unavailable", error: result.error };
+      }
       reply.code(422);
-      return { success: false, errors: loaded.errors };
-    }
-    const resolved = resolveAssistantConfig(assistantEnv(), loaded.spec);
-    if (!resolved.ok) {
-      reply.code(503);
-      return { success: false, code: resolved.code, error: resolved.error };
-    }
-    const catalog = await componentCatalogFor(specPath);
-    const result = await proposeEdits(
-      resolved.config,
-      {
-        prompt: prompt.trim(),
-        source,
-        components: catalog.components.map((c) => ({
-          use: `${c.id}@${c.version}`,
-          ops: Object.keys(c.ops),
-        })),
-      },
-      assistantFetch,
-    );
-    if (result.success) return { ...result, revision: revisionOf(source) };
-    if (result.kind === "unavailable") {
-      reply.code(502);
-      return { success: false, code: "unavailable", error: result.error };
-    }
-    reply.code(422);
-    return {
-      success: false,
-      code: "invalid",
-      error: "The assistant's plan could not be applied, so nothing was changed.",
-      errors: result.errors,
-    };
-  });
+      return {
+        success: false,
+        code: "invalid",
+        error: "The assistant's plan could not be applied, so nothing was changed.",
+        errors: result.errors,
+      };
+    },
+  );
 
   // KAM-196: "Start blank". Writes the minimal valid spec (with the schema pragma) when there is no spec yet or
   // the file is empty, and refuses to touch one that has content. Choosing a template (KAM-216) is the next route.

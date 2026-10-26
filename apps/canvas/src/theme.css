@@ -3210,3 +3210,13 @@ select.md3-text-field {
 .md3-node--preview-remove .md3-node__title {
   text-decoration: line-through;
 }
+
+/* Build and Ask (KAM-251): a pair of buttons above the box, the chosen one filled in. */
+.kg-chat__modes {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.kg-chat__answer {
+  background: var(--md-sys-color-surface-container-high);
+}

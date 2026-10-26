@@ -97,6 +97,7 @@ describe("assistant endpoint", () => {
     const body = res.json();
     expect(body).toMatchObject({
       success: true,
+      mode: "build",
       summary: "Adds a summary step.",
       attempts: 1,
       diff: { added: [{ kind: "step", name: "summarize" }], changed: [], removed: [] },
@@ -170,6 +171,50 @@ describe("assistant endpoint", () => {
     expect(refused.json().error).toContain("401");
     // Two asks, two calls, both to OpenRouter: nothing fell back to the OpenAI key.
     expect(calls.map((c) => new URL(c.url).host)).toEqual(["openrouter.ai", "openrouter.ai"]);
+  });
+
+  it("answers a question in Ask mode with text, never ops, and writes nothing (KAM-251)", async () => {
+    await start(OPENROUTER);
+    // Even a model that answers with a plan gets it shown as words: ask mode builds no plan.
+    replies.push(plan([ADD_SUMMARY]));
+    const res = await app!.inject({
+      method: "POST",
+      url: "/api/assistant",
+      payload: { prompt: "what does get do?", mode: "ask" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toMatchObject({ success: true, mode: "ask" });
+    expect(typeof body.answer).toBe("string");
+    expect(body.ops).toBeUndefined();
+    expect(body.diff).toBeUndefined();
+    expect(onDisk()).toBe(SPEC);
+    // What went out is the question and the workflow, under the explaining prompt, not the edit format.
+    expect(calls).toHaveLength(1);
+    const sent = JSON.parse(calls[0]!.body) as { messages: { role: string; content: string }[] };
+    expect(sent.messages[0]!.content).toContain("You cannot change the workflow here");
+    expect(sent.messages[0]!.content).not.toContain("add_step");
+    expect(sent.messages[1]!.content).toContain("what does get do?");
+    expect(sent.messages[1]!.content).toContain("fetch_page");
+    expect(calls[0]!.body).not.toContain(KEY);
+  });
+
+  it("fails visibly in Ask mode too, and refuses an unknown mode", async () => {
+    await start(OPENROUTER);
+    replies.push(new Error("connect ECONNREFUSED"));
+    const down = await app!.inject({
+      method: "POST",
+      url: "/api/assistant",
+      payload: { prompt: "what is this?", mode: "ask" },
+    });
+    expect(down.statusCode).toBe(502);
+    expect(down.json()).toMatchObject({ success: false, code: "unavailable" });
+    const bad = await app!.inject({
+      method: "POST",
+      url: "/api/assistant",
+      payload: { prompt: "x", mode: "destroy" },
+    });
+    expect(bad.statusCode).toBe(400);
   });
 
   it("answers 503 when nothing is set up, and refuses an empty or oversized prompt", async () => {

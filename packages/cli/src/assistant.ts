@@ -245,6 +245,41 @@ export function buildSystemPrompt(components: { use: string; ops: string[] }[]):
   return `You edit workflows for Kampong Agents, an agent-workflow builder. A workflow is a YAML spec. The person describes what they want in plain words; you answer with edits to the spec, which they review before anything changes.\n\n${PLAN_FORMAT}\n\n${assistantCatalogue(components)}`;
 }
 
+const ASK_SYSTEM = `You explain workflows for Kampong Agents, an agent-workflow builder. A workflow is a YAML spec of a trigger, tools and steps; steps run in order and read earlier steps as {{ step.field }} or, in expressions, step.field. The person is not a programmer.
+
+Answer their question about the workflow below in plain words, briefly (a few sentences, or a short list). Say what a step does, what it reads and what it produces, and what would happen when the workflow runs. Name steps and tools as they are named in the file. If the answer is not in the workflow, say so rather than guessing. You cannot change the workflow here: do not write YAML, JSON or edits; if they want a change, tell them to switch to Build and ask for it.`;
+
+export type AskResult =
+  { success: true; answer: string } | { success: false; kind: "unavailable"; error: string };
+
+/** Ask mode (KAM-251): one question about the workflow, one text answer. It proposes no edits and writes nothing. */
+export async function answerQuestion(
+  config: AssistantConfig,
+  request: { prompt: string; source: string },
+  fetchImpl: FetchLike = fetch,
+): Promise<AskResult> {
+  try {
+    const answer = await chat(
+      config,
+      [
+        { role: "system", content: ASK_SYSTEM },
+        {
+          role: "user",
+          content: `Workflow:\n\`\`\`yaml\n${request.source}\n\`\`\`\n\nQuestion: ${request.prompt}`,
+        },
+      ],
+      fetchImpl,
+    );
+    return { success: true, answer: answer.trim() };
+  } catch (err) {
+    return {
+      success: false,
+      kind: "unavailable",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export interface AssistantRequest {
   prompt: string;
   /** The workflow file as it is now. */

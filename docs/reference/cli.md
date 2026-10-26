@@ -221,7 +221,12 @@ back as it was before that Apply (it refuses if the file has changed since, so i
 panel says where a request goes before your first one. It only appears where the server has an assistant (`kampong
 dev`, not the hosted app).
 
-`POST /api/assistant` with `{ "prompt": "..." }` returns `{ success, summary, ops, diff, source, revision }`. `ops`
+The panel has two modes. **Build** is what is described above. **Ask** answers a question about the workflow (what a
+step does, what it reads, what would happen) in plain words and changes nothing: no plan, no Apply, and the model is
+told it cannot edit. `POST /api/assistant` with `"mode": "ask"` returns `{ success, mode: "ask", answer }` and never
+`ops`.
+
+`POST /api/assistant` in Build mode with `{ "prompt": "..." }` returns `{ success, summary, ops, diff, source, revision }`. `ops`
 are the same operations `PUT /api/spec` takes (ADR-0055), checked first against the workflow on a copy, so a plan
 that would not load is never returned; `diff` lists the steps, tools and vars it adds, changes and removes. Nothing
 is written by asking. If the first plan does not apply, the endpoint is told why once and asked again. A call that
