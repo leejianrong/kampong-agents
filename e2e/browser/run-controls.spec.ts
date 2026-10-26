@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { openPanel } from "./harness/bars.js";
+import { openLoops, openPanel } from "./harness/bars.js";
 
 // KAM-219: the Run bar. Replay is the default when fixtures exist and needs no key; Run works with every panel
 // closed; a run that carried failed items on is a warning, not a success; the runs drawer keeps this session's
@@ -50,6 +50,7 @@ for (const size of [
     test.beforeEach(async ({ page }) => {
       await page.goto(URL);
       await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await openLoops(page);
     });
 
     test("runs in Replay from the bar with no panel open, and calls the result a warning", async ({

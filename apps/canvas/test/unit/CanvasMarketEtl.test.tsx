@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { parseSpec, specToGraph } from "@kampong/spec";
 import { Canvas } from "../../src/Canvas.js";
@@ -35,6 +35,10 @@ describe("the market-etl template on the canvas", () => {
     expect(screen.getByText("each_symbol")).toBeTruthy();
     expect(screen.getByText(/over vars\.symbols as symbol/)).toBeTruthy();
     expect(screen.getByText(/on_error continue/)).toBeTruthy();
+    // Ten steps are more than a loop shows by default (KAM-239): it opens as one card, and its button opens it.
+    expect(document.querySelectorAll(".md3-node--nested")).toHaveLength(0);
+    fireEvent.click(document.querySelector<HTMLElement>('[data-id="group:workflow:each_symbol"]')!);
+    expect(screen.getByTestId("loop-toggle")).toBeTruthy();
     const items = [...document.querySelectorAll(".md3-node--nested")].map((node) =>
       node.getAttribute("data-id")?.replace("workflow:", ""),
     );

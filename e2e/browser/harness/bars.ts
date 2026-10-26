@@ -49,3 +49,16 @@ export async function fitAll(page: Page): Promise<void> {
   await page.locator(".react-flow__controls-fitview").click();
   await page.waitForTimeout(400);
 }
+
+/**
+ * A loop of more than four steps opens collapsed (KAM-239), so its steps are not on the canvas. A spec that needs
+ * them opens every collapsed loop first, from the keyboard so the card need not be on screen.
+ */
+export async function openLoops(page: Page): Promise<void> {
+  const cards = page.locator('.react-flow__node[data-id^="group:"]');
+  while ((await cards.count()) > 0) {
+    await cards.first().focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+  }
+}

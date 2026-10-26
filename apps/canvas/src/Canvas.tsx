@@ -22,6 +22,16 @@ import {
 } from "./InsertEdge.js";
 import type { StepKind } from "./stepKinds.js";
 import { NodeCard } from "./nodeCard.js";
+import { CollapsedLoop, LoopGroupNode, type LoopGroupData } from "./loopGroupNode.js";
+import {
+  applyCollapse,
+  collapsedByDefault,
+  groupBox,
+  groupsAround,
+  isGroupId,
+  loopGroups,
+  type LoopGroup,
+} from "./loopGroups.js";
 import { STATUS_ICON, STATUS_LABEL, type NodeRunInfo } from "./runStatus.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
@@ -63,6 +73,7 @@ export interface CanvasProps {
 
 // Defined once so @xyflow/react does not see a new map on each render.
 const EDGE_TYPES = { insert: InsertEdge };
+const NODE_TYPES = { loopGroup: LoopGroupNode };
 
 const MARKER_ID = "insertion-marker";
 /**
@@ -164,7 +175,7 @@ function nodeIdOf(el: EventTarget): string | null {
 
 /** How a line's end reads aloud: the step's own name, "the trigger", the tool's name. */
 function edgeEnd(node: SpecNode | undefined, fallback: string): string {
-  if (!node) return fallback;
+  if (!node) return isGroupId(fallback) ? "the collapsed loop" : fallback;
   if (node.kind === "agent") return "the trigger";
   if (node.kind === "guardrails") return "the guardrails";
   return String(node.data.name ?? node.data.step ?? fallback);
@@ -197,6 +208,39 @@ export function Canvas({
   onShowRunMessage,
 }: CanvasProps) {
   const [openEdge, setOpenEdge] = useState<string | null>(null);
+  // KAM-239: loops the person has opened or closed, by the foreach step's node id; the rest follow their default.
+  const groups = useMemo(() => loopGroups(graph), [graph]);
+  const [shutBy, setShutBy] = useState<Record<string, boolean>>({});
+  const isShut = useCallback((g: LoopGroup) => shutBy[g.holder] ?? collapsedByDefault(g), [shutBy]);
+  const toggleLoop = useCallback(
+    (holder: string) =>
+      setShutBy((prev) => {
+        const g = groups.find((o) => o.holder === holder);
+        const now = prev[holder] ?? (g !== undefined && collapsedByDefault(g));
+        return { ...prev, [holder]: !now };
+      }),
+    [groups],
+  );
+  // A collapsed card's click and its Enter both arrive as a selection, and a click as a click too, so opening it
+  // is a set, not a flip.
+  const expandLoop = useCallback(
+    (holder: string) => setShutBy((prev) => ({ ...prev, [holder]: false })),
+    [],
+  );
+  // A step that is selected, focused or about to get a neighbour is never left hidden inside a closed loop.
+  const reveal = [selectedId, focus?.id, marker?.anchor].join("|");
+  useEffect(() => {
+    const wanted = [selectedId, focus?.id, marker?.anchor].flatMap((id) =>
+      id ? groupsAround(groups, id) : [],
+    );
+    const hidden = wanted.filter((g) => isShut(g));
+    if (hidden.length > 0) {
+      setShutBy((prev) => ({
+        ...prev,
+        ...Object.fromEntries(hidden.map((g) => [g.holder, false])),
+      }));
+    }
+  }, [reveal, groups]);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
@@ -235,6 +279,10 @@ export function Canvas({
   // change and expects it to be applied; without that the MiniMap, which draws from the nodes it is given, has no
   // size to draw (this is why an earlier try at a minimap came up blank).
   const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({});
+  const view = useMemo(
+    () => applyCollapse(graph, layout, groups, isShut),
+    [graph, layout, groups, isShut],
+  );
   // The focused node keeps its flash for a moment, then goes back to normal.
   const [flashed, setFlashed] = useState<{ id: string; nonce: number } | null>(null);
   useEffect(() => setFlashed(focus ?? null), [focus]);
@@ -286,21 +334,46 @@ export function Canvas({
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
   const fitViewOptions = useMemo(() => {
-    const run = graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
+    const run = view.graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
     return {
       padding: 0.15,
       minZoom: MIN_READABLE_ZOOM,
       maxZoom: 1,
       ...(run.length > FIT_HEAD && { nodes: run.slice(0, FIT_HEAD).map((n) => ({ id: n.id })) }),
     };
-  }, [graph]);
+  }, [view]);
+  const outlineOf = (g: LoopGroup): Node[] => {
+    const box = groupBox(g, view.layout, sizes);
+    if (box === undefined) return [];
+    return [
+      {
+        id: `outline:${g.holder}`,
+        type: "loopGroup",
+        position: { x: box.x, y: box.y },
+        width: box.width,
+        height: box.height,
+        measured: { width: box.width, height: box.height },
+        data: {
+          label: g.label,
+          steps: g.members.length,
+          onToggle: () => toggleLoop(g.holder),
+        } satisfies LoopGroupData,
+        zIndex: -1,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        focusable: false,
+        ariaLabel: `Loop ${g.label}, ${g.members.length} steps`,
+      },
+    ];
+  };
   const nodes: Node[] = useMemo(
     () => [
-      ...inTabOrder(graph.nodes).map((node) => {
+      ...inTabOrder(view.graph.nodes).flatMap((node) => {
         const run = runStatus?.[node.id];
-        return {
+        const card: Node = {
           id: node.id,
-          position: layout[node.id] ?? { x: 0, y: 0 },
+          position: view.layout[node.id] ?? { x: 0, y: 0 },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
           data: {
@@ -326,7 +399,22 @@ export function Canvas({
             run ? ` md3-node--run-${run.status}` : ""
           }`,
         };
+        // An open loop's outline follows its step in the Tab order, so its collapse button comes next.
+        const outline = view.open.filter((g) => g.holder === node.id).flatMap(outlineOf);
+        return [card, ...outline];
       }),
+      ...view.collapsed.map(({ group, position }): Node => ({
+        id: group.id,
+        position,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        data: { label: <CollapsedLoop label={group.label} steps={group.members.length} /> },
+        selectable: true,
+        draggable: false,
+        ...(sizes[group.id] !== undefined && { measured: sizes[group.id] }),
+        ariaLabel: `Loop ${group.label}, collapsed, ${group.members.length} steps. Press Enter to expand.`,
+        className: "md3-node md3-node--flow md3-node--collapsed-loop",
+      })),
       ...(marker
         ? [
             {
@@ -348,12 +436,12 @@ export function Canvas({
           ]
         : []),
     ],
-    [graph, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage],
+    [view, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage],
   );
 
   const edges: Edge[] = useMemo(() => {
-    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-    return graph.edges.map((edge): Edge => {
+    const byId = new Map(view.graph.nodes.map((n) => [n.id, n]));
+    return view.graph.edges.map((edge): Edge => {
       const into = edge.target.startsWith("workflow:") ? edge.target.slice("workflow:".length) : "";
       const insertable = onInsert !== undefined && into !== "";
       // A line is named by its steps' labels, not their internal ids (KAM-185).
@@ -370,7 +458,7 @@ export function Canvas({
         ariaLabel: insertable ? `${name}. Press Enter to insert a step before ${into}.` : name,
       };
     });
-  }, [graph, onInsert]);
+  }, [view, onInsert]);
 
   // Enter (or a click) on a line selects it; that opens its picker.
   const onEdgesChange = (changes: EdgeChange[]) => {
@@ -384,7 +472,9 @@ export function Canvas({
   const onNodesChange = (changes: NodeChange[]) => {
     const measured: Record<string, { width: number; height: number }> = {};
     for (const change of changes) {
-      if (change.type === "select" && change.selected && change.id !== MARKER_ID) {
+      if (change.type === "select" && change.selected && isGroupId(change.id)) {
+        expandLoop(change.id.slice("group:".length));
+      } else if (change.type === "select" && change.selected && change.id !== MARKER_ID) {
         onSelect?.(change.id);
       } else if (change.type === "dimensions" && change.dimensions) {
         const { width, height } = change.dimensions;
@@ -407,6 +497,7 @@ export function Canvas({
           nodes={nodes}
           edges={edges}
           edgeTypes={EDGE_TYPES}
+          nodeTypes={NODE_TYPES}
           fitView
           fitViewOptions={fitViewOptions}
           minZoom={0.1}
@@ -419,7 +510,8 @@ export function Canvas({
           onNodeMouseLeave={() => setHovered(null)}
           onNodeClick={(_, node) => {
             setOpenEdge(null);
-            if (node.id !== MARKER_ID) onSelect?.(node.id);
+            if (isGroupId(node.id)) expandLoop(node.id.slice("group:".length));
+            else if (node.id !== MARKER_ID && !node.id.startsWith("outline:")) onSelect?.(node.id);
           }}
           onPaneClick={() => {
             setOpenEdge(null);
@@ -431,7 +523,7 @@ export function Canvas({
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls fitViewOptions={{ padding: 0.15, minZoom: 0.05 }} />
-          {graph.nodes.length > MINIMAP_OVER && (
+          {view.graph.nodes.length > MINIMAP_OVER && (
             <MiniMap
               pannable
               zoomable

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { fitAll } from "./harness/bars.js";
+import { fitAll, openLoops } from "./harness/bars.js";
 
 // KAM-200: axe finds no critical, serious or moderate issue on the canvas or on any panel open over it, the page has
 // one main landmark and one h1, and Tab goes from the toolbar to the nodes in the order a run goes through them,
@@ -123,6 +123,7 @@ for (const size of [
     test("Tab reaches the toolbar first, then the nodes in run order, and does not stop on the lines", async ({
       page,
     }) => {
+      await openLoops(page);
       await page.locator("body").click({ position: { x: 1, y: 1 } });
       const stops: string[] = [];
       for (let i = 0; i < 40; i++) {
