@@ -38,3 +38,6 @@ export * from "./step-edit.js";
 export * from "./upgrade.js";
 export * from "./tool-edit.js";
 export * from "./add-targets.js";
+
+export * from "./assistant.js";
+export * from "./assistant-catalogue.js";

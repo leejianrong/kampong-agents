@@ -6,6 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useUpdateNodeInternals,
   type EdgeChange,
   type NodeChange,
   type Edge,
@@ -174,6 +175,23 @@ function FocusNode({
       clearTimeout(done);
     };
   }, [flow, focus.id, focus.nonce, onDone]);
+  return null;
+}
+
+/**
+ * The canvas owns the nodes, so it hands React Flow each node's measured size back (`measured`). React Flow drops a
+ * node's port positions whenever that size differs from the one it has, and re-measures them only when the element
+ * resizes; if the two already agree, nothing resizes and the node is left with no ports, so no line to or from it is
+ * drawn. Asking for a re-measure after the sizes change closes that gap. Rendered inside <ReactFlow>.
+ */
+function KeepPortsMeasured({ sizes }: { sizes: Record<string, unknown> }) {
+  const update = useUpdateNodeInternals();
+  useEffect(() => {
+    // A DOM with no layout (a unit test's) has nothing to measure, and React Flow's re-measure needs DOMMatrix.
+    if (typeof window.DOMMatrixReadOnly === "undefined") return;
+    const frame = requestAnimationFrame(() => update(Object.keys(sizes)));
+    return () => cancelAnimationFrame(frame);
+  }, [sizes, update]);
   return null;
 }
 
@@ -591,6 +609,7 @@ export function Canvas({
               nodeStrokeWidth={3}
             />
           )}
+          <KeepPortsMeasured sizes={sizes} />
           {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
         </ReactFlow>
       </EdgeInsertContext.Provider>

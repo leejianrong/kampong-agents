@@ -140,7 +140,8 @@ copies nothing; copy the folder yourself, or choose the template in `kampong dev
 Checks a spec before you run it: that its components resolve and are pinned, what permissions they ask
 for, and that each credential's environment variable is set (names only, never values). A webhook trigger that
 checks a bearer token or signature also needs its `secret_env` set, or it refuses every request; doctor warns when
-it is not.
+it is not. If the [workflow assistant](#the-workflow-assistant) is set up, doctor names where it would send a
+prompt; with `--probe` it also asks that endpoint for its model list, which sends the key.
 
 ```sh
 kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--probe] [--json]
@@ -149,7 +150,7 @@ kampong doctor <spec>.yaml [--tools replay] [--fixtures <dir>] [--online] [--pro
 | Option             | Description                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------- |
 | `--online`         | Also open a TCP connection to each host the spec's components, tools and injected URLs may reach.   |
-| `--probe`          | Check each credential is accepted, by calling the read-only probe op its component declares.        |
+| `--probe`          | Check each credential is accepted, by calling the read-only probe op its component declares, and the assistant's endpoint. |
 | `--tools replay`   | Check fixtures as `kampong run --tools replay` would use them, including that model answers exist.  |
 | `--fixtures <dir>` | Fixture directory (default `<spec dir>/.kampong/fixtures`).                                         |
 | `--json`           | One JSON object: `{ ok, checks: [{ status, area, message }] }`.                                     |
@@ -185,6 +186,32 @@ kampong export <spec>.yaml <output-dir> [options]
 | `-h`, `--help`    |         | Show help.                                                          |
 
 Run the result with `cd <output-dir> && npm install && npm start`.
+
+## The workflow assistant
+
+`kampong dev` can turn a plain-language request into edits to the open workflow (ADR-0060). It talks to any
+OpenAI-compatible chat endpoint. It is off until one is set up, and it sends nothing until you ask it something:
+a request sends your prompt and the workflow file (which holds `${ENV_NAME}` placeholders, never values) to that
+endpoint, and nothing else.
+
+The endpoint is the first of these that is set:
+
+| Setting                                                                 | Endpoint                                         |
+| ----------------------------------------------------------------------- | ------------------------------------------------ |
+| `KAMPONG_ASSISTANT_BASE_URL`, `KAMPONG_ASSISTANT_API_KEY` (optional)    | Any OpenAI-compatible server, such as a local one |
+| `OPENROUTER_API_KEY`                                                    | OpenRouter                                       |
+| `OPENAI_API_KEY` (and `OPENAI_BASE_URL`)                                | OpenAI or a compatible server                    |
+| The workflow's own `model` block (OpenRouter, OpenAI, or local `ollama`) | As that block says                               |
+
+The model is `KAMPONG_ASSISTANT_MODEL`, or else the workflow's `model.name`. A direct Anthropic key is not used:
+set OpenRouter, or an endpoint of your own. Values can be saved in the Secrets panel instead of the environment.
+
+`POST /api/assistant` with `{ "prompt": "..." }` returns `{ success, summary, ops, diff, source, revision }`. `ops`
+are the same operations `PUT /api/spec` takes (ADR-0055), checked first against the workflow on a copy, so a plan
+that would not load is never returned; `diff` lists the steps, tools and vars it adds, changes and removes. Nothing
+is written by asking. If the first plan does not apply, the endpoint is told why once and asked again. A call that
+fails (`502`), a missing set-up (`503`) and a plan that stays invalid (`422`) are errors you see: no other provider
+is tried. `GET /api/assistant` says where a prompt would go, with no key.
 
 ## Exit codes
 
