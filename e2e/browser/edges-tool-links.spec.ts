@@ -3,7 +3,7 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { fitAll } from "./harness/bars.js";
+import { fitAll, openLoops } from "./harness/bars.js";
 
 // KAM-185: in the market-etl layout no line passes behind a node, a tool and the steps that call it light each
 // other up on hover and on keyboard focus, and a line is named by its steps' labels, not internal ids. Real browser
@@ -43,10 +43,14 @@ test.afterAll(() => {
 
 const node = (page: Page, id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
 
-/** Every line's sampled points, in screen pixels, against every node box but the line's own two ends. */
+/** Every line's sampled points, in screen pixels, against every card (not a loop's outline, which lines enter) but the line's own two ends. */
 async function crossings(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const boxes = [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((n) => ({
+    const boxes = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".react-flow__node:not(.react-flow__node-loopGroup)",
+      ),
+    ].map((n) => ({
       id: n.dataset.id!,
       r: n.getBoundingClientRect(),
     }));
@@ -82,6 +86,7 @@ for (const size of [
       await page.goto(URL);
       await expect(node(page, "workflow:report")).toBeAttached();
       await expect(page.locator(".react-flow__edge")).not.toHaveCount(0);
+      await openLoops(page);
     });
 
     test("no line passes behind a node in the market-etl layout", async ({ page }) => {

@@ -41,7 +41,7 @@ function obstaclesSignature(skip: string[]) {
   }): string => {
     const out: string[] = [];
     for (const [id, node] of state.nodeLookup) {
-      if (skip.includes(id)) continue;
+      if (skip.includes(id) || id.startsWith("outline:")) continue;
       const { x, y } = node.internals.positionAbsolute;
       out.push(`${x},${y},${node.measured.width ?? 180},${node.measured.height ?? 60}`);
     }

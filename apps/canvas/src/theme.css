@@ -2804,3 +2804,92 @@ select.md3-text-field {
   flex: 1 0 100%;
   margin: 0;
 }
+
+/* A loop drawn as a group (KAM-239): a dashed rounded outline behind its steps, with a header. The outline lets
+   clicks through to the lines and steps; only the header's button takes them. */
+.md3-flow-wrap .react-flow__node-loopGroup {
+  pointer-events: none !important;
+}
+
+.kg-group {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 2px dashed var(--md-sys-color-outline);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--kg-flow-bg) 28%, transparent);
+}
+
+.kg-group__header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 44px;
+  padding: 0 0.75rem 0 1rem;
+  color: var(--md-sys-color-on-surface);
+}
+
+.kg-group__tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--kg-flow-bg);
+  color: var(--kg-flow-fg);
+}
+
+.kg-group__tile svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.kg-group__title {
+  font-size: var(--md-type-label-large-size);
+  font-weight: 600;
+}
+
+.kg-group__count {
+  margin-left: auto;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-type-body-small-size);
+}
+
+.kg-group__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 50%;
+  background: var(--md-sys-color-surface-container-lowest, #fff);
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.kg-group__toggle:hover {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 8%,
+    var(--md-sys-color-surface-container-lowest, #fff)
+  );
+}
+
+.kg-group__toggle:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.md3-node--collapsed-loop {
+  border-style: dashed !important;
+}

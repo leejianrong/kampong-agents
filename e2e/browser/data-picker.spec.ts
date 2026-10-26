@@ -3,6 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { fitAll, openLoops } from "./harness/bars.js";
 
 // KAM-218: "Insert data" beside an expression or prompt field lists what the field may read, with the values the
 // last run gave. It works with no key (the template's fixtures answer a Replay), and it never saves anything itself:
@@ -98,6 +99,8 @@ for (const size of [
     });
 
     test("a prompt field inserts a reference inside braces", async ({ page }) => {
+      await openLoops(page);
+      await fitAll(page);
       const panel = await openStep(page, "workflow:summarize", "Step summarize");
       const prompt = panel.getByLabel("What should the model do?");
       await prompt.fill("Summarize ");

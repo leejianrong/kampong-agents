@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { openPanel } from "./harness/bars.js";
+import { openLoops, openPanel } from "./harness/bars.js";
 
 // KAM-190: nodes show what the run did to them, live, in replay and live mode, with an icon and a word. A failed
 // node links to its message in Test Run, and the next run clears the marks. The spec and the saved layout are
@@ -73,6 +73,7 @@ const badge = (page: Page, node: RegExp) =>
 async function openCanvas(page: Page, port: number) {
   await page.goto(`http://127.0.0.1:${port}`);
   await expect(page.locator(".react-flow__node").first()).toBeVisible();
+  await openLoops(page);
   await openPanel(page, "Test Run");
 }
 
