@@ -1,5 +1,6 @@
 import type { RunEventMessage, RunState } from "./api.js";
 import { failedItems } from "./runErrors.js";
+import { missingSecretNames } from "./secretNames.js";
 
 // What a run did to each step, read off the run's event stream (KAM-190). The canvas draws it on the nodes, and
 // the run bar (KAM-219) and the data picker (KAM-218) read the same record: each step's status, its last output
@@ -18,6 +19,8 @@ export interface NodeRunInfo {
   durationMs?: number;
   /** Inside a foreach: how many times the step ran. */
   runs?: number;
+  /** Inside a foreach: how many of those runs failed. */
+  failures?: number;
 }
 
 interface StepEntry {
@@ -136,7 +139,12 @@ export function deriveNodeStatuses(
     const best = PRIORITY.find((s) => infos.some((i) => i.status === s))!;
     const chosen = infos.filter((i) => i.status === best);
     const last = chosen[chosen.length - 1]!;
-    result[id] = { ...last, ...(infos.length > 1 && { runs: infos.length }) };
+    const failures = infos.filter((i) => i.status === "failed").length;
+    result[id] = {
+      ...last,
+      ...(infos.length > 1 && { runs: infos.length }),
+      ...(infos.length > 1 && failures > 0 && { failures }),
+    };
   }
   return result;
 }
@@ -149,6 +157,29 @@ export const STATUS_LABEL: Record<NodeRunStatus, string> = {
   failed: "Failed",
   skipped: "Skipped",
 };
+
+/**
+ * What the pill on a card says (KAM-242): "Done", "Failed" or, for a step that ran for several items, "2 failed";
+ * "Needs key" when the reason is a credential that is not set, since the fix is different from a bug.
+ */
+export function pillText(info: NodeRunInfo): string {
+  if (info.status === "passed") return "Done";
+  if (info.status === "failed") {
+    if (missingSecretNames(info.message).length > 0) return "Needs key";
+    return info.failures !== undefined ? `${info.failures} failed` : "Failed";
+  }
+  return STATUS_LABEL[info.status];
+}
+
+/** The first line of a failure's reason, short enough for a card's summary line; the whole text is its tooltip. */
+export function reasonLine(message: string | undefined): string | undefined {
+  const line = message
+    ?.split("\n")
+    .find((l) => l.trim() !== "")
+    ?.trim();
+  if (!line) return undefined;
+  return line.length > 90 ? `${line.slice(0, 89)}…` : line;
+}
 
 /** A glyph for each status, drawn with the label (hidden from a screen reader: the label says it). */
 export const STATUS_ICON: Record<NodeRunStatus, string> = {
