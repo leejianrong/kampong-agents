@@ -41,3 +41,4 @@ export * from "./add-targets.js";
 
 export * from "./assistant.js";
 export * from "./assistant-catalogue.js";
+export * from "./assistant-preview.js";

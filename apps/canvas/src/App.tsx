@@ -18,6 +18,8 @@ import {
   type Guardrails,
   type PatchOp,
   type Place,
+  parseSpec,
+  planPreview,
   type SpecVar,
   type Tool,
   type Trigger,
@@ -30,6 +32,7 @@ import {
   ApiError,
   createApiClient,
   type ApiClient,
+  type AssistantDiffDto,
   type AssistantStatus,
   type SecretStatusDto,
   type SpecErrorDto,
@@ -191,6 +194,10 @@ export function App({
   const [autoPrompt, setAutoPrompt] = useState<{ text: string; nonce: number } | undefined>();
   const [emptyAssistant, setEmptyAssistant] = useState<AssistantStatus | undefined>();
   const [newNodes, setNewNodes] = useState<string[]>([]);
+  // KAM-206: the plan waiting in the assistant's panel, drawn on the canvas before it is applied.
+  const [planOnShow, setPlanOnShow] = useState<{ source: string; diff: AssistantDiffDto } | null>(
+    null,
+  );
   const [pending, setPending] = useState<
     | { select: string | null }
     | { form: OpenForm | null; drop?: OpenForm }
@@ -483,6 +490,19 @@ export function App({
   }
 
   const graph = useMemo(() => (spec ? specToGraph(spec) : { nodes: [], edges: [] }), [spec]);
+  // KAM-206: with a plan waiting, the canvas draws the workflow as it would be, plus what the plan removes.
+  const planView = useMemo(() => {
+    if (!planOnShow || !spec) return null;
+    const proposed = parseSpec(planOnShow.source);
+    return proposed.success && proposed.spec
+      ? planPreview(spec, proposed.spec, planOnShow.diff)
+      : null;
+  }, [planOnShow, spec]);
+  // The first thing the plan touches is brought into view when it is drawn.
+  useEffect(() => {
+    const first = planView ? Object.keys(planView.marks)[0] : undefined;
+    if (first !== undefined) setFocus({ id: first, nonce: Date.now() });
+  }, [planView]);
   // KAM-190: the run on screen, read off its event stream by the Test Run panel and drawn on the nodes.
   const runTracker = useRunTrackerStore();
   const runStatus = useMemo(
@@ -1169,6 +1189,7 @@ export function App({
                         api={api}
                         source={source}
                         onChanged={refresh}
+                        onPreview={setPlanOnShow}
                         onMarkNew={(ids) => {
                           setNewNodes(ids);
                           // Bring the first new card into view; the canvas waits for it to arrive.
@@ -1195,19 +1216,20 @@ export function App({
                     )}
                     {emptyKind === null ? (
                       <Canvas
-                        graph={graph}
-                        layout={layout}
-                        marker={marker}
+                        graph={planView ? planView.graph : graph}
+                        layout={planView ? planView.layout : layout}
+                        marker={planView ? undefined : marker}
                         focus={focus}
-                        selectedId={selected}
-                        onSelect={requestSelect}
-                        onPaneClick={() => requestSelect(null)}
+                        selectedId={planView ? null : selected}
+                        {...(!planView && { onSelect: requestSelect })}
+                        {...(!planView && { onPaneClick: () => requestSelect(null) })}
                         version={spec?.version}
-                        onInsert={spec ? insertFromEdge : undefined}
-                        runStatus={runStatus}
+                        onInsert={spec && !planView ? insertFromEdge : undefined}
+                        runStatus={planView ? undefined : runStatus}
                         onShowRunMessage={showRunMessage}
                         brands={componentBrands}
-                        markedNew={newNodes}
+                        markedNew={planView ? undefined : newNodes}
+                        {...(planView && { marks: planView.marks })}
                       />
                     ) : (
                       <EmptyState

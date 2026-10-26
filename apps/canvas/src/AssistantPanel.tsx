@@ -21,6 +21,11 @@ export interface AssistantPanelProps {
   onChanged: () => Promise<void>;
   /** The node ids the last apply added, for the canvas to mark New; empty clears them. */
   onMarkNew: (ids: string[]) => void;
+  /**
+   * The plan waiting for a decision, or null: the canvas draws what it would add, change and remove (KAM-206).
+   * Null as soon as it is applied, discarded, replaced by a new request, or the panel is put away.
+   */
+  onPreview?: (plan: { source: string; diff: AssistantDiffDto } | null) => void;
   /** Back to the step list. */
   onClose: () => void;
   hidden?: boolean;
@@ -112,6 +117,7 @@ export function AssistantPanel({
   onChanged,
   onMarkNew,
   onClose,
+  onPreview,
   hidden = false,
   initialPrompt,
 }: AssistantPanelProps) {
@@ -164,6 +170,12 @@ export function AssistantPanel({
     setText("");
     setBusy(true);
     onMarkNew([]);
+    // A plan still waiting is set aside by the next request: only the newest is on the canvas.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.kind === "plan" && m.state === "pending" ? { ...m, state: "discarded" } : m,
+      ),
+    );
     add({ kind: "user", text: prompt });
     remember();
     setShowNotice(false);
@@ -262,6 +274,17 @@ export function AssistantPanel({
 
   const configured = status?.configured === true;
 
+  // The newest plan, while it is still waiting, is what the canvas previews.
+  const waiting = [...messages].reverse().find((m) => m.kind === "plan" && m.state === "pending");
+  const waitingPlan = waiting?.kind === "plan" ? waiting.plan : null;
+  useEffect(() => {
+    onPreview?.(
+      hidden || !waitingPlan ? null : { source: waitingPlan.source, diff: waitingPlan.diff },
+    );
+    // The callback is the app's own and changes each render; what matters is which plan is waiting.
+  }, [waitingPlan, hidden]);
+  useEffect(() => () => onPreview?.(null), []);
+
   // The empty state hands over what the person described; it is sent once, as soon as the endpoint is known.
   const sentInitial = useRef(0);
   useEffect(() => {
@@ -356,7 +379,10 @@ export function AssistantPanel({
               data-state={m.state}
             >
               <p>{m.plan.summary}</p>
-              <p className="kg-chat__plan-count">Plan · {plural(n, "change")}</p>
+              <p className="kg-chat__plan-count">
+                Plan · {plural(n, "change")}
+                {m.state === "pending" && " · shown on the canvas"}
+              </p>
               <DiffRows diff={m.plan.diff} />
               {m.state === "pending" && (
                 <div className="kg-chat__actions">

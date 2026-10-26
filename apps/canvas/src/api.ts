@@ -236,6 +236,8 @@ export type AssistantAnswer =
       diff: AssistantDiffDto;
       /** The revision the plan was made against; sending it back makes applying refuse if the file changed. */
       revision: string;
+      /** The workflow file as it would be after the plan, for drawing a preview of it (KAM-206). */
+      source: string;
     }
   | { success: false; code: string; error: string; errors?: string[] };
 

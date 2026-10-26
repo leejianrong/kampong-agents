@@ -39,6 +39,22 @@ const PLAN = {
   ],
 };
 
+// A follow-up that rewrites the step the first plan added: shown as a change, not as another addition.
+const CHANGE = {
+  summary: "Makes the summary one sentence.",
+  edits: [
+    {
+      kind: "replace_step",
+      step: "summarize",
+      with: {
+        step: "summarize",
+        action: "summarize_page",
+        query: "One sentence on {{ get.body }}",
+      },
+    },
+  ],
+};
+
 let server: ChildProcess;
 let llm: Server;
 let dir: string;
@@ -53,7 +69,12 @@ test.beforeAll(async () => {
     req.on("end", () => {
       received.push(body);
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(PLAN) } }] }));
+      const wantsChange = body.includes("make it one sentence");
+      res.end(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(wantsChange ? CHANGE : PLAN) } }],
+        }),
+      );
     });
   });
   await new Promise<void>((resolve) => llm.listen(LLM_PORT, "127.0.0.1", resolve));
@@ -128,15 +149,19 @@ for (const size of [
       await expect(plan).toContainText("summarize");
 
       // Asking changed nothing: not the canvas, not the file; and what went out holds the workflow and the prompt.
-      await expect(node(page, "workflow:summarize")).toHaveCount(0);
       expect(onDisk()).toBe(SPEC);
       expect(received).toHaveLength(1);
       expect(received[0]).toContain("fetch_page");
       expect(received[0]).toContain("summarize the page after fetching it");
       await expectClean(page, "the assistant with a plan");
 
+      // ...but it is drawn on the canvas, marked in words, until it is decided: the step it adds, not yet saved.
+      await expect(node(page, "workflow:summarize").getByTestId("card-mark")).toHaveText("Add");
+      await expect(node(page, "workflow:summarize").getByTestId("card-new")).toHaveCount(0);
+
       await panel.getByRole("button", { name: "Apply to canvas" }).click();
       await expect(panel).toContainText("Applied: 1 change");
+      await expect(node(page, "workflow:summarize").getByTestId("card-mark")).toHaveCount(0);
       await expect(node(page, "workflow:summarize")).toBeVisible();
       await expect(node(page, "workflow:summarize").getByTestId("card-new")).toHaveText("New");
       expect(onDisk()).toContain("summarize_page");
@@ -146,6 +171,50 @@ for (const size of [
       await expect(panel).toContainText("Undone");
       await expect(node(page, "workflow:summarize")).toHaveCount(0);
       expect(onDisk()).toBe(SPEC);
+    });
+
+    test("Discard takes the drawn plan off the canvas and leaves the file alone", async ({
+      page,
+    }) => {
+      const panel = page.getByTestId("assistant-panel");
+      await panel.getByLabel("Describe a change").fill("summarize the page after fetching it");
+      await panel.getByLabel("Describe a change").press("Enter");
+      await expect(node(page, "workflow:summarize").getByTestId("card-mark")).toHaveText("Add");
+      await panel.getByRole("button", { name: "Discard" }).click();
+      await expect(node(page, "workflow:summarize")).toHaveCount(0);
+      expect(onDisk()).toBe(SPEC);
+    });
+
+    test("a follow-up shows as a change before it applies, and Undo restores the earlier workflow", async ({
+      page,
+    }) => {
+      const panel = page.getByTestId("assistant-panel");
+      const ask = async (text: string) => {
+        await panel.getByLabel("Describe a change").fill(text);
+        await panel.getByLabel("Describe a change").press("Enter");
+      };
+      await ask("summarize the page after fetching it");
+      await panel.getByRole("button", { name: "Apply to canvas" }).click();
+      await expect(panel).toContainText("Applied");
+      const afterFirst = onDisk();
+      expect(afterFirst).toContain("Summarize {{ get.body }}");
+
+      await ask("make it one sentence");
+      await expect(panel.getByLabel("Proposed plan").last()).toContainText("one sentence");
+      await expect(node(page, "workflow:summarize").getByTestId("card-mark")).toHaveText("Change");
+      // The other steps carry no mark, and the file is still the first apply's.
+      await expect(node(page, "workflow:get").getByTestId("card-mark")).toHaveCount(0);
+      expect(onDisk()).toBe(afterFirst);
+
+      const newest = panel.getByLabel("Proposed plan").last();
+      await newest.getByRole("button", { name: "Apply to canvas" }).click();
+      await expect(newest).toContainText("Applied");
+      expect(onDisk()).toContain("One sentence on");
+
+      // Undo on the newest plan; the first plan's own Undo would now (rightly) refuse, since the file has moved on.
+      await newest.getByRole("button", { name: "Undo" }).click();
+      await expect(newest).toContainText("Undone");
+      expect(onDisk()).toBe(afterFirst);
     });
 
     test("fits: no sideways scroll with the panel open, and the form stays in view", async ({

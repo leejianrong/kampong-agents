@@ -3166,3 +3166,47 @@ select.md3-text-field {
   line-height: 1.25;
   color: var(--md-sys-color-on-surface-variant);
 }
+
+/* A plan on show (KAM-206): what it would add, change and remove, drawn on the canvas before anything is applied.
+   The word on the card says the same as the colour. */
+.kg-card__mark {
+  position: absolute;
+  top: -0.8rem;
+  left: 0.5rem;
+  z-index: 1;
+  padding: 0.0625rem 0.5rem;
+  border-radius: var(--md-shape-corner-full);
+  border: 1px solid currentcolor;
+  background: var(--md-sys-color-surface);
+  font-size: var(--md-type-label-small-size, 0.6875rem);
+  font-weight: 600;
+}
+
+.kg-card__mark--add {
+  color: var(--md-sys-color-primary);
+}
+
+.kg-card__mark--change {
+  color: var(--kg-approval-fg);
+}
+
+.kg-card__mark--remove {
+  color: var(--md-sys-color-error);
+}
+
+.md3-node--preview-add {
+  border: 2px dashed var(--md-sys-color-primary) !important;
+}
+
+.md3-node--preview-change {
+  border: 2px solid var(--kg-approval-fg) !important;
+}
+
+.md3-node--preview-remove {
+  border: 2px dashed var(--md-sys-color-error) !important;
+  opacity: 0.65;
+}
+
+.md3-node--preview-remove .md3-node__title {
+  text-decoration: line-through;
+}
