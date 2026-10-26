@@ -71,6 +71,14 @@ describe("parseComponentManifest -- valid manifests", () => {
     expect(result.manifest?.ops.post_message?.effect).toBe("write");
   });
 
+  it("accepts a brand: a letter or two on a hex colour (KAM-247)", () => {
+    const result = parseComponentManifest(
+      SLACK_MANIFEST.replace("kind: rest", 'kind: rest\nbrand: { label: "S", color: "#4A154B" }'),
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.manifest?.brand).toEqual({ label: "S", color: "#4A154B" });
+  });
+
   it("accepts a module manifest", () => {
     const result = parseComponentManifest(MODULE_MANIFEST);
 
@@ -122,6 +130,14 @@ describe("parseComponentManifest -- rejects", () => {
     expect(bad((s) => s.replace("kampong/slack", "Slack")).success).toBe(false);
     expect(bad((s) => s.replace("version: 0.1.0", 'version: "^0.1.0"')).success).toBe(false);
     expect(bad((s) => s.replace("version: 0.1.0", "version: 1.0")).success).toBe(false);
+  });
+
+  it("a brand that is not a short label on a hex colour", () => {
+    const withBrand = (brand: string) =>
+      bad((s) => s.replace("kind: rest", `kind: rest\nbrand: ${brand}`));
+    expect(withBrand('{ label: "Slack", color: "#4A154B" }').success).toBe(false);
+    expect(withBrand('{ label: "S", color: "purple" }').success).toBe(false);
+    expect(withBrand('{ label: "S", color: "#4A154B", icon: x }').success).toBe(false);
   });
 
   it("an unknown kind and an unknown top-level key", () => {

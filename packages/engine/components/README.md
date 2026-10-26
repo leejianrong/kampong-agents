@@ -16,6 +16,11 @@ loaded. A component is identified by `id@version` and a content digest over ever
 directory. A project can pin one in `kampong.lock` (`kampong lock <spec>`), but first-party components
 do not need a pin to run.
 
+A manifest may carry `brand: { label: "S", color: "#4A154B" }` (one or two letters, a hex colour dark enough for white
+text): the canvas draws it as the connector's tile on a card and in the tool list (KAM-247, ADR-0059). Every
+first-party component has one. Changing it changes the component's digest, so run `npm run generate:registry-index`
+in `packages/engine`.
+
 Every component here is Apache-2.0 (`license: Apache-2.0` in the manifest), like the rest of the
 repository; `test/unit/first-party-components.test.ts` checks the layout and the licence.
 

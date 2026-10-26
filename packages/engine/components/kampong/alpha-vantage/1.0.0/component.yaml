@@ -3,6 +3,7 @@ id: kampong/alpha-vantage
 version: 1.0.0
 title: Alpha Vantage
 description: Daily stock prices from Alpha Vantage. Treats the rate-limit and error answers it sends with HTTP 200 as failures, and keeps to one request per second.
+brand: { label: "AV", color: "#0B5FA5" }
 license: Apache-2.0
 permissions:
   egress: [www.alphavantage.co]

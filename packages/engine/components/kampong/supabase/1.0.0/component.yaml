@@ -3,6 +3,7 @@ id: kampong/supabase
 version: 1.0.0
 title: Supabase
 description: Insert, upsert, select and call functions on a Supabase project's tables over its PostgREST API.
+brand: { label: "Sb", color: "#1C7C54" }
 license: Apache-2.0
 entry: ./index.mjs
 permissions:

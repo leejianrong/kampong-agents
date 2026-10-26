@@ -213,11 +213,24 @@ const hasAnOp = (ops: Record<string, unknown>): boolean => Object.keys(ops).leng
 
 const opName = z.string().regex(NAME, "op names are letters, digits and underscores");
 
+// How the canvas tiles a component (KAM-247, ADR-0059 §7): a letter or two on a colour, until real logos are
+// licensed. The text on the tile is white, so the colour should be dark enough to read it.
+export const brandSchema = z
+  .object({
+    label: z
+      .string()
+      .regex(/^[A-Za-z0-9]{1,2}$/, "must be one or two letters or digits, such as S"),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "must be a hex colour such as #4A154B"),
+  })
+  .strict();
+export type ComponentBrand = z.infer<typeof brandSchema>;
+
 const header = {
   id: componentIdSchema,
   version: exactVersionSchema,
   title: z.string().optional(),
   description: z.string().optional(),
+  brand: brandSchema.optional(),
   license: z.string().optional(),
   permissions: permissionsSchema.optional(),
   auth: authSchema.optional(),

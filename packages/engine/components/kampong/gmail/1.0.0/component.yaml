@@ -3,6 +3,7 @@ id: kampong/gmail
 version: 1.0.0
 title: Gmail
 description: Send a plain-text email with the Gmail API.
+brand: { label: "G", color: "#B3261E" }
 license: Apache-2.0
 entry: ./index.mjs
 permissions:

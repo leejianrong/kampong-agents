@@ -3,6 +3,7 @@ id: kampong/slack
 version: 1.0.0
 title: Slack
 description: Post messages to Slack with a bot token.
+brand: { label: "S", color: "#4A154B" }
 license: Apache-2.0
 permissions:
   egress: [slack.com]

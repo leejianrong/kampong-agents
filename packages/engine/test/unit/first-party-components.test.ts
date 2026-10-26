@@ -38,6 +38,16 @@ describe("first-party components folder", () => {
     ]);
   });
 
+  it("gives every component a letter tile for the canvas (KAM-247)", async () => {
+    for (const summary of await registry.list()) {
+      const { manifest } = await registry.resolve(summary.id, summary.version);
+      expect(manifest.brand, summary.id).toMatchObject({
+        label: expect.stringMatching(/^[A-Za-z0-9]{1,2}$/),
+        color: expect.stringMatching(/^#[0-9a-fA-F]{6}$/),
+      });
+    }
+  });
+
   it("declares Apache-2.0 on every component", async () => {
     for (const summary of await registry.list()) {
       const { manifest } = await registry.resolve(summary.id, summary.version);

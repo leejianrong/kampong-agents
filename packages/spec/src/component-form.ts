@@ -1,5 +1,5 @@
 import { parseDocument } from "yaml";
-import type { ComponentManifest, OpEffect, SchemaNode } from "./component.js";
+import type { ComponentBrand, ComponentManifest, OpEffect, SchemaNode } from "./component.js";
 import { describePermissions, permissionsOf } from "./permissions.js";
 import type { Revocation } from "./registry-index.js";
 import { toolSchema, type AgentSpec, type Tool } from "./schema.js";
@@ -41,6 +41,8 @@ export interface ComponentCatalogEntry {
   revoked?: Revocation;
   title?: string;
   description?: string;
+  /** The letter tile the canvas draws for it (KAM-247). */
+  brand?: ComponentBrand;
   /** Secret slots a spec may remap: the default environment variable each reads. */
   slots: { name: string; env: string }[];
   /** Non-secret per-use values. */
@@ -87,6 +89,7 @@ export function catalogEntryFromManifest(
     permissionsSummary: describePermissions(permissionsOf(manifest)),
     ...(manifest.title !== undefined && { title: manifest.title }),
     ...(manifest.description !== undefined && { description: manifest.description }),
+    ...(manifest.brand !== undefined && { brand: manifest.brand }),
     slots: Object.entries(manifest.auth?.slots ?? {}).map(([name, slot]) => ({
       name,
       env: slot.env,

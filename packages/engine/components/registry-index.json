@@ -4,43 +4,43 @@
     {
       "id": "kampong/alpha-vantage",
       "version": "1.0.0",
-      "digest": "sha256:929936fdedec873dba3f8e8dd59e71d33d1fde52406d1e2d40bc3829e5cdf4e2",
+      "digest": "sha256:6117b0a54f690ca96d1395bb44b0813f21aaf909f0fe19c7b3303532e46041f4",
       "tier": 0
     },
     {
       "id": "kampong/github",
       "version": "1.0.0",
-      "digest": "sha256:5b1b6b79211e97bfb3982417ee612490bdf2ae0abb153aa9c6d8d5229ff94c1c",
+      "digest": "sha256:362aaca9c0e33985870de8bc0dc7059fb9294d39862254cedfd6c35a9e922f7c",
       "tier": 0
     },
     {
       "id": "kampong/gmail-imap",
       "version": "1.0.0",
-      "digest": "sha256:17193554af984b7f8204b46026231e1f193cdead6f178a213f83699d2023b9a1",
+      "digest": "sha256:78a9d2e6242744331c23622a9d63a36cbb776ad67f078e4d37c2f1b67bdca72e",
       "tier": 0
     },
     {
       "id": "kampong/gmail",
       "version": "1.0.0",
-      "digest": "sha256:062a07a5677bcf36d4c9cad9e15541ba68a5f11a6422f463e3f5129b461f58eb",
+      "digest": "sha256:88ed1b288b24ceb457361fb8e53414ea2f097f5b86ee59ecf1a40c100a218b91",
       "tier": 0
     },
     {
       "id": "kampong/slack",
       "version": "1.0.0",
-      "digest": "sha256:0c6b5381b67207846d0e512edb1b30d9eb0a5eb7b3a849c9e172c16c84f18c7c",
+      "digest": "sha256:7e029a046d07f72f7c14161293f0d5ae09de0a4f974df39892f1ddde801bdfe2",
       "tier": 0
     },
     {
       "id": "kampong/slack",
       "version": "1.1.0",
-      "digest": "sha256:3e7a341ee38af0c7194d6f98b03635486eabdc0b67496342baa4186b8528336e",
+      "digest": "sha256:ff9f2eb30148bcc91259c43d478fe6b81c4efacc7ea6d76b88bea913c515f5b4",
       "tier": 0
     },
     {
       "id": "kampong/supabase",
       "version": "1.0.0",
-      "digest": "sha256:5d2d47bfa270f835326cdb7317abe292152c4632ca0538dc9c1affc7f3f55b3b",
+      "digest": "sha256:7e511dcccdbd27cbb6f31c54e74fbf069af0673904bb629d5d3b05b1cf847794",
       "tier": 0
     }
   ]

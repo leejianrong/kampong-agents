@@ -58,6 +58,7 @@ import { useCoachMarks } from "./coachMarks.js";
 import { SampleDataContext } from "./sampleData.js";
 import { useRunSession } from "./runSession.js";
 import { deriveNodeStatuses } from "./runStatus.js";
+import { brandsFromCatalog } from "./connectorBrand.js";
 import { RunTrackerProvider, useRunTrackerStore } from "./runTracker.js";
 import { ToolForm } from "./ToolForm.js";
 import { WorkflowStepForm } from "./WorkflowStepForm.js";
@@ -319,10 +320,12 @@ export function App({
     return unsubscribe;
   }, [api, refresh]);
 
+  const usesComponents = spec?.agent.tools?.some((t) => t.action === "component") === true;
   useEffect(() => {
     const toolOpen =
       openForm === "tool" || openForm === "edit-tool" || selected?.startsWith("tool:");
-    if (!toolOpen || !api.listComponents) return;
+    // KAM-247: a spec that uses a component also needs the catalog once, for the component's tile.
+    if (!(toolOpen || (catalog === undefined && usesComponents)) || !api.listComponents) return;
     let cancelled = false;
     api
       .listComponents()
@@ -341,7 +344,12 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [api, openForm, selected]);
+  }, [api, openForm, selected, usesComponents]);
+
+  const componentBrands = useMemo(
+    () => (catalog ? brandsFromCatalog(catalog.components) : undefined),
+    [catalog],
+  );
 
   const references = useMemo(
     () => (spec && catalog ? outputReferenceOptions(spec, catalog.components) : []),
@@ -1121,6 +1129,7 @@ export function App({
                         onInsert={spec ? insertFromEdge : undefined}
                         runStatus={runStatus}
                         onShowRunMessage={showRunMessage}
+                        brands={componentBrands}
                       />
                     ) : (
                       <EmptyState

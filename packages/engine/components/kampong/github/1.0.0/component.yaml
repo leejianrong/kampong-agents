@@ -3,6 +3,7 @@ id: kampong/github
 version: 1.0.0
 title: GitHub
 description: Read pull requests and their diffs, list every changed file, and comment on or review a pull request, with a personal access token.
+brand: { label: "GH", color: "#24292F" }
 license: Apache-2.0
 entry: ./index.mjs
 permissions:

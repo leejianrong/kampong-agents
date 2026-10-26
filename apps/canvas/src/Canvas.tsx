@@ -13,7 +13,13 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toolUsage, type InsertionMarker, type SpecGraph, type SpecNode } from "@kampong/spec";
+import {
+  toolUsage,
+  type ComponentBrand,
+  type InsertionMarker,
+  type SpecGraph,
+  type SpecNode,
+} from "@kampong/spec";
 import {
   EdgeInsertContext,
   InsertEdge,
@@ -22,6 +28,7 @@ import {
 } from "./InsertEdge.js";
 import type { StepKind } from "./stepKinds.js";
 import { NodeCard } from "./nodeCard.js";
+import { connectorBrands } from "./connectorBrand.js";
 import { CollapsedLoop, LoopGroupNode, type LoopGroupData } from "./loopGroupNode.js";
 import {
   applyCollapse,
@@ -67,6 +74,8 @@ export interface CanvasProps {
   version?: string;
   /** KAM-190: what the run on screen did to each node, by node id. Only a drawn view: the spec and layout are untouched. */
   runStatus?: Record<string, NodeRunInfo>;
+  /** Brands of the installed components by `id@version` (KAM-247); a component without one gets its initial. */
+  brands?: Record<string, ComponentBrand>;
   /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
   onShowRunMessage?: (id: string) => void;
 }
@@ -206,6 +215,7 @@ export function Canvas({
   version,
   runStatus,
   onShowRunMessage,
+  brands,
 }: CanvasProps) {
   const [openEdge, setOpenEdge] = useState<string | null>(null);
   // KAM-239: loops the person has opened or closed, by the foreach step's node id; the rest follow their default.
@@ -367,6 +377,7 @@ export function Canvas({
       },
     ];
   };
+  const tiles = useMemo(() => connectorBrands(graph, brands), [graph, brands]);
   const nodes: Node[] = useMemo(
     () => [
       ...inTabOrder(view.graph.nodes).flatMap((node) => {
@@ -379,7 +390,7 @@ export function Canvas({
           data: {
             label: run ? (
               <>
-                <NodeCard node={node} />
+                <NodeCard node={node} brand={tiles[node.id]} />
                 <RunBadge
                   nodeId={node.id}
                   info={run}
@@ -387,7 +398,7 @@ export function Canvas({
                 />
               </>
             ) : (
-              <NodeCard node={node} />
+              <NodeCard node={node} brand={tiles[node.id]} />
             ),
           },
           selected: selectedId === node.id,
@@ -436,7 +447,7 @@ export function Canvas({
           ]
         : []),
     ],
-    [view, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage],
+    [view, layout, marker, flashed, selectedId, sizes, linked, runStatus, onShowRunMessage, tiles],
   );
 
   const edges: Edge[] = useMemo(() => {

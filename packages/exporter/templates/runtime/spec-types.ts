@@ -95,6 +95,8 @@ interface ComponentHeader {
   version: string;
   title?: string;
   description?: string;
+  /** The canvas tile (KAM-247); the exported project never reads it. */
+  brand?: { label: string; color: string };
   license?: string;
   permissions?: { egress?: string[]; env?: string[]; fs?: ("read" | "write")[]; exec?: boolean };
   auth?: { slots: Record<string, ComponentAuthSlot> };
