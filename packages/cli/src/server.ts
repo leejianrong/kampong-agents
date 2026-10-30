@@ -8,6 +8,7 @@ import {
   isBlankSource,
   loadWithLayout,
   parseSpec,
+  pinNodePositions,
   type AgentSpec,
   type SpecOp,
   type SpecRepository,
@@ -608,6 +609,28 @@ export function createDevServer({
       }
     },
   );
+
+  // KAM-186 (ADR-0061): a dragged node is pinned in `.kampong/layout.json`; a null position unpins it. The same
+  // `pinNodePositions` runs behind the hosted `PUT /api/specs/:id/layout`, so the two modes keep one stored shape.
+  app.put<{ Body: { positions?: unknown } }>("/api/layout", async (request, reply) => {
+    const positions = request.body?.positions;
+    if (typeof positions !== "object" || positions === null || Array.isArray(positions)) {
+      reply.code(400);
+      return { success: false, error: "Request body must include a `positions` object." };
+    }
+    try {
+      const result = await pinNodePositions(
+        store,
+        positions as Record<string, { x: number; y: number } | null>,
+      );
+      if (!result.success) reply.code(422);
+      return result;
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+      reply.code(404);
+      return { success: false, error: "There is no workflow to arrange yet." };
+    }
+  });
 
   app.get("/api/events", (request, reply) => {
     reply.hijack();

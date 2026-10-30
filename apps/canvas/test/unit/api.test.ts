@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient } from "../../src/api.js";
+import { ApiError, createApiClient, createHostedSpecClient } from "../../src/api.js";
 
 // KAN-1216: loadSpec()/applyPatch() used to parse and cast a non-2xx
 // response straight to the expected success-shaped DTO -- a raw Fastify
@@ -119,6 +119,48 @@ describe("createApiClient", () => {
   });
 
   // KAM-170 (ADR-0055): applyOps sends operations and a baseRevision; a refusal resolves, it does not throw.
+  // KAM-186 (ADR-0061): local and hosted clients pin a dragged node through their own route.
+  describe("pinPositions", () => {
+    it("local PUTs /api/layout and returns the layout", async () => {
+      const layout = { "workflow:a": { x: 1, y: 2, pinned: true } };
+      const fetchMock = vi.fn(async () => fakeResponse(200, { success: true, layout }));
+      vi.stubGlobal("fetch", fetchMock);
+      const out = await createApiClient().pinPositions({ "workflow:a": { x: 1, y: 2 } });
+      expect(out).toEqual({ success: true, layout });
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("/api/layout");
+      expect(init.method).toBe("PUT");
+      expect(JSON.parse(init.body as string)).toEqual({
+        positions: { "workflow:a": { x: 1, y: 2 } },
+      });
+    });
+
+    it("hosted PUTs /api/specs/:id/layout", async () => {
+      const fetchMock = vi.fn(async () => fakeResponse(200, { success: true, layout: {} }));
+      vi.stubGlobal("fetch", fetchMock);
+      await createHostedSpecClient("", "spec-1").pinPositions({ "workflow:a": null });
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("/api/specs/spec-1/layout");
+      expect(init.method).toBe("PUT");
+    });
+
+    it("answers a refusal (422) as data and throws on a server error", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => fakeResponse(422, { success: false, error: "has errors" })),
+      );
+      await expect(createApiClient().pinPositions({})).resolves.toEqual({
+        success: false,
+        error: "has errors",
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => fakeResponse(500, { error: "boom" })),
+      );
+      await expect(createApiClient().pinPositions({})).rejects.toBeInstanceOf(ApiError);
+    });
+  });
+
   describe("applyOps", () => {
     const rename = [{ op: "step.rename" as const, step: "a", to: "b" }];
 

@@ -31,7 +31,7 @@ run results sit on the nodes; there is one obvious next action.
    keeps following run order. Today `.kampong/layout.json` (ADR-0006) is only a cache of the automatic layout,
    because dragging is not saved (KAM-186), so the new layout is recomputed from the graph and stamped with a
    reserved `$layout` entry; a file without it is the old top-to-bottom layout and is replaced. If KAM-186
-   decides to persist dragging, pinned positions will override the automatic ones.
+   decides to persist dragging, pinned positions will override the automatic ones (it did: ADR-0061).
 4. **A loop is a group around its steps**, collapsible; a branch card shows its condition and labelled arms;
    a tool a step uses is a dashed pill linked by a dashed edge.
 5. **Edges and status show the run.** Idle grey, running animated dashes (reduced motion respected), passed
@@ -42,7 +42,7 @@ run results sit on the nodes; there is one obvious next action.
    where the step goes.
 7. **Connector logos.** For now a letter in a brand-like colour (S for Slack, G for Gmail). Real logos are a
    later spike (KAM-248) because licensing is unknown.
-8. **Not decided here:** dark mode (KAM-201), undo and redo (KAM-183), node dragging (KAM-186).
+8. **Not decided here:** dark mode (KAM-201), undo and redo (KAM-183), node dragging (KAM-186, decided in ADR-0061).
 
 ## Consequences
 

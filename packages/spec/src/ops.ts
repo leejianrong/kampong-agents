@@ -82,7 +82,9 @@ export type LayoutMove =
    * The top-level steps were reordered: the node ids (`workflow:<step>`) in the old and the new order. Each
    * node takes the vertical position of the one that held its place, so the column reads in run order.
    */
-  | { reorder: { before: string[]; after: string[] } };
+  | { reorder: { before: string[]; after: string[] } }
+  /** A node the person pinned by dragging is released back to the automatic layout (ADR-0061); its position stays as a cache. */
+  | { unpin: string };
 
 export type ApplyOpsToSourceResult =
   | {
@@ -111,8 +113,15 @@ export function isPatchOp(op: SpecOp): op is PatchOp {
 export function applyLayoutMoves(layout: LayoutMap, moves: readonly LayoutMove[]): LayoutMap {
   const next: LayoutMap = { ...layout };
   for (const move of moves) {
+    if ("unpin" in move) {
+      const node = next[move.unpin];
+      if (node?.pinned) next[move.unpin] = { x: node.x, y: node.y };
+      continue;
+    }
     if ("reorder" in move) {
       const { before, after } = move.reorder;
+      // A pinned node stays where it was put (ADR-0061), so a column with a pin in it is left to the automatic layout.
+      if (before.some((id) => next[id]?.pinned === true)) continue;
       const slots = before.map((id) => next[id]?.y);
       if (before.length !== after.length || slots.some((y) => y === undefined)) continue;
       const held = new Map(after.map((id, i) => [id, slots[i]!]));
@@ -472,6 +481,8 @@ function applySemantic(
     into.items.splice(index, 0, node);
     ctx.moves.push(opIndex);
     const topAfter = topNames(ctx.doc.toJS());
+    // A step that moves in the run order gives up its pin and goes to its new automatic place (ADR-0061).
+    ctx.layoutMoves.push({ unpin: `workflow:${op.step}` });
     const sameSet =
       topBefore.length === topAfter.length && topBefore.every((id) => topAfter.includes(id));
     if (sameSet && topBefore.some((id, i) => id !== topAfter[i])) {

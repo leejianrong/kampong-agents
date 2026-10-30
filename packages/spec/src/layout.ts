@@ -7,6 +7,11 @@ import { toolUsage, type SpecGraph } from "./graph.js";
 export interface NodePosition {
   x: number;
   y: number;
+  /**
+   * KAM-186 (ADR-0061): the person dragged this node here. A pinned position overrides the automatic one and
+   * survives a reload; an entry without it is only a cache of the automatic layout.
+   */
+  pinned?: true;
 }
 
 export type LayoutMap = Record<string, NodePosition>;
@@ -73,8 +78,9 @@ export function withAutoLayout(
 
 /**
  * KAM-238 (ADR-0059): the canvas flows left to right. A node's column is how many steps lie before it, and a
- * branch's second and later arms drop to rows below the first. Until dragging is saved (KAM-186) the stored
- * positions are only a cache of this layout, so the layout is recomputed from the graph rather than appended to.
+ * branch's second and later arms drop to rows below the first. Stored positions are only a cache of this layout,
+ * so it is recomputed from the graph rather than appended to; the exception is a position the person pinned by
+ * dragging (KAM-186, ADR-0061; see `layoutWithPins`).
  *
  * `LAYOUT_MARK` is a reserved entry (not a node) that says which layout produced the stored positions; a layout
  * without it is the old top-to-bottom one and is replaced.
@@ -84,6 +90,22 @@ const LAYOUT_VERSION = 2;
 
 export function isCurrentLayout(layout: LayoutMap): boolean {
   return layout[LAYOUT_MARK]?.x === LAYOUT_VERSION;
+}
+
+/**
+ * Lays the graph out automatically, then lets every pinned position in `stored` override its node's place
+ * (ADR-0061). A pin of a node that is no longer in the graph is dropped. Nothing else about the stored layout
+ * is trusted: unpinned entries are recomputed.
+ */
+export function layoutWithPins(graph: SpecGraph, stored: LayoutMap): LayoutMap {
+  const out = autoLayoutGraph(graph);
+  for (const node of graph.nodes) {
+    const at = stored[node.id];
+    if (at?.pinned === true && Number.isFinite(at.x) && Number.isFinite(at.y)) {
+      out[node.id] = { x: at.x, y: at.y, pinned: true };
+    }
+  }
+  return out;
 }
 
 export function autoLayoutGraph(graph: SpecGraph): LayoutMap {

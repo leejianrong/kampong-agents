@@ -47,6 +47,34 @@ describe("createDevServer", () => {
     expect(body.layout["agent:greeter"]).toBeDefined();
   });
 
+  // KAM-186 (ADR-0061): a dragged node is pinned in layout.json and kept across a reload.
+  it("PUT /api/layout pins a dragged node in the sidecar and GET /api/spec keeps it", async () => {
+    await app.inject({ method: "GET", url: "/api/spec" });
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/layout",
+      payload: { positions: { "workflow:greet": { x: 640, y: 222 } } },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().layout["workflow:greet"]).toEqual({ x: 640, y: 222, pinned: true });
+
+    const onDisk = JSON.parse(readFileSync(layoutPath, "utf8"));
+    expect(onDisk["workflow:greet"]).toEqual({ x: 640, y: 222, pinned: true });
+    expect(onDisk["$layout"]).toBeDefined();
+
+    const reload = (await app.inject({ method: "GET", url: "/api/spec" })).json();
+    expect(reload.layout["workflow:greet"]).toEqual({ x: 640, y: 222, pinned: true });
+    expect(reload.layout["agent:greeter"].pinned).toBeUndefined();
+  });
+
+  it("PUT /api/layout rejects a body without positions with a 400 and writes nothing", async () => {
+    await app.inject({ method: "GET", url: "/api/spec" });
+    const before = readFileSync(layoutPath, "utf8");
+    const response = await app.inject({ method: "PUT", url: "/api/layout", payload: {} });
+    expect(response.statusCode).toBe(400);
+    expect(readFileSync(layoutPath, "utf8")).toBe(before);
+  });
+
   it("PUT /api/spec applies a valid patch and persists it, preserving comments", async () => {
     const response = await app.inject({
       method: "PUT",

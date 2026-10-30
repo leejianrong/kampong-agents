@@ -29,8 +29,11 @@ quoted expressions are not refolded, and flow maps and lists keep their spacing.
 Node positions on the canvas would clutter the spec and create noisy diffs if they lived in the
 YAML, so they don't. Canvas coordinates go in a separate `.kampong/layout.json` sidecar, keyed by
 step and tool ID. A spec with no sidecar still renders, because the canvas auto-lays-out anything
-it hasn't seen before. The spec stays clean and hand-authorable.
-[ADR-0006](adr/0006-sidecar-layout-file.md)
+it hasn't seen before. A card you drag onto empty canvas stays where you put it (the sidecar marks it
+`pinned`); cards you have not dragged keep their automatic place. Dropping a step on another step of
+its list reorders it instead. The spec stays clean and hand-authorable.
+[ADR-0006](adr/0006-sidecar-layout-file.md),
+[ADR-0061](adr/0061-dragging-pins-positions-and-reorders-steps.md)
 
 ## Export is one-way
 

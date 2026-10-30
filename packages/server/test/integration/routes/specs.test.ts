@@ -209,6 +209,43 @@ describe.skipIf(!DATABASE_URL)("Authenticated spec-CRUD routes against a real Po
       expect(read.json().source).toBe(VALID_SPEC);
     });
 
+    // KAM-186 (ADR-0061): a dragged node is pinned in the layouts table and kept across a reload.
+    it("PUT /api/specs/:id/layout pins a dragged node, and a reload keeps it", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const specId = (await createSpec(cookie, "greeter")).json().id;
+      const get = () =>
+        app.inject({ method: "GET", url: `/api/specs/${specId}`, headers: { cookie } });
+      const before = (await get()).json().layout;
+
+      const pinned = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${specId}/layout`,
+        headers: { cookie },
+        payload: { positions: { "workflow:greet": { x: 640, y: 222 } } },
+      });
+      expect(pinned.statusCode).toBe(200);
+      expect(pinned.json().layout["workflow:greet"]).toEqual({ x: 640, y: 222, pinned: true });
+
+      const after = (await get()).json().layout;
+      expect(after["workflow:greet"]).toEqual({ x: 640, y: 222, pinned: true });
+      expect(after["agent:greeter"]).toEqual(before["agent:greeter"]);
+
+      const bad = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${specId}/layout`,
+        headers: { cookie },
+        payload: { positions: "nope" },
+      });
+      expect(bad.statusCode).toBe(400);
+      const missing = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${randomUUID()}/layout`,
+        headers: { cookie },
+        payload: { positions: {} },
+      });
+      expect(missing.statusCode).toBe(404);
+    });
+
     // KAM-170 (ADR-0055): step operations, the refusal shapes and the revision token on the hosted route.
     describe("step operations", () => {
       const put = (cookie: string, specId: string, payload: unknown) =>

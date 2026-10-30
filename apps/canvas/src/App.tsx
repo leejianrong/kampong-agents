@@ -21,6 +21,7 @@ import {
   type Place,
   parseSpec,
   planPreview,
+  listSteps,
   type SpecVar,
   type Tool,
   type Trigger,
@@ -48,7 +49,7 @@ import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
-import { StepsPanel } from "./StepsPanel.js";
+import { StepsPanel, listOf } from "./StepsPanel.js";
 import {
   moveErrorWords,
   renameErrorWords,
@@ -780,6 +781,40 @@ export function App({
     }
   }
 
+  // KAM-186 (ADR-0061): a card dropped on empty canvas is pinned where it was put, in the layout store of the
+  // mode we are in (`.kampong/layout.json` locally, the layouts row hosted). The reply is the layout a reload
+  // would give, so the card stays put without another read.
+  async function handleNodeMove(id: string, position: { x: number; y: number }) {
+    try {
+      const result = await api.pinPositions({ [id]: position });
+      if (result.success && result.layout) setLayout(result.layout);
+      else setToast({ text: "Could not save the position.", nonce: Date.now() });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      setToast({ text: "Could not save the position.", nonce: Date.now() });
+    }
+  }
+
+  // KAM-186: a step dropped on another step of its list takes that step's place in the run order, through the
+  // same step-move operation as the Move buttons (KAM-174), so a move that would break a read is refused in words.
+  async function handleNodeReorder(id: string, overId: string) {
+    if (!spec) return;
+    const refs = listSteps(spec);
+    const name = (node: string) => node.replace(/^workflow:/, "");
+    const ref = refs.find((r) => r.name === name(id));
+    const over = refs.find((r) => r.name === name(overId));
+    if (!ref || !over) return;
+    const { place } = listOf(refs, ref);
+    const { index } = listOf(refs, over);
+    const outcome = await handleMove({ op: "step.move", step: ref.name, to: { in: place, index } });
+    if (!outcome.success) {
+      setToast({
+        text: `"${ref.name}" was not moved. ${outcome.messages.join(" ")}`.trim(),
+        nonce: Date.now(),
+      });
+    }
+  }
+
   // KAM-211: the inspector. Selecting a node opens its form in the side pane in place of a toolbar form; Esc,
   // Close, a save or a cancel clears it. Moving on with typed input that is not saved asks first, and the
   // form stays as it was until the user says "discard" (KAM-182's prompt is not built yet; this is the same
@@ -1275,6 +1310,11 @@ export function App({
                         runStatus={planView ? undefined : runStatus}
                         onShowRunMessage={showRunMessage}
                         {...(!planView && { onNodeAction: askNodeAction })}
+                        {...(!planView &&
+                          spec && {
+                            onNodeMove: handleNodeMove,
+                            onNodeReorder: handleNodeReorder,
+                          })}
                         brands={componentBrands}
                         markedNew={planView ? undefined : newNodes}
                         {...(planView && { marks: planView.marks })}

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { loadWithLayout, parseSpec, type SpecOp } from "@kampong/spec";
+import { loadWithLayout, parseSpec, pinNodePositions, type SpecOp } from "@kampong/spec";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
@@ -88,6 +88,40 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
       throw err;
     }
   });
+
+  // KAM-186 (ADR-0061): a dragged node is pinned in the `layouts` row, through the same `pinNodePositions` that
+  // `kampong dev`'s `PUT /api/layout` runs over `.kampong/layout.json`.
+  app.put<{ Params: { id: string }; Body: { positions?: unknown } }>(
+    "/api/specs/:id/layout",
+    async (request, reply) => {
+      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      if (!ctx) return reply;
+
+      const positions = request.body?.positions;
+      if (typeof positions !== "object" || positions === null || Array.isArray(positions)) {
+        return reply
+          .code(400)
+          .send({ success: false, error: "Request body must include a `positions` object." });
+      }
+
+      try {
+        const result = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
+          pinNodePositions(
+            new PgSpecRepository(tx, ctx.workspaceId, request.params.id),
+            positions as Record<string, { x: number; y: number } | null>,
+          ),
+        );
+        return reply.code(result.success ? 200 : 422).send(result);
+      } catch (err) {
+        if (err instanceof SpecNotFoundError) {
+          return reply
+            .code(404)
+            .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
+        }
+        throw err;
+      }
+    },
+  );
 
   app.put<{ Params: { id: string }; Body: { ops?: SpecOp[]; baseRevision?: string } }>(
     "/api/specs/:id",
