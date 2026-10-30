@@ -44,7 +44,7 @@ Two things a person might mean by dragging a card, and they must not be confused
    - a pin whose node is gone (deleted step) is dropped at the next load; a rename moves the pin with the node
      (the existing layout move);
    - deleting `.kampong/layout.json` is still safe: it loses the arrangement, not behaviour (ADR-0006).
-5. **A reorder releases the moved step's pin.** After `step.move`, the step goes to its automatic place for its
+5. **A reorder that changes a step's place releases its pin.** After a `step.move` that changes the step's list or index (a no-op move keeps the pin), the step goes to its automatic place for its
    new position in the run order (the `unpin` layout move). Other pins are left where they are, and the old
    "swap vertical slots" reorder move is skipped when any step in the column is pinned.
 6. **Card layout and loops.** Pinned positions are in the stored layout's coordinates. A collapsed loop closes up
@@ -61,6 +61,12 @@ Two things a person might mean by dragging a card, and they must not be confused
 8. **The React Flow lock control is removed.** It toggled dragging, selection and connecting at once and nothing
    else in the canvas used it. Dragging is always on when the canvas is editable and off in the assistant's
    plan preview.
+
+9. **Pins are validated.** A pinned entry whose x or y is not finite or has an absolute value above 100000 is
+   ignored when read (the node gets its automatic place, so a hand-edited `1e308` cannot break the canvas) and
+   rejected when written through `pinNodePositions` (that node is skipped, not clamped).
+10. **The plan preview keeps pins.** `planPreview` takes the stored layout and lays out with `layoutWithPins`, so
+    pinned cards do not jump while a plan is shown.
 
 ## Alternatives considered
 
@@ -80,3 +86,6 @@ Two things a person might mean by dragging a card, and they must not be confused
   step. A control can be added later without changing the store. Auto-layout algorithms are out of scope.
 - ADR-0059 §3's note that dragging is not saved is superseded by this ADR; its "Not decided here" item for
   node dragging is decided here.
+- Follow-up: `pinNodePositions` reads the layout, changes it and writes it back, like the existing layout writers
+  (rename and delete moves). Two simultaneous writers to the same spec could lose one update; a layout-only save
+  is cheap to redo, so this is accepted for now. Other open tabs are not told about a layout change either.

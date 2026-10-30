@@ -396,7 +396,7 @@ export function Canvas({
     };
   }, [view]);
   const outlineOf = (g: LoopGroup): Node[] => {
-    const box = groupBox(g, { ...view.layout, ...dragPos }, sizes);
+    const box = groupBox(g, view.layout, sizes);
     if (box === undefined) return [];
     return [
       {
@@ -437,7 +437,7 @@ export function Canvas({
           ) : null;
         const card: Node = {
           id: node.id,
-          position: dragPos[node.id] ?? view.layout[node.id] ?? { x: 0, y: 0 },
+          position: view.layout[node.id] ?? { x: 0, y: 0 },
           sourcePosition: Position.Right,
           targetPosition: Position.Left,
           data: {
@@ -525,7 +525,6 @@ export function Canvas({
     [
       view,
       layout,
-      dragPos,
       marker,
       flashed,
       selectedId,
@@ -539,6 +538,34 @@ export function Canvas({
       marks,
     ],
   );
+
+  // KAM-186: a card being dragged follows the pointer here, after the big memo above, so a mouse move touches only
+  // the dragged card (and the outlines of loops it belongs to); every other node keeps its object identity and its
+  // card element, and the edges do not depend on the drag at all.
+  const shownNodes: Node[] = useMemo(() => {
+    const dragged = Object.keys(dragPos);
+    if (dragged.length === 0) return nodes;
+    const at = { ...view.layout, ...dragPos };
+    return nodes.map((n) => {
+      if (dragPos[n.id] !== undefined) return { ...n, position: dragPos[n.id]! };
+      if (n.id.startsWith("outline:")) {
+        const g = groups.find((o) => `outline:${o.holder}` === n.id);
+        if (g && g.members.some((m) => dragPos[m] !== undefined)) {
+          const box = groupBox(g, at, sizes);
+          if (box) {
+            return {
+              ...n,
+              position: { x: box.x, y: box.y },
+              width: box.width,
+              height: box.height,
+              measured: { width: box.width, height: box.height },
+            };
+          }
+        }
+      }
+      return n;
+    });
+  }, [nodes, dragPos, view, groups, sizes]);
 
   const edges: Edge[] = useMemo(() => {
     const byId = new Map(view.graph.nodes.map((n) => [n.id, n]));
@@ -656,7 +683,8 @@ export function Canvas({
         ? onNodeMove?.(id, outcome.position)
         : onNodeReorder?.(id, outcome.over);
     if (saved === undefined) return done();
-    void saved.finally(done);
+    // The app's handlers report their own failures (snackbar); a rejection that still gets here must not go unhandled.
+    saved.catch(() => undefined).finally(done);
   };
 
   return (
@@ -668,7 +696,7 @@ export function Canvas({
     >
       <EdgeInsertContext.Provider value={insertState}>
         <ReactFlow
-          nodes={nodes}
+          nodes={shownNodes}
           edges={edges}
           edgeTypes={EDGE_TYPES}
           nodeTypes={NODE_TYPES}

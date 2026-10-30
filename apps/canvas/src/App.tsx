@@ -513,9 +513,9 @@ export function App({
     if (!planOnShow || !spec) return null;
     const proposed = parseSpec(planOnShow.source);
     return proposed.success && proposed.spec
-      ? planPreview(spec, proposed.spec, planOnShow.diff)
+      ? planPreview(spec, proposed.spec, planOnShow.diff, layout)
       : null;
-  }, [planOnShow, spec]);
+  }, [planOnShow, spec, layout]);
   // The first thing the plan touches is brought into view when it is drawn.
   useEffect(() => {
     const first = planView ? Object.keys(planView.marks)[0] : undefined;
@@ -798,6 +798,13 @@ export function App({
   // KAM-186: a step dropped on another step of its list takes that step's place in the run order, through the
   // same step-move operation as the Move buttons (KAM-174), so a move that would break a read is refused in words.
   async function handleNodeReorder(id: string, overId: string) {
+    try {
+      await reorderByDrop(id, overId);
+    } catch {
+      setToast({ text: "Could not move the step.", nonce: Date.now() });
+    }
+  }
+  async function reorderByDrop(id: string, overId: string) {
     if (!spec) return;
     const refs = listSteps(spec);
     const name = (node: string) => node.replace(/^workflow:/, "");

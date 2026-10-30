@@ -482,7 +482,10 @@ function applySemantic(
     ctx.moves.push(opIndex);
     const topAfter = topNames(ctx.doc.toJS());
     // A step that moves in the run order gives up its pin and goes to its new automatic place (ADR-0061).
-    ctx.layoutMoves.push({ unpin: `workflow:${op.step}` });
+    // A move that leaves it where it was (same list, same index) keeps the pin.
+    const moved =
+      JSON.stringify([entry.list, entry.index]) !== JSON.stringify([after.listPath, index]);
+    if (moved) ctx.layoutMoves.push({ unpin: `workflow:${op.step}` });
     const sameSet =
       topBefore.length === topAfter.length && topBefore.every((id) => topAfter.includes(id));
     if (sameSet && topBefore.some((id, i) => id !== topAfter[i])) {

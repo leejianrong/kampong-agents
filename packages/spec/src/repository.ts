@@ -10,7 +10,7 @@ import {
 } from "./ops.js";
 import { parseSpec, type SpecError } from "./parse.js";
 import { specToGraph } from "./graph.js";
-import { LAYOUT_MARK, layoutWithPins, type LayoutMap } from "./layout.js";
+import { LAYOUT_MARK, isSanePin, layoutWithPins, type LayoutMap } from "./layout.js";
 
 // KAN-1224 (ADR-0014's `SpecRepository` decision, ADR-0005's original "local-
 // mode-specific code is isolated behind an interface the hosted backend
@@ -255,7 +255,7 @@ export async function pinNodePositions(
     if (id === LAYOUT_MARK || !known.has(id)) continue;
     if (at === null) {
       delete next[id];
-    } else if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
+    } else if (isSanePin(at)) {
       next[id] = { x: Math.round(at.x), y: Math.round(at.y), pinned: true };
     }
   }

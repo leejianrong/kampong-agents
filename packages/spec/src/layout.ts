@@ -97,11 +97,19 @@ export function isCurrentLayout(layout: LayoutMap): boolean {
  * (ADR-0061). A pin of a node that is no longer in the graph is dropped. Nothing else about the stored layout
  * is trusted: unpinned entries are recomputed.
  */
+/** A pinned position must be a finite number within this bound (a hand-edited 1e308 would break the canvas). */
+export const PIN_BOUND = 100_000;
+export const isSanePin = (at: { x: number; y: number }): boolean =>
+  Number.isFinite(at.x) &&
+  Number.isFinite(at.y) &&
+  Math.abs(at.x) <= PIN_BOUND &&
+  Math.abs(at.y) <= PIN_BOUND;
+
 export function layoutWithPins(graph: SpecGraph, stored: LayoutMap): LayoutMap {
   const out = autoLayoutGraph(graph);
   for (const node of graph.nodes) {
     const at = stored[node.id];
-    if (at?.pinned === true && Number.isFinite(at.x) && Number.isFinite(at.y)) {
+    if (at?.pinned === true && isSanePin(at)) {
       out[node.id] = { x: at.x, y: at.y, pinned: true };
     }
   }

@@ -129,4 +129,37 @@ describe("pinned positions (ADR-0061)", () => {
     expect(out.success).toBe(false);
     expect(await repo.readLayout()).toEqual({});
   });
+
+  it("a move that does not change the step's place keeps its pin", async () => {
+    const { repo } = await fresh();
+    await pinNodePositions(repo, {
+      "workflow:first": { x: 5, y: 6 },
+      "workflow:second": { x: 7, y: 8 },
+    });
+    // Up on the first step, and a move to the index it already has.
+    await repo.applyOpsAndSave([
+      { op: "step.move", step: "first", to: { in: "workflow", index: 0 } },
+      { op: "step.move", step: "second", to: { in: "workflow", index: 1 } },
+    ]);
+    const layout = (await loadWithLayout(repo)).layout;
+    expect(layout["workflow:first"]).toEqual({ x: 5, y: 6, pinned: true });
+    expect(layout["workflow:second"]).toEqual({ x: 7, y: 8, pinned: true });
+  });
+
+  it("ignores a hand-edited pin that is not finite or is out of bounds, and refuses to write one", async () => {
+    const { repo, auto } = await fresh();
+    await repo.writeLayout({
+      ...auto,
+      "workflow:first": { x: 1e308, y: 0, pinned: true },
+      "workflow:second": { x: 0, y: -100001, pinned: true },
+      "workflow:third": { x: 99999, y: -99999, pinned: true },
+    });
+    const layout = (await loadWithLayout(repo)).layout;
+    expect(layout["workflow:first"]).toEqual(auto["workflow:first"]);
+    expect(layout["workflow:second"]).toEqual(auto["workflow:second"]);
+    expect(layout["workflow:third"]).toEqual({ x: 99999, y: -99999, pinned: true });
+
+    await pinNodePositions(repo, { "workflow:first": { x: 1e308, y: 1 } });
+    expect((await repo.readLayout())["workflow:first"]).toEqual(auto["workflow:first"]);
+  });
 });
