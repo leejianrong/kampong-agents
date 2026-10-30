@@ -147,8 +147,10 @@ describe("save feedback (KAM-181)", () => {
     type("Name", "symbols");
     fireEvent.click(screen.getByRole("button", { name: "Save var" }));
     await waitFor(() => expect(region.textContent).toMatch(/^Saved/));
+    // KAM-183: the toast carries an Undo link.
+    expect(screen.getByTestId("toast-action").textContent).toBe("Undo");
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4500);
+      await vi.advanceTimersByTimeAsync(8500);
     });
     expect(region.textContent).toBe("");
   });

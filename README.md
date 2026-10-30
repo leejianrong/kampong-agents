@@ -38,7 +38,7 @@ Early, but real. The MVP (canvas/YAML duality, local engine with guardrails and 
 mock/record tools and Ollama, TypeScript export) and the real-world workflow layer (webhooks, connectors,
 Slack approvals, schedule and poll triggers, loops and branches, a state store, templates) are merged, and so is a
 canvas with step cards, run status on the nodes and a workflow assistant that builds from a prompt (local mode).
-Still coming: RAG, parallel steps, undo/redo and dark mode. A hosted, multi-tenant server exists but is not
+Still coming: RAG, parallel steps and dark mode. A hosted, multi-tenant server exists but is not
 deployed yet. Multi-agent orchestration and enterprise governance are roadmap. [`SLICES.md`](./SLICES.md) has the
 per-slice status.
 
@@ -65,7 +65,7 @@ data: see its [`README`](./packages/cli/templates/market-etl/README.md). In the 
 
 ```sh
 kampong dev [dir]                       # canvas (YAML in a "</>" drawer, Alt+Y, lines follow the selected node); edits the file on disk
-                                        # shortcuts: Ctrl/Cmd+K command palette, / step search, Alt+Y YAML drawer
+                                        # shortcuts: Ctrl/Cmd+K command palette, / step search, Alt+Y YAML drawer, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z redo
 kampong run agent.yaml --input "..."    # headless run; --tools replay for offline, --approve-all for CI
 kampong serve agent.yaml                # webhook, scheduled or polling service (POST /webhook, run-now)
 kampong export agent.yaml ./out         # standalone TypeScript project: cd ./out && npm install && npm start

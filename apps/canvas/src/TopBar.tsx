@@ -195,7 +195,10 @@ function ActionMenu({ items }: { items: ActionDescriptor[] }) {
               className="md3-menu__item"
               title={item.title}
               aria-keyshortcuts={item.shortcut}
+              aria-disabled={item.disabled || undefined}
               onClick={() => {
+                // Disabled but still focusable, so a screen reader finds it and says it is unavailable.
+                if (item.disabled) return;
                 setOpen(false);
                 item.run();
               }}

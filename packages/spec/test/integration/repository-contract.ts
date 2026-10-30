@@ -452,6 +452,49 @@ export function runSpecRepositoryContractTests({
       expect((await loadWithLayout(repo)).layout["workflow:yell"]?.pinned).toBeUndefined();
     });
 
+    // KAM-183 (ADR-0062): Undo restores through `replaceSourceAndSave` (guarded by the revision of the last write)
+    // and `pinNodePositions`, the same calls in local and hosted mode, so the stored text and layout must come back
+    // exactly, and a restore over a later change must be refused.
+    it("undo: restoring a snapshot gives back the text byte for byte, comments included, and the pins", async () => {
+      const repo = await createRepository();
+      const commented = `# kept comment\n${CONTRACT_FIXTURE_SOURCE.replace("goal: ", "# why\n  goal: ")}`;
+      expect((await repo.replaceSourceAndSave(commented)).success).toBe(true);
+      await loadWithLayout(repo);
+      await pinNodePositions(repo, { "workflow:shout": { x: 901, y: 402 } });
+      const pinnedLayout = await repo.readLayout();
+
+      const edited = await repo.applyOpsAndSave([{ op: "step.rename", step: "shout", to: "yell" }]);
+      if (!edited.success) throw new Error("the rename should apply");
+      expect((await repo.readLayout())["workflow:yell"]).toEqual({ x: 901, y: 402, pinned: true });
+
+      const restored = await repo.replaceSourceAndSave(commented, {
+        baseRevision: edited.revision,
+      });
+      expect(restored.success).toBe(true);
+      expect(await repo.readSource()).toBe(commented);
+      await pinNodePositions(repo, { "workflow:shout": { x: 901, y: 402 }, "workflow:yell": null });
+      expect(await repo.readLayout()).toEqual(pinnedLayout);
+    });
+
+    it("undo: a restore made over a later change is refused and writes nothing", async () => {
+      const repo = await createRepository();
+      const first = await repo.applyOpsAndSave([
+        { op: "set", path: ["agent", "goal"], value: "One" },
+      ]);
+      if (!first.success) throw new Error("the first edit should apply");
+      const second = await repo.applyOpsAndSave([
+        { op: "set", path: ["agent", "goal"], value: "Two" },
+      ]);
+      expect(second.success).toBe(true);
+
+      const refused = await repo.replaceSourceAndSave(CONTRACT_FIXTURE_SOURCE, {
+        baseRevision: first.revision,
+      });
+      expect(refused.success).toBe(false);
+      if (!refused.success) expect(refused.stale).toBe(true);
+      expect(await repo.readSource()).toContain("Two");
+    });
+
     it("applyPatchAndSave applies a valid patch and persists the result", async () => {
       const repo = await createRepository();
 

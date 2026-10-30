@@ -113,6 +113,8 @@ describe("run bar", () => {
       "Add step",
       "Add tool",
       "Edit steps",
+      "UndoCtrl+Z",
+      "RedoCtrl+Shift+Z",
       "Search commandsCtrl+K",
       "Show tour",
       "Import YAML",

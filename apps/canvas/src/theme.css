@@ -856,6 +856,35 @@ select.md3-text-field {
   background: var(--md-sys-color-inverse-surface);
   color: var(--md-sys-color-inverse-on-surface);
   box-shadow: var(--md-elevation-level3);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* The snackbar's action: a text button in the inverse-primary role, with a state layer, taking clicks. */
+.md3-snackbar__action {
+  pointer-events: auto;
+  margin: -0.25rem -0.5rem -0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--md-sys-color-inverse-primary);
+  cursor: pointer;
+}
+
+.md3-snackbar__action:hover {
+  background: color-mix(in srgb, var(--md-sys-color-inverse-primary) 8%, transparent);
+}
+
+.md3-snackbar__action:focus-visible {
+  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline-offset: 1px;
+}
+
+.md3-menu__item[aria-disabled="true"] {
+  opacity: 0.38;
+  cursor: default;
 }
 
 @media (prefers-reduced-motion: no-preference) {

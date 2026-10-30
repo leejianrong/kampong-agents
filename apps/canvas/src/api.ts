@@ -37,6 +37,8 @@ export interface LoadSpecResponse {
   errors: SpecErrorDto[];
   layout: Record<string, { x: number; y: number }>;
   source: string;
+  /** The spec's revision as stored now (both servers send it), for Undo's stale guard (KAM-183). */
+  revision?: string;
 }
 
 export type PatchOp =
@@ -47,6 +49,8 @@ export type PatchOp =
 export interface ApplyPatchResponse {
   success: boolean;
   spec?: Record<string, unknown>;
+  /** The spec's revision after the write (both servers send it), which Undo sends back to refuse a stale restore. */
+  revision?: string;
   errors?: SpecErrorDto[];
 }
 

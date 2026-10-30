@@ -226,7 +226,9 @@ export function createDevServer({
 
   app.get("/api/spec", async (_request, reply) => {
     try {
-      return await loadWithLayout(store);
+      const loaded = await loadWithLayout(store);
+      // KAM-183: the revision of the text just read, so the canvas's Undo has a guard from the first load.
+      return { ...loaded, revision: revisionOf(loaded.source) };
     } catch (err) {
       // KAM-196: no spec file is a new workflow, not an error. The canvas shows its empty state; the file is
       // created on the first save (or on "Start blank"). Anything else that stops a read is still an error.

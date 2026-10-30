@@ -6,6 +6,7 @@ import type {
   AssistantDiffDto,
   AssistantStatus,
 } from "./api.js";
+import { restoreSnapshot, type RestoreResult } from "./editHistory.js";
 
 // The workflow assistant's panel (KAM-250, ADR-0060): describe what you want, read the plan, press Apply. Nothing
 // reaches the canvas until Apply, and one Undo puts the file back as it was before that Apply. The plan arrives as
@@ -19,6 +20,11 @@ export interface AssistantPanelProps {
   source: string;
   /** Called after a write, so the canvas shows it. */
   onChanged: () => Promise<void>;
+  /**
+   * KAM-183: undoes the last edit through the canvas's own history, text and pinned positions both, when the
+   * revision still is the one Apply produced. Without it the panel restores the text itself.
+   */
+  onUndoApply?: (revision: string | undefined) => Promise<RestoreResult>;
   /** The node ids the last apply added, for the canvas to mark New; empty clears them. */
   onMarkNew: (ids: string[]) => void;
   /**
@@ -117,6 +123,7 @@ export function AssistantPanel({
   api,
   source,
   onChanged,
+  onUndoApply,
   onMarkNew,
   onClose,
   onPreview,
@@ -243,16 +250,17 @@ export function AssistantPanel({
     if (m.before === undefined) return;
     setBusy(true);
     try {
-      const result = await api.replaceSource(m.before, {
-        ...(m.revision !== undefined && { baseRevision: m.revision }),
-      });
-      if (!result.success) {
+      // KAM-183 (ADR-0062): the same restore as Ctrl+Z, refused the same way when the file changed since.
+      const result = onUndoApply
+        ? await onUndoApply(m.revision)
+        : await restoreSnapshot(api, { source: m.before }, undefined, m.revision);
+      if (!result.ok) {
         add({
           kind: "error",
           text: result.stale
             ? "The workflow changed after this was applied, so Undo would throw those changes away too. I left it as it is."
             : "Could not undo.",
-          details: (result.errors ?? []).map((e) => e.message),
+          details: result.messages,
         });
         return;
       }
