@@ -27,7 +27,7 @@ import {
   type Trigger,
   type WorkflowStep,
 } from "@kampong/spec";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { NodeInspector } from "./NodeInspector.js";
 import { duplicateStep, duplicateTool } from "./duplicate.js";
 import {
@@ -83,10 +83,21 @@ import { TopBar, type SaveState } from "./TopBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { Snackbar } from "./Snackbar.js";
+import { EditHistory, restoreSnapshot, withHistory, type LayoutMap } from "./editHistory.js";
 import { buildYamlSourceMap, changedNode, nodeAtLine, type LineRange } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
 // canvas keeps showing the last version that was valid.
+// KAM-183: where a person is typing, Ctrl+Z belongs to the field (native text undo), never to the workflow.
+function isTextEntry(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="searchbox"]',
+    ) !== null
+  );
+}
+
 function errorSummary(errors: { line?: number }[], hasLastValid: boolean): string {
   const line = errors.find((e) => e.line !== undefined)?.line;
   const fix = line !== undefined ? `fix line ${line}` : "fix the errors below";
@@ -145,6 +156,7 @@ const DRAFT_FORMS: OpenForm[] = ["vars", "trigger", "steps", "variables"];
 
 // KAM-181: how long the changed lines stay marked and the toast stays up.
 const SAVE_FEEDBACK_MS = 4000;
+const UNDO_TOAST_MS = 8000;
 
 function describeChange(id: string, range: LineRange, source: string): string {
   const [kind, ...rest] = id.split(":");
@@ -163,14 +175,31 @@ export function App({
   onNavigateBack,
   onUnauthorized,
 }: AppProps) {
-  const api = useMemo<ApiClient>(
+  const rawApi = useMemo<ApiClient>(
     () => providedApi ?? createApiClient(apiBaseUrl),
     [providedApi, apiBaseUrl],
   );
 
+  // KAM-183 (ADR-0062): one history per spec, whichever mode. Every write the canvas makes goes through `api`,
+  // which records the text and layout as they were; Undo and Redo restore through `rawApi` so they are not
+  // recorded as edits of their own.
+  const history = useMemo(() => new EditHistory(), [rawApi]);
+  const sourceRef = useRef("");
+  const layoutRef = useRef<LayoutMap>({});
+  const api = useMemo<ApiClient>(
+    () =>
+      withHistory(rawApi, history, () => ({
+        source: sourceRef.current,
+        layout: layoutRef.current,
+      })),
+    [rawApi, history],
+  );
+  useSyncExternalStore(history.subscribe, history.getVersion);
+
   const [spec, setSpec] = useState<AgentSpec | null>(null);
   const [source, setSource] = useState("");
   const [layout, setLayout] = useState<Record<string, { x: number; y: number }>>({});
+  layoutRef.current = layout;
   const [errors, setErrors] = useState<SpecErrorDto[]>([]);
   // KAN-1831: a valid spec can still declare fields nothing executes (knowledge_base today).
   const [warnings, setWarnings] = useState<ReturnType<typeof specWarnings>>([]);
@@ -216,8 +245,11 @@ export function App({
   const sidePane = useRef<HTMLElement>(null);
   // KAM-181: a save was just made (so the next different source is its result), and the feedback for it.
   const savedAt = useRef(0);
-  const sourceRef = useRef("");
-  const [toast, setToast] = useState<{ text: string; nonce: number } | null>(null);
+  const [toast, setToast] = useState<{
+    text: string;
+    nonce: number;
+    action?: "undo" | "redo";
+  } | null>(null);
   const [changed, setChanged] = useState<{ range: LineRange; nonce: number } | null>(null);
   const returnFocusTo = useRef<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -259,13 +291,15 @@ export function App({
   function announceSave(before: string, after: string) {
     const nonce = Date.now();
     const hit = changedNode(before, after);
+    // KAM-183: the toast carries an Undo link while there is something to undo.
+    const action = history.undoCount > 0 ? { action: "undo" as const } : {};
     if (!hit) {
-      setToast({ text: "Saved.", nonce });
+      setToast({ text: "Saved.", nonce, ...action });
       return;
     }
     setFocus({ id: hit.id, nonce });
     setChanged({ range: hit.range, nonce });
-    setToast({ text: `Saved: ${describeChange(hit.id, hit.range, after)}.`, nonce });
+    setToast({ text: `Saved: ${describeChange(hit.id, hit.range, after)}.`, nonce, ...action });
   }
   const announceRef = useRef(announceSave);
   announceRef.current = announceSave;
@@ -317,12 +351,25 @@ export function App({
 
   useEffect(() => {
     void refresh();
+    // KAM-183: a change made outside the canvas (ADR-0008) makes every snapshot unsafe to restore, so the
+    // stack is cleared and the person is told why. A touch that left the same text is not a change.
+    const clearForExternalEdit = (text: string) => {
+      if (text === sourceRef.current) return;
+      if (history.clear()) {
+        setToast({
+          text: "The workflow changed outside the canvas, so Undo history was cleared.",
+          nonce: Date.now(),
+        });
+      }
+    };
     const unsubscribe = api.subscribeToEvents((event) => {
       if (event.type === "conflict") {
+        clearForExternalEdit(event.source);
         setConflict(true);
         return;
       }
       if (event.type === "reload") {
+        clearForExternalEdit(event.source);
         void refresh();
         return;
       }
@@ -338,7 +385,7 @@ export function App({
       }
     });
     return unsubscribe;
-  }, [api, refresh]);
+  }, [api, refresh, history]);
 
   // KAM-244: the Connectors tiles in the palette, and the one Add Tool should start on.
   const [toolStart, setToolStart] = useState<ToolStart | undefined>();
@@ -975,7 +1022,8 @@ export function App({
   }, [changed]);
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), SAVE_FEEDBACK_MS);
+    // A toast with an Undo or Redo link stays longer, so a keyboard user can reach it.
+    const timer = setTimeout(() => setToast(null), toast.action ? UNDO_TOAST_MS : SAVE_FEEDBACK_MS);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -1108,6 +1156,73 @@ export function App({
   }
   const listSecrets = useCallback(() => api.listSecrets!().then(tally), [api, tally]);
 
+  // KAM-183 (ADR-0062): Undo and Redo of the edits made in this session. The newest snapshot is restored through
+  // the server's own write (refused when the file changed since, so a later edit is never thrown away), and the
+  // canvas then reloads it. Both modes take this one path.
+  async function stepHistory(direction: "undo" | "redo") {
+    // A save still in flight (a card dropped a moment ago) is waited for, not skipped; one restore at a time.
+    while (history.busy) await history.idle();
+    const target = direction === "undo" ? history.peekUndo() : history.peekRedo();
+    const say = (text: string, action?: "undo" | "redo") =>
+      setToast({ text, nonce: Date.now(), ...(action && { action }) });
+    if (!target) {
+      say(direction === "undo" ? "Nothing to undo." : "Nothing to redo.");
+      return;
+    }
+    history.restoringNow(true);
+    try {
+      // What is stored now, read afresh: the screen may not have caught up with a save made a moment ago.
+      const fresh = await rawApi.loadSpec();
+      const current = { source: fresh.source, layout: fresh.layout };
+      const result = await restoreSnapshot(rawApi, target, current, history.revision);
+      if (!result.ok) {
+        if (result.stale) {
+          history.clear();
+          say(
+            "The workflow changed outside the canvas, so I left it as it is and cleared Undo history.",
+          );
+        } else {
+          say(`Could not ${direction}. ${result.messages[0] ?? ""}`.trim());
+        }
+        return;
+      }
+      if (direction === "undo") history.commitUndo(current, result.revision);
+      else history.commitRedo(current, result.revision);
+      savedAt.current = 0;
+      await refresh();
+      say(
+        direction === "undo" ? "Undone." : "Redone.",
+        direction === "undo" ? (history.redoCount > 0 ? "redo" : undefined) : "undo",
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      say(err instanceof Error ? err.message : `Could not ${direction}.`);
+    } finally {
+      history.restoringNow(false);
+    }
+  }
+  const stepRef = useRef(stepHistory);
+  stepRef.current = stepHistory;
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      const direction =
+        key === "z"
+          ? event.shiftKey
+            ? "redo"
+            : "undo"
+          : key === "y" && !event.shiftKey
+            ? "redo"
+            : null;
+      if (!direction || isTextEntry(event.target)) return;
+      event.preventDefault();
+      void stepRef.current(direction);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // KAM-215: Ctrl/Cmd+K opens the command palette from anywhere, including a text field.
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
@@ -1139,6 +1254,8 @@ export function App({
     ...(spec?.agent.trigger && { triggerSummary: triggerSummary(spec.agent.trigger) }),
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
     toggleYaml: () => setYamlOpen((open) => !open),
+    undo: { run: () => void stepHistory("undo"), disabled: history.undoCount === 0 },
+    redo: { run: () => void stepHistory("redo"), disabled: history.redoCount === 0 },
     startRun: runSession.requestRun,
     canRun: runSession.canRun,
     download: downloadAsFile,
@@ -1646,7 +1763,15 @@ export function App({
                     : undefined
                 }
               />
-              <Snackbar message={toast?.text ?? null} />
+              <Snackbar
+                message={toast?.text ?? null}
+                {...(toast?.action && {
+                  action: {
+                    label: toast.action === "undo" ? "Undo" : "Redo",
+                    onClick: () => void stepHistory(toast.action!),
+                  },
+                })}
+              />
               {paletteOpen && (
                 <CommandPalette
                   actions={actions}

@@ -6,6 +6,7 @@ import type {
   AssistantDiffDto,
   AssistantStatus,
 } from "./api.js";
+import { restoreSnapshot } from "./editHistory.js";
 
 // The workflow assistant's panel (KAM-250, ADR-0060): describe what you want, read the plan, press Apply. Nothing
 // reaches the canvas until Apply, and one Undo puts the file back as it was before that Apply. The plan arrives as
@@ -243,16 +244,15 @@ export function AssistantPanel({
     if (m.before === undefined) return;
     setBusy(true);
     try {
-      const result = await api.replaceSource(m.before, {
-        ...(m.revision !== undefined && { baseRevision: m.revision }),
-      });
-      if (!result.success) {
+      // KAM-183 (ADR-0062): the same restore as Ctrl+Z, refused the same way when the file changed since.
+      const result = await restoreSnapshot(api, { source: m.before }, undefined, m.revision);
+      if (!result.ok) {
         add({
           kind: "error",
           text: result.stale
             ? "The workflow changed after this was applied, so Undo would throw those changes away too. I left it as it is."
             : "Could not undo.",
-          details: (result.errors ?? []).map((e) => e.message),
+          details: result.messages,
         });
         return;
       }

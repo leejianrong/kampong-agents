@@ -71,6 +71,7 @@ language, typed step output, a durable state store, a component repository, and 
 - [ADR-0058: Hosted egress guard](adr/0058-hosted-egress-guard.md)
 - [ADR-0059: Canvas v2 look and feel](adr/0059-canvas-v2-look-and-feel.md)
 - [ADR-0060: Workflow assistant (chat builder)](adr/0060-workflow-assistant-chat-builder.md)
+- [ADR-0062: Undo and redo of canvas edits](adr/0062-undo-and-redo-of-canvas-edits.md)
 
 ## Hosted mode and the roadmap
 

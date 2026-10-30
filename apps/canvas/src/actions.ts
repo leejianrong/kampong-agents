@@ -65,6 +65,9 @@ export interface ActionContext {
   toggleForm: (form: OpenForm) => void;
   toggleYaml: () => void;
   download: () => void;
+  /** KAM-183: undo and redo of this session's edits, and whether there is anything to go back to. */
+  undo?: { run: () => void; disabled: boolean };
+  redo?: { run: () => void; disabled: boolean };
   /** Starts a run (KAM-219), and whether one can start now; without it the Run bar's action is not offered. */
   startRun?: () => void;
   canRun?: boolean;
@@ -179,6 +182,31 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
     // Secrets and checks need no spec, so they stay while the workflow is being started.
     if (ctx.hasSecrets) actions.push(form("secrets", "variables", "status", "Secrets"));
     if (ctx.hasChecks) actions.push(form("checks", "checks", "status", "Checks"));
+  }
+
+  if (!ctx.noSpecYet && ctx.undo) {
+    actions.push({
+      id: "undo",
+      label: "Undo",
+      surface: "menu",
+      shortcut: "Ctrl+Z",
+      title: "Undo the last edit (Ctrl+Z)",
+      keywords: ["revert", "back", "history"],
+      disabled: ctx.undo.disabled,
+      run: ctx.undo.run,
+    });
+  }
+  if (!ctx.noSpecYet && ctx.redo) {
+    actions.push({
+      id: "redo",
+      label: "Redo",
+      surface: "menu",
+      shortcut: "Ctrl+Shift+Z",
+      title: "Redo the edit you undid (Ctrl+Shift+Z or Ctrl+Y)",
+      keywords: ["again", "history"],
+      disabled: ctx.redo.disabled,
+      run: ctx.redo.run,
+    });
   }
 
   if (ctx.openPalette) {

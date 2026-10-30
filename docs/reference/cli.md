@@ -54,6 +54,13 @@ screen readers), flashes the node that changed, and, when the YAML drawer is ope
 changed lines and marks them for a few seconds. The drawer is never opened for you, and with
 `prefers-reduced-motion` the marking is a still colour with no animation.
 
+**Undo and redo.** `Ctrl/Cmd+Z` puts the file back as it was before the last edit made in this tab (the text,
+comments and formatting as they were, and the positions of cards you dragged); `Ctrl/Cmd+Shift+Z` or `Ctrl+Y`
+redoes it. The "Saved" message has an **Undo** link, and Undo and Redo are in the menu and the command palette. Up
+to 100 edits are kept, in memory, until the tab closes (version control covers the file after that). If the file is
+changed outside the canvas, the history is cleared and the canvas says so, and an undo never overwrites a change
+made since. Inside a text field `Ctrl+Z` undoes the typing, not the workflow. (ADR-0062)
+
 **Typed input is not lost silently.** Vars, Trigger, Edit Steps and Secrets keep their draft while
 you open another panel and are as you left them when you come back. `Esc` (or Close) closes the open
 panel at once when nothing is typed; with typed input it asks "Keep editing / Discard changes", and

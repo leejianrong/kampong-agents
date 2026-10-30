@@ -47,6 +47,8 @@ export type PatchOp =
 export interface ApplyPatchResponse {
   success: boolean;
   spec?: Record<string, unknown>;
+  /** The spec's revision after the write (both servers send it), which Undo sends back to refuse a stale restore. */
+  revision?: string;
   errors?: SpecErrorDto[];
 }
 
