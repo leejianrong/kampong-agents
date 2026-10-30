@@ -10,7 +10,7 @@ import {
 } from "./ops.js";
 import { parseSpec, type SpecError } from "./parse.js";
 import { specToGraph } from "./graph.js";
-import { autoLayoutGraph, type LayoutMap } from "./layout.js";
+import { LAYOUT_MARK, isSanePin, layoutWithPins, type LayoutMap } from "./layout.js";
 
 // KAN-1224 (ADR-0014's `SpecRepository` decision, ADR-0005's original "local-
 // mode-specific code is isolated behind an interface the hosted backend
@@ -220,7 +220,7 @@ export async function loadWithLayout(
 
   if (result.success && result.spec) {
     const graph = specToGraph(result.spec);
-    const next = autoLayoutGraph(graph);
+    const next = layoutWithPins(graph, layout);
     if (JSON.stringify(next) !== JSON.stringify(layout)) {
       await repo.writeLayout(next);
       layout = next;
@@ -228,4 +228,38 @@ export async function loadWithLayout(
   }
 
   return { success: result.success, spec: result.spec, errors: result.errors, layout, source };
+}
+
+export type PinResult = { success: true; layout: LayoutMap } | { success: false; error: string };
+
+/**
+ * KAM-186 (ADR-0061): pins the given nodes where the person dragged them, or unpins a node whose position is
+ * `null`. The one write path for both modes: `kampong dev` (`PUT /api/layout`) and hosted
+ * (`PUT /api/specs/:id/layout`) call it over their own repository, so the stored shape cannot drift. Ids that
+ * are not nodes of the current spec, the reserved `$layout` stamp and non-finite numbers are ignored. The
+ * returned layout is the one `loadWithLayout` would now give.
+ */
+export async function pinNodePositions(
+  repo: Pick<SpecRepository, "readSource" | "readLayout" | "writeLayout">,
+  positions: Record<string, { x: number; y: number } | null>,
+): Promise<PinResult> {
+  const result = parseSpec(await repo.readSource());
+  if (!result.success || !result.spec) {
+    return { success: false, error: "The workflow has errors, so its layout was not changed." };
+  }
+  const graph = specToGraph(result.spec);
+  const known = new Set(graph.nodes.map((n) => n.id));
+  const stored = await repo.readLayout();
+  const next: LayoutMap = { ...stored };
+  for (const [id, at] of Object.entries(positions)) {
+    if (id === LAYOUT_MARK || !known.has(id)) continue;
+    if (at === null) {
+      delete next[id];
+    } else if (isSanePin(at)) {
+      next[id] = { x: Math.round(at.x), y: Math.round(at.y), pinned: true };
+    }
+  }
+  const layout = layoutWithPins(graph, next);
+  if (JSON.stringify(layout) !== JSON.stringify(stored)) await repo.writeLayout(layout);
+  return { success: true, layout };
 }

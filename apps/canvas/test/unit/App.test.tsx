@@ -335,6 +335,7 @@ describe("App", () => {
         loadSpec: async () => SPEC_RESPONSE,
         applyPatch: async () => ({ success: true }),
         applyOps: async () => ({ success: true }),
+        pinPositions: async () => ({ success: true }),
         replaceSource: async () => ({ success: true }),
         startBlank: async () => ({ success: true }),
         subscribeToEvents: () => () => {},

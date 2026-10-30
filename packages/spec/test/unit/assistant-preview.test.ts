@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { planPreview, planToOps, parseSpec, type AssistantPlan } from "../../src/index.js";
+import {
+  planPreview,
+  planToOps,
+  parseSpec,
+  type AssistantPlan,
+  type LayoutMap,
+} from "../../src/index.js";
 
 // KAM-206: the preview is the plan's result plus what it removes, each marked.
 
@@ -26,14 +32,25 @@ agent:
       set: { m: "2" }
 `;
 
-function preview(edits: AssistantPlan["edits"]) {
+function preview(edits: AssistantPlan["edits"], stored?: LayoutMap) {
   const planned = planToOps(SOURCE, { summary: "s", edits });
   if (!planned.success) throw new Error(planned.errors.join("; "));
   const current = parseSpec(SOURCE).spec!;
-  return planPreview(current, planned.spec, planned.diff);
+  return planPreview(current, planned.spec, planned.diff, stored);
 }
 
 describe("planPreview", () => {
+  // KAM-186 (ADR-0061): a card the person pinned does not jump back while a plan is shown.
+  it("keeps a pinned position, and lays out the rest automatically", () => {
+    const p = preview(
+      [{ kind: "add_step", step: { step: "extra", type: "transform", set: { x: "1" } } }],
+      { "workflow:shape": { x: 123, y: 456, pinned: true } },
+    );
+    expect(p.layout["workflow:shape"]).toEqual({ x: 123, y: 456, pinned: true });
+    expect(p.layout["workflow:extra"]).toBeDefined();
+    expect(p.layout["workflow:after"]?.pinned).toBeUndefined();
+  });
+
   it("marks an added step, a changed step and the settings, and lays every node out", () => {
     const p = preview([
       { kind: "add_step", step: { step: "extra", type: "transform", set: { x: "1" } } },

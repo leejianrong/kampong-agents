@@ -104,3 +104,74 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
   await expect(page.getByTestId("run-trace")).toContainText("decide");
   await shot(page, "06-run-completed");
 });
+
+// KAM-186 (ADR-0061): a dragged card keeps its position after a reload in hosted mode too, through the layouts
+// row (`PUT /api/specs/:id/layout`), the counterpart of node-drag.spec.ts's `.kampong/layout.json`.
+test("hosted: a card dragged onto empty canvas keeps its position after a reload", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("auth-toggle").click();
+  await page.getByLabel("Name").fill("Drag Tester");
+  await page.getByLabel("Email").fill(`e2e-${randomUUID()}@example.com`);
+  await page.getByLabel("Password").fill("correct-horse-battery-staple");
+  await page.getByRole("button", { name: "Sign up" }).click();
+  await page.getByLabel("New workspace name").fill("Drag Workspace");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page.getByTestId("spec-list-empty")).toBeVisible();
+
+  const created = await page.request.post("/api/specs", {
+    data: {
+      name: "Drag Agent",
+      source: `version: "1.1"
+agent:
+  id: dragger
+  name: Dragger
+  role: Support
+  goal: Arrange things.
+  workflow:
+    - step: alpha
+      action: do the first thing
+    - step: bravo
+      action: do the second thing
+`,
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const specId = (await created.json()).id as string;
+  await page.reload();
+  await page.getByRole("button", { name: /Drag Agent/ }).click();
+
+  const bravo = page.locator('.react-flow__node[data-id="workflow:bravo"]');
+  await expect(bravo).toBeVisible();
+  await page.waitForTimeout(300);
+  const flowY = async () =>
+    Number(
+      /translate\(-?[\d.]+px,\s*(-?[\d.]+)px\)/.exec(
+        await bravo.evaluate((el) => (el as HTMLElement).style.transform),
+      )![1],
+    );
+  const before = await flowY();
+
+  const box = (await bravo.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 190, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(flowY, { timeout: 5000 }).toBeGreaterThan(before + 100);
+  const moved = await flowY();
+
+  // Stored in the layouts row as a pin; the spec text is untouched.
+  await expect
+    .poll(async () => {
+      const body = await (await page.request.get(`/api/specs/${specId}`)).json();
+      return body.layout["workflow:bravo"];
+    })
+    .toMatchObject({ pinned: true, y: Math.round(moved) });
+
+  await page.reload();
+  await page.getByRole("button", { name: /Drag Agent/ }).click();
+  await expect(bravo).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(await flowY()).toBe(Math.round(moved));
+});

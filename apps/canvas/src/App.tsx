@@ -21,6 +21,7 @@ import {
   type Place,
   parseSpec,
   planPreview,
+  listSteps,
   type SpecVar,
   type Tool,
   type Trigger,
@@ -48,7 +49,7 @@ import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
 import { TriggerPanel } from "./TriggerPanel.js";
-import { StepsPanel } from "./StepsPanel.js";
+import { StepsPanel, listOf } from "./StepsPanel.js";
 import {
   moveErrorWords,
   renameErrorWords,
@@ -512,9 +513,9 @@ export function App({
     if (!planOnShow || !spec) return null;
     const proposed = parseSpec(planOnShow.source);
     return proposed.success && proposed.spec
-      ? planPreview(spec, proposed.spec, planOnShow.diff)
+      ? planPreview(spec, proposed.spec, planOnShow.diff, layout)
       : null;
-  }, [planOnShow, spec]);
+  }, [planOnShow, spec, layout]);
   // The first thing the plan touches is brought into view when it is drawn.
   useEffect(() => {
     const first = planView ? Object.keys(planView.marks)[0] : undefined;
@@ -777,6 +778,47 @@ export function App({
         success: false,
         messages: [err instanceof Error ? err.message : "Could not move the step."],
       };
+    }
+  }
+
+  // KAM-186 (ADR-0061): a card dropped on empty canvas is pinned where it was put, in the layout store of the
+  // mode we are in (`.kampong/layout.json` locally, the layouts row hosted). The reply is the layout a reload
+  // would give, so the card stays put without another read.
+  async function handleNodeMove(id: string, position: { x: number; y: number }) {
+    try {
+      const result = await api.pinPositions({ [id]: position });
+      if (result.success && result.layout) setLayout(result.layout);
+      else setToast({ text: "Could not save the position.", nonce: Date.now() });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
+      setToast({ text: "Could not save the position.", nonce: Date.now() });
+    }
+  }
+
+  // KAM-186: a step dropped on another step of its list takes that step's place in the run order, through the
+  // same step-move operation as the Move buttons (KAM-174), so a move that would break a read is refused in words.
+  async function handleNodeReorder(id: string, overId: string) {
+    try {
+      await reorderByDrop(id, overId);
+    } catch {
+      setToast({ text: "Could not move the step.", nonce: Date.now() });
+    }
+  }
+  async function reorderByDrop(id: string, overId: string) {
+    if (!spec) return;
+    const refs = listSteps(spec);
+    const name = (node: string) => node.replace(/^workflow:/, "");
+    const ref = refs.find((r) => r.name === name(id));
+    const over = refs.find((r) => r.name === name(overId));
+    if (!ref || !over) return;
+    const { place } = listOf(refs, ref);
+    const { index } = listOf(refs, over);
+    const outcome = await handleMove({ op: "step.move", step: ref.name, to: { in: place, index } });
+    if (!outcome.success) {
+      setToast({
+        text: `"${ref.name}" was not moved. ${outcome.messages.join(" ")}`.trim(),
+        nonce: Date.now(),
+      });
     }
   }
 
@@ -1275,6 +1317,11 @@ export function App({
                         runStatus={planView ? undefined : runStatus}
                         onShowRunMessage={showRunMessage}
                         {...(!planView && { onNodeAction: askNodeAction })}
+                        {...(!planView &&
+                          spec && {
+                            onNodeMove: handleNodeMove,
+                            onNodeReorder: handleNodeReorder,
+                          })}
                         brands={componentBrands}
                         markedNew={planView ? undefined : newNodes}
                         {...(planView && { marks: planView.marks })}

@@ -44,6 +44,7 @@ import {
   loopGroups,
   type LoopGroup,
 } from "./loopGroups.js";
+import { dragOutcome } from "./nodeDrag.js";
 import { STATUS_ICON, pillText, reasonLine, type NodeRunInfo } from "./runStatus.js";
 
 // Renders the block canvas (PLAN.md affordance: "Trigger -> Tools ->
@@ -90,6 +91,10 @@ export interface CanvasProps {
   marks?: Record<string, PreviewMark>;
   /** The selected step or tool's floating toolbar (KAM-245): Duplicate or Delete. Without it there is no toolbar. */
   onNodeAction?: (action: NodeAction, id: string) => void;
+  /** KAM-186 (ADR-0061): a card was dragged onto empty canvas; save it there. `position` is in the stored layout's coordinates. Resolves once saved. Without it cards are not draggable. */
+  onNodeMove?: (id: string, position: { x: number; y: number }) => Promise<void>;
+  /** KAM-186: a step was dropped on another step of its list; move it to that step's place in the run order. Resolves once done or refused. */
+  onNodeReorder?: (id: string, overId: string) => Promise<void>;
   /** A failed node's "See message" (KAM-190): the id of the node whose message the run panel should show. */
   onShowRunMessage?: (id: string) => void;
 }
@@ -247,6 +252,8 @@ export function Canvas({
   runStatus,
   onShowRunMessage,
   onNodeAction,
+  onNodeMove,
+  onNodeReorder,
   brands,
   markedNew,
   marks,
@@ -285,6 +292,8 @@ export function Canvas({
       }));
     }
   }, [reveal, groups]);
+  // KAM-186: where a card being dragged is, until the app has saved the drop and handed back a new layout.
+  const [dragPos, setDragPos] = useState<Record<string, { x: number; y: number }>>({});
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
@@ -530,6 +539,34 @@ export function Canvas({
     ],
   );
 
+  // KAM-186: a card being dragged follows the pointer here, after the big memo above, so a mouse move touches only
+  // the dragged card (and the outlines of loops it belongs to); every other node keeps its object identity and its
+  // card element, and the edges do not depend on the drag at all.
+  const shownNodes: Node[] = useMemo(() => {
+    const dragged = Object.keys(dragPos);
+    if (dragged.length === 0) return nodes;
+    const at = { ...view.layout, ...dragPos };
+    return nodes.map((n) => {
+      if (dragPos[n.id] !== undefined) return { ...n, position: dragPos[n.id]! };
+      if (n.id.startsWith("outline:")) {
+        const g = groups.find((o) => `outline:${o.holder}` === n.id);
+        if (g && g.members.some((m) => dragPos[m] !== undefined)) {
+          const box = groupBox(g, at, sizes);
+          if (box) {
+            return {
+              ...n,
+              position: { x: box.x, y: box.y },
+              width: box.width,
+              height: box.height,
+              measured: { width: box.width, height: box.height },
+            };
+          }
+        }
+      }
+      return n;
+    });
+  }, [nodes, dragPos, view, groups, sizes]);
+
   const edges: Edge[] = useMemo(() => {
     const byId = new Map(view.graph.nodes.map((n) => [n.id, n]));
     // The node whose run result a line shows: the step it leads into (a collapsed loop's first step).
@@ -614,6 +651,10 @@ export function Canvas({
         expandLoop(change.id.slice("group:".length));
       } else if (change.type === "select" && change.selected && change.id !== MARKER_ID) {
         onSelect?.(change.id);
+      } else if (change.type === "position" && change.position && !isGroupId(change.id)) {
+        // The canvas owns the nodes, so a drag only moves a card if the position it reports is drawn.
+        const at = change.position;
+        setDragPos((prev) => ({ ...prev, [change.id]: at }));
       } else if (change.type === "dimensions" && change.dimensions) {
         const { width, height } = change.dimensions;
         const had = sizes[change.id];
@@ -621,6 +662,29 @@ export function Canvas({
       }
     }
     if (Object.keys(measured).length > 0) setSizes((prev) => ({ ...prev, ...measured }));
+  };
+
+  // KAM-186 (ADR-0061): a drop is a free move (pinned), a reorder (the step-move operation) or a snap back.
+  const onNodeDragStop = (_: unknown, dragged: Node) => {
+    const id = dragged.id;
+    const done = () =>
+      setDragPos((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => key !== id)));
+    const outcome = dragOutcome({
+      id,
+      dropped: dragged.position ?? dragPos[id],
+      graph: view.graph,
+      drawn: view.layout,
+      stored: layout,
+      sizes,
+    });
+    if (outcome === null || outcome.kind === "revert") return done();
+    const saved =
+      outcome.kind === "move"
+        ? onNodeMove?.(id, outcome.position)
+        : onNodeReorder?.(id, outcome.over);
+    if (saved === undefined) return done();
+    // The app's handlers report their own failures (snackbar); a rejection that still gets here must not go unhandled.
+    saved.catch(() => undefined).finally(done);
   };
 
   return (
@@ -632,7 +696,7 @@ export function Canvas({
     >
       <EdgeInsertContext.Provider value={insertState}>
         <ReactFlow
-          nodes={nodes}
+          nodes={shownNodes}
           edges={edges}
           edgeTypes={EDGE_TYPES}
           nodeTypes={NODE_TYPES}
@@ -640,6 +704,8 @@ export function Canvas({
           fitViewOptions={fitViewOptions}
           minZoom={0.1}
           onNodesChange={onNodesChange}
+          nodesDraggable={onNodeMove !== undefined}
+          onNodeDragStop={onNodeDragStop}
           onEdgesChange={onEdgesChange}
           onEdgeMouseEnter={(_, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover(null)}
@@ -660,7 +726,7 @@ export function Canvas({
           multiSelectionKeyCode={null}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-          <Controls fitViewOptions={{ padding: 0.15, minZoom: 0.05 }} />
+          <Controls showInteractive={false} fitViewOptions={{ padding: 0.15, minZoom: 0.05 }} />
           {view.graph.nodes.length > MINIMAP_OVER && (
             <MiniMap
               pannable

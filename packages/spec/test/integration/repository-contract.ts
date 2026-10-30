@@ -6,7 +6,7 @@ import * as foreachFixtures from "../fixtures-foreach.js";
 import type { LayoutMap } from "../../src/layout.js";
 import type { SpecOp } from "../../src/ops.js";
 import { parseSpec } from "../../src/parse.js";
-import type { SpecRepository } from "../../src/repository.js";
+import { loadWithLayout, pinNodePositions, type SpecRepository } from "../../src/repository.js";
 
 // KAN-1224 (ADR-0014's "both implementations pass the same round-trip
 // property test suite" test plan item, SLICES.md V5 integration test plan):
@@ -419,6 +419,37 @@ export function runSpecRepositoryContractTests({
       await repo.writeLayout(layoutB);
 
       expect(await repo.readLayout()).toEqual(layoutB);
+    });
+
+    // KAM-186 (ADR-0061): local and hosted must keep a dragged position the same way.
+    it("pinNodePositions: a pinned position survives loadWithLayout and a rename moves it with the step", async () => {
+      const repo = await createRepository();
+      await loadWithLayout(repo);
+
+      const pinned = await pinNodePositions(repo, { "workflow:shout": { x: 901, y: 402 } });
+      expect(pinned.success).toBe(true);
+      expect((await loadWithLayout(repo)).layout["workflow:shout"]).toEqual({
+        x: 901,
+        y: 402,
+        pinned: true,
+      });
+      // The pin is in the store itself, not only in what loadWithLayout returns.
+      expect((await repo.readLayout())["workflow:shout"]).toEqual({ x: 901, y: 402, pinned: true });
+      // Another node is still laid out automatically.
+      expect((await loadWithLayout(repo)).layout["workflow:greet"]?.pinned).toBeUndefined();
+
+      const renamed = await repo.applyOpsAndSave([
+        { op: "step.rename", step: "shout", to: "yell" },
+      ]);
+      expect(renamed.success).toBe(true);
+      expect((await loadWithLayout(repo)).layout["workflow:yell"]).toEqual({
+        x: 901,
+        y: 402,
+        pinned: true,
+      });
+
+      await pinNodePositions(repo, { "workflow:yell": null });
+      expect((await loadWithLayout(repo)).layout["workflow:yell"]?.pinned).toBeUndefined();
     });
 
     it("applyPatchAndSave applies a valid patch and persists the result", async () => {

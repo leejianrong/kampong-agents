@@ -89,6 +89,21 @@ async function putSource(
   return putSpecChange(url, { source, ...(baseRevision !== undefined && { baseRevision }) });
 }
 
+async function putPins(
+  url: string,
+  positions: Record<string, { x: number; y: number } | null>,
+): Promise<{ success: boolean; layout?: LoadSpecResponse["layout"]; error?: string }> {
+  const res = await fetch(url, jsonInit({ positions }, { method: "PUT" }));
+  if (res.status === 422) return (await res.json()) as { success: false; error: string };
+  if (!res.ok) {
+    throw new ApiError(
+      await errorMessageFor(res, `Failed to save the position (HTTP ${res.status}).`),
+      res.status,
+    );
+  }
+  return (await res.json()) as { success: true; layout: LoadSpecResponse["layout"] };
+}
+
 async function putSpecChange(url: string, payload: object): Promise<ApplyOpsResponse> {
   const res = await fetch(url, jsonInit(payload, { method: "PUT" }));
   if (res.status === 422 || res.status === 409) {
@@ -254,6 +269,14 @@ export interface ApiClient {
    */
   applyOps(ops: SpecOp[], options?: { baseRevision?: string }): Promise<ApplyOpsResponse>;
   /**
+   * KAM-186 (ADR-0061): pins dragged nodes at their positions in the layout store (a `null` position unpins the
+   * node). Local mode writes `.kampong/layout.json`, hosted mode the layouts row; both answer with the layout as
+   * a reload would now give it.
+   */
+  pinPositions(
+    positions: Record<string, { x: number; y: number } | null>,
+  ): Promise<{ success: boolean; layout?: LoadSpecResponse["layout"]; error?: string }>;
+  /**
    * Import (ADR-0054, KAM-207): replaces the whole spec with this YAML text if it validates. A refusal
    * resolves with `success: false` and the errors, with line numbers, and nothing is written. Export is the
    * `source` that `loadSpec` already returns.
@@ -402,6 +425,10 @@ export function createApiClient(baseUrl = ""): ApiClient {
 
     async applyOps(ops, options): Promise<ApplyOpsResponse> {
       return postOps(`${baseUrl}/api/spec`, ops, options?.baseRevision);
+    },
+
+    async pinPositions(positions) {
+      return putPins(`${baseUrl}/api/layout`, positions);
     },
 
     async replaceSource(source, options): Promise<ApplyOpsResponse> {
@@ -829,6 +856,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     loadSpec: wrap(c.loadSpec.bind(c)),
     applyPatch: wrap(c.applyPatch.bind(c)),
     applyOps: wrap(c.applyOps.bind(c)),
+    pinPositions: wrap(c.pinPositions.bind(c)),
     replaceSource: wrap(c.replaceSource.bind(c)),
     startBlank: wrap(c.startBlank.bind(c)),
     subscribeToEvents: c.subscribeToEvents.bind(c),
@@ -879,6 +907,10 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
 
     async applyOps(ops, options): Promise<ApplyOpsResponse> {
       return postOps(`${baseUrl}/api/specs/${specId}`, ops, options?.baseRevision);
+    },
+
+    async pinPositions(positions) {
+      return putPins(`${baseUrl}/api/specs/${specId}/layout`, positions);
     },
 
     async replaceSource(source, options): Promise<ApplyOpsResponse> {

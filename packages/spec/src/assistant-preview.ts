@@ -1,6 +1,6 @@
 import type { AssistantDiff } from "./assistant.js";
 import { specToGraph, type SpecEdge, type SpecGraph, type SpecNode } from "./graph.js";
-import { autoLayoutGraph, type LayoutMap } from "./layout.js";
+import { layoutWithPins, type LayoutMap } from "./layout.js";
 import type { AgentSpec } from "./schema.js";
 
 // KAM-206 (ADR-0060): what a plan would do, drawn before it is applied. The preview is the workflow as it would be
@@ -21,6 +21,8 @@ export function planPreview(
   current: AgentSpec,
   proposed: AgentSpec,
   diff: AssistantDiff,
+  /** The stored layout, so a card the person pinned (ADR-0061) stays where it is while the plan is shown. */
+  stored: LayoutMap = {},
 ): PlanPreview {
   const before = specToGraph(current);
   const after = specToGraph(proposed);
@@ -67,5 +69,5 @@ export function planPreview(
   }
 
   const graph: SpecGraph = { nodes: merged, edges };
-  return { graph, layout: autoLayoutGraph(graph), marks };
+  return { graph, layout: layoutWithPins(graph, stored), marks };
 }

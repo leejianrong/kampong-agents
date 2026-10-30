@@ -629,6 +629,12 @@ The trigger node says what starts a run: `Manual` when the spec has no trigger, 
 trigger is saved. A long step name is cut with an ellipsis inside its node (the full name is the tooltip and the
 accessible name), and a workflow of more than 15 nodes gets a minimap in the corner: drag in it to pan, scroll to zoom.
 
+Drag a card onto empty canvas to arrange it: the position is saved in `.kampong/layout.json` (or the workspace's
+layout when hosted), marked `"pinned": true`, and the spec file is not touched. Drop a step on another step of the
+same list (the workflow, a loop body or a branch arm) and it takes that step's place in the run order, exactly as
+the Move buttons do; a move that would put a step before one it reads is refused and nothing changes. Any other
+drop snaps the card back.
+
 | Key | What it does |
 | --- | --- |
 | `Esc` | Closes the panel and puts focus back on the node. Closes the delete confirm first when it is open. |

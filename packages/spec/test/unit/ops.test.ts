@@ -665,6 +665,8 @@ describe("requests", () => {
   it("a top-level move asks for the nodes to swap their vertical slots; a move into a body does not", () => {
     const up = ok(F11, [{ op: "step.move", step: "send", to: { in: "workflow", index: 0 } }]);
     expect(up.layoutMoves).toEqual([
+      // KAM-186: the moved step is released from any pin (ADR-0061).
+      { unpin: "workflow:send" },
       {
         reorder: {
           before: [
@@ -701,11 +703,27 @@ describe("requests", () => {
     const into = ok(F11, [
       { op: "step.move", step: "send", to: { in: { step: "each_alert", slot: "steps" } } },
     ]);
-    expect(into.layoutMoves).toEqual([]);
+    expect(into.layoutMoves).toEqual([{ unpin: "workflow:send" }]);
     // A layout that does not hold every node is left alone.
     expect(applyLayoutMoves({ "workflow:fetch": { x: 1, y: 1 } }, up.layoutMoves)).toEqual({
       "workflow:fetch": { x: 1, y: 1 },
     });
+  });
+
+  it("an unpin keeps the position but drops the pin, and a pinned column is not reordered (KAM-186)", () => {
+    const pinned = {
+      "workflow:a": { x: 1, y: 2, pinned: true as const },
+      "workflow:b": { x: 3, y: 4 },
+    };
+    expect(applyLayoutMoves(pinned, [{ unpin: "workflow:a" }])).toEqual({
+      "workflow:a": { x: 1, y: 2 },
+      "workflow:b": { x: 3, y: 4 },
+    });
+    expect(
+      applyLayoutMoves(pinned, [
+        { reorder: { before: ["workflow:a", "workflow:b"], after: ["workflow:b", "workflow:a"] } },
+      ]),
+    ).toEqual(pinned);
   });
 
   it("applies layout renames and drops to a layout, leaving other nodes", () => {
