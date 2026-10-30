@@ -14,14 +14,20 @@ replacement for reading those before you implement a slice.
 - **Done and merged:** V1–V4 (the MVP: `AgentSpec` YAML + canvas, engine with guardrails/HITL,
   `kampong dev|run|export`, TypeScript exporter) and V9 (webhook triggers, connectors, Slack approvals).
 - **Built but parked until deployed:** V5 hosted/BYOK server (`packages/server`: Postgres + RLS,
-  Better Auth, BYOK vault, Helm in `deploy/`). V10 managed go-live is partly built.
+  Better Auth, BYOK vault, Helm in `deploy/`). V10 managed go-live is partly built (KAM-203 in progress;
+  Deploy dashboard, per-workspace connector secrets and billing open).
 - **In progress: V11**, authorable real-world workflows. Shipped: spec version `"1.1"` (JSONata
   expressions, `vars`), `output_schema`, component repository (`kampong/*` first-party components),
   SQLite state store, unattended runner, `schedule` and `poll` triggers, model record/replay, `transform`/`validate`/`dedupe`, `foreach`,
-  `branch`/`stop`, persisted approvals, webhook auth presets with `when`/`map`, and the `market-etl`
-  template. Open work is on the board (canvas forms for the new steps, Slack interactivity,
-  RAG, more templates).
-- **Roadmap, not started:** V6 governance, V7 multi-agent, V8 NL generation, V12 registry.
+  `branch`/`stop`, persisted approvals, webhook auth presets with `when`/`map`, the `market-etl`,
+  `support-triage` and `webhook-triage` templates, and the canvas UX epics (inspector, Replay/Live run bar,
+  per-node run status, Canvas v2 cards). Open: Slack interactivity and record-mode approval (P2), `parallel`
+  and fan-out (P3), RAG (P4), the canvas expression editor (KAM-110).
+- **V8 started:** the workflow assistant (prompt to validated edits, Build/Ask modes, plan drawn as a diff) works in
+  `kampong dev`. The hosted assistant's key source is undecided (KAM-252).
+- **Open UI work:** undo/redo (KAM-183), node dragging (KAM-186), dark mode (KAM-201), and the docs/site/deploy
+  epic KAM-E40.
+- **Roadmap, not started:** V6 governance, V7 multi-agent (scoping ADR only), V12 registry.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`), one epic per slice.
 Older commits and ADRs cite `KAN-`/`EPIC-` ids for the same cards. Pick up a card from the board,
@@ -82,7 +88,7 @@ packages/engine/      Mastra-backed engine: workflow, guardrails/HITL, runner, s
 packages/engine/components/   first-party `kampong/*` connectors (slack, gmail, github, supabase, alpha-vantage)
 packages/exporter/    AgentSpec -> standalone TypeScript project, one-way
 packages/cli/         kampong dev | run | serve | export | templates | doctor | lock; Fastify local server
-packages/cli/templates/  ready-made specs (market-etl; ADR-0046)
+packages/cli/templates/  ready-made specs: market-etl, support-triage, webhook-triage (ADR-0046)
 packages/server/      hosted multi-tenant server (Drizzle/Postgres, Better Auth) — V5
 apps/canvas/          React + Vite + @xyflow/react canvas
 e2e/                  cross-package acceptance tests; e2e/browser = Playwright

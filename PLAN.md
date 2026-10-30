@@ -1,6 +1,6 @@
 # Kampong Agents: Plan
 
-Status: agreed · Milestone: MVP (v1) shipped; V9 shipped, V11 in progress (see `SLICES.md` for per-slice status)
+Status: agreed · Milestone: MVP (v1), V9 and the canvas UX work shipped; V11 in progress (see `SLICES.md` for per-slice status)
 
 ## Direction update (2026-10-19)
 

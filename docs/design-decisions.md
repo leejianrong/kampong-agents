@@ -63,11 +63,19 @@ language, typed step output, a durable state store, a component repository, and 
 - [ADR-0050: The poll trigger](adr/0050-poll-trigger.md)
 - [ADR-0051: Record and replay for model calls](adr/0051-model-fixtures.md)
 - [ADR-0052: YAML serialisation keeps the author's style](adr/0052-yaml-serialisation-style.md)
+- [ADR-0053: First user, business model and agent count](adr/0053-first-user-business-model-and-agent-count.md)
+- [ADR-0054: The spec is internal, YAML is the interchange](adr/0054-spec-is-internal-yaml-is-interchange.md)
+- [ADR-0055: Step addressing and the mutation API](adr/0055-step-addressing-and-mutation-api.md)
+- [ADR-0056: The hosted server runs spec 1.1](adr/0056-hosted-server-runs-spec-1-1.md)
+- [ADR-0057: Hosted webhook secret per deployment](adr/0057-hosted-webhook-secret-per-deployment.md)
+- [ADR-0058: Hosted egress guard](adr/0058-hosted-egress-guard.md)
+- [ADR-0059: Canvas v2 look and feel](adr/0059-canvas-v2-look-and-feel.md)
+- [ADR-0060: Workflow assistant (chat builder)](adr/0060-workflow-assistant-chat-builder.md)
 
 ## Hosted mode and the roadmap
 
-The hosted backend and its canvas UI (ADR-0013 to 0020) are built but not yet deployed. Sub-agents, governance and
-spec generation (ADR-0011, 0012, 0017) are still planned.
+The hosted backend and its canvas UI (ADR-0013 to 0020) are built but not yet deployed. Sub-agents and governance
+(ADR-0011, 0017) are still planned; the workflow assistant (ADR-0060) is the first part of spec generation (ADR-0012).
 
 - [ADR-0011: Sub-agents data model and org-chart canvas](adr/0011-sub-agents-data-model-and-org-chart-canvas.md)
 - [ADR-0012: Spec generation, evaluation, and fallback](adr/0012-spec-generation-evaluation-and-fallback.md)
