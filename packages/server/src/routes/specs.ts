@@ -76,9 +76,12 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
     if (!ctx) return reply;
 
     try {
-      return await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
-        loadWithLayout(new PgSpecRepository(tx, ctx.workspaceId, request.params.id)),
-      );
+      return await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
+        const repo = new PgSpecRepository(tx, ctx.workspaceId, request.params.id);
+        // Read first: a version older than the text is the safe direction for a stale guard.
+        const revision = await repo.readRevision();
+        return { ...(await loadWithLayout(repo)), revision };
+      });
     } catch (err) {
       if (err instanceof SpecNotFoundError) {
         return reply

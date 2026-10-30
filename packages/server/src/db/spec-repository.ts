@@ -159,6 +159,16 @@ export class PgSpecRepository implements SpecRepository {
     return rows;
   }
 
+  /** The row's version, the same token every write returns (KAM-183: the canvas loads it for Undo's guard). */
+  async readRevision(): Promise<string> {
+    const [row] = await this.db
+      .select({ version: specs.version })
+      .from(specs)
+      .where(and(eq(specs.id, this.specId), eq(specs.workspaceId, this.workspaceId)));
+    if (!row) throw new SpecNotFoundError(this.specId, this.workspaceId);
+    return String(row.version);
+  }
+
   private async getSpecRow(): Promise<{ yamlSource: string }> {
     const [row] = await this.db
       .select({ yamlSource: specs.yamlSource })

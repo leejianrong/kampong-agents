@@ -6,6 +6,8 @@
 export interface SnackbarAction {
   label: string;
   onClick: () => void;
+  /** The pointer or keyboard focus is on the link: the caller keeps the toast up until it leaves. */
+  onHold?: (held: boolean) => void;
 }
 
 export function Snackbar({ message, action }: { message: string | null; action?: SnackbarAction }) {
@@ -21,6 +23,10 @@ export function Snackbar({ message, action }: { message: string | null; action?:
                 className="md3-snackbar__action md3-label-large"
                 data-testid="toast-action"
                 onClick={action.onClick}
+                onMouseEnter={() => action.onHold?.(true)}
+                onMouseLeave={() => action.onHold?.(false)}
+                onFocus={() => action.onHold?.(true)}
+                onBlur={() => action.onHold?.(false)}
               >
                 {action.label}
               </button>

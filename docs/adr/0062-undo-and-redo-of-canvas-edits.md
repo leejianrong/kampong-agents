@@ -56,6 +56,28 @@ restored text would leave a dragged card where it was dropped.
     toast is a polite live region and stays 8 seconds when it has a link. Pressing Ctrl+Z with nothing to undo says
     "Nothing to undo." in the same region. The link is an M3 snackbar text button.
 
+## Refinements after review
+
+11. **Own echo is not an outside edit.** The file watcher can report this client's own save or restore before the
+    canvas has reloaded it. A change seen while a write or restore is in flight, or within 1.5 seconds after one, is
+    not taken for an external edit. An outside edit hiding in that window leaves the stack, and the revision guard
+    (item 12) still refuses a restore over it.
+12. **The stale guard is always present.** Both servers' load responses now carry `revision` (the file hash locally,
+    the row version hosted). A load seeds it while the stack is empty, each recorded write replaces it, and a restore
+    that finds none uses the one it has just read.
+13. **"Before" is read from the server, and writes are serialised.** `withHistory` runs writes one at a time and reads
+    the stored text and layout when each one's turn comes, so two quick edits cannot both record the state before the
+    first. A pin drop that changes no pin is not an edit: nothing is recorded and redo is kept.
+14. **A restore that half-succeeds says so.** If the text is back but the pins fail, the step is taken, the canvas
+    reloads, and the toast says the positions could not be restored.
+15. **The assistant's Undo is a history undo.** It asks the canvas to undo the last step, provided the history's
+    revision is still the one Apply produced, so it neither pollutes the stack nor leaves the pins behind.
+16. **Not under an open draft or a run.** Undo and Redo say "Finish or discard the open form first." (the forms the
+    panel guard of KAM-182 covers) or "A run is in progress." and do nothing.
+17. **Layouts and the toast.** The shortcut also matches the physical key (`event.code`), so non-Latin layouts work.
+    A toast with an Undo or Redo link pauses while the pointer or focus is on the link, and a plain toast raised
+    meanwhile waits behind it instead of replacing it.
+
 ## Not decided here
 
 - Cross-session history: the stack is in memory and ends with the tab. Git covers the file (local); a hosted

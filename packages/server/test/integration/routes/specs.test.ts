@@ -176,6 +176,8 @@ describe.skipIf(!DATABASE_URL)("Authenticated spec-CRUD routes against a real Po
         headers: { cookie },
       });
       expect(reread.json().source).toContain("Greet everyone.");
+      // KAM-183: the load carries the row's version, the token every write returns, for Undo's stale guard.
+      expect(reread.json().revision).toBe(patched.json().revision);
     });
 
     it("rejects creating a spec with invalid YAML source (422), persisting nothing", async () => {

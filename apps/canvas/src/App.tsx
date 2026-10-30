@@ -83,7 +83,13 @@ import { TopBar, type SaveState } from "./TopBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { CommandPalette } from "./CommandPalette.js";
 import { Snackbar } from "./Snackbar.js";
-import { EditHistory, restoreSnapshot, withHistory, type LayoutMap } from "./editHistory.js";
+import {
+  EditHistory,
+  restoreSnapshot,
+  withHistory,
+  type LayoutMap,
+  type RestoreResult,
+} from "./editHistory.js";
 import { buildYamlSourceMap, changedNode, nodeAtLine, type LineRange } from "./yamlSourceMap.js";
 
 // KAM-196: the headline over a spec that does not validate. Saves are refused while it is broken, and the
@@ -157,6 +163,12 @@ const DRAFT_FORMS: OpenForm[] = ["vars", "trigger", "steps", "variables"];
 // KAM-181: how long the changed lines stay marked and the toast stays up.
 const SAVE_FEEDBACK_MS = 4000;
 const UNDO_TOAST_MS = 8000;
+
+interface ToastState {
+  text: string;
+  nonce: number;
+  action?: "undo" | "redo";
+}
 
 function describeChange(id: string, range: LineRange, source: string): string {
   const [kind, ...rest] = id.split(":");
@@ -245,11 +257,23 @@ export function App({
   const sidePane = useRef<HTMLElement>(null);
   // KAM-181: a save was just made (so the next different source is its result), and the feedback for it.
   const savedAt = useRef(0);
-  const [toast, setToast] = useState<{
-    text: string;
-    nonce: number;
-    action?: "undo" | "redo";
-  } | null>(null);
+  const [toast, setToastRaw] = useState<ToastState | null>(null);
+  const toastRef = useRef<ToastState | null>(null);
+  const queuedToast = useRef<ToastState | null>(null);
+  // The pointer or keyboard focus is on the toast's link: it stays until they leave (KAM-183).
+  const [toastHeld, setToastHeld] = useState(false);
+  // A toast that carries an Undo or Redo link is not replaced by a plain one behind the person's back: the plain
+  // one waits its turn. A result of the link itself, or news that makes the link wrong, passes `replace`.
+  function setToast(next: ToastState | null, replace = false) {
+    if (!replace && next && toastRef.current?.action) {
+      queuedToast.current = next;
+      return;
+    }
+    queuedToast.current = null;
+    toastRef.current = next;
+    setToastHeld(false);
+    setToastRaw(next);
+  }
   const [changed, setChanged] = useState<{ range: LineRange; nonce: number } | null>(null);
   const returnFocusTo = useRef<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -313,6 +337,7 @@ export function App({
       setErrors(result.errors ?? []);
       const before = sourceRef.current;
       sourceRef.current = result.source;
+      history.seedRevision(result.revision);
       if (
         result.success &&
         savedAt.current > 0 &&
@@ -347,19 +372,23 @@ export function App({
       // the error, not blank it.
       setSpecError(err instanceof Error ? err.message : "Failed to load the spec.");
     }
-  }, [api, onUnauthorized]);
+  }, [api, onUnauthorized, history]);
 
   useEffect(() => {
     void refresh();
     // KAM-183: a change made outside the canvas (ADR-0008) makes every snapshot unsafe to restore, so the
     // stack is cleared and the person is told why. A touch that left the same text is not a change.
     const clearForExternalEdit = (text: string) => {
-      if (text === sourceRef.current) return;
+      // The watcher can report this client's own save (or its own undo) before the screen has reloaded it.
+      if (text === sourceRef.current || history.ownWriteLikely) return;
       if (history.clear()) {
-        setToast({
-          text: "The workflow changed outside the canvas, so Undo history was cleared.",
-          nonce: Date.now(),
-        });
+        setToast(
+          {
+            text: "The workflow changed outside the canvas, so Undo history was cleared.",
+            nonce: Date.now(),
+          },
+          true,
+        );
       }
     };
     const unsubscribe = api.subscribeToEvents((event) => {
@@ -1021,11 +1050,18 @@ export function App({
     return () => clearTimeout(timer);
   }, [changed]);
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toastHeld) return;
     // A toast with an Undo or Redo link stays longer, so a keyboard user can reach it.
-    const timer = setTimeout(() => setToast(null), toast.action ? UNDO_TOAST_MS : SAVE_FEEDBACK_MS);
+    const timer = setTimeout(
+      () => {
+        const next = queuedToast.current;
+        setToast(null, true);
+        if (next) setToast(next);
+      },
+      toast.action ? UNDO_TOAST_MS : SAVE_FEEDBACK_MS,
+    );
     return () => clearTimeout(timer);
-  }, [toast]);
+  }, [toast, toastHeld]);
 
   // A toolbar form replaces the inspector; a node that has gone (deleted, or the file changed) closes it.
   useEffect(() => {
@@ -1159,24 +1195,62 @@ export function App({
   // KAM-183 (ADR-0062): Undo and Redo of the edits made in this session. The newest snapshot is restored through
   // the server's own write (refused when the file changed since, so a later edit is never thrown away), and the
   // canvas then reloads it. Both modes take this one path.
-  async function stepHistory(direction: "undo" | "redo") {
+  async function stepHistory(
+    direction: "undo" | "redo",
+    options: { quiet?: boolean; expectRevision?: string } = {},
+  ): Promise<RestoreResult> {
+    const say = (text: string, action?: "undo" | "redo") => {
+      if (!options.quiet) setToast({ text, nonce: Date.now(), ...(action && { action }) }, true);
+    };
+    const refused = (messages: string[], stale = false): RestoreResult => ({
+      ok: false,
+      stale,
+      messages,
+    });
+    // Not while a form has typed input that is not saved, or while a run is going: the restore would change the
+    // workflow under it. The same rule as moving between panels (KAM-182).
+    if (!options.quiet) {
+      if (runSession.isRunning) {
+        say("A run is in progress.");
+        return refused(["A run is in progress."]);
+      }
+      if (unsavedInput()) {
+        say("Finish or discard the open form first.");
+        return refused(["Finish or discard the open form first."]);
+      }
+    }
     // A save still in flight (a card dropped a moment ago) is waited for, not skipped; one restore at a time.
     while (history.busy) await history.idle();
     const target = direction === "undo" ? history.peekUndo() : history.peekRedo();
-    const say = (text: string, action?: "undo" | "redo") =>
-      setToast({ text, nonce: Date.now(), ...(action && { action }) });
     if (!target) {
       say(direction === "undo" ? "Nothing to undo." : "Nothing to redo.");
-      return;
+      return refused([direction === "undo" ? "Nothing to undo." : "Nothing to redo."]);
+    }
+    if (options.expectRevision !== undefined && history.revision !== options.expectRevision) {
+      return refused(["The workflow changed since."], true);
     }
     history.restoringNow(true);
     try {
       // What is stored now, read afresh: the screen may not have caught up with a save made a moment ago.
       const fresh = await rawApi.loadSpec();
       const current = { source: fresh.source, layout: fresh.layout };
-      const result = await restoreSnapshot(rawApi, target, current, history.revision);
+      // The revision of the last write made here; failing that, the one just read (the guard is never absent).
+      const base = history.revision ?? fresh.revision;
+      const result = await restoreSnapshot(rawApi, target, current, base);
+      const commit = (revision?: string) => {
+        if (direction === "undo") history.commitUndo(current, revision);
+        else history.commitRedo(current, revision);
+      };
       if (!result.ok) {
-        if (result.stale) {
+        if (result.textWritten) {
+          // The text is back but the positions are not: the step is taken, the screen caught up, and the person told.
+          commit(result.textWritten.revision);
+          savedAt.current = 0;
+          await refresh();
+          say(
+            `${direction === "undo" ? "Undone" : "Redone"}, but the card positions could not be restored.`,
+          );
+        } else if (result.stale) {
           history.clear();
           say(
             "The workflow changed outside the canvas, so I left it as it is and cleared Undo history.",
@@ -1184,19 +1258,21 @@ export function App({
         } else {
           say(`Could not ${direction}. ${result.messages[0] ?? ""}`.trim());
         }
-        return;
+        return result;
       }
-      if (direction === "undo") history.commitUndo(current, result.revision);
-      else history.commitRedo(current, result.revision);
+      commit(result.revision);
       savedAt.current = 0;
       await refresh();
       say(
         direction === "undo" ? "Undone." : "Redone.",
         direction === "undo" ? (history.redoCount > 0 ? "redo" : undefined) : "undo",
       );
+      return result;
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onUnauthorized?.();
-      say(err instanceof Error ? err.message : `Could not ${direction}.`);
+      const message = err instanceof Error ? err.message : `Could not ${direction}.`;
+      say(message);
+      return refused([message]);
     } finally {
       history.restoringNow(false);
     }
@@ -1206,18 +1282,20 @@ export function App({
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      // The physical key as well as the letter, so a non-Latin layout (where Z is not "z") still works.
       const key = event.key.toLowerCase();
-      const direction =
-        key === "z"
-          ? event.shiftKey
-            ? "redo"
-            : "undo"
-          : key === "y" && !event.shiftKey
-            ? "redo"
-            : null;
+      const isZ = key === "z" || event.code === "KeyZ";
+      const isY = key === "y" || event.code === "KeyY";
+      const direction = isZ
+        ? event.shiftKey
+          ? "redo"
+          : "undo"
+        : isY && !event.shiftKey
+          ? "redo"
+          : null;
       if (!direction || isTextEntry(event.target)) return;
       event.preventDefault();
-      void stepRef.current(direction);
+      void stepRef.current(direction).catch(() => undefined);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1387,6 +1465,9 @@ export function App({
                         api={api}
                         source={source}
                         onChanged={refresh}
+                        onUndoApply={(revision) =>
+                          stepHistory("undo", { quiet: true, expectRevision: revision })
+                        }
                         onPreview={setPlanOnShow}
                         onMarkNew={(ids) => {
                           setNewNodes(ids);
@@ -1769,6 +1850,7 @@ export function App({
                   action: {
                     label: toast.action === "undo" ? "Undo" : "Redo",
                     onClick: () => void stepHistory(toast.action!),
+                    onHold: setToastHeld,
                   },
                 })}
               />

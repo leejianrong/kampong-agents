@@ -45,6 +45,9 @@ describe("createDevServer", () => {
     expect(body.success).toBe(true);
     expect(body.spec.agent.id).toBe("greeter");
     expect(body.layout["agent:greeter"]).toBeDefined();
+    // KAM-183: the load carries the revision a write would, so Undo's stale guard has one from the start.
+    const write = await app.inject({ method: "PUT", url: "/api/spec", payload: { ops: [] } });
+    expect(body.revision).toBe(write.json().revision);
   });
 
   // KAM-186 (ADR-0061): a dragged node is pinned in layout.json and kept across a reload.

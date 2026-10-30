@@ -203,3 +203,78 @@ describe("withHistory", () => {
     expect(h.revision).toBe("r2");
   });
 });
+
+describe("withHistory, reading what is stored (KAM-183 review)", () => {
+  it("takes each before from the server, one write at a time, so two quick edits record two different states", async () => {
+    let stored = "v1";
+    const order: string[] = [];
+    const raw = {
+      loadSpec: vi.fn(async () => ({ success: true, source: stored, layout: {}, errors: [] })),
+      applyOps: vi.fn(async (ops: unknown[]) => {
+        await new Promise((r) => setTimeout(r, 5));
+        stored = `after-${(ops as { n: number }[])[0]!.n}`;
+        order.push(stored);
+        return { success: true, revision: stored };
+      }),
+    } as unknown as ApiClient;
+    const h = new EditHistory();
+    const api = withHistory(raw, h, () => snap("stale-screen"));
+    await Promise.all([api.applyOps([{ n: 1 } as never]), api.applyOps([{ n: 2 } as never])]);
+    expect(order).toEqual(["after-1", "after-2"]);
+    expect(h.undoCount).toBe(2);
+    h.commitUndo(snap("x"));
+    expect(h.peekUndo()?.source).toBe("v1");
+    h.commitUndo(snap("x"));
+    expect(h.peekRedo()?.source).toBe("x");
+  });
+
+  it("a drop that moves nothing is not an edit and does not clear redo", async () => {
+    const layout = { a: { x: 1, y: 1, pinned: true } };
+    const raw = {
+      loadSpec: vi.fn(async () => ({ success: true, source: "v1", layout, errors: [] })),
+      pinPositions: vi.fn(async () => ({ success: true, layout })),
+    } as unknown as ApiClient;
+    const h = new EditHistory();
+    h.record(snap("v0"), "r1");
+    h.commitUndo(snap("v1"));
+    expect(h.redoCount).toBe(1);
+    await withHistory(raw, h, () => snap("v1")).pinPositions({ a: { x: 1, y: 1 } });
+    expect(h.undoCount).toBe(0);
+    expect(h.redoCount).toBe(1);
+  });
+});
+
+describe("restoreSnapshot when the positions fail (KAM-183 review)", () => {
+  it("says the text was already written, with its revision", async () => {
+    const api = {
+      replaceSource: vi.fn(async () => ({ success: true, revision: "r9" })),
+      pinPositions: vi.fn(async () => ({ success: false, error: "nope" })),
+    };
+    const result = await restoreSnapshot(
+      api,
+      { source: "A", layout: { a: { x: 1, y: 1, pinned: true } } },
+      snap("B"),
+    );
+    expect(result).toMatchObject({ ok: false, textWritten: { revision: "r9" } });
+  });
+});
+
+describe("EditHistory revision and echo (KAM-183 review)", () => {
+  it("seeds a revision only while the stack is empty", () => {
+    const h = new EditHistory();
+    h.seedRevision("r1");
+    expect(h.revision).toBe("r1");
+    h.record(snap("a"), "r2");
+    h.seedRevision("r3");
+    expect(h.revision).toBe("r2");
+  });
+
+  it("treats a change during or just after its own write as its own", () => {
+    const h = new EditHistory();
+    expect(h.ownWriteLikely).toBe(false);
+    h.writing(1);
+    expect(h.ownWriteLikely).toBe(true);
+    h.writing(-1);
+    expect(h.ownWriteLikely).toBe(true);
+  });
+});

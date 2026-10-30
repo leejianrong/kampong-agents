@@ -169,6 +169,8 @@ for (const size of [
     }) => {
       await load(page);
       await saveTrigger(page, "2h");
+      // Past the moment in which a change is taken for the canvas's own save echoing back.
+      await page.waitForTimeout(1700);
       const external = `${text()}# edited in Cursor\n`;
       writeFileSync(file, external);
       await expect(toast(page)).toContainText("changed outside the canvas");

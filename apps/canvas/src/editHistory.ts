@@ -17,6 +17,9 @@ export interface Snapshot {
 /** How many edits Undo can walk back. The oldest falls off first; a snapshot is a few kilobytes of text. */
 export const HISTORY_DEPTH = 100;
 
+/** How long after its own write the canvas treats a file change as probably its own echo. */
+const ECHO_MS = 1500;
+
 const LAYOUT_MARK = "$layout";
 
 export class EditHistory {
@@ -60,11 +63,30 @@ export class EditHistory {
   /** A write is starting or has finished (a count, so overlapping writes are held until all are done). */
   writing(delta: 1 | -1): void {
     this.writes += delta;
+    if (delta < 0) this.echoUntil = Date.now() + ECHO_MS;
     this.release();
   }
   restoringNow(on: boolean): void {
     this.restoring = on;
+    if (!on) this.echoUntil = Date.now() + ECHO_MS;
     this.release();
+  }
+
+  private echoUntil = 0;
+  /**
+   * The file watcher can report this client's own save before the canvas has reloaded it, so a change seen while a
+   * write is in flight, or just after one, is not taken for an outside edit. If an outside edit hides in that
+   * window the stack stays, and the revision check still refuses a restore over it.
+   */
+  get ownWriteLikely(): boolean {
+    return this.busy || Date.now() < this.echoUntil;
+  }
+
+  /** A load that finds nothing to depend on adopts the server's revision, so the first restore is guarded. */
+  seedRevision(revision: string | undefined): void {
+    if (revision !== undefined && this.past.length === 0 && this.future.length === 0) {
+      this.revision = revision;
+    }
   }
 
   private waiting: (() => void)[] = [];
@@ -146,7 +168,14 @@ export function pinDiff(
 }
 
 export type RestoreResult =
-  { ok: true; revision?: string } | { ok: false; stale: boolean; messages: string[] };
+  | { ok: true; revision?: string }
+  | {
+      ok: false;
+      stale: boolean;
+      messages: string[];
+      /** The text was already put back before the positions failed: the caller must treat the spec as changed. */
+      textWritten?: { revision?: string };
+    };
 
 type RestoreApi = Pick<ApiClient, "replaceSource"> & Partial<Pick<ApiClient, "pinPositions">>;
 
@@ -185,6 +214,9 @@ export async function restoreSnapshot(
           ok: false,
           stale: false,
           messages: [pinned.error ?? "Could not restore positions."],
+          ...(current === undefined || target.source !== current.source
+            ? { textWritten: { ...(revision !== undefined && { revision }) } }
+            : {}),
         };
       }
     }
@@ -195,32 +227,56 @@ export async function restoreSnapshot(
 /**
  * The client with every write recorded: wraps the calls that change the spec or its layout, so any edit (a form, a
  * drop, an import, the assistant's Apply) lands on the stack without each handler knowing. Reads and runs pass
- * through. The snapshot is taken from what is on screen when the call starts.
+ * through. Writes run one at a time, and each one's "before" is read from the server when its turn comes, so it is
+ * the text the previous write left, not what the screen has caught up with. A drop that moves nothing is not an edit.
  */
 export function withHistory(
   raw: ApiClient,
   history: EditHistory,
   snapshot: () => Snapshot,
 ): ApiClient {
-  async function recorded<T extends { success: boolean; revision?: string }>(
-    run: () => Promise<T>,
-  ): Promise<T> {
-    const before = snapshot();
-    history.writing(1);
+  let tail: Promise<unknown> = Promise.resolve();
+  async function stored(): Promise<Snapshot> {
     try {
-      const result = await run();
-      if (result.success) history.record(before, result.revision);
-      return result;
-    } finally {
-      history.writing(-1);
+      const fresh = await raw.loadSpec();
+      if (typeof fresh?.source === "string") {
+        return { source: fresh.source, layout: (fresh.layout ?? {}) as LayoutMap };
+      }
+    } catch {
+      // the screen's copy is the best there is
     }
+    return snapshot();
+  }
+  function recorded<T extends { success: boolean; revision?: string; layout?: unknown }>(
+    run: () => Promise<T>,
+    isEdit: (before: Snapshot, result: T) => boolean = () => true,
+  ): Promise<T> {
+    history.writing(1);
+    const turn = tail.then(async () => {
+      try {
+        const before = await stored();
+        const result = await run();
+        if (result.success && isEdit(before, result)) history.record(before, result.revision);
+        return result;
+      } finally {
+        history.writing(-1);
+      }
+    });
+    tail = turn.catch(() => undefined);
+    return turn;
   }
   const wrapped: ApiClient = {
     ...raw,
     applyPatch: (ops) => recorded(() => raw.applyPatch(ops)),
     applyOps: (ops, options) => recorded(() => raw.applyOps(ops, options)),
     replaceSource: (source, options) => recorded(() => raw.replaceSource(source, options)),
-    pinPositions: (positions) => recorded(() => raw.pinPositions(positions)),
+    pinPositions: (positions) =>
+      recorded(
+        () => raw.pinPositions(positions),
+        (before, result) =>
+          result.layout === undefined ||
+          Object.keys(pinDiff(before.layout, result.layout as LayoutMap)).length > 0,
+      ),
     startBlank: () => recorded(() => raw.startBlank()),
   };
   if (raw.startFromTemplate) {
