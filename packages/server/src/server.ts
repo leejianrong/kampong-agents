@@ -8,6 +8,7 @@ import { registerByokRoutes } from "./routes/byok.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
+import { HostedScheduler, type HostedSchedulerOptions } from "./run/scheduler.js";
 import type { DbClient } from "./db/client.js";
 
 // The hosted variant of packages/cli/src/server.ts (ADR-0013, KAN-1221 --
@@ -41,9 +42,19 @@ export interface CreateServerOptions {
    * a `db` is given; production callers omit it.
    */
   run?: HostedRunManagerOptions;
+  /**
+   * Runs deployed `schedule` triggers (KAM-203, src/run/scheduler.ts). Off unless given: `main.ts` turns it on,
+   * and a test that wants it passes `{}` (or seams). Only consulted when a `db` is given.
+   */
+  scheduler?: HostedSchedulerOptions | true;
 }
 
-export function createServer({ staticDir, db, run }: CreateServerOptions = {}): FastifyInstance {
+export function createServer({
+  staticDir,
+  db,
+  run,
+  scheduler: schedulerOptions,
+}: CreateServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
   // Runs once, synchronously, before any route is registered -- see
@@ -133,7 +144,26 @@ export function createServer({ staticDir, db, run }: CreateServerOptions = {}): 
     // webhook-ingress route. Shares the same `HostedRunManager` instance as
     // the routes above -- a webhook-triggered run is durable and traceable
     // exactly like a canvas-triggered one, just started by a different route.
-    registerDeploymentRoutes(app, { db, auth, manager: runManager });
+    const scheduler = schedulerOptions
+      ? new HostedScheduler(db, runManager, schedulerOptions === true ? {} : schedulerOptions)
+      : undefined;
+    registerDeploymentRoutes(app, {
+      db,
+      auth,
+      manager: runManager,
+      ...(scheduler && { scheduler }),
+    });
+    if (scheduler) {
+      // After listen, so a slow scan never delays the port; a failure is logged, not fatal.
+      app.addHook("onReady", async () => {
+        await scheduler.start().catch((err: unknown) => {
+          console.error("kampong server: could not start the scheduler:", err);
+        });
+      });
+      app.addHook("onClose", async () => {
+        await scheduler.stop();
+      });
+    }
   }
 
   app.get("/healthz", async () => {

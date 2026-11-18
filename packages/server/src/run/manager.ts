@@ -68,7 +68,8 @@ export function hostedUnsupportedFeature(
 ): string | undefined {
   const trigger = spec.agent.trigger;
   if (webhook) {
-    if (trigger?.type === "schedule") return "The `schedule` trigger";
+    // `schedule` runs on the hosted scheduler (KAM-203, src/run/scheduler.ts). `poll` stays refused until a
+    // workspace can store the connector credentials its op needs (KAM-81).
     if (trigger?.type === "poll") return "The `poll` trigger";
     // `respond: sync` holds the caller until the run settles; the hosted ingress always answers with a run id.
     if (trigger?.type === "webhook" && trigger.respond === "sync") {
@@ -254,6 +255,29 @@ export class HostedRunManager {
     });
 
     return { id, state: initialState };
+  }
+
+  /**
+   * Resolves with the run's state once it stops running (done, failed, rejected or paused for approval) or after
+   * `timeoutMs`, whichever comes first. Never stops the run. A run no longer resident (evicted, or started by
+   * another replica) answers from its persisted row.
+   */
+  async settle(workspaceId: string, id: string, timeoutMs: number): Promise<RunState | undefined> {
+    const run = this.live.get(id);
+    if (!run) return this.get(workspaceId, id);
+    if (run.getState().status !== "running") return run.getState();
+    return new Promise((resolve) => {
+      const finish = (): void => {
+        clearTimeout(timer);
+        run.off("event", check);
+        resolve(run.getState());
+      };
+      const check = (): void => {
+        if (run.getState().status !== "running") finish();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      run.on("event", check);
+    });
   }
 
   /**

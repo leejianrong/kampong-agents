@@ -33,9 +33,20 @@ Reading the code for KAM-203 found the bounds are mostly in place and one gap is
 
 ## Not done here
 
-`dedupe` now works (KAM-113: `state_entries` under FORCE RLS, `PgStateStore`). Webhook auth, `when` and `map` work (ADR-0057). `poll`, `schedule` and a webhook's
-`respond: sync` need a scheduler or a held request (later); until then they are refused up front with a 422 naming the feature (`UnsupportedOnHostedError`). Outbound HTTP from tools has no private-address (SSRF) guard; a hosted tool can reach addresses inside the
+`dedupe` now works (KAM-113: `state_entries` under FORCE RLS, `PgStateStore`). Webhook auth, `when` and `map` work (ADR-0057). `schedule` now runs (below). `poll` and a webhook's
+`respond: sync` are refused up front with a 422 naming the feature (`UnsupportedOnHostedError`): `poll` until a workspace can store connector credentials (KAM-81), `respond: sync` until the ingress can hold a request. Outbound HTTP from tools has no private-address (SSRF) guard; a hosted tool can reach addresses inside the
 server's network. This predates 1.1 and is flagged for its own card.
+
+## Scheduling (KAM-203)
+
+A deployed `schedule` trigger runs on `HostedScheduler` (`src/run/scheduler.ts`): one engine `runUnattended` loop per
+live deployment, the same one `kampong serve` uses, so overlap policy, jitter, backoff and fail-visible match local.
+Its overlap lock lives in the workspace's Postgres state store, so two replicas never fire one tick twice. A
+deployment registers when it goes live and drops when it is paused or deleted; on boot the server registers every live
+one. The one cross-tenant read is `list_live_deployments()` (migration 0015). It is `SECURITY INVOKER` and scopes into
+each workspace in turn, because `FORCE` row-level security applies to a definer too; it returns ids only. A schedule
+that fails five times in a row stops and logs, and the deployment stays "live" until it is redeployed. Changing a
+deployed cadence needs a redeploy. Surfacing a stopped schedule in the Deploy dashboard belongs to KAM-82.
 
 ## Consequences
 

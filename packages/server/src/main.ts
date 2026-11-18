@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   // unset (getDatabaseUrl, ./db/client.ts), the same "read-env-or-throw"
   // pattern as everything else this process needs to start for real.
   const { db } = createDbClient();
-  const app = createServer({ staticDir, db });
+  const app = createServer({ staticDir, db, scheduler: true });
 
   await app.listen({ port, host });
   console.log(`kampong server listening at http://${host}:${port}`);
