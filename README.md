@@ -32,6 +32,13 @@ flowchart LR
   `support-triage`, an inbox assistant that drafts replies for a person to send, and `webhook-triage`, an alert
   webhook where a model decides and a person approves the Slack post.
 
+## Where it is going
+
+Kampong aims to be the visual, easy-to-use way to build, run and observe AI agents, with human approval and
+visible failure as the point of difference. Next are run tracing with cost and latency, evals and datasets, prompt
+management and review queues for your Kampong workflows, and later an OpenTelemetry ingest for agents built
+elsewhere. None of that is built yet; see ADR-0063.
+
 ## Status
 
 Early, but real. The MVP (canvas/YAML duality, local engine with guardrails and approvals, CLI with

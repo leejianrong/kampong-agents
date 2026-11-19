@@ -27,7 +27,8 @@ replacement for reading those before you implement a slice.
   `kampong dev`. The hosted assistant's key source is undecided (KAM-252).
 - **Open UI work:** the expression editor (KAM-110) and the docs/site/deploy
   epic KAM-E40.
-- **Roadmap, not started:** V6 governance, V7 multi-agent (scoping ADR only), V12 registry.
+- **Roadmap, not started:** V13 visual agent observability (ADR-0063; first slices on the board), V6 governance,
+  V7 multi-agent (scoping ADR only), V12 registry.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`), one epic per slice.
 Older commits and ADRs cite `KAN-`/`EPIC-` ids for the same cards. Pick up a card from the board,
@@ -77,9 +78,14 @@ claim it, and keep it in the active cycle (see KAM-150).
 - **Frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation, state layers);
   see the `material-design-3` skill. Colour comes only from the tokens in `apps/canvas/src/theme.css`, which has
   a light and a dark set (dark follows the OS, no switch); a new colour needs both, and a test checks contrast.
-- **First user: a non-technical person who can prompt an LLM.** Hosted is the business; a paid enterprise licence
-  to self-host (GitLab-style) is planned. Prompt-to-workflow is core to the main path, and hosted must run the
-  full spec. Pricing and the core's licence are not decided. (ADR-0053)
+- **North star: a visual, easy-to-use way to build, run and observe agents, with trust as the differentiator.**
+  The end user is a non-technical person who can prompt an LLM; the first buyer is an enterprise team running
+  agents. Hosted is the business and a paid enterprise self-host licence is the north star. Prompt-to-workflow is
+  core to the main path, and hosted must run the full spec. Pricing and the core's licence are not decided.
+  (ADR-0053, ADR-0063)
+- **Observability is built in, builder first.** Tracing, cost/latency dashboards, evals and datasets, prompt
+  management and human review for Kampong workflows come first, on one trace model; outside agents are ingested
+  later over OpenTelemetry (GenAI conventions), with no SDKs of our own. None of this is built yet. (ADR-0063)
 - **Enterprise features (V6) are a planned revenue line (the self-host licence), not cut.** Sequence them after
   hosted can run spec 1.1; don't assume they never come.
 
@@ -141,7 +147,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0062).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0063).
 - Every bug or flake becomes a regression test before the fix.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 

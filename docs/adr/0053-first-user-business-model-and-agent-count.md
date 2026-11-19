@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-19
 - Deciders: Jian (product owner)
+- Note: decision 1 is narrowed by ADR-0063 (the first buyer is an enterprise team; the first user is unchanged).
 
 ## Context
 
