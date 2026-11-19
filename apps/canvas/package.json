@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@kampong/cli": "*",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
