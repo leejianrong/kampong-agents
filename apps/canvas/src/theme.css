@@ -5,8 +5,8 @@
  * canvas has no MD3 library today (V1 shipped plain elements), and pulling
  * one in for a single new panel isn't this slice's scope. Seed color is a
  * calm teal (`#2F6F62`), not the M3 baseline purple, since this is a real
- * product surface, not a brand-less demo. Light scheme only -- the canvas
- * is a local dev tool, not a themed public page.
+ * product surface, not a brand-less demo. Light by default; dark follows the
+ * OS (`prefers-color-scheme`, KAM-201) through a second set of the same roles below.
  *
  * Follow-up MD3 pass (feat/canvas-md3-pass): extended the token set below
  * (tertiary role, extra surface-container tiers, extra shape/elevation/type
@@ -73,6 +73,48 @@
   --md-type-body-small-line: 1rem;
   --md-type-label-large-size: 0.875rem;
   --md-type-label-large-line: 1.25rem;
+  --md-state-mix: black;
+  --md-scrim: rgba(0, 0, 0, 0.32);
+}
+
+/* KAM-201: the dark scheme. Same roles, same teal seed, M3 dark tone mapping (primary/secondary/tertiary at
+   tone 80, their containers at tone 30, surfaces at tone 6-24). Follows the OS; there is no in-app switch. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --md-sys-color-primary: #8fd6c4;
+    --md-sys-color-on-primary: #00382f;
+    --md-sys-color-primary-container: #005046;
+    --md-sys-color-on-primary-container: #a9f2df;
+    --md-sys-color-secondary: #b0ccbe;
+    --md-sys-color-on-secondary: #1c352b;
+    --md-sys-color-secondary-container: #334b41;
+    --md-sys-color-on-secondary-container: #cce8da;
+    --md-sys-color-tertiary: #acc9e0;
+    --md-sys-color-on-tertiary: #123348;
+    --md-sys-color-tertiary-container: #2b4a60;
+    --md-sys-color-on-tertiary-container: #c8e6ff;
+    --md-sys-color-error: #ffb4ab;
+    --md-sys-color-on-error: #690005;
+    --md-sys-color-error-container: #93000a;
+    --md-sys-color-on-error-container: #ffdad6;
+    --md-sys-color-surface: #0f1512;
+    --md-sys-color-surface-container-lowest: #0a0f0d;
+    --md-sys-color-surface-container-low: #171d1a;
+    --md-sys-color-surface-container: #1b211e;
+    --md-sys-color-surface-container-high: #252b28;
+    --md-sys-color-surface-container-highest: #303633;
+    --md-sys-color-on-surface: #dee4e0;
+    --md-sys-color-inverse-surface: #dee4e0;
+    --md-sys-color-inverse-on-surface: #2c322f;
+    --md-sys-color-inverse-primary: #2f6f62;
+    --md-sys-color-on-surface-variant: #bfc9c4;
+    --md-sys-color-outline: #89938e;
+    --md-sys-color-outline-variant: #3f4945;
+    /* What a hover darkens toward in light and lightens toward in dark. */
+    --md-state-mix: white;
+    --md-scrim: rgba(0, 0, 0, 0.6);
+  }
 }
 
 *,
@@ -214,11 +256,11 @@ select {
 }
 
 .md3-button-filled:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 92%, black);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 92%, var(--md-state-mix));
 }
 
 .md3-button-filled:active:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-primary) 88%, black);
+  background: color-mix(in srgb, var(--md-sys-color-primary) 88%, var(--md-state-mix));
 }
 
 .md3-button-tonal {
@@ -227,11 +269,11 @@ select {
 }
 
 .md3-button-tonal:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, black);
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, var(--md-state-mix));
 }
 
 .md3-button-tonal:active:not(:disabled) {
-  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 88%, black);
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 88%, var(--md-state-mix));
 }
 
 .md3-button-outlined {
@@ -300,7 +342,7 @@ select {
 .md3-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.32);
+  background: var(--md-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -468,7 +510,7 @@ select.md3-text-field {
 }
 
 .md3-segmented-button__segment--selected:hover {
-  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, black);
+  background: color-mix(in srgb, var(--md-sys-color-secondary-container) 92%, var(--md-state-mix));
 }
 
 /* Checkbox (M3 selection control) -- WorkflowStepForm's "Requires
@@ -522,6 +564,12 @@ select.md3-text-field {
   --xy-background-color: var(--md-sys-color-surface);
   --xy-background-pattern-dots-color: var(--md-sys-color-outline-variant);
   --xy-background-pattern-lines-color: var(--md-sys-color-outline-variant);
+  --xy-edge-label-background-color: var(--md-sys-color-surface-container-high);
+  --xy-edge-label-color: var(--md-sys-color-on-surface);
+  --xy-handle-background-color: var(--md-sys-color-surface-container-lowest);
+  --xy-handle-border-color: var(--md-sys-color-outline);
+  --xy-selection-background-color: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent);
+  --xy-selection-border: 1px dotted var(--md-sys-color-primary);
   --xy-node-color: var(--md-sys-color-on-surface);
   --xy-node-border: 1px solid var(--md-sys-color-outline-variant);
   --xy-node-background-color: var(--md-sys-color-surface-container);
@@ -580,6 +628,26 @@ select.md3-text-field {
   --kg-approval-fg: #964210;
   --kg-guard-bg: #e6e9e8;
   --kg-guard-fg: #33403a;
+}
+
+/* The category tints in dark: a deep tone of the same hue behind a pale one, so each kind keeps its colour. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --kg-trigger-bg: #4d3600;
+    --kg-trigger-fg: #ffdea0;
+    --kg-ai-bg: #3a2f78;
+    --kg-ai-fg: #e4dcff;
+    --kg-tool-bg: #00423d;
+    --kg-tool-fg: #9ff2e8;
+    --kg-data-bg: #153e75;
+    --kg-data-fg: #d6e3ff;
+    --kg-flow-bg: #6e1a2e;
+    --kg-flow-fg: #ffd9df;
+    --kg-approval-bg: #632c00;
+    --kg-approval-fg: #ffdbc8;
+    --kg-guard-bg: #2f3a36;
+    --kg-guard-fg: #dbe5e0;
+  }
 }
 
 .md3-node {

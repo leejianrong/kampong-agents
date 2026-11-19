@@ -25,7 +25,7 @@ replacement for reading those before you implement a slice.
   and fan-out (P3), RAG (P4), the canvas expression editor (KAM-110).
 - **V8 started:** the workflow assistant (prompt to validated edits, Build/Ask modes, plan drawn as a diff) works in
   `kampong dev`. The hosted assistant's key source is undecided (KAM-252).
-- **Open UI work:** undo/redo (KAM-183), node dragging (KAM-186), dark mode (KAM-201), and the docs/site/deploy
+- **Open UI work:** the expression editor (KAM-110) and the docs/site/deploy
   epic KAM-E40.
 - **Roadmap, not started:** V6 governance, V7 multi-agent (scoping ADR only), V12 registry.
 
@@ -75,7 +75,8 @@ claim it, and keep it in the active cycle (see KAM-150).
   layout store (a drop on empty canvas); dropping a step on a step of its list reorders it. Ctrl+Z / Ctrl+Shift+Z (and the Saved toast's Undo) restore session snapshots of the spec text
   plus layout, in both modes, refusing over an external edit. (ADR-0059, ADR-0060, ADR-0061, ADR-0062)
 - **Frontend/UI work uses Material Design 3** (color roles, type scale, shape/elevation, state layers);
-  see the `material-design-3` skill.
+  see the `material-design-3` skill. Colour comes only from the tokens in `apps/canvas/src/theme.css`, which has
+  a light and a dark set (dark follows the OS, no switch); a new colour needs both, and a test checks contrast.
 - **First user: a non-technical person who can prompt an LLM.** Hosted is the business; a paid enterprise licence
   to self-host (GitLab-style) is planned. Prompt-to-workflow is core to the main path, and hosted must run the
   full spec. Pricing and the core's licence are not decided. (ADR-0053)
@@ -136,7 +137,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 ## Workflow conventions
 
 - One branch per card or slice, cut from a fresh `main`; land via PR with CI green. Branch protection on
-  `main` isn't configured; set it up before a second contributor joins.
+  `main` requires every CI check (a failing Dependency audit blocks a merge); no `--admin` merges.
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
