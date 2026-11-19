@@ -38,7 +38,7 @@ Early, but real. The MVP (canvas/YAML duality, local engine with guardrails and 
 mock/record tools and Ollama, TypeScript export) and the real-world workflow layer (webhooks, connectors,
 Slack approvals, schedule and poll triggers, loops and branches, a state store, templates) are merged, and so is a
 canvas with step cards, run status on the nodes and a workflow assistant that builds from a prompt (local mode).
-Still coming: RAG, parallel steps and dark mode. A hosted, multi-tenant server exists but is not
+Still coming: RAG and parallel steps. A hosted, multi-tenant server exists but is not
 deployed yet. Multi-agent orchestration and enterprise governance are roadmap. [`SLICES.md`](./SLICES.md) has the
 per-slice status.
 
