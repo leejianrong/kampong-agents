@@ -43,7 +43,7 @@ export const ENGINE_DEPENDENCY_VERSIONS = {
 } as const;
 
 export const SERVER_DEPENDENCY_VERSIONS = {
-  fastify: "5.12.5",
+  fastify: "5.12.8",
 } as const;
 
 const DEV_DEPENDENCY_VERSIONS = {
