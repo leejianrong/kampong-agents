@@ -214,7 +214,7 @@ describe.skipIf(!DATABASE_URL)(
       expect(hosted.error).toMatch(/vars\.threshold/);
     });
 
-    // The hosted server has no scheduler yet and does not apply webhook auth (KAM-203 part C). What it cannot
+    // The hosted server runs `schedule` triggers (src/run/scheduler.ts) but not `poll` (KAM-81). What it cannot
     // run is refused up front, by name, never started and then silently skipped or failed partway.
     const spec11 = (trigger: string, step = "") => `version: "1.1"
 agent:
@@ -276,25 +276,38 @@ ${step}`;
       expect((await hostedRun(b.cookie, source, undefined, "same")).skipped).toBeUndefined();
     }, 30_000);
 
-    it("refuses to deploy a schedule or poll trigger instead of accepting a deployment that never fires", async () => {
+    it("deploys a schedule trigger, and still refuses a poll trigger until connector secrets exist (KAM-81)", async () => {
       const { cookie } = await newUserWithWorkspace();
       const schedule = await createSpec(
         cookie,
         spec11("  trigger:\n    type: schedule\n    every: 6h\n"),
       );
-      const res = await app.inject({
+      const deployed = await app.inject({
         method: "PUT",
         url: `/api/specs/${schedule}/deployment`,
         headers: { cookie },
       });
-      expect(res.statusCode).toBe(422);
-      expect(res.json().error).toMatch(
-        /`schedule` trigger is not available on the hosted server yet/,
+      expect(deployed.statusCode).toBe(200);
+
+      const poll = await createSpec(
+        cookie,
+        spec11(
+          "  trigger:\n    type: poll\n    every: 5m\n    use: kampong/github@1.0.0\n    op: list_issues\n    dedupe: unique\n    id: id\n",
+        ),
+      );
+      const refused = await app.inject({
+        method: "PUT",
+        url: `/api/specs/${poll}/deployment`,
+        headers: { cookie },
+      });
+      expect(refused.statusCode).toBe(422);
+      expect(refused.json().error).toMatch(
+        /`poll` trigger is not available on the hosted server yet/,
       );
       // A manual run of the same spec is a normal run and still works.
       const run = await app.inject({
         method: "POST",
-        url: `/api/specs/${schedule}/runs`,
+        url: `/api/specs/${poll}/runs`,
         headers: { cookie },
         payload: { input: "" },
       });

@@ -21,6 +21,7 @@ import {
   type WebhookTriggerConfig,
 } from "@kampong/engine";
 import { getByokRootKey } from "../auth/env.js";
+import type { HostedScheduler } from "../run/scheduler.js";
 import { decryptSecret, encryptSecret } from "../crypto/envelope.js";
 
 // The name of the env var a spec's webhook auth reads its secret from, or undefined when the trigger needs no
@@ -69,11 +70,13 @@ export interface DeploymentRoutesDeps {
   db: DbClient;
   auth: AuthInstance;
   manager: HostedRunManager;
+  /** Runs `schedule` triggers; kept in step with the deployment's status. Absent in tests that don't need it. */
+  scheduler?: HostedScheduler;
 }
 
 export function registerDeploymentRoutes(
   app: FastifyInstance,
-  { db, auth, manager }: DeploymentRoutesDeps,
+  { db, auth, manager, scheduler }: DeploymentRoutesDeps,
 ): void {
   // PUT /api/specs/:id/deployment -- deploy (or redeploy) this workspace's
   // spec. Upserts on the spec's unique deployment slot, always setting status
@@ -130,6 +133,7 @@ export function registerDeploymentRoutes(
         }
         return rows;
       });
+      await scheduler?.register(ctx.workspaceId, row!.id, specId);
       return reply.code(200).send({
         success: true,
         deploymentId: row!.id,
@@ -208,6 +212,8 @@ export function registerDeploymentRoutes(
           .code(404)
           .send({ success: false, error: `Spec "${specId}" has never been deployed.` });
       }
+      if (row.status === "live") await scheduler?.register(ctx.workspaceId, row.id, specId);
+      else await scheduler?.unregister(row.id);
       return { success: true, deploymentId: row.id, status: row.status };
     },
   );
@@ -231,6 +237,7 @@ export function registerDeploymentRoutes(
         .code(404)
         .send({ success: false, error: `Spec "${specId}" has never been deployed.` });
     }
+    await scheduler?.unregister(deleted[0]!.id);
     return { success: true };
   });
 
