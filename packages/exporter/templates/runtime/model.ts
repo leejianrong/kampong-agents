@@ -382,6 +382,33 @@ export interface GenerateStructuredInput<T> extends StepModelOverrides {
  * The engine's model-call seam. In production this is backed by a real
  * `@mastra/core` Agent (see `createMastraModelClient`).
  */
+/** Tokens one model call used, as the provider reported them. */
+export interface ModelUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+/** Reads the token counts out of an AI SDK usage object, whichever shape (flat numbers or `{ total }`) it has. */
+export function normalizeUsage(raw: unknown): ModelUsage | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  const read = (v: unknown): number | undefined => {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (v !== null && typeof v === "object") {
+      const total = (v as { total?: unknown }).total;
+      if (typeof total === "number" && Number.isFinite(total)) return total;
+    }
+    return undefined;
+  };
+  const u = raw as Record<string, unknown>;
+  const inputTokens = read(u.inputTokens ?? u.promptTokens);
+  const outputTokens = read(u.outputTokens ?? u.completionTokens);
+  if (inputTokens === undefined && outputTokens === undefined) return undefined;
+  return {
+    ...(inputTokens !== undefined && { inputTokens }),
+    ...(outputTokens !== undefined && { outputTokens }),
+  };
+}
+
 export interface ModelClient {
   generateText(input: GenerateTextInput): Promise<string>;
   generateStructured<T>(input: GenerateStructuredInput<T>): Promise<T>;
@@ -400,6 +427,8 @@ export interface CreateMastraModelClientOptions {
    * over `DEFAULT_MODEL_TIMEOUT_MS`.
    */
   timeoutMs?: number;
+  /** Called after each model call with the tokens it used, when the provider reports them. */
+  onUsage?: (usage: ModelUsage) => void;
   /**
    * When set, used as the cloud provider's API key directly instead of
    * resolving the spec's `${ENV_VAR}` `api_key` placeholder against `env`.
@@ -482,6 +511,11 @@ export function createMastraModelClient(
     modelSettings: { maxRetries: 0, ...(temperature === undefined ? {} : { temperature }) },
   });
 
+  const reportUsage = (raw: unknown): void => {
+    const usage = options.onUsage && normalizeUsage(raw);
+    if (usage) options.onUsage?.(usage);
+  };
+
   return {
     async generateText({ instructions, prompt, model, temperature }) {
       try {
@@ -489,6 +523,7 @@ export function createMastraModelClient(
           instructions,
           ...settings(temperature),
         });
+        reportUsage(result.usage);
         return result.text;
       } catch (err) {
         rethrowModelCallError(err, modelConfig);
@@ -507,6 +542,7 @@ export function createMastraModelClient(
           structuredOutput: { schema },
           ...settings(temperature),
         });
+        reportUsage(result.usage);
         return result.object as T;
       } catch (err) {
         const wrong = asStructuredOutputError(err);

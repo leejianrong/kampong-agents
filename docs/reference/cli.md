@@ -250,3 +250,14 @@ Every command shares the same exit-code vocabulary, so a script can tell the fai
 | `1`  | Spec validation failure: malformed YAML or a schema violation.                                                                                                                |
 | `2`  | Execution failure: the run couldn't start or failed mid-way (a missing key, an unreachable Ollama, a failed tool call, or an approval rejection), or an export write failure. |
 | `64` | Usage error: a bad flag or a missing required argument.                                                                                                                       |
+
+## Run trace
+
+`kampong dev` and the hosted server record a trace for every run: a tree of spans, one per workflow step (a
+loop's steps nest under it) and one per model call, each with its start, duration, status and, for a model call,
+the tokens it used. Read it at `GET /api/runs/:id/trace`. An approval step reports how long it waited for a
+person apart from its machine time (`waitedMs`).
+
+Prompts and outputs are not stored in a trace. Cost is estimated only for models you give a price for, and is left
+out otherwise. On the hosted server a trace is available while the run is still resident in the server; stored
+traces are planned (ADR-0063).

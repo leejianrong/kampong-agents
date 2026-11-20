@@ -219,6 +219,37 @@ describe.skipIf(!DATABASE_URL)("Hosted run routes against a real Postgres", () =
     }
   });
 
+  it("serves a resident run's trace to its own workspace only", async () => {
+    const owner = await newUserWithWorkspace();
+    const other = await newUserWithWorkspace();
+    const specId = await createSpec(owner.cookie);
+    const start = await app.inject({
+      method: "POST",
+      url: `/api/specs/${specId}/runs`,
+      headers: { cookie: owner.cookie },
+      payload: { input: "greet" },
+    });
+    const runId = start.json().id;
+    await waitForTerminal(owner.cookie, runId);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/runs/${runId}/trace`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const { trace } = res.json();
+    expect(trace.status).toBe("ok");
+    expect(trace.spans.map((x: { kind: string }) => x.kind)).toEqual(["run", "llm", "model"]);
+
+    const stranger = await app.inject({
+      method: "GET",
+      url: `/api/runs/${runId}/trace`,
+      headers: { cookie: other.cookie },
+    });
+    expect(stranger.statusCode).toBe(404);
+  });
+
   it("returns 404 for an unknown run id", async () => {
     const { cookie } = await newUserWithWorkspace();
     const res = await app.inject({

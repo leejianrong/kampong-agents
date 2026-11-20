@@ -767,6 +767,15 @@ export function createDevServer({
     return { success: true, state: run.getState() };
   });
 
+  app.get<{ Params: { id: string } }>("/api/runs/:id/trace", async (request, reply) => {
+    const trace = runManager.getTrace(request.params.id);
+    if (!trace) {
+      reply.code(404);
+      return { success: false, error: `Unknown run id "${request.params.id}".` };
+    }
+    return { success: true, trace };
+  });
+
   app.post<{ Params: { id: string }; Body: { approved: boolean; reason?: string } }>(
     "/api/runs/:id/approve",
     async (request, reply) => {

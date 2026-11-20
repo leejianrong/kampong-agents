@@ -119,6 +119,36 @@ describe("createDevServer run endpoints", () => {
     expect(approve.json().state.finalOutput.decide).toBe("refunded");
   });
 
+  it("serves the run's span tree at /api/runs/:id/trace, and 404s an unknown run", async () => {
+    writeFileSync(specPath, TOOL_APPROVAL_SOURCE);
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ status: "refunded" }))) as unknown as typeof fetch;
+    app = createDevServer({ specPath, layoutPath, run: { createModel: fakeModel, fetchImpl } });
+    await app.ready();
+
+    const start = await app.inject({ method: "POST", url: "/api/runs", payload: { input: "x" } });
+    const runId = start.json().id as string;
+    await waitForRunState(app, runId, ["awaiting_approval"]);
+    await app.inject({
+      method: "POST",
+      url: `/api/runs/${runId}/approve`,
+      payload: { approved: true },
+    });
+
+    const res = await app.inject({ method: "GET", url: `/api/runs/${runId}/trace` });
+    expect(res.statusCode).toBe(200);
+    const { trace } = res.json();
+    expect(trace.status).toBe("ok");
+    const kinds = trace.spans.map((x: { kind: string }) => x.kind);
+    expect(kinds[0]).toBe("run");
+    expect(kinds).toContain("llm");
+    expect(kinds).toContain("model");
+    expect(trace.totals.modelCalls).toBeGreaterThan(0);
+
+    const missing = await app.inject({ method: "GET", url: "/api/runs/nope/trace" });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it("halts with a rejected status and never calls the tool when approval is rejected", async () => {
     writeFileSync(specPath, TOOL_APPROVAL_SOURCE);
     let fetchCalls = 0;

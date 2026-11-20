@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { AgentSpec } from "@kampong/spec";
-import { createMastraModelClient, type ModelClient } from "./model.js";
+import { createMastraModelClient, type ModelClient, type ModelUsage } from "./model.js";
 import type { StateStore } from "./state-store.js";
 import {
   runWorkflow,
@@ -227,6 +227,8 @@ export interface CreateAgentRunOptions {
    * fake `model` (below) is injected instead of building the real one.
    */
   timeoutMs?: number;
+  /** Called after each model call with the tokens it used (feeds a trace recorder). Ignored when a fake `model` is injected. */
+  onModelUsage?: (usage: ModelUsage) => void;
   /** Runs `action: component` tools (KAN-1884); see createComponentDispatcher. */
   components?: EngineDeps["components"];
   /** What started the run (a webhook's headers and body); version 1.1 expressions read it as `trigger`. */
@@ -263,6 +265,7 @@ export function createAgentRun(spec: AgentSpec, options: CreateAgentRunOptions =
     createMastraModelClient(spec, options.env ?? process.env, {
       fetchImpl: options.modelFetchImpl,
       timeoutMs: options.timeoutMs,
+      ...(options.onModelUsage && { onUsage: options.onModelUsage }),
     });
   return new AgentRun(spec, {
     model,
