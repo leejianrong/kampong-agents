@@ -27,12 +27,15 @@ replacement for reading those before you implement a slice.
   `kampong dev`. The hosted assistant's key source is undecided (KAM-252).
 - **Open UI work:** the expression editor (KAM-110) and the docs/site/deploy
   epic KAM-E40.
-- **Roadmap, not started:** V13 visual agent observability (ADR-0063; first slices on the board), V6 governance,
-  V7 multi-agent (scoping ADR only), V12 registry.
+- **V13 visual agent observability started** (ADR-0063): every run records a span tree (`TraceRecorder`, served at
+  `/api/runs/:id/trace`) and the canvas run log has a Timeline view. Open: stored traces (needs ADR-0064 and
+  ADR-0065 accepted), dashboards, datasets and experiments, LLM-as-judge, prompt registry, review queue, OTLP ingest.
+- **Roadmap, not started:** V6 governance, V7 multi-agent (scoping ADR only), V12 registry.
 
 Work is tracked on the Pandan board "Kampong Agents" (board id 26, key `KAM`), one epic per slice.
 Older commits and ADRs cite `KAN-`/`EPIC-` ids for the same cards. Pick up a card from the board,
-claim it, and keep it in the active cycle (see KAM-150).
+claim it (`pandan update <ref> --assignee agent:<name>` when it moves to `in_progress`), and put it in the
+active cycle (`--cycle <id>`; `pandan cycle list --board 26`).
 
 ## Load-bearing conventions (don't re-litigate; see the ADR for the why)
 
