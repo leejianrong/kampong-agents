@@ -156,6 +156,40 @@ describe("TraceRecorder", () => {
     expect(shapes.every((x) => x.parentId === each.id)).toBe(true);
   });
 
+  it("marks a loop item that failed under on_error: continue, rather than calling it done", async () => {
+    const c = clock();
+    const s = spec([
+      {
+        step: "each",
+        foreach: {
+          items: "trigger.rows",
+          as: "row",
+          on_error: "continue",
+          steps: [{ step: "fetch", type: "tool", tool: "log" }],
+        },
+      },
+    ]);
+    const rec = createTraceRecorder(s, { now: c.now });
+    let calls = 0;
+    const flaky = (async () =>
+      ++calls === 2
+        ? new Response("boom", { status: 500 })
+        : new Response('{"ok":true}')) as unknown as typeof fetch;
+    const run = new AgentRun(s, {
+      model: rec.wrapModel(modelWith(c)),
+      env: {},
+      fetchImpl: flaky,
+      trigger: { body: { rows: [1, 2, 3] } },
+    });
+    rec.attach(run);
+    const state = await run.start("{}");
+    expect(state.status).toBe("completed");
+    const fetches = rec.snapshot().spans.filter((x) => x.kind === "tool");
+    expect(fetches.map((x) => x.status)).toEqual(["ok", "error", "ok"]);
+    expect(fetches[1]?.error).toBeTruthy();
+    expect(rec.snapshot().spans.find((x) => x.kind === "foreach")?.status).toBe("ok");
+  });
+
   it("separates human wait from machine time on an approval step", async () => {
     const c = clock();
     const s = spec([{ step: "ok_to_send", type: "approval", message: "Send it?" }]);

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ApiClient, RunEventMessage, RunMode, RunOptionsResponse, RunState } from "./api.js";
+import type {
+  ApiClient,
+  RunEventMessage,
+  RunTrace,
+  RunMode,
+  RunOptionsResponse,
+  RunState,
+} from "./api.js";
 import { applyMessage, emptyTracker, type RunTracker } from "./runStatus.js";
 import type { RunTrackerApi } from "./runTracker.js";
 
@@ -66,6 +73,8 @@ export interface RunSession {
   /** A Replay run (recorded fixtures, nothing sent), whatever mode is chosen; null when this spec has no fixtures or a run is on. */
   replayNow: (() => void) | null;
   decide: (approved: boolean, reason?: string) => Promise<void>;
+  /** Reads a run's span tree (ADR-0063); absent when the server cannot give one. */
+  fetchTrace: ((id: string) => Promise<RunTrace | undefined>) | undefined;
 }
 
 export function useRunSession(
@@ -284,5 +293,6 @@ export function useRunSession(
           }
         : null,
     decide,
+    fetchTrace: api.getRunTrace ? (id) => api.getRunTrace!(id) : undefined,
   };
 }

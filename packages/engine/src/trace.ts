@@ -275,6 +275,9 @@ export class TraceRecorder {
         const { parent, own } = splitName(event.step);
         const parentSpan = parent === undefined ? undefined : this.open.get(parent);
         const step = this.byName.get(own);
+        // A step that starts again under the same name is a retry: the earlier attempt did not succeed.
+        const earlier = this.open.get(event.step);
+        if (earlier) this.end(earlier, "error", "retried");
         const span = this.begin(event.step, stepKind(step), parentSpan?.id ?? this.root.id);
         this.open.set(event.step, span);
         break;
@@ -315,6 +318,7 @@ export class TraceRecorder {
         break;
       }
       case "completed":
+        this.noteLoopErrors(event.output);
         this.finish("ok");
         break;
     }
@@ -323,10 +327,31 @@ export class TraceRecorder {
     }
   }
 
-  // Closes every span still open (a loop parent, a branch) when the run ends, then the root.
+  // A loop item that failed under `on_error: continue` never reports an event of its own; the loop's output lists
+  // it (`errors: [{ index, step, message }]`), so its span is marked from there when the run completes.
+  private readonly itemErrors = new Map<string, string>();
+  private noteLoopErrors(output: Record<string, unknown>): void {
+    for (const [loop, value] of Object.entries(output)) {
+      const errors = (value as { errors?: unknown } | null)?.errors;
+      if (!Array.isArray(errors)) continue;
+      for (const e of errors as { index?: unknown; step?: unknown; message?: unknown }[]) {
+        if (typeof e?.index === "number" && typeof e.step === "string") {
+          this.itemErrors.set(`${loop}[${e.index}].${e.step}`, String(e.message ?? "failed"));
+        }
+      }
+    }
+  }
+
+  // Closes every span still open when the run ends, then the root. A loop or branch is as ok as the run; a step
+  // that never finished did not succeed.
   private finish(status: SpanStatus, error?: string): void {
     for (const [name, span] of this.open) {
-      this.end(span, status === "ok" ? "ok" : status);
+      const container = span.kind === "foreach" || span.kind === "branch";
+      if (status === "ok" && !container) {
+        this.end(span, "error", this.itemErrors.get(name) ?? "did not finish");
+      } else {
+        this.end(span, status === "ok" ? "ok" : status);
+      }
       this.open.delete(name);
     }
     this.end(this.root, status, error);
