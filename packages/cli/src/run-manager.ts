@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import {
   AgentRun,
   createAgentRun,
+  createMastraModelClient,
+  createTraceRecorder,
   DEFAULT_STATE_DB_PATH,
   listPendingApprovals,
   SqliteStateStore,
@@ -14,6 +16,8 @@ import {
   type ModelClient,
   type RunEvent,
   type RunState,
+  type Trace,
+  type TraceRecorder,
   type StateStore,
   type ToolFetchImpl,
 } from "@kampong/engine";
@@ -123,6 +127,8 @@ const MAX_IGNORED = 100;
 export class RunManager {
   private readonly runs = new Map<string, AgentRun>();
   private readonly ignored: IgnoredTrigger[] = [];
+  // ADR-0063: each run has a recorder that builds its trace from the run's events; it goes when the run does.
+  private readonly recorders = new WeakMap<AgentRun, TraceRecorder>();
   private readonly evictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly evictAfterMs: number;
 
@@ -185,12 +191,20 @@ export class RunManager {
     replay?: ReplayDeps,
     vars?: Record<string, unknown>,
   ): AgentRun {
-    return createAgentRun(spec, {
+    const recorder = createTraceRecorder(spec);
+    const env = this.options.env ?? process.env;
+    // The model client is built here, rather than inside createAgentRun, so the recorder can wrap it and read
+    // its token counts. Replay and test seams supply their own client and report no tokens.
+    const model =
+      replay?.model ??
+      this.options.createModel?.(spec) ??
+      createMastraModelClient(spec, env, { onUsage: recorder.reportUsage });
+    const run = createAgentRun(spec, {
       env: this.options.env,
       fetchImpl: this.options.fetchImpl,
       components: this.options.components,
-      model: this.options.createModel?.(spec),
       ...(replay ? replay : {}),
+      model: recorder.wrapModel(model),
       ...(vars && Object.keys(vars).length > 0 ? { vars } : {}),
       ...(trigger ? { trigger } : {}),
       ...(this.options.persistApprovals
@@ -204,6 +218,15 @@ export class RunManager {
           }
         : {}),
     });
+    recorder.attach(run);
+    this.recorders.set(run, recorder);
+    return run;
+  }
+
+  /** The run's trace so far (ADR-0063), or undefined for an unknown or evicted run. */
+  getTrace(id: string): Trace | undefined {
+    const run = this.runs.get(id);
+    return run && this.recorders.get(run)?.snapshot();
   }
 
   /** Adds a run to the map under a fresh id and wires its eviction and Slack notification hooks. */

@@ -1,5 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import {
+  createTraceRecorder,
+  type Trace,
+  type TraceRecorder,
   createAgentRun,
   createComponentDispatcher,
   createFirstPartyRegistry,
@@ -145,6 +148,8 @@ export interface StartRunResult {
 
 export class HostedRunManager {
   private readonly live = new Map<string, AgentRun>();
+  // ADR-0063: a resident run's trace recorder; it goes with the run.
+  private readonly recorders = new WeakMap<AgentRun, TraceRecorder>();
   private readonly evictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Per-run serialized persist tail: run events fire faster than a DB write
   // completes, so chain each run's writes to guarantee the terminal state is
@@ -204,6 +209,7 @@ export class HostedRunManager {
     const unsupported = hostedUnsupportedFeature(spec, { webhook: runOptions.viaWebhook });
     if (unsupported) throw new UnsupportedOnHostedError(unsupported);
 
+    const recorder = createTraceRecorder(spec);
     const model = this.options.createModel
       ? await this.options.createModel(spec)
       : await resolveWorkspaceModelClient({
@@ -211,10 +217,11 @@ export class HostedRunManager {
           workspaceId,
           spec,
           env: this.options.modelEnv,
+          onUsage: recorder.reportUsage,
         });
 
     const run = createAgentRun(spec, {
-      model,
+      model: recorder.wrapModel(model),
       env: this.options.env ?? {},
       fetchImpl: this.toolFetch,
       components: this.options.components ?? this.components,
@@ -225,6 +232,8 @@ export class HostedRunManager {
       ...(runOptions.vars ? { vars: runOptions.vars } : {}),
       ...(runOptions.trigger ? { trigger: runOptions.trigger } : {}),
     });
+    recorder.attach(run);
+    this.recorders.set(run, recorder);
     const initialState = run.getState();
 
     const id = await withWorkspaceScope(this.db, workspaceId, async (tx) => {
@@ -278,6 +287,16 @@ export class HostedRunManager {
       const timer = setTimeout(finish, timeoutMs);
       run.on("event", check);
     });
+  }
+
+  /**
+   * The trace of a run that is still resident in this process, or `undefined` (unknown run, another
+   * workspace's, or one already evicted: stored traces come with KAM-257). Ownership is confirmed first, as in
+   * `get`.
+   */
+  async getTrace(workspaceId: string, id: string): Promise<Trace | undefined> {
+    const owned = await this.resolveOwned(workspaceId, id);
+    return owned?.run && this.recorders.get(owned.run)?.snapshot();
   }
 
   /**

@@ -101,6 +101,21 @@ export function registerRunRoutes(
     return { success: true, state };
   });
 
+  // GET /api/runs/:id/trace -- the span tree of a run still resident in the server (ADR-0063); 404 for an
+  // unknown, another workspace's or an evicted run, until traces are stored (KAM-257).
+  app.get<{ Params: { id: string } }>("/api/runs/:id/trace", async (request, reply) => {
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    if (!ctx) return reply;
+
+    const trace = await manager.getTrace(ctx.workspaceId, request.params.id);
+    if (!trace) {
+      return reply
+        .code(404)
+        .send({ success: false, error: `No trace for run "${request.params.id}".` });
+    }
+    return { success: true, trace };
+  });
+
   // GET /api/runs/:id/events -- Server-Sent Events stream of the run's
   // progress, opening with its current state. If the run has already finished
   // (no live run left), sends that final state once and closes. 404 if the run

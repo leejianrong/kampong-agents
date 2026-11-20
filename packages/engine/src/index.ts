@@ -17,6 +17,7 @@ export {
   StructuredOutputError,
   DEFAULT_MODEL_TIMEOUT_MS,
   type ModelClient,
+  type ModelUsage,
   type GenerateTextInput,
   type GenerateStructuredInput,
   type CreateMastraModelClientOptions,
@@ -197,3 +198,17 @@ export {
   type WebhookTriggerConfig,
 } from "./webhook-trigger.js";
 export { resolveWebhookAuth, secretEnvName, type ResolvedWebhookAuth } from "./webhook-auth.js";
+
+export {
+  TraceRecorder,
+  createTraceRecorder,
+  estimateCost,
+  stepKind,
+  type Pricing,
+  type Span,
+  type SpanKind,
+  type SpanStatus,
+  type TokenUsage,
+  type Trace,
+  type TraceRecorderOptions,
+} from "./trace.js";

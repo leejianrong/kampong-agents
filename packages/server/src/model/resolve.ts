@@ -50,6 +50,8 @@ export interface ResolveWorkspaceModelClientOptions {
   spec: AgentSpec;
   /** Defaults to `process.env`. The seam ADR-0016 names -- kept injectable for tests. */
   env?: NodeJS.ProcessEnv;
+  /** Receives each call's token counts (feeds the run's trace, ADR-0063). */
+  onUsage?: CreateMastraModelClientOptions["onUsage"];
 }
 
 /**
@@ -65,11 +67,15 @@ export async function resolveWorkspaceModelClient({
   workspaceId,
   spec,
   env = process.env,
+  onUsage,
 }: ResolveWorkspaceModelClientOptions): Promise<ModelClient> {
   const modelConfig = spec.agent.model;
 
   const baseUrlOverride = env["LITELLM_BASE_URL"] || undefined;
-  const options: CreateMastraModelClientOptions = baseUrlOverride ? { baseUrlOverride } : {};
+  const options: CreateMastraModelClientOptions = {
+    ...(baseUrlOverride ? { baseUrlOverride } : {}),
+    ...(onUsage ? { onUsage } : {}),
+  };
 
   // No model, or a keyless provider (ollama): defer to the engine's own
   // handling (it raises the canonical "no model configured" error, or builds
