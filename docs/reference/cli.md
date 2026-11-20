@@ -255,7 +255,9 @@ Every command shares the same exit-code vocabulary, so a script can tell the fai
 
 `kampong dev` and the hosted server record a trace for every run: a tree of spans, one per workflow step (a
 loop's steps nest under it) and one per model call, each with its start, duration, status and, for a model call,
-the tokens it used. Read it at `GET /api/runs/:id/trace`. An approval step reports how long it waited for a
+the tokens it used. Read it at `GET /api/runs/:id/trace`. The canvas draws it as the **Timeline** view of the run
+log: a line or two in plain words (what failed, what was slowest, what used the most tokens) above one bar per
+step and model call. An approval step reports how long it waited for a
 person apart from its machine time (`waitedMs`).
 
 Prompts and outputs are not stored in a trace. Cost is estimated only for models you give a price for, and is left

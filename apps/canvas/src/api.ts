@@ -262,6 +262,49 @@ export type AssistantAnswer =
     }
   | { success: false; code: string; error: string; errors?: string[] };
 
+// ADR-0063: a run's trace as the server reports it (a copy of the engine's Trace; the canvas never imports the engine).
+export type SpanKind =
+  | "run"
+  | "model"
+  | "llm"
+  | "tool"
+  | "condition"
+  | "approval"
+  | "transform"
+  | "validate"
+  | "dedupe"
+  | "foreach"
+  | "branch"
+  | "stop"
+  | "step";
+export type SpanStatus = "running" | "ok" | "error" | "rejected" | "paused";
+export interface TraceSpan {
+  id: string;
+  parentId?: string;
+  name: string;
+  kind: SpanKind;
+  status: SpanStatus;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  waitedMs?: number;
+  error?: string;
+  model?: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
+  costUsd?: number;
+  attributes?: Record<string, string | number | boolean>;
+}
+export interface RunTrace {
+  id: string;
+  specId?: string;
+  specVersion?: string;
+  status: SpanStatus;
+  startedAt: number;
+  endedAt?: number;
+  spans: TraceSpan[];
+  totals: { inputTokens: number; outputTokens: number; costUsd?: number; modelCalls: number };
+}
+
 export interface ApiClient {
   loadSpec(): Promise<LoadSpecResponse>;
   applyPatch(ops: PatchOp[]): Promise<ApplyPatchResponse>;
@@ -349,6 +392,8 @@ export interface ApiClient {
   startRun(input: string, mode?: RunMode, vars?: Record<string, string>): Promise<StartRunResponse>;
   approveRun(id: string, approved: boolean, reason?: string): Promise<ApproveRunResponse>;
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
+  /** The run's span tree (ADR-0063), or undefined when the server has none (an evicted run, an older server). */
+  getRunTrace?(id: string): Promise<RunTrace | undefined>;
 }
 
 // KAN-1216: a non-2xx spec response (e.g. the 404 the server returns for a
@@ -615,6 +660,12 @@ export function createApiClient(baseUrl = ""): ApiClient {
       };
       return () => source.close();
     },
+
+    async getRunTrace(id: string): Promise<RunTrace | undefined> {
+      const res = await fetch(`${baseUrl}/api/runs/${id}/trace`);
+      if (!res.ok) return undefined;
+      return ((await res.json()) as { trace?: RunTrace }).trace;
+    },
   };
 }
 
@@ -867,6 +918,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     startRun: c.startRun.bind(c),
     approveRun: c.approveRun.bind(c),
     subscribeToRunEvents: c.subscribeToRunEvents.bind(c),
+    ...(c.getRunTrace && { getRunTrace: c.getRunTrace.bind(c) }),
   });
   return {
     getSession: client.getSession.bind(client),
@@ -946,6 +998,12 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
         onMessage(JSON.parse(message.data));
       };
       return () => source.close();
+    },
+
+    async getRunTrace(id: string): Promise<RunTrace | undefined> {
+      const res = await fetch(`${baseUrl}/api/runs/${id}/trace`, { credentials: "include" });
+      if (!res.ok) return undefined;
+      return ((await res.json()) as { trace?: RunTrace }).trace;
     },
   };
 }
