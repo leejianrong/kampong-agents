@@ -12,9 +12,7 @@
       "references": [],
       "subject": "Change the email on my account",
       "from": "Ben Lim <ben@client.example>",
-      "to": [
-        "[REDACTED]"
-      ],
+      "to": ["[REDACTED]"],
       "cc": [],
       "date": "2026-10-12T09:00:00.000Z",
       "text": "Please change the email address on my account to ben.new@client.example. I no longer have the old one.\n",

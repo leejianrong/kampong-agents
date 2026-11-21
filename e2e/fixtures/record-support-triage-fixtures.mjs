@@ -9,6 +9,7 @@
 // empty-inbox cases are covered against scripted mailboxes in e2e/support-triage-template.test.ts.
 //
 //   npm run build && node e2e/fixtures/record-support-triage-fixtures.mjs
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import { tmpdir } from "node:os";
@@ -69,6 +70,8 @@ try {
     },
   );
   if (code !== 0) throw new Error(`recording run failed with exit code ${code}`);
+  // The repo's format check covers these files, so leave them in the repo's format.
+  execFileSync("npx", ["prettier", "--write", fixtures], { stdio: "ignore" });
   console.error(`recorded into ${fixtures}`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
