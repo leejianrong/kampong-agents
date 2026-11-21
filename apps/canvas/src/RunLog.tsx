@@ -6,6 +6,9 @@ import { useRunTracker } from "./runTracker.js";
 import { RunTimeline, useRunTrace } from "./RunTimeline.js";
 import { outcomeOf } from "./runOutcome.js";
 import { summarizeRun } from "./runSummary.js";
+import { DataFields, isEmptyData } from "./DataFields.js";
+import { explainError, trimUrls } from "./runReason.js";
+import { nextRow, tabListKeys } from "./tabKeys.js";
 
 // The bottom run log (KAM-243): one row per step, and per item inside a loop, with its status and time; the row
 // picked shows its Input, Output and Error. It reads the run on show, live or replayed, and a failed node on the
@@ -19,10 +22,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "output", label: "Output" },
   { id: "error", label: "Error" },
 ];
-
-function show(value: unknown): string {
-  return value === undefined ? "" : (JSON.stringify(value, null, 2) ?? String(value));
-}
 
 function duration(ms: number | undefined): string {
   if (ms === undefined) return "";
@@ -52,7 +51,13 @@ export function RunLog({
   const [pickedTab, setTab] = useState<Tab | null>(null);
   const selected: LogRow | undefined =
     rows.find((r) => r.id === selectedId) ?? rows.find((r) => r.status === "failed") ?? rows[0];
-  const tab: Tab = pickedTab ?? (selected?.status === "failed" ? "error" : "output");
+  // KAM-271: an Input that is only the run's empty input says nothing, so the tab is left out.
+  const tabs = TABS.filter((t) => t.id !== "input" || (selected && !isEmptyData(selected.input)));
+  const wanted: Tab = pickedTab ?? (selected?.status === "failed" ? "error" : "output");
+  const tab: Tab = tabs.some((t) => t.id === wanted) ? wanted : "output";
+  const viewButtons = useRef<Partial<Record<View, HTMLButtonElement | null>>>({});
+  const tabButtons = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+  const rowButtons = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   const loops = useMemo(() => loopStates(rows, opened, selected?.id), [rows, opened, selected?.id]);
   const visible = useMemo(() => visibleRows(rows, loops), [rows, loops]);
@@ -124,7 +129,20 @@ export function RunLog({
           <span aria-hidden="true">{summary.icon}</span> {summary.label}
         </span>
         {session.fetchTrace && (
-          <div className="md3-runlog__views" role="tablist" aria-label="Run log view">
+          <div
+            className="md3-runlog__views"
+            role="tablist"
+            aria-label="Run log view"
+            onKeyDown={tabListKeys(
+              ["steps", "timeline"] as const,
+              view,
+              (id) => {
+                setView(id);
+                if (!open) onToggle();
+              },
+              (id) => viewButtons.current[id] ?? null,
+            )}
+          >
             {(
               [
                 ["steps", "Steps"],
@@ -135,7 +153,12 @@ export function RunLog({
                 key={id}
                 type="button"
                 role="tab"
+                ref={(el) => {
+                  viewButtons.current[id] = el;
+                }}
+                id={`run-log-view-tab-${id}`}
                 aria-selected={view === id}
+                tabIndex={view === id ? 0 : -1}
                 data-testid={`run-log-view-${id}`}
                 onClick={() => {
                   setView(id);
@@ -177,7 +200,14 @@ export function RunLog({
         </p>
       )}
       {open && (
-        <div className="md3-runlog__body" data-view={view}>
+        <div
+          className="md3-runlog__body"
+          data-view={view}
+          {...(session.fetchTrace && {
+            role: "tabpanel",
+            "aria-labelledby": `run-log-view-tab-${view}`,
+          })}
+        >
           {view === "timeline" ? (
             <RunTimeline
               trace={trace}
@@ -188,12 +218,36 @@ export function RunLog({
             />
           ) : (
             <>
-              <ul className="md3-runlog__rows" aria-label="Steps in this run">
+              <ul
+                className="md3-runlog__rows"
+                aria-label="Steps in this run"
+                onKeyDown={(event) => {
+                  const at = visible.findIndex((r) => r.id === selected?.id);
+                  const loop = selected ? loops.get(selected.id) : undefined;
+                  // Right opens a loop and Left closes it, as in a tree.
+                  if (loop && event.key === (loop.open ? "ArrowLeft" : "ArrowRight")) {
+                    event.preventDefault();
+                    toggleLoop(selected!.id);
+                    return;
+                  }
+                  const to = nextRow(event.key, visible.length, at < 0 ? 0 : at);
+                  const row = to === undefined ? undefined : visible[to];
+                  if (!row) return;
+                  event.preventDefault();
+                  pick(row);
+                  rowButtons.current.get(row.id)?.focus();
+                }}
+              >
                 {visible.map((row) => (
                   <li key={row.id}>
                     <button
                       type="button"
-                      ref={selected?.id === row.id ? pickedRow : null}
+                      ref={(el) => {
+                        if (el) rowButtons.current.set(row.id, el);
+                        else rowButtons.current.delete(row.id);
+                        if (selected?.id === row.id) pickedRow.current = el;
+                      }}
+                      tabIndex={selected?.id === row.id ? 0 : -1}
                       className={`md3-runlog__row md3-runlog__row--${row.status}`}
                       style={{ paddingLeft: `${0.75 + row.depth * 1.25}rem` }}
                       aria-current={selected?.id === row.id}
@@ -230,13 +284,29 @@ export function RunLog({
                     <span className={`md3-runlog__chip md3-runlog__chip--${selected.status}`}>
                       {STATUS_LABEL[selected.status]}
                     </span>
-                    <div className="md3-runlog__tabs" role="tablist" aria-label="Step data">
-                      {TABS.map((t) => (
+                    <div
+                      className="md3-runlog__tabs"
+                      role="tablist"
+                      aria-label="Step data"
+                      onKeyDown={tabListKeys(
+                        tabs.map((t) => t.id),
+                        tab,
+                        (id) => setTab(id),
+                        (id) => tabButtons.current[id] ?? null,
+                      )}
+                    >
+                      {tabs.map((t) => (
                         <button
                           key={t.id}
                           type="button"
                           role="tab"
+                          ref={(el) => {
+                            tabButtons.current[t.id] = el;
+                          }}
+                          id={`run-log-tab-btn-${t.id}`}
+                          aria-controls="run-log-data-panel"
                           aria-selected={tab === t.id}
+                          tabIndex={tab === t.id ? 0 : -1}
                           data-testid={`run-log-tab-${t.id}`}
                           onClick={() => setTab(t.id)}
                         >
@@ -245,30 +315,30 @@ export function RunLog({
                       ))}
                     </div>
                   </div>
-                  <div role="tabpanel" className="md3-runlog__panel">
+                  <div
+                    role="tabpanel"
+                    id="run-log-data-panel"
+                    aria-labelledby={`run-log-tab-btn-${tab}`}
+                    tabIndex={0}
+                    className="md3-runlog__panel"
+                  >
                     {tab === "input" && (
                       <>
                         <p className="md3-body-small md3-runlog__note">
                           What the step could read: the run's input and the results before it.
                         </p>
-                        <pre className="md3-code-block" data-testid="run-log-input">
-                          {show(selected.input)}
-                        </pre>
+                        <DataFields value={selected.input} testId="run-log-input" />
                       </>
                     )}
                     {tab === "output" &&
                       (selected.output !== undefined ? (
-                        <pre className="md3-code-block" data-testid="run-log-output">
-                          {show(selected.output)}
-                        </pre>
+                        <DataFields value={selected.output} testId="run-log-output" />
                       ) : (
                         <p className="md3-body-small md3-runlog__note">No output for this step.</p>
                       ))}
                     {tab === "error" &&
                       (selected.error !== undefined ? (
-                        <div className="md3-runlog__error" data-testid="run-log-error">
-                          {selected.error}
-                        </div>
+                        <ErrorDetail message={selected.error} />
                       ) : (
                         <p className="md3-body-small md3-runlog__note">This step did not fail.</p>
                       ))}
@@ -280,5 +350,35 @@ export function RunLog({
         </div>
       )}
     </section>
+  );
+}
+
+/** KAM-270: what went wrong and what to do in a line each; the raw message is behind "Show technical detail". */
+function ErrorDetail({ message }: { message: string }) {
+  const reason = explainError(message);
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // No clipboard: the detail below can still be selected.
+    }
+  }
+  return (
+    <div className="md3-runlog__error" data-testid="run-log-error">
+      <p className="md3-runlog__error-headline">
+        <strong>{reason.headline}</strong>
+        {reason.action && <span> {reason.action}</span>}
+      </p>
+      <details className="md3-runlog__error-detail">
+        <summary>Show technical detail</summary>
+        <pre className="md3-runlog__error-raw">{trimUrls(message)}</pre>
+        <button type="button" className="md3-button md3-button-text" onClick={() => void copy()}>
+          {copied ? "Copied" : "Copy the full message"}
+        </button>
+      </details>
+    </div>
   );
 }
