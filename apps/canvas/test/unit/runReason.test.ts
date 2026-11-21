@@ -37,6 +37,25 @@ describe("explainError", () => {
   });
 });
 
+describe("explainError: a Replay with no recording (KAM-281)", () => {
+  const MODEL =
+    "No recorded model fixture at fixtures/@model.summarise.7f3a.json for summarise. Run once with `--tools record` (or `--model record`) against a live model to create it. A replay never falls back to a live call.";
+  const TOOL =
+    'No recorded fixture for tool "fetch" at fixtures/fetch.json. Run once with tool mode record to create it.';
+
+  it.each([MODEL, TOOL])(
+    "says it in plain words, with no flags or paths, and offers the fix",
+    (m) => {
+      const r = explainError(m);
+      expect(r.known).toBe(true);
+      expect(r.fix).toBe("replay_missing");
+      expect(r.headline).toBe("This input has no recorded answer, so Replay cannot run it.");
+      expect(r.action).toMatch(/live|clear/i);
+      expect(`${r.headline} ${r.action}`).not.toMatch(/--|fixtures\/|\.json|@model/);
+    },
+  );
+});
+
 describe("trimUrls", () => {
   it("cuts a URL's query string, where a key or a long filter sits", () => {
     expect(trimUrls(ALPHA)).toContain("https://www.alphavantage.co/query?…");

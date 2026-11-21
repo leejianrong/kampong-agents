@@ -9,6 +9,8 @@ export interface Reason {
   headline: string;
   /** What to do about it, when one thing is clearly the right thing. */
   action?: string;
+  /** A recovery the screen can offer as buttons, when there is one. */
+  fix?: "replay_missing";
   /** True when the headline is a guess from the message's wording rather than a generic fallback. */
   known: boolean;
 }
@@ -28,6 +30,15 @@ function serviceOf(message: string): string | undefined {
 export function explainError(message: string): Reason {
   const service = serviceOf(message);
   const who = service ?? "The service";
+  // KAM-281: Replay answers from recordings and never falls back to a live call; this input has none.
+  if (/No recorded (model )?fixture/i.test(message)) {
+    return {
+      headline: "This input has no recorded answer, so Replay cannot run it.",
+      action: "Run it live once, or clear the input and use the recorded one.",
+      fix: "replay_missing",
+      known: true,
+    };
+  }
   const missing = missingSecretNames(message);
   if (missing.length > 0) {
     return {

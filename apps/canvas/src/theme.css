@@ -4090,3 +4090,10 @@ select.md3-text-field {
 .md3-runlog__toggle-label {
   display: none;
 }
+
+.md3-runlog__error-fix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

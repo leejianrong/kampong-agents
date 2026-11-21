@@ -6,6 +6,8 @@ import type { RunSession } from "./runSession.js";
 import { baseStepName } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
 import { finishedWithFailures } from "./runSummary.js";
+import { explainError } from "./runReason.js";
+import { ReasonFix } from "./ReasonFix.js";
 
 // The Test Run panel (PLAN.md Affordances "Test-run sandbox + approval modal", SLICES.md V2 KAN-1107): the details
 // of a run, shown from the session the Run bar starts (KAM-219). SSE is the source of truth for live updates; the
@@ -36,6 +38,7 @@ export function RunPanel({ session }: RunPanelProps) {
 
   // KAM-189: a run that finished but carried failed items on is amber, not green.
   const failed = state?.status === "completed" ? failedItems(state.finalOutput) : [];
+  const reason = state?.error ? explainError(state.error) : undefined;
   const completedWithErrors = failed.length > 0;
 
   // KAM-190: a failed node on the canvas links here; show the message it is about.
@@ -160,7 +163,7 @@ export function RunPanel({ session }: RunPanelProps) {
               >
                 {entry.step}: {entry.status}
                 {entry.confidence !== undefined && ` (confidence ${entry.confidence})`}
-                {entry.error && `: ${entry.error}`}
+                {entry.error && `: ${shortReason(entry.error)}`}
               </li>
             ))}
           </ol>
@@ -178,13 +181,32 @@ export function RunPanel({ session }: RunPanelProps) {
                 {JSON.stringify(state.finalOutput, null, 2)}
               </pre>
             ))}
-          {(state.status === "rejected" || state.status === "failed") && (
-            <PanelError messages={[`Run ${state.status}: ${state.error}`]} testId="run-halted" />
-          )}
+          {(state.status === "rejected" || state.status === "failed") &&
+            (reason?.known ? (
+              <div className="md3-run-errors md3-runlog__error" data-testid="run-halted">
+                <p className="md3-runlog__error-headline">
+                  <strong>{reason.headline}</strong>
+                  {reason.action && <span> {reason.action}</span>}
+                </p>
+                <ReasonFix reason={reason} session={session} />
+                <details className="md3-runlog__error-detail">
+                  <summary>Show technical detail</summary>
+                  <pre className="md3-runlog__error-raw">{state.error}</pre>
+                </details>
+              </div>
+            ) : (
+              <PanelError messages={[`Run ${state.status}: ${state.error}`]} testId="run-halted" />
+            ))}
         </>
       )}
     </div>
   );
+}
+
+/** A step's failure for the trace list: the plain headline for a kind we know, else the message as it came. */
+function shortReason(message: string): string {
+  const reason = explainError(message);
+  return reason.known ? reason.headline : message;
 }
 
 /** The items a loop carried on past (KAM-189): which one, which step failed, and why. */

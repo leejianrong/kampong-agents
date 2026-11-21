@@ -70,6 +70,10 @@ export interface RunSession {
   requestRun: () => void;
   /** Run now, past the live confirmation. */
   start: () => Promise<void>;
+  /** Runs the same input live, asking first when a live run could change something (KAM-281). */
+  runLive: () => void;
+  /** Empties the Test Run input. */
+  clearInput: () => void;
   /** A Replay run (recorded fixtures, nothing sent), whatever mode is chosen; null when this spec has no fixtures or a run is on. */
   replayNow: (() => void) | null;
   decide: (approved: boolean, reason?: string) => Promise<void>;
@@ -281,6 +285,13 @@ export function useRunSession(
     }
   }
 
+  function runLive() {
+    if (!canRun) return;
+    setMode("live");
+    if (sideEffecting.length > 0) setConfirmingLive(true);
+    else void start("live");
+  }
+
   function viewRun(id: string) {
     const entry = runs.find((r) => r.id === id);
     if (!entry) return;
@@ -312,6 +323,8 @@ export function useRunSession(
     canRun,
     requestRun,
     start,
+    runLive,
+    clearInput: () => setInput(""),
     replayNow:
       canRun && options?.modes?.includes("replay")
         ? () => {
