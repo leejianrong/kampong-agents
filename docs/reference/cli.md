@@ -210,6 +210,10 @@ The endpoint is the first of these that is set:
 | `OPENAI_API_KEY` (and `OPENAI_BASE_URL`)                                | OpenAI or a compatible server                    |
 | The workflow's own `model` block (OpenRouter, OpenAI, or local `ollama`) | As that block says                               |
 
+A local endpoint (Ollama, or any server on `localhost`) is only counted as set up while it answers: if it is not
+running, the canvas says the assistant is not available, in the empty state, the step rail and the chat alike, and
+turns its buttons off until it is. Remote and keyed endpoints are not probed.
+
 The model is `KAMPONG_ASSISTANT_MODEL`, or else the workflow's `model.name`. A direct Anthropic key is not used:
 set OpenRouter, or an endpoint of your own. Values can be saved in the Secrets panel instead of the environment.
 

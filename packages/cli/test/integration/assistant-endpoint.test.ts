@@ -89,6 +89,32 @@ describe("assistant endpoint", () => {
     expect(JSON.stringify(on)).not.toContain(KEY);
   });
 
+  it("says a local endpoint that is not running is not available, so every screen agrees (KAM-282)", async () => {
+    const LOCAL = {
+      KAMPONG_ASSISTANT_BASE_URL: "http://localhost:11434/v1",
+      KAMPONG_ASSISTANT_MODEL: "llama3",
+    };
+    await start(LOCAL);
+    replies = [new Error("fetch failed")];
+    const down = (await app!.inject({ method: "GET", url: "/api/assistant" })).json();
+    expect(down).toMatchObject({ configured: false, code: "unreachable" });
+    expect(down.error).toContain("localhost:11434");
+    expect(calls[0]?.url).toBe("http://localhost:11434/v1/models");
+    await app!.close();
+
+    // Running: any answer, even an error status, means something is listening.
+    await start(LOCAL);
+    replies = [404];
+    const up = (await app!.inject({ method: "GET", url: "/api/assistant" })).json();
+    expect(up).toMatchObject({ configured: true, host: "localhost:11434", model: "llama3" });
+  });
+
+  it("does not probe a keyed remote endpoint, which would send traffic on every status check", async () => {
+    await start(OPENROUTER);
+    await app!.inject({ method: "GET", url: "/api/assistant" });
+    expect(calls).toHaveLength(0);
+  });
+
   it("returns a validated plan as ops and writes nothing; the ops then apply as returned", async () => {
     await start(OPENROUTER);
     replies.push(plan([ADD_SUMMARY]));

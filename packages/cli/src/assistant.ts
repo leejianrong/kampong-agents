@@ -153,6 +153,30 @@ export function assistantHost(config: AssistantConfig): string {
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
+const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?$/;
+
+/**
+ * KAM-282: whether a local, keyless endpoint (Ollama, a llama.cpp server) answers at all, so the status can say the
+ * assistant is not available instead of promising one and failing on the first prompt. Only those: a keyed or remote
+ * endpoint is never probed, since that would send traffic on every status check. Any HTTP answer, an error status
+ * included, means something is listening.
+ */
+export async function assistantReachable(
+  config: AssistantConfig,
+  fetchImpl: FetchLike = fetch,
+): Promise<boolean> {
+  if (config.apiKey !== undefined || !LOCAL_HOSTS.test(assistantHost(config))) return true;
+  try {
+    await fetchImpl(`${config.baseUrl}/models`, {
+      method: "GET",
+      signal: AbortSignal.timeout(1500),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class AssistantCallError extends Error {
   constructor(message: string) {
     super(message);

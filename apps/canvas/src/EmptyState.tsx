@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { AssistantStatus } from "./api.js";
+import { AssistantSetupNote } from "./assistantStatus.js";
 
 // KAM-196: what the canvas shows instead of an error when there is nothing to draw yet.
 //   "new"   : no spec file (or an empty one). Choose a template or start blank; the file is created then.
@@ -76,9 +77,7 @@ export function EmptyState({
                   }}
                 />
                 {assistant && !assistant.configured && (
-                  <p className="kg-small" data-testid="empty-state-setup">
-                    {assistant.error}
-                  </p>
+                  <AssistantSetupNote status={assistant} testId="empty-state-setup" />
                 )}
                 {ready && (
                   <p className="kg-small md3-field__hint">

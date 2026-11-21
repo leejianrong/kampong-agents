@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { AssistantSetupNote, explainFailure } from "./assistantStatus.js";
 import type {
   ApiClient,
   ApplyOpsResponse,
@@ -329,7 +330,7 @@ export function AssistantPanel({
       )}
       {status && !status.configured && (
         <div className="kg-chat__setup" role="status" data-testid="assistant-setup">
-          <p className="kg-small">{status.error}</p>
+          <AssistantSetupNote status={status} />
         </div>
       )}
       {status?.configured && showNotice && (
@@ -382,7 +383,7 @@ export function AssistantPanel({
           if (m.kind === "error") {
             return (
               <div key={m.id} className="kg-chat__msg kg-chat__msg--error" role="alert">
-                <p>{m.text}</p>
+                <FailureText text={m.text} />
                 {m.details && (
                   <ul>
                     {m.details.map((d, i) => (
@@ -498,5 +499,22 @@ export function AssistantPanel({
         </div>
       </form>
     </aside>
+  );
+}
+
+/** A failed prompt as a plain headline and a next step, with the original message one click down (KAM-282). */
+function FailureText({ text }: { text: string }) {
+  const plain = explainFailure(text);
+  if (plain.hint === undefined) return <p>{text}</p>;
+  return (
+    <>
+      <p>
+        <strong>{plain.headline}</strong> {plain.hint}
+      </p>
+      <details>
+        <summary className="kg-small">Show technical detail</summary>
+        <p className="kg-small">{text}</p>
+      </details>
+    </>
   );
 }
