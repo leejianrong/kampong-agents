@@ -19,6 +19,10 @@ export function asJson(value: unknown): string {
   return value === undefined ? "" : (JSON.stringify(value, null, 2) ?? String(value));
 }
 
+/** A list of plain values reads fine beside its name. */
+const isFlat = (v: object) =>
+  Array.isArray(v) && v.every((x) => x === null || typeof x !== "object");
+
 function Value({ value, depth }: { value: unknown; depth: number }) {
   if (value === null || value === undefined || value === "") {
     return <span className="md3-fields__empty">empty</span>;
@@ -62,7 +66,12 @@ function Fields({ value, depth }: { value: Record<string, unknown>; depth: numbe
   return (
     <dl className={`md3-fields${depth > 0 ? " md3-fields--nested" : ""}`}>
       {entries.map(([key, v]) => (
-        <div key={key} className="md3-fields__row">
+        <div
+          key={key}
+          // A value that holds more fields goes under its name, not beside it: side by side, each level of nesting
+          // squeezes the next into a narrower column.
+          className={`md3-fields__row${typeof v === "object" && v !== null && !isFlat(v) ? " md3-fields__row--stack" : ""}`}
+        >
           <dt className="md3-label-medium">{key}</dt>
           <dd>
             <Value value={v} depth={depth} />

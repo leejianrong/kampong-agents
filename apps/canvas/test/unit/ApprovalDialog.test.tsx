@@ -74,3 +74,23 @@ describe("ApprovalModal", () => {
     expect(screen.getByTestId("approval-reject-outcome").textContent).toContain("not called");
   });
 });
+
+describe("plain titles in the dialog", () => {
+  it("names the step by its title when it has one, and the id when it does not", () => {
+    const approval = { step: "review", kind: "step", reason: "ok?" } as never;
+    const { rerender } = render(
+      <ApprovalModal
+        approval={approval}
+        next="Save the approved draft"
+        stepTitle="Ask a person to approve the reply"
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("approval-step").textContent).toBe(
+      "Step: Ask a person to approve the reply",
+    );
+    expect(screen.getByText(/goes on to "Save the approved draft"/)).toBeTruthy();
+    rerender(<ApprovalModal approval={approval} onDecide={() => {}} />);
+    expect(screen.getByTestId("approval-step").textContent).toBe("Step: review");
+  });
+});

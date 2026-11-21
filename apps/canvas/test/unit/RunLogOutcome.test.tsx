@@ -68,6 +68,17 @@ describe("run log outcome", () => {
     fireEvent.click(loop);
     expect(rows()).toEqual(["each", "fetch", "fetch", "fetch", "done"]);
   });
+
+  it("folds a loop with a failed item when its row is clicked, and opens it again", () => {
+    render(<RunLog session={session(failedLoop)} open onToggle={() => {}} />);
+    const loop = () => screen.getAllByTestId("run-log-row")[0]!;
+    expect(screen.getAllByTestId("run-log-row")).toHaveLength(5);
+    fireEvent.click(loop());
+    expect(screen.getAllByTestId("run-log-row")).toHaveLength(2);
+    expect(loop().textContent).toContain("1 failed");
+    fireEvent.click(loop());
+    expect(screen.getAllByTestId("run-log-row")).toHaveLength(5);
+  });
 });
 
 describe("run log keyboard and detail (KAM-277, 270, 271)", () => {

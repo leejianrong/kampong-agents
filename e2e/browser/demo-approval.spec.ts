@@ -53,8 +53,12 @@ for (const size of [
 
       const dialog = page.getByRole("dialog", { name: "Approval required" });
       await expect(dialog).toBeVisible({ timeout: 20000 });
-      await expect(dialog.getByTestId("approval-step")).toContainText("review");
-      await expect(dialog.getByTestId("approval-approve-outcome")).toContainText("draft_approved");
+      await expect(dialog.getByTestId("approval-step")).toContainText(
+        "Ask a person to approve the reply",
+      );
+      await expect(dialog.getByTestId("approval-approve-outcome")).toContainText(
+        "Save the approved draft",
+      );
       await expect(dialog.getByTestId("approval-reject-outcome")).toContainText("stops here");
 
       await dialog.getByRole("button", { name: "Approve" }).click();

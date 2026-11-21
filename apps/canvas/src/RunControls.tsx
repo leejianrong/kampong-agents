@@ -28,6 +28,8 @@ export interface RunControlsProps {
   onOpenDetails: () => void;
   /** The spec's steps, so an approval can say what runs after it (KAM-284). */
   workflow?: unknown;
+  /** A step's id mapped to its plain-words title (KAM-290), so an approval names steps the way the cards do. */
+  titles?: Readonly<Record<string, string>> | undefined;
 }
 
 export function RunControls({
@@ -36,6 +38,7 @@ export function RunControls({
   onSetSecret,
   onOpenDetails,
   workflow,
+  titles,
 }: RunControlsProps) {
   const { options, mode, canChoose, runs, viewed, latest } = session;
   const root = useRef<HTMLElement>(null);
@@ -311,12 +314,20 @@ export function RunControls({
       {latest?.state.status === "awaiting_approval" && latest.state.pendingApproval && (
         <ApprovalModal
           approval={latest.state.pendingApproval}
-          next={stepAfter(workflow, latest.state.pendingApproval.step)}
+          next={nameOf(stepAfter(workflow, latest.state.pendingApproval.step), titles)}
+          stepTitle={titles?.[latest.state.pendingApproval.step]}
           onDecide={(approved, reason) => void session.decide(approved, reason)}
         />
       )}
     </section>
   );
+}
+
+function nameOf(
+  step: string | null | undefined,
+  titles: Readonly<Record<string, string>> | undefined,
+): string | null | undefined {
+  return typeof step === "string" ? (titles?.[step] ?? step) : step;
 }
 
 /** Why a run could not start, in the chip's few words (KAM-287): the missing key, a known kind of failure, or the plain fallback. */

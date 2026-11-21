@@ -57,6 +57,7 @@ export function RunLog({
   const [view, setView] = useState<View>("steps");
   // KAM-269: a loop's items sit under its row, closed unless one of them failed (or is the row on show).
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // null: the tab the row suggests (Error for a failed one, else Output) until a tab is picked.
   const [pickedTab, setTab] = useState<Tab | null>(null);
@@ -81,7 +82,10 @@ export function RunLog({
   const tabButtons = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   const rowButtons = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  const loops = useMemo(() => loopStates(rows, opened, selected?.id), [rows, opened, selected?.id]);
+  const loops = useMemo(
+    () => loopStates(rows, opened, selected?.id, closed),
+    [rows, opened, selected?.id, closed],
+  );
   const visible = useMemo(() => visibleRows(rows, loops), [rows, loops]);
 
   const { trace, loaded } = useRunTrace(
@@ -97,10 +101,17 @@ export function RunLog({
   }, [selected?.id, open]);
 
   function toggleLoop(id: string) {
+    const fold = !!loops.get(id)?.open;
     setOpened((was) => {
       const next = new Set(was);
-      if (loops.get(id)?.open) next.delete(id);
+      if (fold) next.delete(id);
       else next.add(id);
+      return next;
+    });
+    setClosed((was) => {
+      const next = new Set(was);
+      if (fold) next.add(id);
+      else next.delete(id);
       return next;
     });
   }
@@ -114,6 +125,7 @@ export function RunLog({
   useEffect(() => {
     setSelectedId(null);
     setOpened(new Set());
+    setClosed(new Set());
   }, [record?.id]);
 
   // A failed node on the canvas asks for its message: pick its row.
@@ -121,7 +133,10 @@ export function RunLog({
   useEffect(() => {
     if (!request) return;
     const row = rowForStep(rows, request.nodeId.replace(/^workflow:/, ""));
-    if (row) pick(row);
+    if (row) {
+      setClosed(new Set()); // a row asked for from the canvas must be shown
+      pick(row);
+    }
     // Only a new request moves the pick, not a row arriving while the run goes on.
   }, [request]);
 
