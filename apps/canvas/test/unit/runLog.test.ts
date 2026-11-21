@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunState } from "../../src/api.js";
-import { buildRunLog, rowForStep } from "../../src/runLog.js";
+import { buildRunLog, loopStates, rowForStep, visibleRows, type LogRow } from "../../src/runLog.js";
 import type { RunTracker } from "../../src/runStatus.js";
 
 // KAM-243: the bottom run log reads one run's tracker into rows: a row per step and per loop item, with status,
@@ -97,5 +97,32 @@ describe("rowForStep", () => {
     );
     expect(rowForStep(rows, "f")?.id).toBe("l[1].f");
     expect(rowForStep(rows, "none")).toBeUndefined();
+  });
+});
+
+describe("loopStates and visibleRows (KAM-269)", () => {
+  const row = (id: string, status: LogRow["status"] = "passed"): LogRow => ({
+    id,
+    step: id.replace(/^.*\]\./, ""),
+    label: id,
+    depth: (id.match(/\]\./g) ?? []).length,
+    status,
+    input: {},
+  });
+  const rows = [row("each"), row("each[0].fetch"), row("each[1].fetch"), row("done")];
+
+  it("closes a clean loop's items under its row and counts them", () => {
+    const states = loopStates(rows, new Set());
+    expect(states.get("each")).toEqual({ summary: "2 items", open: false });
+    expect(visibleRows(rows, states).map((r) => r.id)).toEqual(["each", "done"]);
+  });
+
+  it("opens a loop when asked, when an item failed, or when one of its rows is on show", () => {
+    expect(loopStates(rows, new Set(["each"])).get("each")?.open).toBe(true);
+    const failing = [row("each"), row("each[0].fetch", "failed"), row("each[1].fetch")];
+    const states = loopStates(failing, new Set());
+    expect(states.get("each")).toEqual({ summary: "2 items · 1 failed", open: true });
+    expect(visibleRows(failing, states)).toHaveLength(3);
+    expect(loopStates(rows, new Set(), "each[1].fetch").get("each")?.open).toBe(true);
   });
 });

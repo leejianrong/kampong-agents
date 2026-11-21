@@ -66,11 +66,11 @@ for (const size of [
         .click();
     }
 
-    test("KAM-189: a run whose symbols all failed is completed with 3 errors, in a table", async ({
+    test("KAM-189: a run whose symbols all failed is finished with 3 failed steps, in a table", async ({
       page,
     }) => {
       await runLive(page);
-      await expect(page.getByTestId("run-status")).toContainText("completed with 3 errors", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
         timeout: 20000,
       });
       const rows = page.getByTestId("run-error-row");
@@ -84,7 +84,7 @@ for (const size of [
       page,
     }) => {
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(page.getByTestId("run-status")).toContainText("completed with 1 error", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 1 step failed", {
         timeout: 20000,
       });
       const rows = page.getByTestId("run-error-row");
@@ -105,7 +105,9 @@ for (const size of [
       // One symbol, so nothing fails: plain green, and AAPL's 4% move is over the 1.5 threshold.
       await symbols.fill("AAPL");
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
       await expect(page.getByTestId("run-status")).not.toContainText("error");
       await expect(page.getByTestId("run-errors")).toHaveCount(0);
       await expect(page.getByTestId("run-final-output")).toContainText('"count": 1');
@@ -118,7 +120,9 @@ for (const size of [
       await page.getByTestId("run-var-symbols").fill("AAPL");
       await page.getByTestId("run-var-threshold").fill("50");
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
       await expect(page.getByTestId("run-trace")).toContainText("each_symbol[0].delta");
       await expect(page.getByTestId("run-trace")).not.toContainText("each_symbol[0].summarize");
 

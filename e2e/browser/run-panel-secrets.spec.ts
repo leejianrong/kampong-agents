@@ -81,7 +81,7 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("completed with 3 errors", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
         timeout: 20000,
       });
       await page.getByRole("button", { name: "Set it here" }).click();

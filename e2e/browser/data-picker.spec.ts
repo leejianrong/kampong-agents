@@ -76,7 +76,7 @@ for (const size of [
       await expect(picker.getByRole("button", { name: /^each_symbol/ }).first()).toBeVisible();
 
       await page.getByTestId("insert-data-replay").click();
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
 

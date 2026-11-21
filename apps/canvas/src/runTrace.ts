@@ -23,6 +23,19 @@ export interface TimelineRow {
   error?: string;
   /** True for a model call whose step could not be told for sure (steps running at the same time). */
   approximate?: boolean;
+  /** The status in words when the bare status would mislead ("Done, 1 of 10 failed" for a loop). */
+  statusWord?: string;
+  /** A loop's size in words: "10 items". */
+  note?: string;
+}
+
+export interface TimelineOptions {
+  /** A Replay run: there are no real tokens or prices to say anything about. */
+  replay?: boolean;
+  /** The run log's banner already says what failed; leave that line out of the facts. */
+  omitFailure?: boolean;
+  /** List every step of a loop, not just the ones that failed. */
+  showAll?: boolean;
 }
 
 export interface Fact {
@@ -42,14 +55,14 @@ export interface Timeline {
 
 const KIND_LABEL: Record<SpanKind, string> = {
   run: "Run",
-  model: "Model call",
+  model: "AI call",
   llm: "AI step",
   tool: "Tool",
   condition: "Condition",
   approval: "Approval",
-  transform: "Data step",
+  transform: "Prepare data",
   validate: "Check",
-  dedupe: "Duplicate check",
+  dedupe: "Skip repeats",
   foreach: "Loop",
   branch: "Branch",
   stop: "Stop",
@@ -89,7 +102,20 @@ const tokensOf = (s: TraceSpan): number | undefined =>
 /** A span with the time it was running, using `now` for one still going. */
 const elapsed = (s: TraceSpan, now: number): number => (s.endedAt ?? now) - s.startedAt;
 
-export function buildTimeline(trace: RunTrace, now: number = Date.now()): Timeline {
+/** A step as a person names it: `each[2].fetch` is "fetch, item 3". */
+export function displayName(name: string): string {
+  const m = /\[(\d+)\]\.([^[\]]*)$/.exec(name);
+  return m ? `${m[2]}, item ${Number(m[1]) + 1}` : name;
+}
+
+/** Steps this quick are not worth a number. */
+const QUICK_MS = 100;
+
+export function buildTimeline(
+  trace: RunTrace,
+  now: number = Date.now(),
+  options: TimelineOptions = {},
+): Timeline {
   const root = trace.spans.find((s) => s.kind === "run") ?? trace.spans[0];
   const begin = root?.startedAt ?? trace.startedAt;
   const totalMs = Math.max(
@@ -109,33 +135,83 @@ export function buildTimeline(trace: RunTrace, now: number = Date.now()): Timeli
     return depth;
   };
 
-  const rows: TimelineRow[] = trace.spans
-    .filter((s) => s.kind !== "run")
-    .map((s) => {
-      const dur = elapsed(s, now);
-      const tokens = tokensOf(s);
-      return {
-        id: s.id,
-        label: s.kind === "model" ? (s.model ?? s.name) : s.name,
-        kindLabel: KIND_LABEL[s.kind] ?? "Step",
-        kind: s.kind,
-        status: s.status,
-        depth: depthOf(s),
-        leftPct: ((s.startedAt - begin) / totalMs) * 100,
-        widthPct: Math.max((dur / totalMs) * 100, 0.8),
-        ...(s.status !== "running" && { durationMs: dur }),
-        ...(s.waitedMs ? { waitedMs: s.waitedMs } : {}),
-        ...(tokens !== undefined && { tokens }),
-        ...(s.costUsd !== undefined && { costUsd: s.costUsd }),
-        ...(s.error !== undefined && { error: s.error }),
-        ...(s.attributes?.["attribution"] === "approximate" && { approximate: true }),
-      };
-    });
+  // KAM-274: a loop's items fold into its row, which says how many there were and how many failed; only the
+  // items that failed stay listed, unless every step is asked for.
+  const insideLoop = (s: TraceSpan): boolean => {
+    for (
+      let p = s.parentId ? byId.get(s.parentId) : undefined;
+      p;
+      p = p.parentId ? byId.get(p.parentId) : undefined
+    ) {
+      if (p.kind === "foreach") return true;
+    }
+    return false;
+  };
+  const ancestors = (s: TraceSpan): TraceSpan[] => {
+    const out: TraceSpan[] = [];
+    for (
+      let p = s.parentId ? byId.get(s.parentId) : undefined;
+      p;
+      p = p.parentId ? byId.get(p.parentId) : undefined
+    )
+      out.push(p);
+    return out;
+  };
+  const failedBelow = (loop: TraceSpan): number => {
+    const items = new Set<string>();
+    for (const s of trace.spans) {
+      if (s.status !== "error" || s.kind === "model" || !ancestors(s).includes(loop)) continue;
+      const item = /\[(\d+)\]\./.exec(s.name)?.[1];
+      items.add(item ?? s.id);
+    }
+    return items.size;
+  };
+  const itemsOf = (loop: TraceSpan): number => {
+    const items = new Set<string>();
+    for (const s of trace.spans) {
+      if (!ancestors(s).includes(loop)) continue;
+      const item = /\[(\d+)\]\./.exec(s.name)?.[1];
+      if (item !== undefined) items.add(item);
+    }
+    return items.size;
+  };
+  const shown = (s: TraceSpan): boolean =>
+    s.kind !== "run" &&
+    (options.showAll === true || !insideLoop(s) || (s.status === "error" && s.kind !== "model"));
+
+  const rows: TimelineRow[] = trace.spans.filter(shown).map((s) => {
+    const dur = elapsed(s, now);
+    const tokens = tokensOf(s);
+    const loop = s.kind === "foreach";
+    const failed = loop ? failedBelow(s) : 0;
+    const items = loop ? itemsOf(s) : 0;
+    const status: SpanStatus = loop && failed > 0 && s.status === "ok" ? "error" : s.status;
+    return {
+      id: s.id,
+      label: s.kind === "model" ? (s.model ?? s.name) : displayName(s.name),
+      kindLabel: KIND_LABEL[s.kind] ?? "Step",
+      kind: s.kind,
+      status,
+      depth: depthOf(s),
+      leftPct: ((s.startedAt - begin) / totalMs) * 100,
+      widthPct: Math.max((dur / totalMs) * 100, 0.8),
+      ...(s.status !== "running" && dur >= QUICK_MS && { durationMs: dur }),
+      ...(s.waitedMs ? { waitedMs: s.waitedMs } : {}),
+      ...(tokens !== undefined && { tokens }),
+      ...(s.costUsd !== undefined && { costUsd: s.costUsd }),
+      ...(s.error !== undefined && { error: s.error }),
+      ...(s.attributes?.["attribution"] === "approximate" && { approximate: true }),
+      ...(loop && items > 0 && { note: `${items} ${items === 1 ? "item" : "items"}` }),
+      ...(loop &&
+        failed > 0 &&
+        s.status === "ok" && { statusWord: `Done, ${failed} of ${items || failed} failed` }),
+    };
+  });
 
   return {
     rows,
     totalMs,
-    facts: factsOf(trace, now),
+    facts: factsOf(trace, now, options),
     tokens: trace.totals.inputTokens + trace.totals.outputTokens,
     modelCalls: trace.totals.modelCalls,
     ...(trace.totals.costUsd !== undefined && { costUsd: trace.totals.costUsd }),
@@ -146,7 +222,7 @@ export function buildTimeline(trace: RunTrace, now: number = Date.now()): Timeli
 const isStepSpan = (s: TraceSpan): boolean =>
   s.kind !== "run" && s.kind !== "model" && s.kind !== "foreach" && s.kind !== "branch";
 
-function factsOf(trace: RunTrace, now: number): Fact[] {
+function factsOf(trace: RunTrace, now: number, options: TimelineOptions): Fact[] {
   const facts: Fact[] = [];
   const failures = trace.spans.filter(
     (s) => s.kind !== "run" && s.kind !== "model" && s.status === "error",
@@ -154,17 +230,25 @@ function factsOf(trace: RunTrace, now: number): Fact[] {
   const rejected = trace.spans.find((s) => s.status === "rejected");
   const failed = failures[0];
   const detail = (s: TraceSpan) => (s.error ? `: ${shorten(s.error)}` : ".");
-  if (failed && trace.status === "error") {
-    facts.push({ tone: "error", text: `Stopped at "${failed.name}"${detail(failed)}` });
+  if (options.omitFailure) {
+    // Said above, in the run log's banner.
+  } else if (failed && trace.status === "error") {
+    facts.push({
+      tone: "error",
+      text: `Stopped at "${displayName(failed.name)}"${detail(failed)}`,
+    });
   } else if (failed) {
     // The run went on past these (a loop set to continue on error).
     const n = failures.length;
     facts.push({
       tone: "warn",
-      text: `${n} ${n === 1 ? "step" : "steps"} failed but the run carried on. First: "${failed.name}"${detail(failed)}`,
+      text: `${n} ${n === 1 ? "step" : "steps"} failed but the run carried on. First: "${displayName(failed.name)}"${detail(failed)}`,
     });
   } else if (rejected) {
-    facts.push({ tone: "warn", text: `"${rejected.name}" was rejected${detail(rejected)}` });
+    facts.push({
+      tone: "warn",
+      text: `"${displayName(rejected.name)}" was rejected${detail(rejected)}`,
+    });
   }
 
   // Own time, so a step that waited on a person is not called slow.
@@ -177,7 +261,7 @@ function factsOf(trace: RunTrace, now: number): Fact[] {
   if (slowest && steps.length > 1) {
     facts.push({
       tone: "info",
-      text: `Slowest step: "${slowest.name}", ${formatDuration(own(slowest))}.`,
+      text: `Slowest step: "${displayName(slowest.name)}", ${formatDuration(own(slowest))}.`,
     });
   }
 
@@ -187,7 +271,7 @@ function factsOf(trace: RunTrace, now: number): Fact[] {
     if (s.kind !== "model" || !s.parentId) continue;
     const parent = trace.spans.find((p) => p.id === s.parentId);
     if (!parent || parent.kind === "run") continue;
-    const entry = perStep.get(parent.id) ?? { name: parent.name, tokens: 0 };
+    const entry = perStep.get(parent.id) ?? { name: displayName(parent.name), tokens: 0 };
     entry.tokens += tokensOf(s) ?? 0;
     perStep.set(parent.id, entry);
   }
@@ -204,7 +288,7 @@ function factsOf(trace: RunTrace, now: number): Fact[] {
     facts.push({ tone: "info", text: `Waited ${formatDuration(waited)} for a person to decide.` });
   }
 
-  if (trace.totals.modelCalls > 0) {
+  if (trace.totals.modelCalls > 0 && !options.replay) {
     const tokens = trace.totals.inputTokens + trace.totals.outputTokens;
     if (trace.totals.costUsd !== undefined) {
       facts.push({ tone: "info", text: `Estimated cost ${formatCost(trace.totals.costUsd)}.` });

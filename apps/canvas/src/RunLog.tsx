@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildRunLog, rowForStep, type LogRow } from "./runLog.js";
+import { buildRunLog, loopStates, rowForStep, visibleRows, type LogRow } from "./runLog.js";
 import type { RunSession } from "./runSession.js";
 import { STATUS_ICON, STATUS_LABEL } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
 import { RunTimeline, useRunTrace } from "./RunTimeline.js";
+import { outcomeOf } from "./runOutcome.js";
+import { summarizeRun } from "./runSummary.js";
 
 // The bottom run log (KAM-243): one row per step, and per item inside a loop, with its status and time; the row
 // picked shows its Input, Output and Error. It reads the run on show, live or replayed, and a failed node on the
@@ -43,12 +45,17 @@ export function RunLog({
     [record?.tracker, record?.input],
   );
   const [view, setView] = useState<View>("steps");
+  // KAM-269: a loop's items sit under its row, closed unless one of them failed (or is the row on show).
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // null: the tab the row suggests (Error for a failed one, else Output) until a tab is picked.
   const [pickedTab, setTab] = useState<Tab | null>(null);
   const selected: LogRow | undefined =
     rows.find((r) => r.id === selectedId) ?? rows.find((r) => r.status === "failed") ?? rows[0];
   const tab: Tab = pickedTab ?? (selected?.status === "failed" ? "error" : "output");
+
+  const loops = useMemo(() => loopStates(rows, opened, selected?.id), [rows, opened, selected?.id]);
+  const visible = useMemo(() => visibleRows(rows, loops), [rows, loops]);
 
   const { trace, loaded } = useRunTrace(
     session.fetchTrace,
@@ -62,13 +69,25 @@ export function RunLog({
     pickedRow.current?.scrollIntoView?.({ block: "nearest" });
   }, [selected?.id, open]);
 
+  function toggleLoop(id: string) {
+    setOpened((was) => {
+      const next = new Set(was);
+      if (loops.get(id)?.open) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function pick(row: LogRow) {
     setSelectedId(row.id);
     setTab(null);
   }
 
   // Another run on show starts with its own first failure, or its first row.
-  useEffect(() => setSelectedId(null), [record?.id]);
+  useEffect(() => {
+    setSelectedId(null);
+    setOpened(new Set());
+  }, [record?.id]);
 
   // A failed node on the canvas asks for its message: pick its row.
   const request = tracker?.messageRequest ?? null;
@@ -80,9 +99,10 @@ export function RunLog({
   }, [request]);
 
   if (!record) return null;
-  const errors = rows.filter((r) => r.status === "failed").length;
   const state = record.state;
-  const finished = state.status === "completed" || state.status === "failed";
+  const summary = summarizeRun(state);
+  const outcome = outcomeOf(state, rows);
+  const topSteps = rows.filter((r) => r.depth === 0).length;
   const ended = record.endedAt !== undefined ? record.endedAt - record.startedAt : undefined;
 
   return (
@@ -94,12 +114,14 @@ export function RunLog({
             {record.mode === "live" ? "LIVE" : "Replay · recorded data"}
           </span>
         )}
-        <span className="md3-body-small md3-runlog__summary" data-testid="run-log-summary">
-          Started {new Date(record.startedAt).toLocaleTimeString()}
-          {ended !== undefined && ` · ${duration(ended)}`} · {rows.length}{" "}
-          {rows.length === 1 ? "step" : "steps"}
-          {errors > 0 && ` · ${errors} ${errors === 1 ? "error" : "errors"}`}
-          {!finished && state.status === "running" && " · running"}
+        <span
+          className={`md3-status-pill md3-status-pill--${summary.kind} md3-runlog__outcome-pill`}
+          data-testid="run-log-summary"
+          title={`Started ${new Date(record.startedAt).toLocaleTimeString()}${
+            ended !== undefined ? ` · ${duration(ended)}` : ""
+          } · ${topSteps} ${topSteps === 1 ? "step" : "steps"}`}
+        >
+          <span aria-hidden="true">{summary.icon}</span> {summary.label}
         </span>
         {session.fetchTrace && (
           <div className="md3-runlog__views" role="tablist" aria-label="Run log view">
@@ -146,17 +168,28 @@ export function RunLog({
         </button>
       </header>
       {open && (
+        <p
+          className={`md3-runlog__outcome md3-runlog__outcome--${outcome.tone}`}
+          data-testid="run-log-outcome"
+        >
+          <strong>{outcome.headline}</strong>
+          {outcome.detail && <span> {outcome.detail}</span>}
+        </p>
+      )}
+      {open && (
         <div className="md3-runlog__body" data-view={view}>
           {view === "timeline" ? (
             <RunTimeline
               trace={trace}
               loaded={loaded}
               live={state.status === "running" || state.status === "awaiting_approval"}
+              replay={record.mode === "replay"}
+              omitFailure
             />
           ) : (
             <>
               <ul className="md3-runlog__rows" aria-label="Steps in this run">
-                {rows.map((row) => (
+                {visible.map((row) => (
                   <li key={row.id}>
                     <button
                       type="button"
@@ -167,12 +200,21 @@ export function RunLog({
                       data-testid="run-log-row"
                       data-run-step={row.step}
                       data-row-status={row.status}
-                      onClick={() => pick(row)}
+                      {...(loops.get(row.id) && { "aria-expanded": loops.get(row.id)!.open })}
+                      onClick={() => {
+                        pick(row);
+                        if (loops.has(row.id)) toggleLoop(row.id);
+                      }}
                     >
                       <span className="md3-runlog__dot" aria-hidden="true">
                         {STATUS_ICON[row.status]}
                       </span>
                       <span className="md3-runlog__name">{row.label}</span>
+                      {loops.get(row.id) && (
+                        <span className="md3-body-small md3-runlog__items">
+                          {loops.get(row.id)!.summary}
+                        </span>
+                      )}
                       <span className="md3-visually-hidden">{STATUS_LABEL[row.status]}</span>
                       <span className="md3-body-small md3-runlog__time">
                         {duration(row.durationMs)}

@@ -67,7 +67,9 @@ for (const size of [
 
       await page.getByRole("button", { name: "Run", exact: true }).click();
       await expect(page.getByTestId("run-mode")).toContainText("Replay (recorded fixtures)");
-      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
       await expect(page.getByTestId("run-final-output")).toContainText("each_symbol");
       await expect(page.getByTestId("run-final-output")).toContainText("AAPL");
     });
@@ -136,6 +138,8 @@ test.describe("from the template gallery", () => {
     ).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByTestId("run-mode")).toContainText("Replay (recorded fixtures)");
-    await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+    await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+      timeout: 20000,
+    });
   });
 });

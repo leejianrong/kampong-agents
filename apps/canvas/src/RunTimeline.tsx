@@ -69,11 +69,16 @@ export function RunTimeline({
   trace,
   loaded,
   live,
+  replay = false,
+  omitFailure = false,
 }: {
   trace: RunTrace | undefined;
   loaded: boolean;
   live: boolean;
+  replay?: boolean;
+  omitFailure?: boolean;
 }) {
+  const [showAll, setShowAll] = useState(false);
   // A running span is measured against the clock, which ticks while the run is on.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -81,7 +86,10 @@ export function RunTimeline({
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, [live]);
-  const timeline = useMemo(() => (trace ? buildTimeline(trace, now) : undefined), [trace, now]);
+  const timeline = useMemo(
+    () => (trace ? buildTimeline(trace, now, { replay, showAll, omitFailure }) : undefined),
+    [trace, now, replay, showAll, omitFailure],
+  );
 
   if (!trace || !timeline) {
     return (
@@ -116,6 +124,14 @@ export function RunTimeline({
         {timeline.tokens > 0 && <span>{formatTokens(timeline.tokens)} tokens</span>}
         {timeline.costUsd !== undefined && <span>{formatCost(timeline.costUsd)}</span>}
       </div>
+      <button
+        type="button"
+        className="md3-button md3-button-text md3-timeline__more"
+        aria-pressed={showAll}
+        onClick={() => setShowAll((v) => !v)}
+      >
+        {showAll ? "Show fewer steps" : "Show every step"}
+      </button>
       <ol className="md3-timeline__rows" aria-label="Steps and model calls over time">
         {timeline.rows.map((row) => (
           <li
@@ -131,7 +147,10 @@ export function RunTimeline({
               title={row.error}
             >
               <span className="md3-label-medium md3-timeline__name">{row.label}</span>
-              <span className="md3-body-small md3-timeline__kind">{row.kindLabel}</span>
+              <span className="md3-body-small md3-timeline__kind">
+                {row.kindLabel}
+                {row.note && ` · ${row.note}`}
+              </span>
             </div>
             <div className="md3-timeline__track" aria-hidden="true">
               <span
@@ -141,7 +160,7 @@ export function RunTimeline({
             </div>
             <div className="md3-body-small md3-timeline__figures">
               <span>
-                {STATUS_WORD[row.status]}
+                {row.statusWord ?? STATUS_WORD[row.status]}
                 {row.durationMs !== undefined && ` · ${formatDuration(row.durationMs)}`}
               </span>
               {row.waitedMs !== undefined && (

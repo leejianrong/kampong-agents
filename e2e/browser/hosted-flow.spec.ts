@@ -100,7 +100,9 @@ test("sign up -> workspace -> BYOK -> open, edit, run, approve a spec on the can
 
   // 10. Approve -> the run completes and the trace is shown.
   await approvalDialog.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20_000 });
+  await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+    timeout: 20_000,
+  });
   await expect(page.getByTestId("run-trace")).toContainText("decide");
   await shot(page, "06-run-completed");
 });

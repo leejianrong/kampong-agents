@@ -3,7 +3,7 @@ import { failedItems } from "./runErrors.js";
 
 // One run in a word, an icon and a colour role (KAM-219): the run bar's status chip and the runs drawer both draw
 // from this, so a run is called the same thing in both. A run that finished with failed items carried on past is
-// "completed with errors", a warning, never "completed".
+// "finished, N steps failed", a warning, never "completed".
 
 export type RunSummaryKind =
   "running" | "awaiting_approval" | "completed" | "completed_with_errors" | "failed" | "rejected";
@@ -27,12 +27,16 @@ const ICON: Record<RunSummaryKind, string> = {
   rejected: "✕",
 };
 
+/** How a run that carried on past failures is worded, in the run bar, the log and the Test Run panel (KAM-272). */
+export const finishedWithFailures = (n: number): string =>
+  `Finished, ${n} ${n === 1 ? "step" : "steps"} failed`;
+
 export function summarizeRun(state: RunState): RunSummary {
   const errors = state.status === "completed" ? failedItems(state.finalOutput).length : 0;
   const kind: RunSummaryKind = errors > 0 ? "completed_with_errors" : state.status;
   const label =
     kind === "completed_with_errors"
-      ? `completed with ${errors} ${errors === 1 ? "error" : "errors"}`
+      ? finishedWithFailures(errors)
       : kind === "awaiting_approval"
         ? "waiting for approval"
         : kind;

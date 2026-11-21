@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunTrace, TraceSpan } from "../../src/api.js";
-import { buildTimeline, formatCost, formatDuration } from "../../src/runTrace.js";
+import { buildTimeline, displayName, formatCost, formatDuration } from "../../src/runTrace.js";
 
 // KAM-258: the Timeline view's data. A non-technical tester must be able to read off which step was slow, which
 // used the most, and which failed, from the plain-words facts alone.
@@ -51,7 +51,7 @@ describe("buildTimeline", () => {
     );
     expect(t.rows.map((r) => [r.label, r.kindLabel, r.depth])).toEqual([
       ["draft", "AI step", 0],
-      ["gpt-x", "Model call", 1],
+      ["gpt-x", "AI call", 1],
     ]);
     expect(t.rows[0]).toMatchObject({ leftPct: 10, widthPct: 40, durationMs: 4000 });
     expect(t.rows[1]?.tokens).toBe(1000);
@@ -127,7 +127,7 @@ describe("buildTimeline", () => {
     );
     expect(t.facts[0]).toEqual({
       tone: "warn",
-      text: '1 step failed but the run carried on. First: "each[1].fetch": HTTP 500',
+      text: '1 step failed but the run carried on. First: "fetch, item 2": HTTP 500',
     });
   });
 
@@ -207,5 +207,71 @@ describe("formatting", () => {
     expect(formatDuration(125_000)).toBe("2 min 5 s");
     expect(formatCost(0.0016)).toBe("$0.0016");
     expect(formatCost(1.5)).toBe("$1.50");
+  });
+});
+
+describe("buildTimeline: loops, names, quick steps, Replay (KAM-274)", () => {
+  const loop = span({ id: "l", parentId: "r", name: "each", kind: "foreach", endedAt: 900 });
+  const item = (n: number, over: Partial<TraceSpan> = {}): TraceSpan =>
+    span({
+      id: `i${n}`,
+      parentId: "l",
+      name: `each[${n}].fetch`,
+      kind: "tool",
+      startedAt: 10 * n,
+      endedAt: 10 * n + 5,
+      ...over,
+    });
+
+  it("names an item step as a person would, not by its engine id", () => {
+    expect(displayName("each_symbol[0].fetch")).toBe("fetch, item 1");
+    expect(displayName("plain")).toBe("plain");
+  });
+
+  it("folds a loop's items into its row and keeps only the failed ones listed", () => {
+    const t = buildTimeline(
+      trace([root, loop, item(0), item(1, { status: "error", error: "429" }), item(2)]),
+    );
+    expect(t.rows.map((r) => r.label)).toEqual(["each", "fetch, item 2"]);
+    expect(t.rows[0]).toMatchObject({
+      note: "3 items",
+      status: "error",
+      statusWord: "Done, 1 of 3 failed",
+    });
+    const all = buildTimeline(trace([root, loop, item(0), item(1), item(2)]), 0, {
+      showAll: true,
+    });
+    expect(all.rows).toHaveLength(4);
+  });
+
+  it("gives no duration to a step under 100 ms", () => {
+    const t = buildTimeline(
+      trace([root, span({ id: "q", parentId: "r", name: "fast", kind: "tool", endedAt: 40 })]),
+    );
+    expect(t.rows[0]?.durationMs).toBeUndefined();
+    const slow = buildTimeline(
+      trace([root, span({ id: "q", parentId: "r", name: "slow", kind: "tool", endedAt: 400 })]),
+    );
+    expect(slow.rows[0]?.durationMs).toBe(400);
+  });
+
+  it("says nothing about tokens or price in a Replay run", () => {
+    const withCalls = trace(
+      [
+        root,
+        span({ id: "m", parentId: "r", name: "gpt-x", kind: "model", model: "gpt-x", endedAt: 50 }),
+      ],
+      { totals: { inputTokens: 0, outputTokens: 0, modelCalls: 1 } },
+    );
+    expect(
+      buildTimeline(withCalls)
+        .facts.map((f) => f.text)
+        .join(" "),
+    ).toContain("did not report");
+    expect(
+      buildTimeline(withCalls, 0, { replay: true })
+        .facts.map((f) => f.text)
+        .join(" "),
+    ).not.toContain("did not report");
   });
 });

@@ -93,7 +93,9 @@ for (const size of [
       await expect.poll(() => existsSync(layoutPath)).toBe(true);
       const layoutBefore = readFileSync(layoutPath, "utf8");
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
       const passed = page.locator('[data-testid="node-run-status"][data-status="passed"]');
       await expect(passed.first()).toBeVisible();
       // A word and an icon, not just a colour.
@@ -126,7 +128,7 @@ for (const size of [
       // with its error showing, and the Input tab shows the item that failed.
       const log = page.getByTestId("run-log");
       await expect(log).toBeVisible();
-      await expect(log.getByTestId("run-log-summary")).toContainText("1 error");
+      await expect(log.getByTestId("run-log-summary")).toContainText("1 step failed");
       const failedRows = log.locator('[data-testid="run-log-row"][data-row-status="failed"]');
       await expect(failedRows).toHaveCount(1);
       await expect(failedRows).toContainText("MSFT");
@@ -158,7 +160,7 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("completed with 3 errors", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
         timeout: 20000,
       });
 
@@ -203,7 +205,7 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("completed with 3 errors", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
         timeout: 20000,
       });
       await expect(badge(page, /Tool step fetch/)).toContainText("Needs key");

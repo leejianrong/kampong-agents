@@ -113,3 +113,67 @@ export function rowForStep(rows: readonly LogRow[], step: string): LogRow | unde
   const mine = rows.filter((r) => r.step === step);
   return mine.find((r) => r.status === "failed") ?? mine[0];
 }
+
+/** The loop row an item row belongs to (`each[2].fetch` is under `each`), when that loop has a row. */
+function loopOf(row: LogRow, byId: ReadonlyMap<string, LogRow>): string | undefined {
+  const parent = row.id.replace(/\[\d+\]\.[^[\]]*$/, "");
+  return parent !== row.id && byId.has(parent) ? parent : undefined;
+}
+
+export interface LoopState {
+  /** "10 items" or "10 items · 1 failed". */
+  summary: string;
+  /** Its item rows are listed. */
+  open: boolean;
+}
+
+/**
+ * KAM-269: a loop's items (one row per step per item) sit under the loop's row, closed by default so a run reads as
+ * its steps and not as 21 lines. A loop stays open when an item failed, or holds the row on show, or was opened.
+ */
+export function loopStates(
+  rows: readonly LogRow[],
+  opened: ReadonlySet<string>,
+  selectedId?: string,
+): Map<string, LoopState> {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const members = new Map<string, LogRow[]>();
+  for (const row of rows) {
+    for (let l = loopOf(row, byId); l !== undefined; l = loopOf(byId.get(l)!, byId)) {
+      members.set(l, [...(members.get(l) ?? []), row]);
+    }
+  }
+  const states = new Map<string, LoopState>();
+  for (const [loop, inside] of members) {
+    const items = new Set<string>();
+    const failedItems = new Set<string>();
+    for (const row of inside) {
+      const item = new RegExp(`^${loop.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\[(\\d+)\\]`).exec(
+        row.id,
+      )?.[1];
+      if (item === undefined) continue;
+      items.add(item);
+      if (row.status === "failed") failedItems.add(item);
+    }
+    const n = items.size;
+    states.set(loop, {
+      summary: `${n} ${n === 1 ? "item" : "items"}${failedItems.size > 0 ? ` · ${failedItems.size} failed` : ""}`,
+      open: opened.has(loop) || failedItems.size > 0 || inside.some((r) => r.id === selectedId),
+    });
+  }
+  return states;
+}
+
+/** The rows to list: those not inside a closed loop. */
+export function visibleRows(
+  rows: readonly LogRow[],
+  states: ReadonlyMap<string, LoopState>,
+): LogRow[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return rows.filter((row) => {
+    for (let l = loopOf(row, byId); l !== undefined; l = loopOf(byId.get(l)!, byId)) {
+      if (states.get(l)?.open === false) return false;
+    }
+    return true;
+  });
+}

@@ -22,7 +22,7 @@ describe("summarizeRun", () => {
     } as unknown as RunState);
     expect(s).toMatchObject({
       kind: "completed_with_errors",
-      label: "completed with 1 error",
+      label: "Finished, 1 step failed",
       errors: 1,
     });
   });

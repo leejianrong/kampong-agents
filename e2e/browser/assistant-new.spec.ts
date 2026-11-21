@@ -120,7 +120,7 @@ for (const size of [
         page.getByTestId("run-controls").getByRole("button", { name: "Replay" }),
       ).toHaveAttribute("aria-pressed", "true");
       await page.getByTestId("run-button").click();
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
       expect(existsSync(join(dir, ".kampong", "fixtures"))).toBe(false);

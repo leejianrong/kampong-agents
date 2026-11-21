@@ -35,6 +35,9 @@
   --md-sys-color-on-error: #ffffff;
   --md-sys-color-error-container: #ffdad6;
   --md-sys-color-on-error-container: #410002;
+  /* M3 has no warning role; a run that finished with failures needs one that reads as caution, not information. */
+  --md-sys-color-warning-container: #ffdea0;
+  --md-sys-color-on-warning-container: #4a3200;
   --md-sys-color-surface: #f6fbf7;
   --md-sys-color-surface-container-lowest: #ffffff;
   --md-sys-color-surface-container-low: #f0f6f1;
@@ -98,6 +101,8 @@
     --md-sys-color-on-error: #690005;
     --md-sys-color-error-container: #93000a;
     --md-sys-color-on-error-container: #ffdad6;
+    --md-sys-color-warning-container: #5c4200;
+    --md-sys-color-on-warning-container: #ffdea0;
     --md-sys-color-surface: #0f1512;
     --md-sys-color-surface-container-lowest: #0a0f0d;
     --md-sys-color-surface-container-low: #171d1a;
@@ -327,10 +332,10 @@ select {
   color: var(--md-sys-color-on-primary-container);
 }
 
-/* Finished, but some items failed (KAM-189): the tertiary container, the same softer-than-error role as warnings. */
+/* Finished, but some items failed (KAM-189, KAM-272): the warning container, amber, softer than an error and not blue. */
 .md3-status-pill--completed_with_errors {
-  background: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
+  background: var(--md-sys-color-warning-container);
+  color: var(--md-sys-color-on-warning-container);
 }
 
 .md3-status-pill--rejected,
@@ -3856,5 +3861,67 @@ select.md3-text-field {
   .md3-timeline__row {
     grid-template-columns: 1fr;
     gap: 0.25rem;
+  }
+}
+
+/* KAM-269 / KAM-272: the run in a line or two of plain words above the steps, and a loop's item count on its row. */
+.md3-runlog__outcome {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  font-size: var(--md-type-body-medium-size);
+}
+.md3-runlog__outcome--ok {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.md3-runlog__outcome--warn {
+  background: var(--md-sys-color-warning-container);
+  color: var(--md-sys-color-on-warning-container);
+}
+.md3-runlog__outcome--error {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+.md3-runlog__outcome--wait,
+.md3-runlog__outcome--run {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+.md3-runlog__items {
+  margin-left: 0.5rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.md3-runlog__outcome-pill {
+  white-space: nowrap;
+}
+
+/* One line, so the log leaves the canvas its room; a long reason is cut, and the step's Error tab has all of it. */
+.md3-runlog__outcome {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* KAM-275: at a phone's width the header keeps to one line: the outcome and the view switch. The mode is in the
+   run bar above, and the heading is still there for a screen reader. */
+@media (max-width: 600px) {
+  .md3-runlog__head {
+    gap: 0.5rem;
+    padding-left: 0.75rem;
+  }
+  .md3-runlog__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .md3-runlog__head .md3-run-mode {
+    display: none;
+  }
+  .md3-runlog__views button {
+    padding: 0 0.625rem;
   }
 }

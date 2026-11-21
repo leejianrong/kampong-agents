@@ -65,7 +65,7 @@ for (const size of [
 
       await bar.getByTestId("run-button").click();
       // The template's recorded answer for MSFT is a rate limit, so one item fails and the loop carries on.
-      await expect(bar.getByTestId("runbar-status")).toContainText("completed with 1 error", {
+      await expect(bar.getByTestId("runbar-status")).toContainText("Finished, 1 step failed", {
         timeout: 20000,
       });
       await expect(bar.getByTestId("runbar-status")).toContainText(/\d+(\.\d)? s/);
@@ -84,7 +84,9 @@ for (const size of [
     }) => {
       const bar = page.getByTestId("run-controls");
       await bar.getByTestId("run-button").click();
-      await expect(bar.getByTestId("runbar-status")).toContainText("completed", { timeout: 20000 });
+      await expect(bar.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
       await bar.getByTestId("run-button").click();
       await expect(bar.getByTestId("runs-drawer-toggle")).toContainText("2", { timeout: 20000 });
 
@@ -101,7 +103,7 @@ for (const size of [
       await page.keyboard.press("Control+k");
       await page.getByRole("combobox", { name: "Search commands" }).fill("run the");
       await page.keyboard.press("Enter");
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
 
@@ -123,14 +125,16 @@ for (const size of [
       await openPanel(page, "Test Run");
       await page.getByLabel("Input").fill("keep me");
       await page.getByTestId("run-button").click();
-      await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20000 });
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+        timeout: 20000,
+      });
 
       await openPanel(page, "Secrets");
       await expect(page.getByRole("region", { name: "Test Run" })).toHaveCount(0);
-      await expect(page.getByTestId("runbar-status")).toContainText("completed");
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/);
 
       await openPanel(page, "Test Run");
-      await expect(page.getByTestId("run-status")).toContainText("completed");
+      await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/);
       await expect(page.getByLabel("Input")).toHaveValue("keep me");
     });
   });

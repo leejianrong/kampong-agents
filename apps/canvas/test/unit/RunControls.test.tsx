@@ -103,14 +103,14 @@ describe("Run bar", () => {
     await waitFor(() => screen.getByRole("button", { name: "Replay" }));
     fireEvent.click(screen.getByTestId("run-button"));
     const chip = await screen.findByTestId("runbar-status");
-    expect(chip.textContent).toContain("completed with 1 error");
+    expect(chip.textContent).toContain("Finished, 1 step failed");
     expect(chip.className).toContain("completed_with_errors");
 
     fireEvent.click(screen.getByTestId("runs-drawer-toggle"));
     const rows = within(screen.getByTestId("runs-drawer")).getAllByTestId("run-row");
     expect(rows).toHaveLength(1);
     expect(rows[0]!.textContent).toContain("Run 1");
-    expect(rows[0]!.textContent).toContain("completed with 1 error");
+    expect(rows[0]!.textContent).toContain("Finished, 1 step failed");
     fireEvent.keyDown(screen.getByTestId("runs-drawer"), { key: "Escape" });
     expect(screen.queryByTestId("runs-drawer")).toBeNull();
   });
