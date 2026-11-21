@@ -71,6 +71,36 @@ for (const size of [
       await expect(page.getByTestId("start-blank")).toBeInViewport();
       expect(await page.evaluate(noHorizontalScroll)).toBe(true);
       expect(existsSync(specPath)).toBe(false);
+      // KAM-291: nothing is on disk, so the header must not say Saved.
+      await expect(page.getByTestId("save-state")).toHaveText("Not saved yet");
+    });
+
+    test("templates lead: two are on screen without scrolling, and the tour hides none of their text", async ({
+      page,
+    }) => {
+      test.skip(size.height < 900, "a 700px window shows one and part of a second");
+      await page.goto(URL);
+      const cards = page.locator("li.md3-template-card");
+      await expect(cards.nth(1)).toBeVisible();
+      const windowHeight = page.viewportSize()!.height;
+      for (const i of [0, 1]) {
+        const box = (await cards.nth(i).boundingBox())!;
+        expect(box.y + box.height).toBeLessThanOrEqual(windowHeight - 56);
+      }
+      // KAM-285: the first coach mark is not drawn over the first two templates.
+      const mark = page.getByTestId("coach-mark");
+      if (await mark.count()) {
+        const m = (await mark.boundingBox())!;
+        for (const i of [0, 1]) {
+          const c = (await cards.nth(i).boundingBox())!;
+          const overlaps =
+            c.x < m.x + m.width &&
+            c.x + c.width > m.x &&
+            c.y < m.y + m.height &&
+            c.y + c.height > m.y;
+          expect(overlaps).toBe(false);
+        }
+      }
     });
 
     test("Start blank writes a valid spec with the schema pragma and opens it", async ({
@@ -79,6 +109,7 @@ for (const size of [
       await page.goto(URL);
       await page.getByTestId("start-blank").click();
       await expect(page.getByTestId("empty-state")).toHaveCount(0);
+      await expect(page.getByTestId("save-state")).toHaveText("Saved");
       await expect(
         page.locator(".react-flow__node").getByText("answer", { exact: true }),
       ).toBeVisible();

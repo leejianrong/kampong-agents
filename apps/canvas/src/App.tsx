@@ -1326,7 +1326,13 @@ export function App({
     if (!asks) setFocus({ id, nonce: Date.now() });
   }
 
-  const saveState: SaveState = specError ? "failed" : errors.length > 0 ? "paused" : "saved";
+  const saveState: SaveState = specError
+    ? "failed"
+    : errors.length > 0
+      ? "paused"
+      : emptyKind === "new"
+        ? "unsaved"
+        : "saved";
   const actions = buildActions({
     openForm,
     yamlOpen,
