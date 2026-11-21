@@ -626,9 +626,14 @@ export function App({
   // KAM-219: the runs of this session, shared by the Run bar and the Test Run panel. Held here, above both, so a
   // run keeps streaming and its result and typed vars survive while other panels open and close. The options are
   // fetched again when the spec's text changes, so a template just chosen offers Replay at once.
+  // KAM-214, KAM-287: the secrets the workflow reads that have no value yet; undefined until known. The count is on
+  // the status bar, and the names let a live run say what it needs before it asks to confirm.
+  const [missingNames, setMissingNames] = useState<string[] | undefined>(undefined);
+  const missingSecrets = missingNames?.length;
   const runSession = useRunSession(api, runTracker, {
     blockedReason: runBlockedReason,
     refreshKey: source,
+    missingSecrets: missingNames,
   });
   // KAM-220: the first-run marks. They start on a new, blank workflow and follow what the person does.
   const coach = useCoachMarks({
@@ -1177,16 +1182,15 @@ export function App({
 
   // KAM-214: secrets the workflow reads that have no value yet, for the count on the status bar. Fetched on load
   // and whenever the spec text changes (a new ${NAME} may have appeared); the Secrets panel keeps it current.
-  const [missingSecrets, setMissingSecrets] = useState<number | undefined>(undefined);
-  const countMissing = (rows: SecretStatusDto[]) =>
-    rows.filter((row) => row.referenced && row.source === "unset").length;
+  const namesMissing = (rows: SecretStatusDto[]) =>
+    rows.filter((row) => row.referenced && row.source === "unset").map((row) => row.name);
   useEffect(() => {
     if (!api.listSecrets) return;
     let cancelled = false;
     api
       .listSecrets()
       .then((rows) => {
-        if (!cancelled) setMissingSecrets(countMissing(rows));
+        if (!cancelled) setMissingNames(namesMissing(rows));
       })
       .catch(() => {
         // the count is a hint; the panel reports a failure itself
@@ -1197,7 +1201,7 @@ export function App({
   }, [api, source]);
 
   const tally = useCallback((rows: SecretStatusDto[]) => {
-    setMissingSecrets(countMissing(rows));
+    setMissingNames(namesMissing(rows));
     return rows;
   }, []);
   // KAM-192: "Set it here" on a run or check error opens the Secrets panel with that name's form ready.
@@ -1717,7 +1721,11 @@ export function App({
                     </Panel>
                   )}
                   {openForm === "guardrails" && (
-                    <Panel title="Set Guardrails" onClose={requestClose}>
+                    <Panel
+                      title="Set Guardrails"
+                      purpose="Limits and safety rules every run keeps to, such as asking a person first."
+                      onClose={requestClose}
+                    >
                       <GuardrailsForm
                         onSubmit={(guardrails) => void handleSetGuardrails(guardrails)}
                         onCancel={() => setOpenForm(null)}
@@ -1727,6 +1735,7 @@ export function App({
                   {openForm === "run" && (
                     <Panel
                       title="Test Run"
+                      purpose="Try the workflow with an input and see what each step did. Start it with Run in the bar above."
                       testId="run-panel-shell"
                       onClose={() => setOpenForm(null)}
                     >
@@ -1736,6 +1745,7 @@ export function App({
                   {shows("vars") && spec && (
                     <Panel
                       title="Spec Vars"
+                      purpose="Values the workflow reads, which you can change without editing its steps."
                       testId="draft-vars"
                       hidden={openForm !== "vars"}
                       onClose={requestClose}
@@ -1751,6 +1761,7 @@ export function App({
                   {shows("trigger") && spec && (
                     <Panel
                       title="Trigger"
+                      purpose="What starts the workflow: a schedule, a request from another app, or you pressing Run."
                       testId="draft-trigger"
                       hidden={openForm !== "trigger"}
                       onClose={requestClose}
@@ -1766,6 +1777,7 @@ export function App({
                   {shows("steps") && spec && (
                     <Panel
                       title="Edit Steps"
+                      purpose="List, reorder, rename and delete the steps and tools of this workflow."
                       testId="draft-steps"
                       hidden={openForm !== "steps"}
                       onClose={requestClose}
@@ -1786,6 +1798,7 @@ export function App({
                   {shows("variables") && api.listSecrets && api.setSecret && api.removeSecret && (
                     <Panel
                       title="Secrets"
+                      purpose="Keys and tokens the workflow needs. They are kept out of the workflow file."
                       testId="draft-variables"
                       hidden={openForm !== "variables"}
                       onClose={requestClose}
@@ -1799,7 +1812,11 @@ export function App({
                     </Panel>
                   )}
                   {openForm === "checks" && api.runDoctor && (
-                    <Panel title="Checks" onClose={() => setOpenForm(null)}>
+                    <Panel
+                      title="Check setup"
+                      purpose="Checks that the workflow is ready to run: it is valid, its keys are set and, if you ask, its services answer."
+                      onClose={() => setOpenForm(null)}
+                    >
                       <DoctorPanel
                         run={(options) => api.runDoctor!(options)}
                         {...(api.listSecrets &&

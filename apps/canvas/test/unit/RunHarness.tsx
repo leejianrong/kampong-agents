@@ -12,15 +12,18 @@ export function RunHarness({
   blockedReason,
   onSetSecret,
   showPanel = true,
+  missingSecrets,
 }: {
   api: ApiClient;
   blockedReason?: string;
   onSetSecret?: (name: string) => void;
   /** False draws the bar alone, as when the Test Run panel is closed. */
   showPanel?: boolean;
+  /** Names of the secrets the workflow reads that have no value, as the app knows them (KAM-287). */
+  missingSecrets?: string[];
 }) {
   const tracker = useRunTrackerStore();
-  const session = useRunSession(api, tracker, { blockedReason });
+  const session = useRunSession(api, tracker, { blockedReason, missingSecrets });
   return (
     <RunTrackerProvider value={tracker}>
       <RunControls session={session} onOpenDetails={() => {}} onSetSecret={onSetSecret} />

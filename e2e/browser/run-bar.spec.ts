@@ -213,7 +213,6 @@ for (const size of [
       ["Vars", "Spec Vars"],
       ["Secrets", "Secrets"],
       ["Guardrails", "Set Guardrails"],
-      ["Checks", "Checks"],
       ["Trigger", "Trigger"],
     ] as const) {
       test(`the status bar opens ${panel}, which stays reachable under the panel`, async ({
@@ -227,6 +226,18 @@ for (const size of [
         await expect(page.getByRole("contentinfo")).toBeInViewport({ ratio: 1 });
       });
     }
+
+    test("Checks is one entry point, in the top bar, named Check setup (KAM-286)", async ({
+      page,
+    }) => {
+      await expect(
+        page.getByRole("contentinfo").getByRole("button", { name: /Check/ }),
+      ).toHaveCount(0);
+      await openPanel(page, "Checks");
+      const panel = page.getByRole("region", { name: "Check setup", exact: true }).first();
+      await expect(panel).toBeVisible();
+      await expect(panel.getByTestId("panel-purpose")).toContainText("ready to run");
+    });
 
     test("Secrets counts the ones the workflow reads that have no value", async ({ page }) => {
       await expect(

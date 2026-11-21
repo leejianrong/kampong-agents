@@ -103,6 +103,18 @@ for (const size of [
       }
     });
 
+    test("Run on a blank workflow with no model key names what is missing (KAM-287)", async ({
+      page,
+    }) => {
+      await page.goto(URL);
+      await page.getByTestId("start-blank").click();
+      await expect(page.getByTestId("empty-state")).toHaveCount(0);
+      await page.getByTestId("run-button").click();
+      const chip = page.getByTestId("runbar-status");
+      await expect(chip).toContainText(/^✕ Needs [A-Z_]+_API_KEY$/, { timeout: 20000 });
+      await expect(chip).not.toContainText("Could not start");
+    });
+
     test("Start blank writes a valid spec with the schema pragma and opens it", async ({
       page,
     }) => {
