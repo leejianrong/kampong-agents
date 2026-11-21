@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunLog } from "../../src/RunLog.js";
 import type { RunSession } from "../../src/runSession.js";
 
@@ -117,5 +117,45 @@ describe("run log keyboard and detail (KAM-277, 270, 271)", () => {
     expect(within(out).getByText("View as JSON")).toBeTruthy();
     fireEvent.click(within(out).getByText("View as JSON"));
     expect(out.querySelector("pre")).not.toBeNull();
+  });
+});
+
+describe("a Replay with no recording (KAM-281)", () => {
+  const MISSING =
+    "No recorded model fixture at fixtures/@model.summarise.7f3a.json for summarise. Run once with `--tools record` against a live model.";
+  function missing(input: string) {
+    const base = session({}) as unknown as { viewed: Record<string, unknown> };
+    const entries = { summarise: { startedAt: 0, endedAt: 5, outcome: "failed", error: MISSING } };
+    const state = { status: "failed", trace: [], error: MISSING };
+    return {
+      ...base,
+      input,
+      canRun: true,
+      runLive: vi.fn(),
+      clearInput: vi.fn(),
+      viewed: { ...base.viewed, input, state, tracker: { runId: "run-1", entries, state } },
+    } as unknown as RunSession & {
+      runLive: ReturnType<typeof vi.fn>;
+      clearInput: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  it("offers Run live and Clear the input, and shows no flag or path until the detail is opened", () => {
+    const s = missing("hello");
+    render(<RunLog session={s} open onToggle={() => {}} />);
+    const error = screen.getByTestId("run-log-error");
+    const visible = error.querySelector(".md3-runlog__error-headline")!.textContent ?? "";
+    expect(visible).toContain("no recorded answer");
+    expect(visible).not.toMatch(/--tools|fixtures\//);
+    fireEvent.click(within(error).getByRole("button", { name: "Run live" }));
+    expect(s.runLive).toHaveBeenCalled();
+    fireEvent.click(within(error).getByRole("button", { name: "Clear the input" }));
+    expect(s.clearInput).toHaveBeenCalled();
+  });
+
+  it("does not offer Clear the input when there is none", () => {
+    render(<RunLog session={missing("")} open onToggle={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Clear the input" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Run live" })).toBeTruthy();
   });
 });

@@ -8,6 +8,7 @@ import { outcomeOf } from "./runOutcome.js";
 import { summarizeRun } from "./runSummary.js";
 import { DataFields, isEmptyData } from "./DataFields.js";
 import { explainError, trimUrls } from "./runReason.js";
+import { ReasonFix } from "./ReasonFix.js";
 import { nextRow, tabListKeys } from "./tabKeys.js";
 import { PanelResizer, useRunLogHeight } from "./PanelResizer.js";
 
@@ -369,7 +370,7 @@ export function RunLog({
                       ))}
                     {tab === "error" &&
                       (selected.error !== undefined ? (
-                        <ErrorDetail message={selected.error} />
+                        <ErrorDetail message={selected.error} session={session} />
                       ) : (
                         <p className="md3-body-small md3-runlog__note">This step did not fail.</p>
                       ))}
@@ -385,7 +386,7 @@ export function RunLog({
 }
 
 /** KAM-270: what went wrong and what to do in a line each; the raw message is behind "Show technical detail". */
-function ErrorDetail({ message }: { message: string }) {
+function ErrorDetail({ message, session }: { message: string; session: RunSession }) {
   const reason = explainError(message);
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -403,6 +404,7 @@ function ErrorDetail({ message }: { message: string }) {
         <strong>{reason.headline}</strong>
         {reason.action && <span> {reason.action}</span>}
       </p>
+      <ReasonFix reason={reason} session={session} />
       <details className="md3-runlog__error-detail">
         <summary>Show technical detail</summary>
         <pre className="md3-runlog__error-raw">{trimUrls(message)}</pre>
