@@ -141,6 +141,8 @@ export function loopStates(
   rows: readonly LogRow[],
   opened: ReadonlySet<string>,
   selectedId?: string,
+  /** Loops the person folded by hand; this wins over a failure or a selected row. */
+  closed: ReadonlySet<string> = new Set(),
 ): Map<string, LoopState> {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const members = new Map<string, LogRow[]>();
@@ -164,7 +166,9 @@ export function loopStates(
     const n = items.size;
     states.set(loop, {
       summary: `${n} ${n === 1 ? "item" : "items"}${failedItems.size > 0 ? ` · ${failedItems.size} failed` : ""}`,
-      open: opened.has(loop) || failedItems.size > 0 || inside.some((r) => r.id === selectedId),
+      open:
+        !closed.has(loop) &&
+        (opened.has(loop) || failedItems.size > 0 || inside.some((r) => r.id === selectedId)),
     });
   }
   return states;

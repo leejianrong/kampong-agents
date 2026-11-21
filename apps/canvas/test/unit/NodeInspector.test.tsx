@@ -149,6 +149,14 @@ describe("NodeInspector opens the matching form", () => {
     expect(screen.getByTestId("node-inspector")).toBeTruthy();
   });
 
+  it("the trigger card says a trigger is not running here, in the local app only (KAM-289)", () => {
+    render(<NodeInspector {...props(spec, "agent:kinds")} local />);
+    expect(screen.getByTestId("trigger-local-note")).toBeTruthy();
+    cleanup();
+    render(<NodeInspector {...props(spec, "agent:kinds")} />);
+    expect(screen.queryByTestId("trigger-local-note")).toBeNull();
+  });
+
   it("the guardrails node opens the form filled with the current values", () => {
     render(<NodeInspector {...props(spec, "guardrails:kinds")} />);
     expect((screen.getByLabelText("Confidence threshold") as HTMLInputElement).value).toBe("0.6");

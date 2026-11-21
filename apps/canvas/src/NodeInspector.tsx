@@ -39,6 +39,8 @@ export interface NodeInspectorProps {
   onSaveTool: (index: number, tool: Tool) => Promise<boolean>;
   onSaveTrigger: (value: Trigger) => Promise<boolean>;
   onRemoveTrigger: () => Promise<boolean>;
+  /** The local server: the trigger panel says nothing fires by itself here (KAM-289). */
+  local?: boolean;
   onSaveGuardrails: (value: Guardrails) => Promise<boolean>;
   onRemove: (
     op: { op: "step.remove"; step: string } | { op: "tool.remove"; tool: string },
@@ -229,6 +231,7 @@ export function NodeInspector(props: NodeInspectorProps) {
           trigger={spec.agent.trigger}
           onSave={props.onSaveTrigger}
           onRemove={props.onRemoveTrigger}
+          local={props.local === true}
         />
       )}
       {node.kind === "guardrails" && (

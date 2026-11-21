@@ -1412,6 +1412,7 @@ export function App({
               <RunControls
                 session={runSession}
                 workflow={spec?.agent.workflow}
+                titles={stepTitles}
                 action={actions.find((a) => a.surface === "runbar")}
                 onOpenDetails={() => {
                   if (openForm !== "run") toolbarForm("run");
@@ -1652,6 +1653,7 @@ export function App({
                           onSaveTool={handleSaveToolAt}
                           onSaveTrigger={handleSaveTrigger}
                           onRemoveTrigger={handleRemoveTrigger}
+                          local={api.listComponents !== undefined}
                           onSaveGuardrails={(value) =>
                             applyPatchOrReportError([
                               { op: "set", path: ["agent", "guardrails"], value },

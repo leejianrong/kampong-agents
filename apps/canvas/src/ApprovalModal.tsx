@@ -15,10 +15,12 @@ export interface ApprovalModalProps {
    * when it is not known. Used to say what Approve does.
    */
   next?: string | null | undefined;
+  /** The approval step's plain-words title, when it has one (KAM-290); the id is shown otherwise. */
+  stepTitle?: string | undefined;
   onDecide: (approved: boolean, reason?: string) => void;
 }
 
-export function ApprovalModal({ approval, next, onDecide }: ApprovalModalProps) {
+export function ApprovalModal({ approval, next, stepTitle, onDecide }: ApprovalModalProps) {
   const [reason, setReason] = useState("");
 
   const isTool = approval.kind === "tool" && approval.toolName !== undefined;
@@ -38,7 +40,7 @@ export function ApprovalModal({ approval, next, onDecide }: ApprovalModalProps) 
       >
         <h2 className="md3-title-medium">Approval required</h2>
         <p className="md3-label-large md3-approval__step" data-testid="approval-step">
-          {isTool ? `Tool: ${approval.toolName}` : `Step: ${approval.step}`}
+          {isTool ? `Tool: ${approval.toolName}` : `Step: ${stepTitle ?? approval.step}`}
         </p>
         <p className="md3-body-medium md3-approval__message" data-testid="approval-reason">
           {approval.reason}

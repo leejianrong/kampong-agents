@@ -125,6 +125,17 @@ describe("loopStates and visibleRows (KAM-269)", () => {
     expect(visibleRows(failing, states)).toHaveLength(3);
     expect(loopStates(rows, new Set(), "each[1].fetch").get("each")?.open).toBe(true);
   });
+
+  it("lets the person fold a loop by hand even when an item failed or a row is on show", () => {
+    const failing = [row("each"), row("each[0].fetch", "failed"), row("each[1].fetch")];
+    const closed = new Set(["each"]);
+    expect(loopStates(failing, new Set(), undefined, closed).get("each")?.open).toBe(false);
+    expect(loopStates(rows, new Set(), "each[1].fetch", closed).get("each")?.open).toBe(false);
+    // The summary still says a failure is inside.
+    expect(loopStates(failing, new Set(), undefined, closed).get("each")?.summary).toContain(
+      "1 failed",
+    );
+  });
 });
 
 describe("buildRunLog with step titles (KAM-290)", () => {
