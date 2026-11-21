@@ -217,14 +217,14 @@ function RefitOnChange({
     seen.current = refitOn;
     // After the new layout has been laid out, so the fit measures the new size.
     const frame = requestAnimationFrame(() => {
-      // Show it all, even smaller than the first view: the room just shrank, and a cut-off card is worse.
+      // Show it all, as the Fit control does (same floor): the room just shrank, and a cut-off card is worse.
       if (!moved.current)
         void flow.fitView({
           padding: 0.15,
           maxZoom: 1,
           ...options,
           nodes: undefined,
-          minZoom: 0.3,
+          minZoom: 0.05,
           duration: 0,
         });
     });
