@@ -27,6 +27,7 @@ import {
   type Trigger,
   type WorkflowStep,
 } from "@kampong/spec";
+import { unavailableReason } from "./assistantStatus.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { NodeInspector } from "./NodeInspector.js";
 import { duplicateStep, duplicateTool } from "./duplicate.js";
@@ -476,18 +477,24 @@ export function App({
         ? "steps"
         : null;
 
-  // KAM-205: the empty state offers the assistant, so it asks once what the assistant can do.
+  // KAM-205, KAM-282: what the assistant can do, asked once for the whole screen so the empty state, the step rail
+  // and the chat agree. It is asked again when the workflow's text changes (its model may have) and when the
+  // window comes back into focus (a local model may have been started meanwhile).
   useEffect(() => {
-    if (emptyKind !== "new" || !api.assistantStatus || emptyAssistant !== undefined) return;
+    if (!api.assistantStatus) return;
     let cancelled = false;
-    api
-      .assistantStatus()
-      .then((status) => !cancelled && setEmptyAssistant(status))
-      .catch(() => undefined);
+    const ask = () =>
+      api
+        .assistantStatus?.()
+        .then((status) => !cancelled && setEmptyAssistant(status))
+        .catch(() => undefined);
+    void ask();
+    window.addEventListener("focus", ask);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", ask);
     };
-  }, [api, emptyKind, emptyAssistant]);
+  }, [api, source]);
 
   // Why a test run cannot start, in words, or undefined when it can.
   const parseErrorLine = errors.find((e) => e.line !== undefined)?.line;
@@ -1499,6 +1506,9 @@ export function App({
                         startOpen={cameFromAssistant.current}
                         {...(api.askAssistant && {
                           onOpenAssistant: () => setLeftPane("assistant"),
+                          ...(unavailableReason(emptyAssistant) !== undefined && {
+                            assistantOff: unavailableReason(emptyAssistant)!,
+                          }),
                         })}
                       />
                     )}

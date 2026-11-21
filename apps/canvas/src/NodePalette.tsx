@@ -17,6 +17,8 @@ export interface NodePaletteProps {
   onChooseConnector?: (start: ToolStart) => void;
   /** Swaps this rail for the assistant's (KAM-250); the button shows only where the server has one. */
   onOpenAssistant?: () => void;
+  /** Why the assistant cannot be used right now (KAM-282): its buttons are off and say so. */
+  assistantOff?: string;
   /** Open on mount even in a narrow window: set when the person has just come back from the assistant. */
   startOpen?: boolean;
 }
@@ -40,6 +42,7 @@ export function NodePalette({
   connectors,
   onChooseConnector,
   onOpenAssistant,
+  assistantOff,
   startOpen = false,
 }: NodePaletteProps) {
   const [open, setOpen] = useState(() => startOpen || window.innerWidth >= NARROW);
@@ -87,6 +90,8 @@ export function NodePalette({
             type="button"
             className="md3-button md3-button-tonal md3-palette__open"
             aria-controls="assistant-panel"
+            disabled={assistantOff !== undefined}
+            title={assistantOff}
             onClick={onOpenAssistant}
           >
             Assistant
@@ -124,10 +129,17 @@ export function NodePalette({
           type="button"
           className="md3-button md3-button-tonal"
           aria-controls="assistant-panel"
+          disabled={assistantOff !== undefined}
+          title={assistantOff}
           onClick={onOpenAssistant}
         >
           Build with the assistant
         </button>
+      )}
+      {onOpenAssistant && assistantOff !== undefined && (
+        <p className="kg-small md3-palette__off" data-testid="assistant-off">
+          {assistantOff}
+        </p>
       )}
       <StepPicker
         ref={search}

@@ -40,6 +40,12 @@ test.beforeAll(async () => {
     let body = "";
     req.on("data", (c: Buffer) => (body += c.toString()));
     req.on("end", () => {
+      // The status check probes a local endpoint with a GET (KAM-282); only a prompt is a request to count.
+      if (req.method !== "POST") {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ data: [] }));
+        return;
+      }
       received.push(body);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(PLAN) } }] }));

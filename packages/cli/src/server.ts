@@ -20,6 +20,7 @@ import {
   answerQuestion,
   assistantHost,
   proposeEdits,
+  assistantReachable,
   resolveAssistantConfig,
   type FetchLike,
 } from "./assistant.js";
@@ -367,14 +368,21 @@ export function createDevServer({
       // No file yet: the endpoint may still be configured from the environment.
     }
     const resolved = resolveAssistantConfig(assistantEnv(), spec);
-    return resolved.ok
-      ? {
-          configured: true,
-          host: assistantHost(resolved.config),
-          model: resolved.config.model,
-          from: resolved.config.from,
-        }
-      : { configured: false, code: resolved.code, error: resolved.error };
+    if (!resolved.ok) return { configured: false, code: resolved.code, error: resolved.error };
+    // KAM-282: a local model that is not running is not an assistant, whatever the settings say.
+    if (!(await assistantReachable(resolved.config, assistantFetch))) {
+      return {
+        configured: false,
+        code: "unreachable",
+        error: `Could not reach ${assistantHost(resolved.config)}. Start the local model there, or set up another endpoint.`,
+      };
+    }
+    return {
+      configured: true,
+      host: assistantHost(resolved.config),
+      model: resolved.config.model,
+      from: resolved.config.from,
+    };
   });
 
   app.post<{ Body: { prompt?: unknown; mode?: unknown } }>(
