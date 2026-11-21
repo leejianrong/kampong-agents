@@ -91,7 +91,7 @@ for (const size of [
       expect(card.y).toBeGreaterThanOrEqual(run.y + run.height);
 
       await page.getByTestId("run-button").click();
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
       await expect(mark(page)).toHaveAttribute("data-mark", "step");
@@ -139,7 +139,7 @@ for (const size of [
       await page.getByRole("menuitem", { name: "Show tour" }).click();
       await expect(mark(page)).toHaveAttribute("data-mark", "run");
       await page.getByTestId("run-button").click();
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
       await expect(mark(page)).toHaveAttribute("data-mark", "step");

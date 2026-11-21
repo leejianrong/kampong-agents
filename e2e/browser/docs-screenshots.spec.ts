@@ -84,6 +84,8 @@ test("capture docs screenshots", async ({ page }) => {
   await expect(approvalDialog).toBeVisible({ timeout: 20_000 });
   await shot(page, "run-approval");
   await approvalDialog.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByTestId("run-status")).toContainText("completed", { timeout: 20_000 });
+  await expect(page.getByTestId("run-status")).toContainText(/completed|Finished/, {
+    timeout: 20_000,
+  });
   await shot(page, "run-completed");
 });

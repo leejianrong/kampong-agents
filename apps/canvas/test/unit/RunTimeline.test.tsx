@@ -82,7 +82,8 @@ describe("run log timeline", () => {
     const facts = within(view)
       .getAllByTestId("run-timeline-fact")
       .map((f) => f.textContent);
-    expect(facts[0]).toBe('Stopped at "send": HTTP 500 from the mail API');
+    // What failed is the run log's banner above, so the facts do not say it twice.
+    expect(facts.some((f) => f?.startsWith("Stopped at"))).toBe(false);
     expect(facts).toContain('Slowest step: "draft", 6.0 s.');
     expect(facts.at(-1)).toContain("1,000 tokens");
 

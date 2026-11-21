@@ -55,6 +55,7 @@ const pairs: Array<[string, string]> = [
     ["md-sys-color-primary", `md-sys-color-${s}`],
     ["md-sys-color-error", `md-sys-color-${s}`],
   ]),
+  ["md-sys-color-on-warning-container", "md-sys-color-warning-container"],
   ["md-sys-color-inverse-on-surface", "md-sys-color-inverse-surface"],
   ...KINDS.map((k): [string, string] => [`kg-${k}-fg`, `kg-${k}-bg`]),
 ];

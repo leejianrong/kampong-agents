@@ -598,7 +598,7 @@ check. **Secrets** also lists the secret a webhook trigger checks (`auth.secret_
 **Needed, not set** until it has a value. Hosted mode has no Secrets panel here, so it shows no button.
 
 A run that finishes but carried failed items on (a `foreach` with `on_error: continue`) is shown, in the Run bar and in
-Test Run, as an amber **completed with N errors**, not a green **completed**. A table lists each failed item with the step that failed
+Test Run, as an amber **Finished, N steps failed**, not a green **completed**. A table lists each failed item with the step that failed
 and its message, and the full output sits in a collapsed **Full output** section below it. A run with no failed
 items stays green and shows its output as before.
 

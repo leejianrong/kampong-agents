@@ -5,6 +5,7 @@ import { describeItem, failedItems } from "./runErrors.js";
 import type { RunSession } from "./runSession.js";
 import { baseStepName } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
+import { finishedWithFailures } from "./runSummary.js";
 
 // The Test Run panel (PLAN.md Affordances "Test-run sandbox + approval modal", SLICES.md V2 KAN-1107): the details
 // of a run, shown from the session the Run bar starts (KAM-219). SSE is the source of truth for live updates; the
@@ -147,9 +148,7 @@ export function RunPanel({ session }: RunPanelProps) {
                 completedWithErrors ? "completed_with_errors" : state.status
               }`}
             >
-              {completedWithErrors
-                ? `completed with ${failed.length} ${failed.length === 1 ? "error" : "errors"}`
-                : state.status}
+              {completedWithErrors ? finishedWithFailures(failed.length) : state.status}
             </span>
           </div>
           <ol ref={traceRef} data-testid="run-trace" className="md3-run-trace md3-body-medium">

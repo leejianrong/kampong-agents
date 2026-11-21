@@ -78,7 +78,7 @@ for (const size of [
       await page.getByTestId("yaml-drawer-toggle").click();
 
       await page.getByTestId("run-button").click();
-      await expect(page.getByTestId("runbar-status")).toContainText("completed", {
+      await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
       });
       await page.getByRole("button", { name: "Test Run", exact: true }).click();
