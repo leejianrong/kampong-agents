@@ -29,6 +29,8 @@ export interface CardInfo {
   /** What sort of step this is, in words: "Tool step", "Foreach", "Trigger". */
   kind: string;
   name: string;
+  /** The step's id, when `name` is its plain-words title instead (KAM-290): shown in the tooltip and read aloud. */
+  stepId?: string;
   /** One line from the step's settings; "" when it has nothing to add. */
   summary: string;
   /** The summary is an expression, so the card shows it as a code chip (a branch's condition). */
@@ -84,8 +86,21 @@ function toolSummary(node: SpecNode): string {
   return typeof d.action === "string" ? d.action.replace(/_/g, " ") : "";
 }
 
-/** What a step is and does, for its card. `triggerLabel` is the trigger node's one-line summary (KAM-184). */
+/** The step's plain-words title (KAM-290), when it has one. */
+export const titleOf = (node: SpecNode): string | undefined => {
+  const t = node.kind === "workflow" ? node.data.title : undefined;
+  return typeof t === "string" && t.trim() !== "" ? t.trim() : undefined;
+};
+
+/** What a step is and does, for its card: its title first when it has one, with its id kept for the tooltip. */
 export function cardInfo(node: SpecNode): CardInfo {
+  const info = idCardInfo(node);
+  const title = titleOf(node);
+  return title === undefined ? info : { ...info, name: title, stepId: stepName(node) };
+}
+
+/** What a step is and does, for its card. `triggerLabel` is the trigger node's one-line summary (KAM-184). */
+function idCardInfo(node: SpecNode): CardInfo {
   const d = node.data;
   if (node.kind === "agent") {
     const label = typeof d.triggerLabel === "string" ? d.triggerLabel : "Manual";
@@ -310,7 +325,10 @@ export function NodeCard({
       </div>
       <div className="kg-card__text">
         <div className="kg-card__kind">{info.kind}</div>
-        <div className="md3-label-large md3-node__title" title={info.name}>
+        <div
+          className="md3-label-large md3-node__title"
+          title={info.stepId !== undefined ? `${info.name} (${info.stepId})` : info.name}
+        >
           {info.name}
         </div>
         {reason !== undefined && (

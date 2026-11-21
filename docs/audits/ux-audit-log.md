@@ -89,7 +89,7 @@ Newest first. **Next audit due: 2026-11-28**, or sooner under the rules above.
 | KAM-287 | Name the reason on the Could not start chip | med | Done, #303 |
 | KAM-288 | Install without cloning the repo; help text | med | Partly done: help text #305; installs from tarballs (#310); the registry one-liner awaits the owner |
 | KAM-289 | Say a trigger is not running locally | med | Done, #304 |
-| KAM-290 | Plain titles on cards | low | Open |
+| KAM-290 | Plain titles on cards | low | Done, #309 (optional `title` on every step) |
 | KAM-291 | Saved only after a file exists | low | Done, #302 |
 
 Not covered in round 1, so cover it in round 2: the hosted flow (sign in, workspace, BYOK key, deploy), the

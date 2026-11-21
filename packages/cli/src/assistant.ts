@@ -261,6 +261,7 @@ Rules:
 - Step names and tool names are unique. A step reads an earlier step's output as {{ name.field }} in text, or as name.field in a JSONata expression (transform, validate, branch, foreach items).
 - A tool step needs its tool declared first: add the tool, then the step that calls it.
 - Never write a secret. A credential is only \${ENV_NAME}. Do not touch the model block.
+- Give every step you add a \`title\`: a few plain words a person who does not read code would use, under 60 characters ("Look up the order", not "fetch_order"). It is shown first on the step's card. The \`step\` name stays short and unique, and is what other steps read.
 - Change as little as the request needs. Keep existing step and tool names unless asked.
 - Data steps (transform, validate, dedupe), foreach, branch and stop need version 1.1.
 - For a new workflow, replace the placeholder step and set the agent's name, role and goal.`;

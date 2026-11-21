@@ -614,6 +614,15 @@ export function App({
       ),
     [runTracker.tracker, graph],
   );
+  // KAM-290: each step's plain-words title by its id, for the run log's rows.
+  const stepTitles = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const n of graph.nodes) {
+      const t = n.kind === "workflow" ? n.data["title"] : undefined;
+      if (typeof t === "string" && t.trim() !== "") out[String(n.data["step"])] = t.trim();
+    }
+    return out;
+  }, [graph]);
   // KAM-283: the approval steps the run on show went past without stopping, so the run log can say so.
   const skippedApprovals = useMemo(
     () =>
@@ -1881,6 +1890,7 @@ export function App({
               <RunLog
                 session={runSession}
                 skippedApprovals={skippedApprovals}
+                titles={stepTitles}
                 hasVars={Object.keys(spec?.vars ?? {}).length > 0}
                 open={runLogOpen}
                 onToggle={() => setRunLogOpen((v) => !v)}

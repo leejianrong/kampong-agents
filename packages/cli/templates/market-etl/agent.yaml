@@ -58,6 +58,7 @@ agent:
         text: "{{ summarize.summary }}"
   workflow:
     - step: each_symbol
+      title: "For every stock on the list"
       foreach:
         items: "vars.symbols"
         as: symbol
@@ -67,13 +68,16 @@ agent:
           # Alpha Vantage answers a rate limit with HTTP 200 and no prices. The component's failure_when
           # turns that into a failed call, so the next steps never see it.
           - step: fetch
+            title: "Look up the latest price"
             type: tool
             tool: fetch_daily
           - step: check
+            title: "Check the price came back"
             type: validate
             assert: "$count($keys(fetch.`Time Series (Daily)`)) >= 2"
             message: "{{ symbol }}: fewer than 2 daily observations"
           - step: shape
+            title: "Tidy the price data"
             type: transform
             set:
               latest_date: "$sort($keys(fetch.`Time Series (Daily)`))[-1]"
@@ -85,16 +89,19 @@ agent:
                 $number($lookup(fetch.`Time Series (Daily)`,
                 $sort($keys(fetch.`Time Series (Daily)`))[-2])."4. close")
           - step: sane
+            title: "Skip prices that look wrong"
             type: validate
             assert: "shape.latest_close > 0 and shape.previous_close > 0"
             message: "{{ symbol }}: a close price is not positive"
           - step: delta
+            title: "Work out the change since last time"
             type: transform
             set:
               change_pct: |-
                 $round((shape.latest_close - shape.previous_close)
                 / shape.previous_close * 100, 4)
           - step: row
+            title: "Build the row to save"
             type: transform
             set:
               record: |-
@@ -102,13 +109,16 @@ agent:
                 'close': shape.latest_close, 'change_pct': delta.change_pct }
           # The write comes only after the checks above, so a failed symbol leaves no partial row.
           - step: write
+            title: "Save the row to the database"
             type: tool
             tool: upsert_price
           - step: anomaly
+            title: "Did it move a lot?"
             branch:
               if: "$abs(delta.change_pct) >= vars.threshold"
               then:
                 - step: summarize
+                  title: "Write a short note about the move"
                   action: summarize_move
                   instructions: |-
                     You write one-sentence market alerts for a trading desk. Be
@@ -130,9 +140,11 @@ agent:
                         type: string
                         enum: [up, down]
                 - step: alert
+                  title: "Post the note to Slack"
                   type: tool
                   tool: post_alert
     - step: report
+      title: "Count what worked and what failed"
       type: transform
       set:
         loaded: "$count(each_symbol.results)"

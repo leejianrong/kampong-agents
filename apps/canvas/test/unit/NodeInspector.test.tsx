@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { listSteps, parseSpec, specToGraph, type AgentSpec } from "@kampong/spec";
 import { Canvas } from "../../src/Canvas.js";
@@ -328,5 +328,61 @@ describe("Canvas selection", () => {
     render(<Canvas graph={graph} layout={layout} onSelect={onSelect} />);
     fireEvent.click(document.querySelector('.react-flow__node[data-id="workflow:loop"]')!);
     expect(onSelect).toHaveBeenCalledWith("workflow:loop");
+  });
+});
+
+describe("the inspector's step title (KAM-290)", () => {
+  afterEach(cleanup);
+
+  const titled = KINDS.replace(
+    "    - step: call\n",
+    "    - step: call\n      title: Look up the order\n",
+  );
+  const field = () => screen.getByLabelText(/Title \(optional\)/) as HTMLInputElement;
+
+  it("shows the step's title, and the id it keeps", () => {
+    render(<NodeInspector {...props(parse(titled), "workflow:call")} />);
+    expect(field().value).toBe("Look up the order");
+    expect(screen.getByTestId("step-title-field").textContent).toContain(
+      'The step\'s id stays "call"',
+    );
+  });
+
+  it("sets a title as one patch on the step, when the field is left", async () => {
+    const p = props(parse(KINDS), "workflow:call");
+    render(<NodeInspector {...p} />);
+    fireEvent.change(field(), { target: { value: "  Look up the order  " } });
+    fireEvent.blur(field());
+    await waitFor(() => expect(p.onPatchSteps).toHaveBeenCalledTimes(1));
+    expect(p.onPatchSteps).toHaveBeenCalledWith([
+      { op: "set", path: ["agent", "workflow", 1, "title"], value: "Look up the order" },
+    ]);
+  });
+
+  it("takes the title off when it is cleared, and saves nothing when it did not change", async () => {
+    const p = props(parse(titled), "workflow:call");
+    render(<NodeInspector {...p} />);
+    fireEvent.blur(field());
+    expect(p.onPatchSteps).not.toHaveBeenCalled();
+    fireEvent.change(field(), { target: { value: "" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await waitFor(() => expect(p.onPatchSteps).toHaveBeenCalledTimes(1));
+    expect(p.onPatchSteps).toHaveBeenCalledWith([
+      { op: "remove", path: ["agent", "workflow", 1, "title"] },
+    ]);
+  });
+
+  it("puts the title on a step inside a branch arm, at its place in the file", async () => {
+    const p = props(parse(KINDS), "workflow:no_arm");
+    render(<NodeInspector {...p} />);
+    fireEvent.change(field(), { target: { value: "Otherwise" } });
+    fireEvent.blur(field());
+    await waitFor(() => expect(p.onPatchSteps).toHaveBeenCalledTimes(1));
+    const [ops] = (p.onPatchSteps as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      { op: string; path: (string | number)[]; value?: string }[],
+    ];
+    expect(ops[0]!.path.slice(-1)).toEqual(["title"]);
+    expect(ops[0]!.value).toBe("Otherwise");
+    expect(ops[0]!.path).toEqual(["agent", "workflow", 6, "branch", "else", 0, "title"]);
   });
 });

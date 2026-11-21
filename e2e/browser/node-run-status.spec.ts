@@ -194,7 +194,7 @@ for (const size of [
       await page
         .getByLabel(/Tool step fetch/)
         .first()
-        .getByText("fetch", { exact: true })
+        .getByText("Look up the latest price", { exact: true })
         .click();
       await expect(row).toHaveAttribute("aria-current", "true");
       await openPanel(page, "Test Run");

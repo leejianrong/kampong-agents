@@ -498,6 +498,12 @@ At least one step. A step is an action step, a condition step, or one of the kin
 `action`, `condition`, `tool` and `approval` needs `version: "1.1"`; on a 1.0 spec the validator names the step
 kind and the line of the field.
 
+Every step takes an optional `title`: a few plain words (up to 80 characters), such as `Look up the order`. The
+canvas shows it first on the step's card and in the run log, and keeps the step's `step` id in the tooltip and the
+inspector. The `step` id stays the name that other steps and expressions read (`{{ fetch.price }}`), so a title can
+be changed freely. It works on every kind of step, in `1.0` and `1.1`, and the engine ignores it. The inspector has a
+**Title** field for it, and the assistant writes one for each step it adds.
+
 ### Action step
 
 ```yaml

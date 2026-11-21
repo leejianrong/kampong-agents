@@ -39,3 +39,41 @@ describe("cardInfo on the market-etl template", () => {
     }
   });
 });
+
+describe("cardInfo with a step title (KAM-290)", () => {
+  const node = (data: Record<string, unknown>) =>
+    ({ id: `workflow:${String(data.step)}`, kind: "workflow", column: 1, data }) as never;
+
+  it("leads with the title and keeps the step's id for the tooltip", () => {
+    const info = cardInfo(
+      node({ step: "fetch", title: "Look up the price", type: "tool", tool: "t" }),
+    );
+    expect(info.name).toBe("Look up the price");
+    expect(info.stepId).toBe("fetch");
+    expect(info.kind).toBe("Tool step");
+  });
+
+  it("is unchanged without a title, or with a blank one", () => {
+    expect(cardInfo(node({ step: "fetch", type: "tool", tool: "t" }))).toMatchObject({
+      name: "fetch",
+    });
+    expect(
+      cardInfo(node({ step: "fetch", title: "  ", type: "tool", tool: "t" })).stepId,
+    ).toBeUndefined();
+  });
+
+  it("applies to a loop and a branch too", () => {
+    expect(
+      cardInfo(
+        node({
+          step: "each",
+          title: "For every symbol",
+          foreach: { items: "x", as: "s", steps: [] },
+        }),
+      ).name,
+    ).toBe("For every symbol");
+    expect(
+      cardInfo(node({ step: "route", title: "Pick a path", branch: { if: "x", then: [] } })).name,
+    ).toBe("Pick a path");
+  });
+});

@@ -201,9 +201,14 @@ export const modelSchema = z
 // addition to the generated artifact, or a switch to a JSON-Schema
 // generator that supports refinements.
 
+// KAM-290: an optional plain-words name for a step, shown first on its card and in the run log, with the step's id
+// (`step`) kept as the name a reference reads. The engine ignores it.
+const stepTitle = z.string().min(1).max(80).optional();
+
 const baseWorkflowSteps = [
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("condition"),
     if: z.string().min(1),
     then: z.string().min(1),
@@ -216,6 +221,7 @@ const baseWorkflowSteps = [
   // step outputs and the run input exactly as the condition-branch path does.
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("tool"),
     tool: z.string().min(1),
   }),
@@ -225,6 +231,7 @@ const baseWorkflowSteps = [
   // the run (`rejected`), matching the existing approval semantics.
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("approval"),
     // Shown to the approver; `{{ step.field }}` / `{{ input }}` references are
     // resolved from prior step outputs at run time.
@@ -236,11 +243,13 @@ const baseWorkflowSteps = [
   // `dedupe` runs the rest of the workflow once per key within `ttl`, remembered in the state store.
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("transform"),
     set: z.record(z.string(), z.string().min(1)),
   }),
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("validate"),
     assert: z.string().min(1),
     // `branch` is accepted by the shape only so the cross-field check can say it is not supported yet.
@@ -249,11 +258,13 @@ const baseWorkflowSteps = [
   }),
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     type: z.literal("dedupe"),
     once: z.object({ key: z.string().min(1), ttl: z.string().min(1) }),
   }),
   z.object({
     step: z.string().min(1),
+    title: stepTitle,
     action: z.string().min(1),
     inputs: z.array(z.string()).optional(),
     query: z.string().optional(),
@@ -311,6 +322,7 @@ type ForEachOnErrorValue = z.infer<typeof forEachOnErrorSchema>;
 
 export interface StopStep {
   step: string;
+  title?: string | undefined;
   stop: { reason?: string; status?: "completed" | "skipped" };
 }
 export interface BranchIf {
@@ -325,10 +337,12 @@ export interface BranchSwitch {
 }
 export interface BranchStep {
   step: string;
+  title?: string | undefined;
   branch: BranchIf | BranchSwitch;
 }
 export interface ForEachStep {
   step: string;
+  title?: string | undefined;
   foreach: {
     items: string;
     as: string;
@@ -342,12 +356,17 @@ export interface ForEachStep {
 export type BodyStep = BaseStep | { step: string; foreach: unknown } | BranchStep | StopStep;
 export type WorkflowStep = BaseStep | ForEachStep | BranchStep | StopStep;
 
-const nestedForEachShape = z.object({ step: z.string().min(1), foreach: z.unknown() });
+const nestedForEachShape = z.object({
+  step: z.string().min(1),
+  title: stepTitle,
+  foreach: z.unknown(),
+});
 
 const stepList = z.array(z.lazy((): z.ZodType<WorkflowStep> => workflowStepSchema));
 
 export const stopStepSchema: z.ZodType<StopStep> = z.object({
   step: z.string().min(1),
+  title: stepTitle,
   stop: z
     .object({
       reason: z.string().min(1).optional(),
@@ -358,6 +377,7 @@ export const stopStepSchema: z.ZodType<StopStep> = z.object({
 
 export const branchStepSchema: z.ZodType<BranchStep> = z.object({
   step: z.string().min(1),
+  title: stepTitle,
   branch: z.union([
     z.object({ if: z.string().min(1), then: stepList, else: stepList.optional() }).strict(),
     z
@@ -379,6 +399,7 @@ export const bodyStepSchema: z.ZodType<BodyStep> = z.union([
 
 export const forEachStepSchema: z.ZodType<ForEachStep> = z.object({
   step: z.string().min(1),
+  title: stepTitle,
   foreach: z
     .object({
       items: z.string().min(1),

@@ -208,6 +208,8 @@ export interface Guardrails {
 export type BodyStep =
   | {
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "condition";
       if: string;
       then: string;
@@ -216,23 +218,31 @@ export type BodyStep =
   | {
       // KAN-1429: a tool step calls a named tool as a normal, always-run step.
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "tool";
       tool: string;
     }
   | {
       // KAN-1429: a first-class human-approval step.
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "approval";
       message?: string;
     }
   | {
       // KAN-1860 (version 1.1): data steps over JSONata expressions.
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "transform";
       set: Record<string, string>;
     }
   | {
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "validate";
       assert: string;
       on_fail?: "fail" | "skip" | "branch";
@@ -240,11 +250,15 @@ export type BodyStep =
     }
   | {
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       type: "dedupe";
       once: { key: string; ttl: string };
     }
   | {
       step: string;
+      /** A plain-words name for the step (KAM-290); the engine ignores it. */
+      title?: string;
       action: string;
       inputs?: string[];
       query?: string;
@@ -255,7 +269,7 @@ export type BodyStep =
       temperature?: number;
     }
   // KAN-1858 (ADR-0043): a nested foreach is accepted by the shape only and refused by validation.
-  | { step: string; foreach: unknown }
+  | { step: string; title?: string; foreach: unknown }
   | BranchStep
   | StopStep;
 
@@ -272,12 +286,16 @@ export interface BranchSwitch {
 }
 export interface BranchStep {
   step: string;
+  /** A plain-words name for the step (KAM-290); the engine ignores it. */
+  title?: string;
   branch: BranchIf | BranchSwitch;
 }
 
 // KAN-1859 (ADR-0045): ends the run early (or, in a foreach body, the item).
 export interface StopStep {
   step: string;
+  /** A plain-words name for the step (KAM-290); the engine ignores it. */
+  title?: string;
   stop: { reason?: string; status?: "completed" | "skipped" };
 }
 
@@ -296,6 +314,8 @@ export interface ForEachRetry {
 // KAN-1858 (ADR-0043): runs its nested steps once per item of a list (version 1.1).
 export type ForEachStep = {
   step: string;
+  /** A plain-words name for the step (KAM-290); the engine ignores it. */
+  title?: string;
   foreach: {
     items: string;
     as: string;

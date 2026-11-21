@@ -36,6 +36,7 @@ export function RunLog({
   onToggle,
   skippedApprovals = [],
   hasVars = false,
+  titles,
 }: {
   session: RunSession;
   open: boolean;
@@ -44,12 +45,14 @@ export function RunLog({
   skippedApprovals?: string[];
   /** The workflow has vars, which is where a person would change what makes an approval ask. */
   hasVars?: boolean;
+  /** Step id to plain-words title (KAM-290), so a row reads as the person named the step. */
+  titles?: Readonly<Record<string, string>>;
 }) {
   const record = session.viewed;
   const tracker = useRunTracker();
   const rows = useMemo(
-    () => (record ? buildRunLog(record.tracker, record.input) : []),
-    [record?.tracker, record?.input],
+    () => (record ? buildRunLog(record.tracker, record.input, titles) : []),
+    [record?.tracker, record?.input, titles],
   );
   const [view, setView] = useState<View>("steps");
   // KAM-269: a loop's items sit under its row, closed unless one of them failed (or is the row on show).
