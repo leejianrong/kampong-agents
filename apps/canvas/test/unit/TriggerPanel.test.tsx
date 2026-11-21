@@ -32,6 +32,32 @@ describe("TriggerPanel", () => {
     expect(screen.getByText("This spec has no trigger.")).toBeTruthy();
   });
 
+  it("says a trigger does not fire by itself while building locally, and links to how to deploy (KAM-289)", () => {
+    setup({ local: true, trigger: { type: "schedule", every: "5m" } });
+    const note = screen.getByTestId("trigger-local-note");
+    expect(note.textContent).toContain("does not start by itself");
+    expect(note.textContent).toContain("only when you press Run");
+    const link = within(note).getByRole("link", { name: /deploy/i });
+    expect(link.getAttribute("href")).toContain("kampong-serve");
+  });
+
+  it("says it for a webhook and a poll too, and not when there is no trigger or on the hosted server", () => {
+    for (const trigger of [
+      { type: "webhook", preset: "github", auth: { secret_env: "S" } },
+      { type: "poll", every: "5m", use: "kampong/gmail-imap@1.0.0", op: "list_unseen", id: "uid" },
+    ] as unknown as Trigger[]) {
+      cleanup();
+      setup({ local: true, trigger });
+      expect(screen.getByTestId("trigger-local-note")).toBeTruthy();
+    }
+    cleanup();
+    setup({ local: true });
+    expect(screen.queryByTestId("trigger-local-note")).toBeNull();
+    cleanup();
+    setup({ trigger: { type: "schedule", every: "5m" } });
+    expect(screen.queryByTestId("trigger-local-note")).toBeNull();
+  });
+
   it("summarises each kind of trigger", () => {
     const cases: [Trigger, RegExp][] = [
       [{ type: "webhook", preset: "github", auth: { secret_env: "S" } }, /github preset, async/],

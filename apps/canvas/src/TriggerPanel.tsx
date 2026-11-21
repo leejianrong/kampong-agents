@@ -24,7 +24,12 @@ export interface TriggerPanelProps {
   /** Saves the trigger. Resolves false when the save failed, so the form stays open with its input. */
   onSave: (value: Trigger) => Promise<boolean>;
   onRemove: () => Promise<boolean>;
+  /** The local server: nothing here fires a trigger by itself (KAM-289). The hosted server runs deployed ones. */
+  local?: boolean;
 }
+
+export const DEPLOY_DOC =
+  "https://leejianrong.github.io/kampong-agents/reference/cli/#kampong-serve";
 
 const KIND_LABEL: Record<TriggerType, string> = {
   webhook: "Webhook",
@@ -49,7 +54,13 @@ function describeTrigger(t: Trigger): string {
   return `${auth}, ${t.respond ?? "async"} response`;
 }
 
-export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPanelProps) {
+export function TriggerPanel({
+  version,
+  trigger,
+  onSave,
+  onRemove,
+  local = false,
+}: TriggerPanelProps) {
   const [form, setForm] = useState<TriggerFormInput | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   // What is on screen no longer matches what failed once the person changes it (KAM-194).
@@ -353,6 +364,16 @@ export function TriggerPanel({ version, trigger, onSave, onRemove }: TriggerPane
 
         {trigger === undefined && form === null && (
           <p className="md3-body-medium">This spec has no trigger.</p>
+        )}
+        {trigger !== undefined && local && (
+          <p className="md3-body-small md3-trigger__local" data-testid="trigger-local-note">
+            Not running here: while you build, this does not start by itself. It runs only when you
+            press Run. To have it run on its own,{" "}
+            <a href={DEPLOY_DOC} target="_blank" rel="noreferrer">
+              see how to deploy it
+            </a>
+            .
+          </p>
         )}
         {trigger !== undefined && (
           <ul className="md3-doctor__list" data-testid="trigger-summary">
