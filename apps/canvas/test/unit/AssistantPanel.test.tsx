@@ -31,6 +31,11 @@ const PLAN: AssistantAnswer = {
 
 const OK: ApplyOpsResponse = { success: true, revision: "rev2" };
 
+// `onPreview` is called from a passive effect, which React may flush a moment after the DOM shows the change, so
+// under load an assertion made at once can see the call before it. Wait for it (KAM-292).
+const lastPreview = (onPreview: ReturnType<typeof vi.fn>, expected: unknown) =>
+  waitFor(() => expect(onPreview).toHaveBeenLastCalledWith(expected));
+
 function setup(
   options: {
     status?: AssistantStatus;
@@ -170,17 +175,17 @@ describe("AssistantPanel", () => {
     const { ask, onPreview } = setup();
     await ask();
     const plan = PLAN as { source: string; diff: unknown };
-    expect(onPreview).toHaveBeenLastCalledWith({ source: plan.source, diff: plan.diff });
+    await lastPreview(onPreview, { source: plan.source, diff: plan.diff });
     fireEvent.click(screen.getByRole("button", { name: "Apply to canvas" }));
     await screen.findByText(/Applied/);
-    expect(onPreview).toHaveBeenLastCalledWith(null);
+    await lastPreview(onPreview, null);
   });
 
   it("takes the preview back on Discard, and when a new request replaces the plan", async () => {
     const { ask, onPreview } = setup();
     await ask();
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
-    expect(onPreview).toHaveBeenLastCalledWith(null);
+    await lastPreview(onPreview, null);
 
     const send = async (text: string, plans: number) => {
       fireEvent.change(screen.getByLabelText("Describe a change"), { target: { value: text } });
@@ -188,7 +193,7 @@ describe("AssistantPanel", () => {
       await waitFor(() => expect(screen.getAllByLabelText("Proposed plan")).toHaveLength(plans));
     };
     await send("again", 2);
-    expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ source: "PROPOSED" }));
+    await lastPreview(onPreview, expect.objectContaining({ source: "PROPOSED" }));
     // A new request sets the waiting plan aside: only the newest is on the canvas.
     await send("and another", 3);
     const plans = screen.getAllByLabelText("Proposed plan");
