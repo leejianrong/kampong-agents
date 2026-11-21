@@ -2,12 +2,12 @@
   "kind": "module",
   "toolName": "kampong/gmail-imap.mark_seen",
   "op": "mark_seen",
-  "input": "{\"uid\":5}",
+  "input": "{\"uid\":8}",
   "outcome": {
     "ok": true,
     "data": {
       "ok": true,
-      "uid": 5
+      "uid": 8
     }
   }
 }

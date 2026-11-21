@@ -5,7 +5,7 @@
 # approve it in Slack first. Nothing is ever sent: the result is a draft in the Drafts folder. It mirrors
 # mastra-projects/support-triage, written as a spec only.
 #
-#   kampong run agent.yaml --input "" --tools replay --fixtures fixtures
+#   kampong run agent.yaml --input "" --tools replay --fixtures fixtures --approve-all
 #
 # See README.md for the live run, the secrets it reads, and how approvals work on a laptop.
 version: "1.1"
@@ -13,7 +13,7 @@ vars:
   threshold:
     type: number
     default: 0.8
-    description: "Confidence at or above which the draft is saved without asking a person. Raise it (try 0.95) to see the approval step in a Replay."
+    description: "Confidence at or above which the draft is saved without asking a person. Lower it (try 0.3) to see the draft saved without an approval."
 agent:
   id: support_triage
   name: "Support Triage"

@@ -9,10 +9,10 @@
       "count": 1,
       "messages": [
         {
-          "uid": 5,
-          "message_id": "<orig-5@client.example>",
-          "subject": "How do I reset my password?",
-          "from": "Ana Cruz <ana@client.example>",
+          "uid": 8,
+          "message_id": "<orig-8@client.example>",
+          "subject": "Change the email on my account",
+          "from": "Ben Lim <ben@client.example>",
           "date": "2026-10-12T09:00:00.000Z"
         }
       ]

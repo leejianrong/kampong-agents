@@ -1,0 +1,25 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.get_message",
+  "op": "get_message",
+  "input": "{\"uid\":8}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "uid": 8,
+      "mailbox": "INBOX",
+      "message_id": "<orig-8@client.example>",
+      "references": [],
+      "subject": "Change the email on my account",
+      "from": "Ben Lim <ben@client.example>",
+      "to": [
+        "[REDACTED]"
+      ],
+      "cc": [],
+      "date": "2026-10-12T09:00:00.000Z",
+      "text": "Please change the email address on my account to ben.new@client.example. I no longer have the old one.\n",
+      "truncated": false,
+      "attachments": []
+    }
+  }
+}

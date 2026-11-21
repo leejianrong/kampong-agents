@@ -91,7 +91,7 @@ describe("the template gallery routes", () => {
       // Acceptance: the copy runs in replay on its own fixtures, no key and no terminal-side setup.
       const { io, out, err } = capture();
       const code = await runCli(
-        ["run", specPath, "--input", "", "--json", "--tools", "replay"],
+        ["run", specPath, "--input", "", "--json", "--tools", "replay", "--approve-all"],
         io,
       );
       expect(code, out.join("\n") + err.join("\n")).toBe(EXIT_SUCCESS);

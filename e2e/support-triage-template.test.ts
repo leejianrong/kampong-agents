@@ -280,6 +280,8 @@ describe("support-triage template (KAM-126)", () => {
         "replay",
         "--fixtures",
         join(TEMPLATE_DIR, "fixtures"),
+        // The recorded ticket is an unsure one (KAM-283), so the replay waits for a person: approve it.
+        "--approve-all",
       ],
       { cwd: dir, env },
     ).finished;
@@ -287,8 +289,9 @@ describe("support-triage template (KAM-126)", () => {
     const outcome = outcomeOf(done.stdout);
     expect(outcome.status).toBe("completed");
     expect(outcome.output).toMatchObject({
-      decide: { taken: "then" },
-      draft_confident: { mailbox: "[Gmail]/Drafts", uid: 101 },
+      decide: { taken: "else" },
+      review: { approved: true },
+      draft_approved: { mailbox: "[Gmail]/Drafts", uid: 101 },
     });
   });
 
