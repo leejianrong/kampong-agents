@@ -42,7 +42,7 @@ export interface ActionDescriptor {
   /** What the setting is now, in a few words after the label ("3", "Every 6 hours"); part of the name. */
   detail?: string;
   /** The chip needs attention (a secret that is missing): drawn in the error colours as well as worded. */
-  tone?: "warn";
+  tone?: "warn" | "quiet";
   run: () => void;
 }
 
@@ -58,6 +58,8 @@ export interface ActionContext {
   noSpecYet: boolean;
   /** Secrets the workflow reads that have no value; undefined until known. */
   missingSecrets?: number;
+  /** Replay uses recorded data, so a missing key is only a heads-up until Live or Deploy (KAM-278). */
+  replay?: boolean;
   /** How many vars the spec declares, and what starts a run in words ("Every 6 hours"): shown on the status chips. */
   varCount?: number;
   triggerSummary?: string;
@@ -146,7 +148,10 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
               keywords: ["keys", "tokens", "env"],
               ...(ctx.missingSecrets
                 ? {
-                    tone: "warn" as const,
+                    tone: ctx.replay ? ("quiet" as const) : ("warn" as const),
+                    ...(ctx.replay && {
+                      title: "Replay uses recorded data, so these are only needed for Live runs",
+                    }),
                     badge: {
                       count: ctx.missingSecrets,
                       words: `${ctx.missingSecrets} missing`,

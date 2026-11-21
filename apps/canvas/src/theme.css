@@ -1901,6 +1901,10 @@ select.md3-text-field {
   color: var(--md-sys-color-error);
 }
 
+.md3-button .md3-statusbar__badge {
+  margin-left: 0.5rem;
+}
+
 .md3-statusbar__note {
   margin-left: auto;
   padding: 0 0.75rem;
@@ -1917,6 +1921,11 @@ select.md3-text-field {
   font-size: var(--md-type-label-small-size, 0.6875rem);
   line-height: 1.25rem;
   text-align: center;
+}
+
+.md3-statusbar__badge--quiet {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .md3-palette__tool {
@@ -3478,8 +3487,10 @@ select.md3-text-field {
 
 .md3-runlog__toggle {
   margin-left: auto;
-  width: 2.5rem;
-  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
   border: none;
   border-radius: 999px;
   background: none;

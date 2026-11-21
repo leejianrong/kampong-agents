@@ -69,6 +69,8 @@ export interface CanvasProps {
   marker?: InsertionMarker;
   /** A node to pan into view and flash, as after an add (KAM-173). A new `nonce` repeats it. */
   focus?: { id: string; nonce: number };
+  /** When this changes the canvas refits (the run log opening or closing changed its height), KAM-279. */
+  refitOn?: string;
   /** The selected node's id (KAM-211): drawn with the selected outline. */
   selectedId?: string | null;
   /** A node was clicked, or chosen with Enter or Space while focused. */
@@ -109,7 +111,7 @@ const MARKER_ID = "insertion-marker";
  * zoom. Up to this many steps in run order are fitted; a shorter one is fitted whole.
  */
 const FIT_HEAD = 4;
-const MIN_READABLE_ZOOM = 0.8;
+const MIN_READABLE_ZOOM = 0.65;
 /** A workflow with more nodes than this gets a minimap (KAM-187). */
 const MINIMAP_OVER = 15;
 
@@ -195,6 +197,43 @@ function FocusNode({
 }
 
 /**
+ * KAM-279: fits the workflow into the room left when the run log opens or closes (`refitOn` changes), unless the
+ * person has panned or zoomed it themselves. It is keyed to that one change, not to every resize, so a side panel
+ * opening never moves cards under the pointer; and it does not animate, so nothing is mid-move for a click.
+ */
+function RefitOnChange({
+  refitOn,
+  moved,
+  options,
+}: {
+  refitOn: string | undefined;
+  moved: { current: boolean };
+  options: object;
+}) {
+  const flow = useReactFlow();
+  const seen = useRef(refitOn);
+  useEffect(() => {
+    if (seen.current === refitOn) return;
+    seen.current = refitOn;
+    // After the new layout has been laid out, so the fit measures the new size.
+    const frame = requestAnimationFrame(() => {
+      // Show it all, as the Fit control does (same floor): the room just shrank, and a cut-off card is worse.
+      if (!moved.current)
+        void flow.fitView({
+          padding: 0.15,
+          maxZoom: 1,
+          ...options,
+          nodes: undefined,
+          minZoom: 0.05,
+          duration: 0,
+        });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, refitOn, moved, options]);
+  return null;
+}
+
+/**
  * The canvas owns the nodes, so it hands React Flow each node's measured size back (`measured`). React Flow drops a
  * node's port positions whenever that size differs from the one it has, and re-measures them only when the element
  * resizes; if the two already agree, nothing resizes and the node is left with no ports, so no line to or from it is
@@ -244,6 +283,7 @@ export function Canvas({
   layout,
   marker,
   focus,
+  refitOn,
   selectedId,
   onSelect,
   onPaneClick,
@@ -386,6 +426,7 @@ export function Canvas({
   // controlled component and recreating fresh node/edge objects on every
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
+  const userMoved = useRef(false);
   const fitViewOptions = useMemo(() => {
     const run = view.graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
     return {
@@ -709,7 +750,11 @@ export function Canvas({
           onEdgesChange={onEdgesChange}
           onEdgeMouseEnter={(_, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover(null)}
-          onMoveStart={() => setOpenEdge(null)}
+          onMoveStart={(event) => {
+            setOpenEdge(null);
+            // A real pointer or wheel gesture: the person has chosen their own view. Our own fits have no event.
+            if (event) userMoved.current = true;
+          }}
           onNodeMouseEnter={(_, node) => setHovered(node.id)}
           onNodeMouseLeave={() => setHovered(null)}
           onNodeClick={(_, node) => {
@@ -736,6 +781,7 @@ export function Canvas({
             />
           )}
           <KeepPortsMeasured sizes={sizes} />
+          <RefitOnChange refitOn={refitOn} moved={userMoved} options={fitViewOptions} />
           {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
         </ReactFlow>
       </EdgeInsertContext.Provider>
