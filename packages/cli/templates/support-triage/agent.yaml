@@ -13,7 +13,7 @@ vars:
   threshold:
     type: number
     default: 0.8
-    description: "Confidence at or above which the draft is saved without asking a person"
+    description: "Confidence at or above which the draft is saved without asking a person. Raise it (try 0.95) to see the approval step in a Replay."
 agent:
   id: support_triage
   name: "Support Triage"

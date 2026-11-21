@@ -63,6 +63,9 @@ for (const size of [
       await page.getByTestId("run-button").click();
       const dialog = page.getByRole("dialog", { name: "Approval required" });
       await expect(dialog).toBeVisible({ timeout: 20000 });
+      // KAM-284: it names the step and says what each button does.
+      await expect(dialog.getByTestId("approval-step")).toContainText("ok_to_send");
+      await expect(dialog.getByTestId("approval-reject-outcome")).toContainText("stops here");
 
       await page.reload();
       await expect(dialog).toBeVisible({ timeout: 20000 });

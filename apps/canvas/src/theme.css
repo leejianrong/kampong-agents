@@ -4120,3 +4120,34 @@ select.md3-text-field {
 .md3-empty-state .md3-template-card__chips .md3-chip:not(.md3-chip--offline) {
   display: none;
 }
+
+/* KAM-284: the approval dialog names its step, keeps the message's lines, and says what each button does. */
+.md3-approval__step {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.md3-approval__message {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.md3-approval__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.md3-approval__choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+}
+.md3-approval__choice p {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.md3-approval__choice .md3-button {
+  align-self: flex-start;
+}

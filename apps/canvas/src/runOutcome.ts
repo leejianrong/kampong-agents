@@ -11,6 +11,26 @@ export interface Outcome {
   headline: string;
   /** One more line: what failed and why, or what is waiting. */
   detail?: string;
+  /** A hint after it, for something the person may not know to look for. */
+  note?: string;
+}
+
+export interface OutcomeExtras {
+  /** Approval steps the run went past without stopping (KAM-283). */
+  skippedApprovals?: readonly string[];
+  /** The workflow has vars to change. */
+  hasVars?: boolean;
+}
+
+/** Said when a finished run never stopped for an approval, so the trust feature is not invisible (KAM-283). */
+function skippedNote(extras: OutcomeExtras): string | undefined {
+  const names = extras.skippedApprovals ?? [];
+  if (names.length === 0) return undefined;
+  const which =
+    names.length === 1 ? `The approval step "${names[0]}"` : `${names.length} approval steps`;
+  return `${which} did not ask: nothing in this run needed a person.${
+    extras.hasVars ? " Change a value under Vars to see it." : ""
+  }`;
 }
 
 /** Keeps a long error (a provider's whole notice) to a line; the step's Error tab has the full text. */
@@ -27,7 +47,11 @@ const reasonLine = (message: string): string => {
 
 const quoted = (row: LogRow): string => `"${row.label}"`;
 
-export function outcomeOf(state: RunState, rows: readonly LogRow[]): Outcome {
+export function outcomeOf(
+  state: RunState,
+  rows: readonly LogRow[],
+  extras: OutcomeExtras = {},
+): Outcome {
   const failed = rows.filter((r) => r.status === "failed");
   const first = failed[0];
   switch (state.status) {
@@ -58,8 +82,10 @@ export function outcomeOf(state: RunState, rows: readonly LogRow[]): Outcome {
       };
     }
     default: {
+      const note = skippedNote(extras);
       if (failed.length > 0 && first) {
         return {
+          ...(note !== undefined && { note }),
           tone: "warn",
           headline: finishedWithFailures(failed.length),
           detail: `The run carried on. First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`,
@@ -69,6 +95,7 @@ export function outcomeOf(state: RunState, rows: readonly LogRow[]): Outcome {
       return {
         tone: "ok",
         headline: "Finished, everything worked",
+        ...(note !== undefined && { note }),
         ...(steps > 0 && { detail: `${steps} ${steps === 1 ? "step" : "steps"} ran.` }),
       };
     }

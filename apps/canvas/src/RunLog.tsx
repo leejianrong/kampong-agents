@@ -34,10 +34,16 @@ export function RunLog({
   session,
   open,
   onToggle,
+  skippedApprovals = [],
+  hasVars = false,
 }: {
   session: RunSession;
   open: boolean;
   onToggle: () => void;
+  /** Approval steps the run went past without stopping (KAM-283). */
+  skippedApprovals?: string[];
+  /** The workflow has vars, which is where a person would change what makes an approval ask. */
+  hasVars?: boolean;
 }) {
   const record = session.viewed;
   const tracker = useRunTracker();
@@ -119,7 +125,7 @@ export function RunLog({
   if (!record) return null;
   const state = record.state;
   const summary = summarizeRun(state);
-  const outcome = outcomeOf(state, rows);
+  const outcome = outcomeOf(state, rows, { skippedApprovals, hasVars });
   const topSteps = rows.filter((r) => r.depth === 0).length;
   const ended = record.endedAt !== undefined ? record.endedAt - record.startedAt : undefined;
 
@@ -225,9 +231,11 @@ export function RunLog({
         <p
           className={`md3-runlog__outcome md3-runlog__outcome--${outcome.tone}`}
           data-testid="run-log-outcome"
+          title={[outcome.headline, outcome.detail, outcome.note].filter(Boolean).join(" ")}
         >
           <strong>{outcome.headline}</strong>
           {outcome.detail && <span> {outcome.detail}</span>}
+          {outcome.note && <span data-testid="run-log-outcome-note"> {outcome.note}</span>}
         </p>
       )}
       {open && (

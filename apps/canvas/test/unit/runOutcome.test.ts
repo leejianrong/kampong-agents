@@ -64,4 +64,23 @@ describe("outcomeOf", () => {
   it("keeps a long reason to a line", () => {
     expect(oneLine("x".repeat(400)).length).toBe(160);
   });
+
+  it("says when a finished run went past an approval step, and where to change what makes it ask (KAM-283)", () => {
+    const rows = [row("a", "passed")];
+    const o = outcomeOf(run({}), rows, { skippedApprovals: ["review"], hasVars: true });
+    expect(o.note).toBe(
+      'The approval step "review" did not ask: nothing in this run needed a person. Change a value under Vars to see it.',
+    );
+    expect(outcomeOf(run({}), rows, { skippedApprovals: ["review"] }).note).not.toContain("Vars");
+    expect(outcomeOf(run({}), rows, { skippedApprovals: ["a", "b"] }).note).toContain(
+      "2 approval steps",
+    );
+    expect(outcomeOf(run({}), rows).note).toBeUndefined();
+    // It is said on a run that finished with failures too, and never on one that stopped.
+    const failed = [row("fetch", "failed", "boom", 1)];
+    expect(outcomeOf(run({}), failed, { skippedApprovals: ["review"] }).note).toBeDefined();
+    expect(
+      outcomeOf(run({ status: "failed" }), failed, { skippedApprovals: ["review"] }).note,
+    ).toBeUndefined();
+  });
 });
