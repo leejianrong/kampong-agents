@@ -1508,6 +1508,9 @@ export function App({
                         layout={planView ? planView.layout : layout}
                         marker={planView ? undefined : marker}
                         focus={focus}
+                        refitOn={
+                          runSession.viewed ? (runLogOpen ? "log-open" : "log-closed") : "no-log"
+                        }
                         selectedId={planView ? null : selected}
                         {...(!planView && { onSelect: requestSelect })}
                         {...(!planView && { onPaneClick: () => requestSelect(null) })}

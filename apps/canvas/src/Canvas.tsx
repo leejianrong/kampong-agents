@@ -6,7 +6,6 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
-  useStoreApi,
   useUpdateNodeInternals,
   type EdgeChange,
   type NodeChange,
@@ -70,6 +69,8 @@ export interface CanvasProps {
   marker?: InsertionMarker;
   /** A node to pan into view and flash, as after an add (KAM-173). A new `nonce` repeats it. */
   focus?: { id: string; nonce: number };
+  /** When this changes the canvas refits (the run log opening or closing changed its height), KAM-279. */
+  refitOn?: string;
   /** The selected node's id (KAM-211): drawn with the selected outline. */
   selectedId?: string | null;
   /** A node was clicked, or chosen with Enter or Space while focused. */
@@ -196,26 +197,31 @@ function FocusNode({
 }
 
 /**
- * KAM-279: keeps the workflow in view when the canvas changes height (the run log opens or closes), until the person pans or zooms it themselves. A drag or wheel sets `moved`; the fit itself does not.
+ * KAM-279: fits the workflow into the room left when the run log opens or closes (`refitOn` changes), unless the
+ * person has panned or zoomed it themselves. It is keyed to that one change, not to every resize, so a side panel
+ * opening never moves cards under the pointer; and it does not animate, so nothing is mid-move for a click.
  */
-function RefitOnResize({ moved, options }: { moved: { current: boolean }; options: object }) {
+function RefitOnChange({
+  refitOn,
+  moved,
+  options,
+}: {
+  refitOn: string | undefined;
+  moved: { current: boolean };
+  options: object;
+}) {
   const flow = useReactFlow();
-  const store = useStoreApi();
+  const seen = useRef(refitOn);
   useEffect(() => {
-    const el = store.getState().domNode;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    let height = el.clientHeight;
-    const ro = new ResizeObserver(() => {
-      // Only a change in height, which is the run log opening or closing. A side panel narrowing the canvas
-      // must not move the cards under the pointer.
-      if (el.clientHeight === height) return;
-      height = el.clientHeight;
+    if (seen.current === refitOn) return;
+    seen.current = refitOn;
+    // After the new layout has been laid out, so the fit measures the new size.
+    const frame = requestAnimationFrame(() => {
       // Show it all, even smaller than the first view: the room just shrank, and a cut-off card is worse.
-      if (!moved.current) void flow.fitView({ ...options, minZoom: 0.3, duration: 200 });
+      if (!moved.current) void flow.fitView({ ...options, minZoom: 0.3, duration: 0 });
     });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [flow, store, moved, options]);
+    return () => cancelAnimationFrame(frame);
+  }, [flow, refitOn, moved, options]);
   return null;
 }
 
@@ -269,6 +275,7 @@ export function Canvas({
   layout,
   marker,
   focus,
+  refitOn,
   selectedId,
   onSelect,
   onPaneClick,
@@ -766,7 +773,7 @@ export function Canvas({
             />
           )}
           <KeepPortsMeasured sizes={sizes} />
-          <RefitOnResize moved={userMoved} options={fitViewOptions} />
+          <RefitOnChange refitOn={refitOn} moved={userMoved} options={fitViewOptions} />
           {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
         </ReactFlow>
       </EdgeInsertContext.Provider>
