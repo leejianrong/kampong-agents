@@ -45,7 +45,7 @@ describe("run log outcome", () => {
     const banner = screen.getByTestId("run-log-outcome").textContent ?? "";
     expect(banner).toContain("Finished, 1 step failed");
     expect(banner).toContain("fetch · MSFT");
-    expect(banner).toContain("rate limited");
+    expect(banner).toContain("usage limit was reached");
     // The header no longer carries a start time or step counts; they are in the pill's tooltip.
     expect(screen.getByTestId("run-log-summary").getAttribute("title")).toContain("steps");
   });
@@ -67,5 +67,55 @@ describe("run log outcome", () => {
     expect(loop.textContent).toContain("3 items");
     fireEvent.click(loop);
     expect(rows()).toEqual(["each", "fetch", "fetch", "fetch", "done"]);
+  });
+});
+
+describe("run log keyboard and detail (KAM-277, 270, 271)", () => {
+  it("moves between the Steps and Timeline tabs with the arrow keys, one tab stop", () => {
+    const withTrace = {
+      ...session(failedLoop),
+      fetchTrace: async () => undefined,
+    } as unknown as RunSession;
+    render(<RunLog session={withTrace} open onToggle={() => {}} />);
+    const steps = screen.getByTestId("run-log-view-steps");
+    const timeline = screen.getByTestId("run-log-view-timeline");
+    expect(steps.getAttribute("tabindex")).toBe("0");
+    expect(timeline.getAttribute("tabindex")).toBe("-1");
+    steps.focus();
+    fireEvent.keyDown(steps, { key: "ArrowRight" });
+    expect(timeline.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(timeline);
+  });
+
+  it("moves between the step rows with the arrow keys and picks the row it lands on", () => {
+    render(<RunLog session={session(failedLoop)} open onToggle={() => {}} />);
+    const rows = () => screen.getAllByTestId("run-log-row");
+    // The failed item is picked and is the one tab stop.
+    const picked = rows().find((r) => r.getAttribute("aria-current") === "true")!;
+    expect(picked.textContent).toContain("MSFT");
+    expect(rows().filter((r) => r.getAttribute("tabindex") === "0")).toEqual([picked]);
+    fireEvent.keyDown(picked, { key: "ArrowDown" });
+    const next = rows().find((r) => r.getAttribute("aria-current") === "true")!;
+    expect(next).not.toBe(picked);
+    expect(document.activeElement).toBe(next);
+  });
+
+  it("explains a failed step first and keeps the raw message behind Show technical detail", () => {
+    render(<RunLog session={session(failedLoop)} open onToggle={() => {}} />);
+    const error = screen.getByTestId("run-log-error");
+    expect(error.textContent).toContain("usage limit was reached");
+    expect(within(error).getByText("Show technical detail")).toBeTruthy();
+    expect(error.textContent).toContain("rate limited");
+  });
+
+  it("shows input and output as labelled fields with a JSON view, and leaves out an empty Input", () => {
+    render(<RunLog session={session({})} open onToggle={() => {}} />);
+    // The run's input is {} here, so there is no Input tab.
+    expect(screen.queryByTestId("run-log-tab-input")).toBeNull();
+    fireEvent.click(screen.getByTestId("run-log-tab-output"));
+    const out = screen.getByTestId("run-log-output");
+    expect(within(out).getByText("View as JSON")).toBeTruthy();
+    fireEvent.click(within(out).getByText("View as JSON"));
+    expect(out.querySelector("pre")).not.toBeNull();
   });
 });

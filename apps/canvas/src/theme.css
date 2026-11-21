@@ -3925,3 +3925,85 @@ select.md3-text-field {
     padding: 0 0.625rem;
   }
 }
+
+/* KAM-270: a failed step says what went wrong and what to do; the raw message is one click down. */
+.md3-runlog__error-headline {
+  margin: 0;
+  white-space: normal;
+}
+.md3-runlog__error-detail {
+  margin-top: 0.5rem;
+}
+.md3-runlog__error-detail summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--md-shape-corner-small);
+  font-size: var(--md-type-label-large-size);
+  text-decoration: underline;
+}
+.md3-runlog__error-detail summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+.md3-runlog__error-raw {
+  margin: 0.5rem 0 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--md-type-body-small-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.md3-runlog__error .md3-button-text {
+  color: inherit;
+}
+.md3-runlog__panel:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+/* KAM-271: a step's data as labelled fields. */
+.md3-datafields__bar {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.md3-fields {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+.md3-fields--nested {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--md-sys-color-outline-variant);
+}
+.md3-fields__row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 12rem) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+.md3-fields__row dt {
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+.md3-fields__row dd {
+  margin: 0;
+  min-width: 0;
+}
+.md3-fields__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.md3-fields__empty {
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
+}
+.md3-fields__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+@media (max-width: 600px) {
+  .md3-fields__row {
+    grid-template-columns: 1fr;
+    gap: 0.125rem;
+  }
+}

@@ -1,5 +1,6 @@
 import type { RunState } from "./api.js";
 import type { LogRow } from "./runLog.js";
+import { explainError } from "./runReason.js";
 import { finishedWithFailures } from "./runSummary.js";
 
 // ADR-0063 / KAM-269: the answer to "what happened?" in a line or two of plain words, read off the run and its log
@@ -16,6 +17,12 @@ export interface Outcome {
 export const oneLine = (text: string, max = 160): string => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+};
+
+/** A failure as one plain line: the headline when the message is a known kind, else the message cut short. */
+const reasonLine = (message: string): string => {
+  const r = explainError(message);
+  return r.known ? r.headline : oneLine(message);
 };
 
 const quoted = (row: LogRow): string => `"${row.label}"`;
@@ -47,7 +54,7 @@ export function outcomeOf(state: RunState, rows: readonly LogRow[]): Outcome {
       return {
         tone: "error",
         headline: first ? `Stopped at ${quoted(first)}` : "The run stopped",
-        ...(reason && { detail: oneLine(reason) }),
+        ...(reason && { detail: reasonLine(reason) }),
       };
     }
     default: {
@@ -55,7 +62,7 @@ export function outcomeOf(state: RunState, rows: readonly LogRow[]): Outcome {
         return {
           tone: "warn",
           headline: finishedWithFailures(failed.length),
-          detail: `The run carried on. First: ${quoted(first)}${first.error ? `: ${oneLine(first.error)}` : "."}`,
+          detail: `The run carried on. First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`,
         };
       }
       const steps = rows.filter((r) => r.depth === 0 && r.status === "passed").length;

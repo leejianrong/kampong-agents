@@ -33,7 +33,9 @@ describe("outcomeOf", () => {
     ]);
     expect(o.tone).toBe("warn");
     expect(o.headline).toBe("Finished, 1 step failed");
-    expect(o.detail).toBe('The run carried on. First: "fetch · MSFT": rate limit');
+    expect(o.detail).toBe(
+      'The run carried on. First: "fetch · MSFT": The service\'s usage limit was reached.',
+    );
   });
 
   it("names the step a failed run stopped at, with its reason on one line", () => {
