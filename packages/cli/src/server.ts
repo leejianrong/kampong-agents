@@ -758,6 +758,12 @@ export function createDevServer({
     },
   );
 
+  // KAM-280: the runs waiting for approval, for a canvas that was reloaded mid-decision.
+  app.get("/api/runs/pending", async () => ({
+    success: true,
+    runs: runManager.listAwaitingApproval(),
+  }));
+
   app.get<{ Params: { id: string } }>("/api/runs/:id", async (request, reply) => {
     const run = runManager.get(request.params.id);
     if (!run) {

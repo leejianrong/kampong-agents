@@ -287,6 +287,16 @@ export class RunManager {
     return this.runs.get(id);
   }
 
+  /**
+   * The runs this process holds that are waiting for a person (KAM-280), oldest first. A canvas that was reloaded
+   * has lost its own list of runs; this is how it finds a decision that is still waiting.
+   */
+  listAwaitingApproval(): { id: string; state: RunState }[] {
+    return [...this.runs]
+      .map(([id, run]) => ({ id, state: run.getState() }))
+      .filter(({ state }) => state.status === "awaiting_approval");
+  }
+
   /** Resolves a pending approval by run id -- the one place both the HTTP route and eviction bookkeeping route through. */
   async approve(id: string, approved: boolean, reason?: string): Promise<RunState | undefined> {
     const run = this.runs.get(id);

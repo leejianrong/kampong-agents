@@ -394,6 +394,8 @@ export interface ApiClient {
   subscribeToRunEvents(id: string, onMessage: (message: RunEventMessage) => void): () => void;
   /** The run's span tree (ADR-0063), or undefined when the server has none (an evicted run, an older server). */
   getRunTrace?(id: string): Promise<RunTrace | undefined>;
+  /** Runs the server still holds that are waiting for a decision (KAM-280); absent where the server cannot say. */
+  listPendingRuns?(): Promise<{ id: string; state: RunState }[]>;
 }
 
 // KAN-1216: a non-2xx spec response (e.g. the 404 the server returns for a
@@ -666,6 +668,12 @@ export function createApiClient(baseUrl = ""): ApiClient {
       if (!res.ok) return undefined;
       return ((await res.json()) as { trace?: RunTrace }).trace;
     },
+
+    async listPendingRuns(): Promise<{ id: string; state: RunState }[]> {
+      const res = await fetch(`${baseUrl}/api/runs/pending`);
+      if (!res.ok) return [];
+      return ((await res.json()) as { runs?: { id: string; state: RunState }[] }).runs ?? [];
+    },
   };
 }
 
@@ -919,6 +927,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     approveRun: c.approveRun.bind(c),
     subscribeToRunEvents: c.subscribeToRunEvents.bind(c),
     ...(c.getRunTrace && { getRunTrace: c.getRunTrace.bind(c) }),
+    ...(c.listPendingRuns && { listPendingRuns: c.listPendingRuns.bind(c) }),
   });
   return {
     getSession: client.getSession.bind(client),

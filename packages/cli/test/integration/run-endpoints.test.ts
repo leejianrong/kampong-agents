@@ -119,6 +119,42 @@ describe("createDevServer run endpoints", () => {
     expect(approve.json().state.finalOutput.decide).toBe("refunded");
   });
 
+  it("lists the runs still waiting for approval at /api/runs/pending, so a reloaded canvas can find them (KAM-280)", async () => {
+    writeFileSync(specPath, TOOL_APPROVAL_SOURCE);
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ status: "refunded" }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+    app = createDevServer({ specPath, layoutPath, run: { createModel: fakeModel, fetchImpl } });
+    await app.ready();
+
+    const none = await app.inject({ method: "GET", url: "/api/runs/pending" });
+    expect(none.statusCode).toBe(200);
+    expect(none.json()).toEqual({ success: true, runs: [] });
+
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: { input: "Refund order #1" },
+    });
+    const runId = start.json().id as string;
+    await waitForRunState(app, runId, ["awaiting_approval"]);
+
+    const waiting = (await app.inject({ method: "GET", url: "/api/runs/pending" })).json();
+    expect(waiting.runs).toHaveLength(1);
+    expect(waiting.runs[0].id).toBe(runId);
+    expect(waiting.runs[0].state.status).toBe("awaiting_approval");
+    expect(waiting.runs[0].state.pendingApproval).toMatchObject({ toolName: "issue_refund" });
+
+    await app.inject({
+      method: "POST",
+      url: `/api/runs/${runId}/approve`,
+      payload: { approved: true },
+    });
+    const after = (await app.inject({ method: "GET", url: "/api/runs/pending" })).json();
+    expect(after.runs).toEqual([]);
+  });
+
   it("serves the run's span tree at /api/runs/:id/trace, and 404s an unknown run", async () => {
     writeFileSync(specPath, TOOL_APPROVAL_SOURCE);
     const fetchImpl = (async () =>

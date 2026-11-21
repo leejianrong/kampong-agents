@@ -251,6 +251,12 @@ Every command shares the same exit-code vocabulary, so a script can tell the fai
 | `2`  | Execution failure: the run couldn't start or failed mid-way (a missing key, an unreachable Ollama, a failed tool call, or an approval rejection), or an export write failure. |
 | `64` | Usage error: a bad flag or a missing required argument.                                                                                                                       |
 
+## Runs waiting for approval
+
+`kampong dev` keeps a run that is waiting for a decision for as long as the server is up. `GET /api/runs/pending`
+lists them (`{ success, runs: [{ id, state }] }`, oldest first). The canvas asks on load, so reloading or reopening
+the page brings the approval dialog back and the decision goes to the same run.
+
 ## Run trace
 
 `kampong dev` and the hosted server record a trace for every run: a tree of spans, one per workflow step (a
