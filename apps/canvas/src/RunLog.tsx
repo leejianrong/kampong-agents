@@ -9,6 +9,7 @@ import { summarizeRun } from "./runSummary.js";
 import { DataFields, isEmptyData } from "./DataFields.js";
 import { explainError, trimUrls } from "./runReason.js";
 import { nextRow, tabListKeys } from "./tabKeys.js";
+import { PanelResizer, useRunLogHeight } from "./PanelResizer.js";
 
 // The bottom run log (KAM-243): one row per step, and per item inside a loop, with its status and time; the row
 // picked shows its Input, Output and Error. It reads the run on show, live or replayed, and a failed node on the
@@ -55,6 +56,17 @@ export function RunLog({
   const tabs = TABS.filter((t) => t.id !== "input" || (selected && !isEmptyData(selected.input)));
   const wanted: Tab = pickedTab ?? (selected?.status === "failed" ? "error" : "output");
   const tab: Tab = tabs.some((t) => t.id === wanted) ? wanted : "output";
+  const [panelHeight, setPanelHeight] = useRunLogHeight();
+  const bodyEl = useRef<HTMLDivElement>(null);
+  // On a phone the open log is a sheet over the canvas; Escape closes it from anywhere on the page.
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && window.matchMedia?.("(max-width: 600px)").matches) onToggle();
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [open, onToggle]);
   const viewButtons = useRef<Partial<Record<View, HTMLButtonElement | null>>>({});
   const tabButtons = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   const rowButtons = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -111,7 +123,24 @@ export function RunLog({
   const ended = record.endedAt !== undefined ? record.endedAt - record.startedAt : undefined;
 
   return (
-    <section className="md3-runlog" aria-label="Run log" data-testid="run-log" data-open={open}>
+    <section
+      className="md3-runlog"
+      aria-label="Run log"
+      data-testid="run-log"
+      data-open={open}
+      style={
+        panelHeight !== undefined
+          ? ({ "--runlog-body-h": `${panelHeight}px` } as React.CSSProperties)
+          : undefined
+      }
+    >
+      {open && (
+        <PanelResizer
+          height={panelHeight}
+          onChange={setPanelHeight}
+          measure={() => bodyEl.current?.getBoundingClientRect().height ?? 208}
+        />
+      )}
       <header className="md3-runlog__head">
         <h2 className="md3-label-large md3-runlog__title">Run log</h2>
         {record.mode && (
@@ -174,10 +203,11 @@ export function RunLog({
           type="button"
           className="md3-runlog__toggle"
           aria-expanded={open}
-          aria-label={open ? "Collapse run log" : "Expand run log"}
+          aria-label={open ? "Close run log" : "Open run log"}
           data-testid="run-log-toggle"
           onClick={onToggle}
         >
+          {open && <span className="md3-runlog__toggle-label">Close</span>}
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
             <path
               d={
@@ -201,6 +231,7 @@ export function RunLog({
       )}
       {open && (
         <div
+          ref={bodyEl}
           className="md3-runlog__body"
           data-view={view}
           {...(session.fetchTrace && {
