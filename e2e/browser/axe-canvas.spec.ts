@@ -90,8 +90,9 @@ for (const size of [
         await expectClean(page, `the ${status} panel`);
       }
 
-      // The run log and the panels above have shrunk the canvas (and it refits when the log opens, KAM-279), so fit
-      // every card again before clicking one at its corner.
+      // The run log and the panels above have shrunk the canvas (and it refits when the log opens, KAM-279), so give
+      // the canvas its room back and fit every card again before clicking one at its corner.
+      await page.getByTestId("run-log-toggle").click();
       await fitAll(page);
       await node(page, "workflow:report").click({ position: { x: 8, y: 8 } });
       await expectClean(page, "the step inspector");

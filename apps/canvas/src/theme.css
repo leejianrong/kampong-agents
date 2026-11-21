@@ -3896,16 +3896,11 @@ select.md3-text-field {
   white-space: nowrap;
 }
 
-/* A long reason stays to two lines; the step's Error tab has all of it. */
-.md3-runlog__outcome span {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+/* One line, so the log leaves the canvas its room; a long reason is cut, and the step's Error tab has all of it. */
+.md3-runlog__outcome {
   overflow: hidden;
-}
-.md3-runlog__outcome strong {
-  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* KAM-275: at a phone's width the header keeps to one line: the outcome and the view switch. The mode is in the
