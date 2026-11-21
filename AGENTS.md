@@ -152,6 +152,9 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
   `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0065).
 - Every bug or flake becomes a regression test before the fix.
+- **UX audits are periodic.** Two agents drive the real app in a browser and file findings as cards. The process,
+  the rules for when one is due (7 days since the last, or five merged UI slices) and the running log are in
+  `docs/audits/ux-audit-log.md`; read its newest row before starting UI work, and add a row after each round.
 - A change to a CLI command, spec field or step kind updates `docs/reference/` and the README in the same PR.
 
 ## Testing approach (see PLAN.md §Testing approach)
