@@ -6,6 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useStoreApi,
   useUpdateNodeInternals,
   type EdgeChange,
   type NodeChange,
@@ -109,7 +110,7 @@ const MARKER_ID = "insertion-marker";
  * zoom. Up to this many steps in run order are fitted; a shorter one is fitted whole.
  */
 const FIT_HEAD = 4;
-const MIN_READABLE_ZOOM = 0.8;
+const MIN_READABLE_ZOOM = 0.65;
 /** A workflow with more nodes than this gets a minimap (KAM-187). */
 const MINIMAP_OVER = 15;
 
@@ -191,6 +192,31 @@ function FocusNode({
       clearTimeout(done);
     };
   }, [flow, focus.id, focus.nonce, onDone]);
+  return null;
+}
+
+/**
+ * KAM-279: keeps the workflow in view when the canvas changes size (the run log opens or closes, the window
+ * resizes), until the person pans or zooms it themselves. A drag or wheel sets `moved`; the fit itself does not.
+ */
+function RefitOnResize({ moved, options }: { moved: { current: boolean }; options: object }) {
+  const flow = useReactFlow();
+  const store = useStoreApi();
+  useEffect(() => {
+    const el = store.getState().domNode;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let first = true;
+    const ro = new ResizeObserver(() => {
+      // The observer fires once on attach, when the initial fit has already happened.
+      if (first) {
+        first = false;
+        return;
+      }
+      if (!moved.current) void flow.fitView({ ...options, duration: 200 });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [flow, store, moved, options]);
   return null;
 }
 
@@ -386,6 +412,7 @@ export function Canvas({
   // controlled component and recreating fresh node/edge objects on every
   // render (a `.map()` with no memoization) makes it redo internal
   // reconciliation work it doesn't need to.
+  const userMoved = useRef(false);
   const fitViewOptions = useMemo(() => {
     const run = view.graph.nodes.filter((n) => n.kind === "agent" || n.kind === "workflow");
     return {
@@ -709,7 +736,11 @@ export function Canvas({
           onEdgesChange={onEdgesChange}
           onEdgeMouseEnter={(_, edge) => hover(edge.id)}
           onEdgeMouseLeave={() => hover(null)}
-          onMoveStart={() => setOpenEdge(null)}
+          onMoveStart={(event) => {
+            setOpenEdge(null);
+            // A real pointer or wheel gesture: the person has chosen their own view. Our own fits have no event.
+            if (event) userMoved.current = true;
+          }}
           onNodeMouseEnter={(_, node) => setHovered(node.id)}
           onNodeMouseLeave={() => setHovered(null)}
           onNodeClick={(_, node) => {
@@ -736,6 +767,7 @@ export function Canvas({
             />
           )}
           <KeepPortsMeasured sizes={sizes} />
+          <RefitOnResize moved={userMoved} options={fitViewOptions} />
           {focus && flashed && <FocusNode focus={focus} onDone={() => setFlashed(null)} />}
         </ReactFlow>
       </EdgeInsertContext.Provider>

@@ -37,7 +37,10 @@ export function StatusBar({
           {item.badge && (
             <>
               {/* A space, so the words on the button read "Secrets 4" and the name "Secrets 4 missing" contains them. */}{" "}
-              <span className="md3-statusbar__badge" aria-hidden="true">
+              <span
+                className={`md3-statusbar__badge${item.tone === "quiet" ? " md3-statusbar__badge--quiet" : ""}`}
+                aria-hidden="true"
+              >
                 {item.badge.count}
               </span>
             </>

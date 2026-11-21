@@ -1328,6 +1328,7 @@ export function App({
     hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
     noSpecYet: emptyKind === "new",
     ...(missingSecrets !== undefined && { missingSecrets }),
+    replay: runSession.mode === "replay",
     varCount: Object.keys(spec?.vars ?? {}).length,
     ...(spec?.agent.trigger && { triggerSummary: triggerSummary(spec.agent.trigger) }),
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),

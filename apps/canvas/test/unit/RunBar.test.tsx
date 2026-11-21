@@ -195,6 +195,13 @@ describe("status chips (KAM-246)", () => {
     });
     expect(chip("secrets", { missingSecrets: 0 })?.tone).toBeUndefined();
   });
+
+  it("does not raise a missing secret as an error in Replay, which needs no keys (KAM-278)", () => {
+    expect(chip("secrets", { missingSecrets: 4, replay: true })).toMatchObject({
+      tone: "quiet",
+      badge: { count: 4, words: "4 missing" },
+    });
+  });
 });
 
 describe("status bar", () => {
