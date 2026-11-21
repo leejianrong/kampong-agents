@@ -22,7 +22,8 @@
     "test:e2e": "vitest run --project e2e",
     "test:e2e:browser": "playwright test",
     "test": "npm run test:unit && npm run test:integration",
-    "prepare": "husky"
+    "prepare": "husky",
+    "pack:release": "npm run build && node scripts/pack-release.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

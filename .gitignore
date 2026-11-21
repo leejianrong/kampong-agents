@@ -41,3 +41,6 @@ site/
 
 # make try / try-demo scratch folders
 /.try/
+
+# Tarballs from `npm run pack:release`.
+release/

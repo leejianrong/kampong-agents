@@ -20,5 +20,9 @@
     "jsonata": "2.2.2",
     "mailparser": "3.9.39",
     "zod": "^4.6.7"
-  }
+  },
+  "files": [
+    "dist",
+    "components"
+  ]
 }

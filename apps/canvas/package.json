@@ -24,5 +24,8 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.0.1",
     "vite": "^8.3.4"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
