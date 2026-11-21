@@ -90,10 +90,15 @@ for (const size of [
         await expectClean(page, `the ${status} panel`);
       }
 
+      // The run log and the panels above have shrunk the canvas (and it refits when the log opens, KAM-279), so fit
+      // every card again before clicking one at its corner.
+      await fitAll(page);
       await node(page, "workflow:report").click({ position: { x: 8, y: 8 } });
       await expectClean(page, "the step inspector");
+      await fitAll(page);
       await node(page, "tool:fetch_daily").click({ position: { x: 8, y: 8 } });
       await expectClean(page, "the tool inspector");
+      await fitAll(page);
       await node(page, "agent:market-etl").click({ position: { x: 8, y: 8 } });
       await expectClean(page, "the trigger inspector");
     });
