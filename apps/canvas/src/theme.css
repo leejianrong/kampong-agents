@@ -1694,6 +1694,11 @@ select.md3-text-field {
   color: var(--md-sys-color-on-secondary-container);
 }
 
+.md3-runbar__saved--unsaved {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 .md3-runbar__saved--paused,
 .md3-runbar__saved--failed {
   background: var(--md-sys-color-error-container);
@@ -4096,4 +4101,22 @@ select.md3-text-field {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+/* KAM-285: inside the new-workflow card the templates are a short list to choose from, so each is compact: two lines
+   of description and no list of step kinds, to leave room for at least two on a short window. */
+.md3-empty-state .md3-template-card {
+  padding: 0.75rem 1rem;
+  gap: 0.25rem;
+}
+.md3-empty-state .md3-template-card p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--md-type-body-small-size);
+}
+.md3-empty-state .md3-template-card__chips .md3-chip:not(.md3-chip--offline) {
+  display: none;
 }

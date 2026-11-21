@@ -45,62 +45,13 @@ export function EmptyState({
           <>
             <h2 className="md3-title-large">Start a new workflow</h2>
             <p className="md3-body-medium">
-              Nothing is saved yet. Start with a blank workflow and add steps as you go; it is saved
-              the first time you choose.
+              Pick a template to see how it works, or start blank and add steps as you go. Nothing
+              is saved until you choose.
             </p>
-            {onBuildFromPrompt && (
-              <form
-                className="md3-stack"
-                data-testid="empty-state-prompt"
-                aria-label="Build from a description"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (ready && prompt.trim() !== "" && !busy) onBuildFromPrompt(prompt.trim());
-                }}
-              >
-                <label className="md3-label-large" htmlFor="empty-state-prompt-input">
-                  Or describe what you want to build
-                </label>
-                <textarea
-                  id="empty-state-prompt-input"
-                  className="md3-text-field"
-                  rows={3}
-                  value={prompt}
-                  disabled={!ready || busy}
-                  placeholder="Every weekday morning, get the price of AAPL and Slack me if it moved more than 5%"
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                />
-                {assistant && !assistant.configured && (
-                  <AssistantSetupNote status={assistant} testId="empty-state-setup" />
-                )}
-                {ready && (
-                  <p className="kg-small md3-field__hint">
-                    You will see a plan first. Asking sends your description to{" "}
-                    <strong>{assistant.host}</strong> (model {assistant.model}).
-                  </p>
-                )}
-                <div className="md3-form-actions">
-                  <button
-                    type="submit"
-                    className="md3-button md3-button-filled"
-                    disabled={!ready || busy || prompt.trim() === ""}
-                    data-testid="build-from-prompt"
-                  >
-                    Build it for me
-                  </button>
-                </div>
-              </form>
-            )}
             <div className="md3-form-actions">
               <button
                 type="button"
-                className={`md3-button ${onBuildFromPrompt ? "md3-button-tonal" : "md3-button-filled"}`}
+                className="md3-button md3-button-filled"
                 disabled={busy}
                 onClick={onStartBlank}
                 data-testid="start-blank"
@@ -122,6 +73,54 @@ export function EmptyState({
                 <h3 className="md3-title-small">Start from a template</h3>
                 {templates}
               </section>
+            )}
+            {onBuildFromPrompt && assistant && !assistant.configured && (
+              // KAM-285: not set up, so the assistant is one line and the templates keep the room.
+              <AssistantSetupNote status={assistant} testId="empty-state-setup" />
+            )}
+            {onBuildFromPrompt && ready && (
+              <form
+                className="md3-stack"
+                data-testid="empty-state-prompt"
+                aria-label="Build from a description"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (ready && prompt.trim() !== "" && !busy) onBuildFromPrompt(prompt.trim());
+                }}
+              >
+                <label className="md3-label-large" htmlFor="empty-state-prompt-input">
+                  Or describe what you want to build
+                </label>
+                <textarea
+                  id="empty-state-prompt-input"
+                  className="md3-text-field"
+                  rows={3}
+                  value={prompt}
+                  disabled={busy}
+                  placeholder="Every weekday morning, get the price of AAPL and Slack me if it moved more than 5%"
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                />
+                <p className="kg-small md3-field__hint">
+                  You will see a plan first. Asking sends your description to{" "}
+                  <strong>{assistant.host}</strong> (model {assistant.model}).
+                </p>
+                <div className="md3-form-actions">
+                  <button
+                    type="submit"
+                    className="md3-button md3-button-filled"
+                    disabled={busy || prompt.trim() === ""}
+                    data-testid="build-from-prompt"
+                  >
+                    Build it for me
+                  </button>
+                </div>
+              </form>
             )}
           </>
         ) : (

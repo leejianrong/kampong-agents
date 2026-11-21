@@ -50,20 +50,26 @@ describe("EmptyState: build from a description", () => {
     expect(onBuild).not.toHaveBeenCalled();
   });
 
-  it("says what to set up, and takes no description, when there is no endpoint", () => {
-    const { onBuild } = setup({ configured: false, error: "Set OPENROUTER_API_KEY." });
-    expect(screen.getByTestId("empty-state-setup").textContent).toContain("OPENROUTER_API_KEY");
-    expect(
-      (screen.getByLabelText("Or describe what you want to build") as HTMLTextAreaElement).disabled,
-    ).toBe(true);
-    expect((screen.getByTestId("build-from-prompt") as HTMLButtonElement).disabled).toBe(true);
+  it("is one plain line, with no box, when there is no endpoint (KAM-285)", () => {
+    const { onBuild } = setup({
+      configured: false,
+      code: "not_configured",
+      error: "Set OPENROUTER_API_KEY.",
+    });
+    const note = screen.getByTestId("empty-state-setup");
+    expect(note.querySelector("p")!.textContent).toContain("The assistant isn't set up yet.");
+    // The box and button are not drawn disabled: the templates keep the room.
+    expect(screen.queryByLabelText("Or describe what you want to build")).toBeNull();
+    expect(screen.queryByTestId("build-from-prompt")).toBeNull();
     expect(onBuild).not.toHaveBeenCalled();
   });
 
-  it("keeps Start blank, as a quieter choice", () => {
+  it("leads with Start blank, and puts the description box after the templates (KAM-285)", () => {
     const { onStartBlank } = setup(READY);
     const blank = screen.getByTestId("start-blank");
-    expect(blank.className).toContain("md3-button-tonal");
+    expect(blank.className).toContain("md3-button-filled");
+    const form = screen.getByTestId("empty-state-prompt");
+    expect(blank.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(blank);
     expect(onStartBlank).toHaveBeenCalled();
   });

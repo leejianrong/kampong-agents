@@ -30,6 +30,28 @@ interface Place {
   pointer: number;
 }
 
+/**
+ * The template mark beside the new-workflow card, level with its top, when the pane is wide enough to leave room on
+ * the right. Returns whether it placed the card; otherwise the caller puts it along the pane's bottom.
+ */
+function besideEmptyCard(
+  pane: DOMRect,
+  width: number,
+  height: number,
+  place: (p: Place) => void,
+): boolean {
+  const card = document.querySelector(".md3-empty-state__card")?.getBoundingClientRect();
+  if (!card) return false;
+  if (pane.right - card.right < width + MARGIN * 2) return false;
+  place({
+    top: Math.max(MARGIN, Math.min(card.top, window.innerHeight - height - 56)),
+    left: card.right + MARGIN,
+    below: false,
+    pointer: 0,
+  });
+  return true;
+}
+
 export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean }) {
   const { mark } = coach;
   const card = useRef<HTMLDivElement>(null);
@@ -61,6 +83,17 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
           left,
           below: true,
           pointer: Math.max(16, Math.min(box.left + box.width / 2 - left, width - 16)),
+        });
+      } else if (mark === "template" && besideEmptyCard(box, width, height, setPlace)) {
+        // KAM-285: to the side of the empty state's card, where it hides none of the templates.
+      } else if (mark === "template") {
+        // No room beside the card: along the window's bottom edge, over the status bar, which a blank workflow
+        // has no use for, so the templates above it are never covered (KAM-285).
+        setPlace({
+          top: Math.max(MARGIN, window.innerHeight - height - 6),
+          left: MARGIN,
+          below: false,
+          pointer: 0,
         });
       } else {
         // In the canvas pane, along its bottom, clear of the controls in its corners.

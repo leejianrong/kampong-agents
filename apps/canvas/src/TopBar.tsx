@@ -6,10 +6,12 @@ import type { ActionDescriptor } from "./actions.js";
 // (Test Run, Checks), the YAML drawer toggle and a menu for everything that is not frequent. It spans the window
 // above the canvas and the side pane. A top app bar in M3.
 
-export type SaveState = "saved" | "paused" | "failed";
+export type SaveState = "saved" | "unsaved" | "paused" | "failed";
 
 const SAVE_WORDS: Record<SaveState, string> = {
   saved: "Saved",
+  // KAM-291: nothing is on disk yet, so it must not read as saved.
+  unsaved: "Not saved yet",
   paused: "Saves paused: fix the error",
   failed: "Not saved",
 };
