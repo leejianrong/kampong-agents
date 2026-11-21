@@ -196,8 +196,7 @@ function FocusNode({
 }
 
 /**
- * KAM-279: keeps the workflow in view when the canvas changes size (the run log opens or closes, the window
- * resizes), until the person pans or zooms it themselves. A drag or wheel sets `moved`; the fit itself does not.
+ * KAM-279: keeps the workflow in view when the canvas changes height (the run log opens or closes), until the person pans or zooms it themselves. A drag or wheel sets `moved`; the fit itself does not.
  */
 function RefitOnResize({ moved, options }: { moved: { current: boolean }; options: object }) {
   const flow = useReactFlow();
@@ -205,14 +204,14 @@ function RefitOnResize({ moved, options }: { moved: { current: boolean }; option
   useEffect(() => {
     const el = store.getState().domNode;
     if (!el || typeof ResizeObserver === "undefined") return;
-    let first = true;
+    let height = el.clientHeight;
     const ro = new ResizeObserver(() => {
-      // The observer fires once on attach, when the initial fit has already happened.
-      if (first) {
-        first = false;
-        return;
-      }
-      if (!moved.current) void flow.fitView({ ...options, duration: 200 });
+      // Only a change in height, which is the run log opening or closing. A side panel narrowing the canvas
+      // must not move the cards under the pointer.
+      if (el.clientHeight === height) return;
+      height = el.clientHeight;
+      // Show it all, even smaller than the first view: the room just shrank, and a cut-off card is worse.
+      if (!moved.current) void flow.fitView({ ...options, minZoom: 0.3, duration: 200 });
     });
     ro.observe(el);
     return () => ro.disconnect();
