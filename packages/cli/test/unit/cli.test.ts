@@ -87,6 +87,28 @@ describe("runCli -- top level", () => {
   });
 });
 
+describe("help text is written for the person using the tool (KAM-288)", () => {
+  // Internal references (a plan document, an ADR, a requirement number) mean nothing to someone who has only the
+  // binary, so none belongs in what --help prints.
+  const INTERNAL =
+    /PLAN\.md|AGENTS\.md|SLICES\.md|docs\/adr|\bADR-\d|Shape S\d|\bR\d\)|\b(KAM|KAN)-\d/;
+
+  it.each([
+    [["--help"]],
+    [["dev", "--help"]],
+    [["run", "--help"]],
+    [["serve", "--help"]],
+    [["export", "--help"]],
+    [["templates", "--help"]],
+    [["lock", "--help"]],
+    [["doctor", "--help"]],
+  ])("kampong %j names no internal document", async (argv) => {
+    const { io, out } = capture();
+    expect(await runCli(argv, io)).toBe(EXIT_SUCCESS);
+    expect(out.join("\n")).not.toMatch(INTERNAL);
+  });
+});
+
 describe("kampong serve -- usage/validation (KAN-1431)", () => {
   it("with no spec path is a usage error (exit 64)", async () => {
     const { io, err } = capture();

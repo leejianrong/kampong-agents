@@ -96,7 +96,7 @@ Usage: kampong <command> [options]
 
 Commands:
   serve <spec>.yaml                  Run a spec as a live webhook service: POST /webhook starts
-                                     a run. The self-host/deploy path (ADR-0022).
+                                     a run. The way to run a spec on your own server.
   dev [dir]                          Start the local dev server: spec-CRUD API, SSE run
                                       stream, and the canvas UI, all at one localhost origin.
   run <spec>.yaml --input "<text>"   Run a spec headlessly -- no server, no browser.
@@ -115,7 +115,7 @@ Run "kampong <command> --help" for command-specific options.`;
 
 const DEV_HELP_TEXT = `kampong dev [dir] [options]
 
-Starts the local Fastify server (PLAN.md Shape S5, ADR-0005): a spec-CRUD REST API, an
+Starts the local server: a REST API for the spec, an
 SSE stream of file-change/run-progress events, and the built canvas UI -- all served from
 one http://<host>:<port> origin, so nothing about local dev needs more than one process.
 
@@ -130,9 +130,9 @@ Options:
 
 const RUN_HELP_TEXT = `kampong run <spec>.yaml --input "<text>" [options]
 
-Runs a spec headlessly against the execution engine (PLAN.md Shape S3/S5) -- no server,
+Runs a spec from the command line -- no server,
 no browser. Designed to run fully offline (--tools replay + an "ollama" model provider in
-the spec) with zero required network calls (AGENTS.md, R3).
+the spec) with no network calls needed.
 
 Arguments:
   <spec>.yaml            Path to the AgentSpec YAML file to run
@@ -416,9 +416,9 @@ async function runDevCommand(args: string[], io: CliIO): Promise<number> {
 
 const SERVE_HELP_TEXT = `kampong serve <spec>.yaml [options]
 
-Runs a spec as a live webhook service (ADR-0021/ADR-0022): the process stays up
+Runs a spec as a live webhook service: the process stays up
 and starts a run each time something POSTs to /webhook, with the request body as
-the run's input. This is the self-host / deploy path -- the same engine and spec
+the run's input. This is how you run a spec on your own server -- the same engine and spec
 as \`kampong run\`, just triggerable and long-running. Connector tokens
 (\${SLACK_BOT_TOKEN}, ...) and model keys resolve from this process's
 environment, so deploying is "run this with those env vars set".
@@ -1050,10 +1050,9 @@ async function runRunCommand(
 
 const EXPORT_HELP_TEXT = `kampong export <spec>.yaml <output-dir> [options]
 
-Exports a spec to a standalone, runnable Mastra TypeScript project (PLAN.md Shape S6,
-ADR-0002) -- one-way, never re-imported by this tool. The exported project has zero
-dependency on Kampong Agents itself (docs/adr/0010); see its generated README.md for how
-to run it.
+Exports a spec to a standalone, runnable TypeScript project -- one-way, never re-imported
+by this tool. The exported project has no dependency on Kampong Agents itself; see its
+generated README.md for how to run it.
 
 Arguments:
   <spec>.yaml           Path to the AgentSpec YAML file to export
