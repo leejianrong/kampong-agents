@@ -70,6 +70,8 @@ export interface RunSession {
   requestRun: () => void;
   /** Run now, past the live confirmation. */
   start: () => Promise<void>;
+  /** Secrets the workflow reads that have no value, so a live run can say so before it asks (KAM-287). */
+  missingSecrets: string[];
   /** Runs the same input live, asking first when a live run could change something (KAM-281). */
   runLive: () => void;
   /** Empties the Test Run input. */
@@ -84,7 +86,12 @@ export interface RunSession {
 export function useRunSession(
   api: ApiClient,
   tracker: RunTrackerApi,
-  config: { blockedReason?: string | undefined; refreshKey?: unknown } = {},
+  config: {
+    blockedReason?: string | undefined;
+    refreshKey?: unknown;
+    /** Names of the secrets the workflow reads that have no value (KAM-287): a live run needs them first. */
+    missingSecrets?: string[] | undefined;
+  } = {},
 ): RunSession {
   const [input, setInput] = useState("");
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
@@ -323,6 +330,7 @@ export function useRunSession(
     canRun,
     requestRun,
     start,
+    missingSecrets: config.missingSecrets ?? [],
     runLive,
     clearInput: () => setInput(""),
     replayNow:

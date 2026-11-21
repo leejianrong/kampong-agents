@@ -18,7 +18,7 @@ export type OpenForm =
   | "templates";
 
 /** Where an action is drawn: the run bar, the status bar, or the menu (everything that is not frequent). */
-export type ActionSurface = "run" | "runbar" | "yaml" | "status" | "menu";
+export type ActionSurface = "run" | "runbar" | "yaml" | "status" | "topbar" | "menu";
 
 export interface ActionDescriptor {
   id: string;
@@ -95,7 +95,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
     id,
     label,
     surface,
-    ...(surface === "status" && { commandLabel: `Open ${label}` }),
+    ...((surface === "status" || surface === "topbar") && { commandLabel: `Open ${label}` }),
     pressed: ctx.openForm === target,
     run: () => ctx.toggleForm(target),
     ...extra,
@@ -165,7 +165,11 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
         keywords: ["limits", "approval", "safety"],
       }),
       ...(ctx.hasChecks
-        ? [form("checks", "checks", "status", "Checks", { keywords: ["doctor", "validate"] })]
+        ? [
+            form("checks", "checks", "topbar", "Check setup", {
+              keywords: ["checks", "doctor", "validate"],
+            }),
+          ]
         : []),
       form("trigger", "trigger", "status", "Trigger", {
         keywords: ["schedule", "webhook", "poll"],
@@ -186,7 +190,7 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
   } else {
     // Secrets and checks need no spec, so they stay while the workflow is being started.
     if (ctx.hasSecrets) actions.push(form("secrets", "variables", "status", "Secrets"));
-    if (ctx.hasChecks) actions.push(form("checks", "checks", "status", "Checks"));
+    if (ctx.hasChecks) actions.push(form("checks", "checks", "topbar", "Check setup"));
   }
 
   if (!ctx.noSpecYet && ctx.undo) {

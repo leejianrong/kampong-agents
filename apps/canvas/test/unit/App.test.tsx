@@ -323,7 +323,7 @@ describe("App", () => {
       render(<App />);
       await waitFor(() => expect(screen.getByText(/^Manual$/)).toBeTruthy());
       fireEvent.click(
-        within(screen.getByRole("contentinfo")).getByRole("button", { name: "Checks" }),
+        within(screen.getByRole("banner")).getByRole("button", { name: "Check setup" }),
       );
       fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
       expect(await screen.findByText("X is not set")).toBeTruthy();

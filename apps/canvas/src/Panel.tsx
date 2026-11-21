@@ -19,6 +19,8 @@ export const SaveErrorContext = createContext<SaveErrorState>({ message: null, c
 
 export interface PanelProps {
   title: string;
+  /** One sentence on what the panel is for (KAM-286), shown under the title. */
+  purpose?: string;
   onClose: () => void;
   /** Extra header buttons before Close (the inspector's Duplicate and Delete, KAM-211). */
   actions?: ReactNode;
@@ -33,6 +35,7 @@ export interface PanelProps {
 
 export function Panel({
   title,
+  purpose,
   onClose,
   actions,
   panelRef,
@@ -64,6 +67,11 @@ export function Panel({
           Close
         </button>
       </header>
+      {purpose && (
+        <p className="md3-body-small md3-panel__purpose" data-testid="panel-purpose">
+          {purpose}
+        </p>
+      )}
       <div className="md3-panel__body" onChange={() => saveError !== null && clearSaveError()}>
         {saveError !== null && !hidden && (
           <PanelError messages={[saveError]} testId="panel-save-error" />

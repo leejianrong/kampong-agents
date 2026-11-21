@@ -181,7 +181,7 @@ const FORMS: { open: string; then?: (page: Page) => Promise<void>; save: string 
     then: (page) => page.getByRole("button", { name: "Add secret" }).click(),
     save: "Save",
   },
-  { open: "Checks", save: "Run checks" },
+  { open: "Check setup", save: "Run checks" },
   { open: "Test Run", save: "Run" },
 ];
 

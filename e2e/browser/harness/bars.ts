@@ -18,7 +18,6 @@ const STATUS: Record<string, RegExp> = {
   Guardrails: /^Guardrails$/,
   Trigger: /^Trigger/,
   Secrets: /^Secrets/,
-  Checks: /^Checks$/,
 };
 
 export async function chooseFromMenu(page: Page, item: string): Promise<void> {
@@ -32,6 +31,14 @@ export async function openPanel(page: Page, name: string): Promise<void> {
   const status = STATUS[name];
   if (status) {
     await page.getByRole("contentinfo").getByRole("button", { name: status }).click();
+    return;
+  }
+  // KAM-286: Checks is one entry point, in the top bar, named Check setup.
+  if (name === "Checks" || name === "Check setup") {
+    await page
+      .getByRole("banner")
+      .getByRole("button", { name: "Check setup", exact: true })
+      .click();
     return;
   }
   if (name === "Test Run") {

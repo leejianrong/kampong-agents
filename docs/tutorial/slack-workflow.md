@@ -77,7 +77,7 @@ Steps run in the order they appear, so the workflow is now `greet`, then `review
 
 ## 4. Check your setup
 
-Click **Checks** in the status bar, turn on **Also check credentials**, and run the checks. The panel lists each
+Click **Check setup** in the top bar, turn on **Also check credentials**, and run the checks. The panel lists each
 variable the spec needs by name, and it asks Slack whether the token is accepted. It never
 displays a value. Fix anything marked as failing before you run.
 

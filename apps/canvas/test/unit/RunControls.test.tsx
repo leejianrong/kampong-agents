@@ -157,3 +157,86 @@ describe("Run bar", () => {
     expect((screen.getByTestId("run-button") as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe("Run bar: what a run needs before it starts (KAM-287)", () => {
+  afterEach(cleanup);
+
+  it("names the missing key on the chip, not just 'Could not start'", async () => {
+    const api = {
+      getRunOptions: async () => options({ modes: ["live"], defaultMode: "live", tools: [] }),
+      startRun: vi.fn(async () => ({
+        success: false,
+        error: "ALPHAVANTAGE_API_KEY is not set. Set it in the Secrets panel.",
+      })),
+      approveRun: vi.fn(),
+      subscribeToRunEvents: () => () => {},
+    } as unknown as ApiClient;
+    render(<RunHarness api={api} showPanel={false} onSetSecret={() => {}} />);
+    await waitFor(() =>
+      expect((screen.getByTestId("run-button") as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId("run-button"));
+    const chip = await screen.findByTestId("runbar-status");
+    expect(chip.textContent).toContain("Needs ALPHAVANTAGE_API_KEY");
+    expect(chip.textContent).not.toContain("Could not start");
+  });
+
+  it("says what is not set first in the live confirmation, offers to set it, and still lets the run go", async () => {
+    const startRun = vi.fn(async () => ({
+      success: true,
+      id: "r1",
+      state: { status: "running", trace: [] } as never,
+      mode: "live" as const,
+    }));
+    const api = {
+      getRunOptions: async () => options({ modes: ["live"], defaultMode: "live" }),
+      startRun,
+      approveRun: vi.fn(),
+      subscribeToRunEvents: () => () => {},
+    } as unknown as ApiClient;
+    const onSetSecret = vi.fn();
+    render(
+      <RunHarness
+        api={api}
+        showPanel={false}
+        onSetSecret={onSetSecret}
+        missingSecrets={["SLACK_BOT_TOKEN"]}
+      />,
+    );
+    await waitFor(() =>
+      expect((screen.getByTestId("run-button") as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId("run-button"));
+    const dialog = await screen.findByRole("alertdialog");
+    const missing = within(dialog).getByTestId("run-confirm-missing");
+    expect(missing.textContent).toContain("SLACK_BOT_TOKEN");
+    // It comes before the question about what the run would call.
+    expect(
+      missing.compareDocumentPosition(within(dialog).getByTestId("run-confirm-tools")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(startRun).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set it here" }));
+    expect(onSetSecret).toHaveBeenCalledWith("SLACK_BOT_TOKEN");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    // Asking again and going ahead still starts the run.
+    fireEvent.click(screen.getByTestId("run-button"));
+    fireEvent.click(await screen.findByRole("button", { name: "Run live" }));
+    await waitFor(() => expect(startRun).toHaveBeenCalled());
+  });
+
+  it("still asks to confirm a live run when nothing is missing", async () => {
+    const api = {
+      getRunOptions: async () => options({ modes: ["live"], defaultMode: "live" }),
+      startRun: vi.fn(),
+      approveRun: vi.fn(),
+      subscribeToRunEvents: () => () => {},
+    } as unknown as ApiClient;
+    render(<RunHarness api={api} showPanel={false} missingSecrets={[]} />);
+    await waitFor(() =>
+      expect((screen.getByTestId("run-button") as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId("run-button"));
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+  });
+});

@@ -156,16 +156,16 @@ describe("top bar views (KAM-246)", () => {
     const views = within(bar).getByRole("group", { name: "View" });
     const editor = within(views).getByRole("button", { name: "Editor" });
     const run = within(views).getByRole("button", { name: "Test Run" });
-    const checks = within(views).getByRole("button", { name: "Checks" });
+    const checks = within(views).getByRole("button", { name: "Check setup" });
     expect(editor.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(run);
     expect(run.getAttribute("aria-pressed")).toBe("true");
     expect(editor.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(checks);
-    expect(screen.getAllByRole("region", { name: "Checks" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("region", { name: "Check setup" }).length).toBeGreaterThan(0);
     expect(run.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(editor);
-    expect(screen.queryByRole("region", { name: "Checks" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Check setup" })).toBeNull();
     expect(editor.getAttribute("aria-pressed")).toBe("true");
   });
 });
@@ -205,23 +205,27 @@ describe("status chips (KAM-246)", () => {
 });
 
 describe("status bar", () => {
-  it("offers Vars, Secrets, Guardrails, Checks and Trigger in a footer, each opening its panel", async () => {
+  it("offers Vars, Secrets, Guardrails and Trigger in a footer, each opening its panel, with Checks only in the top bar", async () => {
     await open(full);
     await screen.findByRole("button", { name: "Secrets 2 missing" });
     const bar = screen.getByRole("contentinfo");
     const names = within(bar)
       .getAllByRole("button")
       .map((b) => b.textContent);
-    expect(names).toEqual(["Vars", "Secrets 2", "Guardrails", "Checks", "Trigger"]);
+    expect(names).toEqual(["Vars", "Secrets 2", "Guardrails", "Trigger"]);
     for (const [button, panel] of [
       [/^Vars$/, "Spec Vars"],
       [/^Secrets/, "Secrets"],
       [/^Guardrails$/, "Set Guardrails"],
-      [/^Checks$/, "Checks"],
       [/^Trigger$/, "Trigger"],
     ] as const) {
       fireEvent.click(within(bar).getByRole("button", { name: button }));
-      expect(screen.getAllByRole("region", { name: panel }).length).toBeGreaterThan(0);
+      const regions = screen.getAllByRole("region", { name: panel });
+      expect(regions.length).toBeGreaterThan(0);
+      // KAM-286: each panel says in a sentence what it is for.
+      expect(within(regions[0]!).getByTestId("panel-purpose").textContent!.length).toBeGreaterThan(
+        20,
+      );
     }
   });
 
@@ -232,7 +236,7 @@ describe("status bar", () => {
       removeSecret: async () => [],
     });
     expect(await screen.findByRole("button", { name: "Secrets" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Checks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check setup" })).toBeNull();
   });
 });
 
@@ -256,7 +260,8 @@ describe("actions", () => {
         .map((a) => a.id);
     expect(by("run")).toEqual(["run"]);
     expect(by("yaml")).toEqual(["yaml"]);
-    expect(by("status")).toEqual(["vars", "secrets", "guardrails", "checks", "trigger"]);
+    expect(by("status")).toEqual(["vars", "secrets", "guardrails", "trigger"]);
+    expect(by("topbar")).toEqual(["checks"]);
     expect(by("menu")).toEqual(["add-step", "add-tool", "edit-steps", "import", "export"]);
   });
 

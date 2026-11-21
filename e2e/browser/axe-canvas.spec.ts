@@ -83,8 +83,13 @@ for (const size of [
       });
       await page.getByRole("button", { name: "Test Run", exact: true }).click();
       await expectClean(page, "Test Run with a finished run");
+      await page
+        .getByRole("banner")
+        .getByRole("button", { name: "Check setup", exact: true })
+        .click();
+      await expectClean(page, "the Check setup panel");
 
-      for (const status of [/^Trigger/, /^Vars/, /^Guardrails$/, /^Checks$/, /^Secrets/]) {
+      for (const status of [/^Trigger/, /^Vars/, /^Guardrails$/, /^Secrets/]) {
         await page.getByRole("contentinfo").getByRole("button", { name: status }).click();
         await expect(page.getByRole("region", { name: /./ }).last()).toBeVisible();
         await expectClean(page, `the ${status} panel`);

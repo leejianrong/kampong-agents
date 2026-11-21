@@ -4151,3 +4151,10 @@ select.md3-text-field {
 .md3-approval__choice .md3-button {
   align-self: flex-start;
 }
+
+/* KAM-286: one sentence under each panel's title saying what it is for. */
+.md3-panel__purpose {
+  margin: 0;
+  padding: 0 1rem 0.5rem;
+  color: var(--md-sys-color-on-surface-variant);
+}

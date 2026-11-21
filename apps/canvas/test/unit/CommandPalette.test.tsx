@@ -170,7 +170,7 @@ describe("palette wording", () => {
 
   it("every status action is an Open command, and the palette entry only appears when it can open", () => {
     const names = buildActions(ctx).map(commandName);
-    expect(names).toContain("Open Checks");
+    expect(names).toContain("Open Check setup");
     expect(buildActions(ctx).some((a) => a.id === "commands")).toBe(false);
     expect(buildActions({ ...ctx, openPalette: vi.fn() }).some((a) => a.id === "commands")).toBe(
       true,

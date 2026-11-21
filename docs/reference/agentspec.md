@@ -527,13 +527,13 @@ step and the tools it calls get one. A line's accessible name uses the steps' na
 #### The top bar and the status bar
 
 The canvas has a **top bar** with the workflow's name (and **← Specs** in hosted mode), whether it is **Saved**
-(or "Saves paused" while the YAML has an error), **Test Run** (shows the details of the run), the `</>` button for the YAML drawer
+(or "Saves paused" while the YAML has an error, or "Not saved yet" until a file exists), **Test Run** (shows the details of the run), **Check setup**, the `</>` button for the YAML drawer
 and a **⋮** menu. The menu holds what is not used on every edit: **Add step**, **Add tool**, **Edit steps** (the
 list for renaming, reordering and deleting steps and tools), **Search commands**, **Show tour**, **Import YAML** and
 **Export YAML**. A step is also
 added from the palette on the left or the + on a line, and **+ Tool** under the palette adds a tool. The **status
 bar** along the bottom holds the workflow's settings, each opening its panel: **Vars**, **Secrets** (with the
-number of names the workflow reads that have no value yet), **Guardrails**, **Checks** and **Trigger**. Neither bar
+number of names the workflow reads that have no value yet), **Guardrails** and **Trigger**. Each panel says in a sentence what it is for. Neither bar
 overlaps at 480 pixels wide or more.
 
 If a save fails, the panel that was saving says so in its own words and keeps what you typed: "Could not save:
@@ -593,7 +593,7 @@ declared `vars` with their defaults. Hosted mode shows no var fields yet, becaus
 
 When a run, or a failed item in it, says an environment variable is not set (a missing model key, a connector
 credential), the Run bar gets a **Set it here** button. It opens **Secrets** with the form for that name ready, so you
-set the value there instead of in a shell or `.env`. The **Checks** panel offers the same on a failing or warning
+set the value there instead of in a shell or `.env`. The **Check setup** panel offers the same on a failing or warning
 check. **Secrets** also lists the secret a webhook trigger checks (`auth.secret_env`, or the one a `preset` needs) as
 **Needed, not set** until it has a value. Hosted mode has no Secrets panel here, so it shows no button.
 

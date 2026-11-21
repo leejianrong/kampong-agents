@@ -1,3 +1,4 @@
+import { explainError } from "./runReason.js";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ActionDescriptor } from "./actions.js";
 import type { RunMode } from "./api.js";
@@ -158,9 +159,10 @@ export function RunControls({
             type="button"
             className="md3-status-pill md3-status-pill--failed md3-runcontrols__chip"
             data-testid="runbar-status"
+            title={session.error}
             onClick={onOpenDetails}
           >
-            <span aria-hidden="true">✕</span> Could not start
+            <span aria-hidden="true">✕</span> {startFailure(session.error, missing)}
           </button>
         ) : summary && viewed ? (
           <button
@@ -248,6 +250,31 @@ export function RunControls({
           className="md3-run-confirm md3-runcontrols__confirm"
           data-testid="run-confirm"
         >
+          {session.missingSecrets.length > 0 && (
+            <div className="md3-run-confirm__missing" data-testid="run-confirm-missing">
+              <p className="md3-body-medium">
+                <strong>Not set yet:</strong> {session.missingSecrets.join(", ")}. The run will stop
+                at the first step that needs {session.missingSecrets.length === 1 ? "it" : "one"}.
+              </p>
+              {onSetSecret && (
+                <div className="md3-runcontrols__secrets">
+                  {session.missingSecrets.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className="md3-button md3-button-tonal"
+                      onClick={() => {
+                        session.cancelLive();
+                        onSetSecret(name);
+                      }}
+                    >
+                      {session.missingSecrets.length === 1 ? "Set it here" : `Set ${name} here`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <p className="md3-body-medium">
             <strong>Run live?</strong> This run can change things outside your project. It would
             call:
@@ -290,6 +317,14 @@ export function RunControls({
       )}
     </section>
   );
+}
+
+/** Why a run could not start, in the chip's few words (KAM-287): the missing key, a known kind of failure, or the plain fallback. */
+function startFailure(error: string, missing: string[]): string {
+  if (missing.length === 1) return `Needs ${missing[0]}`;
+  if (missing.length > 1) return `Needs ${missing.length} keys`;
+  const reason = explainError(error);
+  return reason.known ? reason.headline.replace(/\.$/, "") : "Could not start";
 }
 
 function duration(entry: RunEntry): string | null {
