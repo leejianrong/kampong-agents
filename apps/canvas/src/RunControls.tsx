@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ActionDescriptor } from "./actions.js";
 import type { RunMode } from "./api.js";
 import { ApprovalModal } from "./ApprovalModal.js";
+import { stepAfter } from "./approvalNext.js";
 import { failedItems } from "./runErrors.js";
 import type { RunEntry, RunSession } from "./runSession.js";
 import { formatDuration, summarizeRun } from "./runSummary.js";
@@ -24,9 +25,17 @@ export interface RunControlsProps {
   onSetSecret?: ((name: string) => void) | undefined;
   /** Shows the Test Run panel (the details of the run on show). */
   onOpenDetails: () => void;
+  /** The spec's steps, so an approval can say what runs after it (KAM-284). */
+  workflow?: unknown;
 }
 
-export function RunControls({ session, action, onSetSecret, onOpenDetails }: RunControlsProps) {
+export function RunControls({
+  session,
+  action,
+  onSetSecret,
+  onOpenDetails,
+  workflow,
+}: RunControlsProps) {
   const { options, mode, canChoose, runs, viewed, latest } = session;
   const root = useRef<HTMLElement>(null);
   const runButton = useRef<HTMLButtonElement>(null);
@@ -275,6 +284,7 @@ export function RunControls({ session, action, onSetSecret, onOpenDetails }: Run
       {latest?.state.status === "awaiting_approval" && latest.state.pendingApproval && (
         <ApprovalModal
           approval={latest.state.pendingApproval}
+          next={stepAfter(workflow, latest.state.pendingApproval.step)}
           onDecide={(approved, reason) => void session.decide(approved, reason)}
         />
       )}

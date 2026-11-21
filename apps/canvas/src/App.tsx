@@ -614,6 +614,15 @@ export function App({
       ),
     [runTracker.tracker, graph],
   );
+  // KAM-283: the approval steps the run on show went past without stopping, so the run log can say so.
+  const skippedApprovals = useMemo(
+    () =>
+      graph.nodes
+        .filter((n) => n.kind === "workflow" && n.data["type"] === "approval")
+        .filter((n) => runStatus[n.id]?.status === "skipped")
+        .map((n) => String(n.data["step"] ?? n.id.replace(/^workflow:/, ""))),
+    [graph, runStatus],
+  );
   // KAM-219: the runs of this session, shared by the Run bar and the Test Run panel. Held here, above both, so a
   // run keeps streaming and its result and typed vars survive while other panels open and close. The options are
   // fetched again when the spec's text changes, so a template just chosen offers Replay at once.
@@ -1388,6 +1397,7 @@ export function App({
               />
               <RunControls
                 session={runSession}
+                workflow={spec?.agent.workflow}
                 action={actions.find((a) => a.surface === "runbar")}
                 onOpenDetails={() => {
                   if (openForm !== "run") toolbarForm("run");
@@ -1851,6 +1861,8 @@ export function App({
               </div>
               <RunLog
                 session={runSession}
+                skippedApprovals={skippedApprovals}
+                hasVars={Object.keys(spec?.vars ?? {}).length > 0}
                 open={runLogOpen}
                 onToggle={() => setRunLogOpen((v) => !v)}
               />
