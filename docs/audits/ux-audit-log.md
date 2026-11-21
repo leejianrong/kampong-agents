@@ -87,7 +87,7 @@ Newest first. **Next audit due: 2026-11-28**, or sooner under the rules above.
 | KAM-285 | Templates before the assistant box | med | Done, #302 |
 | KAM-286 | Explain Vars, Checks and Test Run | med | Done, #303 |
 | KAM-287 | Name the reason on the Could not start chip | med | Done, #303 |
-| KAM-288 | Install without cloning the repo; help text | med | Open (help text done, #305) |
+| KAM-288 | Install without cloning the repo; help text | med | Partly done: help text #305; installs from tarballs (#310); the registry one-liner awaits the owner |
 | KAM-289 | Say a trigger is not running locally | med | Done, #304 |
 | KAM-290 | Plain titles on cards | low | Open |
 | KAM-291 | Saved only after a file exists | low | Done, #302 |

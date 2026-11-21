@@ -64,6 +64,9 @@ kampong run examples/agent.yaml --input "Hi, what can you do?"
 kampong dev examples                                   # the canvas, at http://localhost:4310
 ```
 
+No clone on the machine you want it on? `npm run pack:release` writes installable tarballs: see
+[Getting started](docs/getting-started.md#install-on-another-machine-without-the-repo).
+
 No key? `kampong templates` lists the ready-made specs, and the `market-etl` template runs on recorded
 data: see its [`README`](./packages/cli/templates/market-etl/README.md). In the canvas, the empty state and
 **New from template** in the menu list them too; choosing one copies the spec and its recorded data and opens it.

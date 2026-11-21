@@ -33,6 +33,32 @@ the compiled assets rather than a live dev server.
     The examples call `kampong`. After the build, `npm link -w packages/cli` puts it on your PATH. Without
     linking, run `node packages/cli/dist/cli.js` in its place.
 
+## Install on another machine, without the repo
+
+You can also use the tool on a machine that has no clone of the repo. On the machine with the repo, pack it into
+five tarballs:
+
+```sh
+npm run pack:release      # builds, then writes release/*.tgz
+```
+
+Copy the `release/` folder across, and on the other machine (Node 22 or newer) install all five in one command and
+start the canvas:
+
+```sh
+mkdir kampong && cd kampong && npm init -y
+npm install /path/to/release/*.tgz          # all five on one line
+npx kampong dev                             # the canvas, at http://localhost:4310
+```
+
+Nothing needs a clone, a build or a key to look around: choose a template in the canvas and press **Run**, which
+replays recorded data. A test (`e2e/install-from-tarballs.test.ts`) does exactly this in a clean folder.
+
+!!! note "Not on a package registry yet"
+    There is no one-line `npx` command from a registry yet. That means choosing the package names and the
+    account to publish under, and deciding the licence of the core, so it is left to the owner. When it is done,
+    the commands above shrink to `npx <package> dev`, and nothing else about the install changes.
+
 ## Set your API key
 
 Secrets never live in a spec file. A spec only ever references an environment variable, like
