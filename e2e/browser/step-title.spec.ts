@@ -35,6 +35,11 @@ test.beforeAll(async () => {
   throw new Error("kampong dev did not start");
 });
 
+// Each test edits the workflow, so each starts from the template as shipped.
+test.beforeEach(() => {
+  cpSync(join(TEMPLATE, "agent.yaml"), specPath);
+});
+
 test.afterAll(() => {
   server.kill();
   rmSync(dir, { recursive: true, force: true });
