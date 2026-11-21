@@ -3516,7 +3516,7 @@ select.md3-text-field {
 
 .md3-runlog__body {
   display: flex;
-  height: min(13rem, 28vh);
+  height: var(--runlog-body-h, min(13rem, 28vh));
   min-height: 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -3734,7 +3734,7 @@ select.md3-text-field {
 }
 
 .md3-runlog__body[data-view="timeline"] {
-  height: min(20rem, 42vh);
+  height: var(--runlog-body-h, min(20rem, 42vh));
 }
 .md3-timeline {
   flex: 1;
@@ -4006,4 +4006,87 @@ select.md3-text-field {
     grid-template-columns: 1fr;
     gap: 0.125rem;
   }
+}
+
+/* KAM-273: a handle along the log's top edge sets its height (drag, or Up and Down). */
+.md3-runlog {
+  position: relative;
+}
+.md3-runlog__resizer {
+  position: absolute;
+  top: -0.25rem;
+  left: 0;
+  right: 0;
+  height: 0.75rem;
+  z-index: 2;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.md3-runlog__resizer::after {
+  content: "";
+  position: absolute;
+  top: 0.25rem;
+  left: 50%;
+  width: 2.5rem;
+  height: 0.25rem;
+  margin-left: -1.25rem;
+  border-radius: 999px;
+  background: var(--md-sys-color-outline);
+  opacity: 0.5;
+}
+.md3-runlog__resizer:hover::after,
+.md3-runlog__resizer--live::after {
+  opacity: 1;
+}
+.md3-runlog__resizer:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+/* KAM-273: on a phone the open log is a sheet over the whole canvas with a clear close, and its list and detail
+   stack, so step names keep their full width. Closing it gives the canvas back untouched. */
+@media (max-width: 600px) {
+  .md3-runlog[data-open="true"] {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  .md3-runlog__resizer {
+    display: none;
+  }
+  .md3-runlog[data-open="true"] .md3-runlog__toggle {
+    width: auto;
+    padding: 0 0.75rem 0 1rem;
+    gap: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--md-type-label-large-size);
+  }
+  .md3-runlog[data-open="true"] .md3-runlog__toggle-label {
+    display: inline;
+  }
+  .md3-runlog[data-open="true"] .md3-runlog__body,
+  .md3-runlog[data-open="true"] .md3-runlog__body[data-view="timeline"] {
+    flex: 1;
+    height: auto;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .md3-runlog[data-open="true"] .md3-runlog__rows {
+    width: auto;
+    max-height: 40%;
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .md3-runlog[data-open="true"] .md3-runlog__detail {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.md3-runlog__toggle-label {
+  display: none;
 }
