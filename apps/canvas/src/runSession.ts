@@ -179,6 +179,55 @@ export function useRunSession(
     );
   }, []);
 
+  /** Takes a run into this session and follows it: one that began here, or one found on the server after a reload. */
+  function follow(id: string, state: RunState, rest: { mode?: RunMode; input: string }) {
+    const now = Date.now();
+    const entry: RunEntry = {
+      id,
+      ...(rest.mode && { mode: rest.mode }),
+      input: rest.input,
+      startedAt: now,
+      ...(isOver(state) && { endedAt: now }),
+      state,
+      tracker: { ...emptyTracker, runId: id },
+    };
+    setRuns((list) => [entry, ...list.filter((r) => r.id !== id)].slice(0, MAX_RUNS));
+    setViewedId(null);
+    trackerRef.current.begin(id);
+    const first: RunEventMessage = { type: "state", state };
+    trackerRef.current.publish(id, first);
+    update(id, first);
+
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = api.subscribeToRunEvents(id, (message) => {
+      update(id, message);
+      trackerRef.current.publish(id, message);
+    });
+  }
+
+  // KAM-280: a reload loses this session's runs, not the server's. A run still waiting for a decision is taken up
+  // again, so its dialog is back and the person can approve or reject it.
+  useEffect(() => {
+    if (!api.listPendingRuns) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const waiting = await api.listPendingRuns?.();
+        if (cancelled || !waiting || waiting.length === 0) return;
+        // The newest one drives the dialog; the rest are listed behind it.
+        const [newest, ...older] = [...waiting].reverse();
+        for (const run of older.reverse()) follow(run.id, run.state, { input: "" });
+        follow(newest!.id, newest!.state, { input: "" });
+      } catch {
+        // A server that cannot say leaves the bar as it was.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Once per page load.
+  }, [api]);
+
   async function start(forced?: RunMode) {
     setConfirmingLive(false);
     if (starting) return;
@@ -203,29 +252,7 @@ export function useRunSession(
         setError(result.error ?? "Failed to start run.");
         return;
       }
-      const id = result.id;
-      const now = Date.now();
-      const entry: RunEntry = {
-        id,
-        ...(result.mode && { mode: result.mode }),
-        input,
-        startedAt: now,
-        ...(isOver(result.state) && { endedAt: now }),
-        state: result.state,
-        tracker: { ...emptyTracker, runId: id },
-      };
-      setRuns((list) => [entry, ...list].slice(0, MAX_RUNS));
-      setViewedId(null);
-      trackerRef.current.begin(id);
-      const first: RunEventMessage = { type: "state", state: result.state };
-      trackerRef.current.publish(id, first);
-      update(id, first);
-
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = api.subscribeToRunEvents(id, (message) => {
-        update(id, message);
-        trackerRef.current.publish(id, message);
-      });
+      follow(result.id, result.state, { ...(result.mode && { mode: result.mode }), input });
     } finally {
       setStarting(false);
     }
