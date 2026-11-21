@@ -30,9 +30,11 @@ const NOISY_ALERT = JSON.stringify({
 });
 
 const CASES = [
-  { name: "market-etl", input: "" },
-  { name: "support-triage", input: "" },
-  { name: "webhook-triage", input: NOISY_ALERT },
+  { name: "market-etl", input: "", asks: false },
+  // The recorded ticket is an unsure one (KAM-283), so a replay stops at the approval step: asking a person is the
+  // trust feature the first run should show.
+  { name: "support-triage", input: "", asks: true },
+  { name: "webhook-triage", input: NOISY_ALERT, asks: false },
 ] as const;
 
 const NOT_SET = /is not set/i;
@@ -73,7 +75,7 @@ describe("replay needs no keys (KAM-233)", () => {
     throw new Error("the run did not settle");
   }
 
-  for (const { name, input } of CASES) {
+  for (const { name, input, asks } of CASES) {
     it(`kampong run --tools replay completes ${name} with an empty environment`, async () => {
       const { io, out, err } = capture();
       const code = await runCli(
@@ -87,6 +89,8 @@ describe("replay needs no keys (KAM-233)", () => {
           "replay",
           "--fixtures",
           `${templateDir(name)}fixtures`,
+          // Nobody is at the terminal to answer an approval.
+          ...(asks ? ["--approve-all"] : []),
         ],
         io,
       );
@@ -122,7 +126,17 @@ describe("replay needs no keys (KAM-233)", () => {
       expect(start.json()).toMatchObject({ success: true, mode: "replay" });
       const state = await settled(start.json().id);
       expect(JSON.stringify(state)).not.toMatch(NOT_SET);
-      expect(state.status).toBe("completed");
+      if (asks) {
+        expect(state.status).toBe("awaiting_approval");
+        const approved = await app.inject({
+          method: "POST",
+          url: `/api/runs/${start.json().id}/approve`,
+          payload: { approved: true },
+        });
+        expect(approved.json().state.status).toBe("completed");
+      } else {
+        expect(state.status).toBe("completed");
+      }
       if (name === "market-etl") {
         expect(state.finalOutput.each_symbol.errors.map((e: { item: string }) => e.item)).toEqual([
           "MSFT",

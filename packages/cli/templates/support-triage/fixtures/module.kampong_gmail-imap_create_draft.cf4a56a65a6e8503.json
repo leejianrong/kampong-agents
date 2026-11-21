@@ -1,0 +1,14 @@
+{
+  "kind": "module",
+  "toolName": "kampong/gmail-imap.create_draft",
+  "op": "create_draft",
+  "input": "{\"body\":\"Hi,\\n\\nThanks for getting in touch. A teammate will confirm your identity and follow up about the change.\\n\\nThe Support Team\",\"reply_to_uid\":8}",
+  "outcome": {
+    "ok": true,
+    "data": {
+      "mailbox": "[Gmail]/Drafts",
+      "uid": 101,
+      "message_id": "<5dcdf8d8-ab02-41d6-8275-510ddcf6c59d@example.com>"
+    }
+  }
+}

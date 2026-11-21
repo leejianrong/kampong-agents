@@ -41,10 +41,21 @@ describe("the support-triage template", () => {
     expect(source).not.toMatch(/xoxb-|app[ _-]?password:\s*\S/i);
   });
 
-  it("replays the recorded confident ticket to a saved draft: no approval, the model answered from its fixture, nothing sent", async () => {
+  it("replays the recorded unsure ticket to an approval, then to a saved draft: the model answered from its fixture, nothing sent", async () => {
     const { io, out, err } = capture();
     const code = await runCli(
-      ["run", SPEC_PATH, "--input", "", "--json", "--tools", "replay", "--fixtures", FIXTURES],
+      [
+        "run",
+        SPEC_PATH,
+        "--input",
+        "",
+        "--json",
+        "--tools",
+        "replay",
+        "--fixtures",
+        FIXTURES,
+        "--approve-all",
+      ],
       io,
     );
     expect(code, out.join("\n") + err.join("\n")).toBe(EXIT_SUCCESS);
@@ -52,17 +63,30 @@ describe("the support-triage template", () => {
       status: string;
       output: Record<
         string,
-        { taken?: string; uid?: number; mailbox?: string; confidence?: number }
+        { taken?: string; uid?: number; mailbox?: string; confidence?: number; approved?: boolean }
       >;
     };
     expect(outcome.status).toBe("completed");
-    expect(outcome.output.decide!.taken).toBe("then");
-    expect(outcome.output.triage!.confidence).toBeGreaterThanOrEqual(0.8);
-    expect(outcome.output.claim).toMatchObject({ ok: true, uid: 5 });
-    expect(outcome.output.draft_confident).toMatchObject({ mailbox: "[Gmail]/Drafts", uid: 101 });
-    expect(outcome.output).not.toHaveProperty("review");
+    // KAM-283: the demo asks a person, so the first run shows the approval step instead of skipping it.
+    expect(outcome.output.decide!.taken).toBe("else");
+    expect(outcome.output.triage!.confidence).toBeLessThan(0.8);
+    expect(outcome.output.review).toMatchObject({ approved: true });
+    expect(outcome.output.claim).toMatchObject({ ok: true, uid: 8 });
+    expect(outcome.output.draft_approved).toMatchObject({ mailbox: "[Gmail]/Drafts", uid: 101 });
+    expect(outcome.output).not.toHaveProperty("draft_confident");
     // The recorded answer is keyed on the whole prompt, so a hit means the email reached the model as data
     // and the FAQ rode in the system prompt, exactly as recorded.
+  });
+
+  it("stops for a person when nobody answers, and saves no draft (the approval is the point)", async () => {
+    const { io, out, err } = capture();
+    const code = await runCli(
+      ["run", SPEC_PATH, "--input", "", "--json", "--tools", "replay", "--fixtures", FIXTURES],
+      io,
+    );
+    expect(code).not.toBe(EXIT_SUCCESS);
+    expect(out.join("\n") + err.join("\n")).toContain("approval required at step");
+    expect(out.join("\n")).not.toContain("draft_approved");
   });
 
   it("kampong doctor finds a recorded fixture for every Gmail operation the spec calls", async () => {

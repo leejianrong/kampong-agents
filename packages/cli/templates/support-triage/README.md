@@ -36,14 +36,18 @@ network, except the model:
 ```
 kampong templates                                   # lists this template and where it lives
 kampong doctor agent.yaml --tools replay --fixtures fixtures
-kampong run agent.yaml --input "" --tools replay --fixtures fixtures --json
+kampong run agent.yaml --input "" --tools replay --fixtures fixtures --approve-all --json
 ```
 
-The recording is one scenario: a confident email about a password reset, so the draft is saved without an
-approval. (A fixture is keyed by the operation and its input, so a second mailbox would answer the same
-`list_unseen` differently; the tests cover the unsure, rejected and empty-inbox cases against a scripted
-mailbox instead.) The fixtures come from a scripted mailbox, not a capture of a real account. To record your own,
-run live once with `--tools record` and your credentials.
+The recording is one scenario: an email asking to change the address on an account, which the help notes say needs
+a person. The model is unsure, so the run **stops at the approval step** and waits for you. That is the point of the
+first run: you see the trust feature before anything is saved. In the canvas an **Approval required** dialog opens;
+on the command line pass `--approve-all` (or answer `y` on a terminal) to carry on to the draft. To see the other
+path, a confident draft saved with no approval, lower the `threshold` var, for example `--var threshold=0.3`. (A
+fixture is keyed by the operation and its input, so a second mailbox would answer the same `list_unseen`
+differently; the tests cover the confident, rejected and empty-inbox cases against a scripted mailbox instead.) The
+fixtures come from a scripted mailbox, not a capture of a real account, and `e2e/fixtures/record-support-triage-fixtures.mjs`
+regenerates them. To record your own, run live once with `--tools record` and your credentials.
 
 The `triage` model call replays from a recorded answer (`@model.*.json`), so the offline run needs no Ollama and
 no key. The answer comes from a scripted stand-in, not a real model. Another email makes a different prompt and

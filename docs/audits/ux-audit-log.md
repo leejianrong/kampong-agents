@@ -82,7 +82,7 @@ Newest first. **Next audit due: 2026-11-28**, or sooner under the rules above.
 | KAM-280 | Pending approval survives a reload | high | Done, #298 |
 | KAM-281 | Replay with no recording says what to do | high | Done, #299 |
 | KAM-282 | One assistant status, plain failure | high | Done, #300 |
-| KAM-283 | The demo never shows an approval | med | Open |
+| KAM-283 | The demo never shows an approval | med | Done, #308 (demo re-recorded as an unsure ticket) |
 | KAM-284 | Approval dialog says what each button does | med | Done, #301 |
 | KAM-285 | Templates before the assistant box | med | Done, #302 |
 | KAM-286 | Explain Vars, Checks and Test Run | med | Done, #303 |
