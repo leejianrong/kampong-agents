@@ -126,3 +126,36 @@ describe("loopStates and visibleRows (KAM-269)", () => {
     expect(loopStates(rows, new Set(), "each[1].fetch").get("each")?.open).toBe(true);
   });
 });
+
+describe("buildRunLog with step titles (KAM-290)", () => {
+  it("labels a row with the step's plain-words title, keeping its id for the pick, and the item for a loop step", () => {
+    const rows = buildRunLog(
+      tracker(
+        {
+          each: { startedAt: 0, endedAt: 500, outcome: "completed", output: { results: [] } },
+          "each[0].fetch": { startedAt: 10, endedAt: 190, outcome: "completed", output: 1 },
+          "each[1].fetch": { startedAt: 200, endedAt: 210 },
+          done: { startedAt: 510, endedAt: 513, outcome: "completed", output: "ok" },
+        },
+        state({
+          finalOutput: {
+            each: {
+              results: [],
+              errors: [{ index: 1, step: "fetch", message: "rate limited", item: "MSFT" }],
+            },
+          },
+        }),
+      ),
+      "{}",
+      { each: "For every symbol", fetch: "Look up the price" },
+    );
+    expect(rows.map((r) => [r.step, r.label])).toEqual([
+      ["each", "For every symbol"],
+      ["fetch", "Look up the price · #1"],
+      ["fetch", "Look up the price · MSFT"],
+      ["done", "done"],
+    ]);
+    // The canvas still finds a row by the step's id.
+    expect(rowForStep(rows, "fetch")?.label).toBe("Look up the price · MSFT");
+  });
+});

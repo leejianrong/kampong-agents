@@ -32,7 +32,8 @@ describe("the market-etl template on the canvas", () => {
       graph.nodes.map((n, i) => [n.id, { x: n.column * 260, y: i * 120 }]),
     );
     render(<Canvas graph={graph} layout={layout} />);
-    expect(screen.getByText("each_symbol")).toBeTruthy();
+    // KAM-290: the template titles its steps, so the card leads with the title and keeps the id in its tooltip.
+    expect(screen.getByText("For every stock on the list")).toBeTruthy();
     expect(screen.getByText(/over vars\.symbols as symbol/)).toBeTruthy();
     expect(screen.getByText(/on_error continue/)).toBeTruthy();
     // Ten steps are more than a loop shows by default (KAM-239): it opens as one card, and its button opens it.
@@ -55,6 +56,6 @@ describe("the market-etl template on the canvas", () => {
       "summarize",
       "alert",
     ]);
-    expect(screen.getByText(/report/)).toBeTruthy();
+    expect(screen.getByText("Count what worked and what failed")).toBeTruthy();
   });
 });

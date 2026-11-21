@@ -31,7 +31,12 @@ function parseInput(text: string): unknown {
   }
 }
 
-export function buildRunLog(tracker: RunTracker, runInput: string): LogRow[] {
+/** `titles` maps a step's id to its plain-words title (KAM-290); a row is labelled with it when there is one. */
+export function buildRunLog(
+  tracker: RunTracker,
+  runInput: string,
+  titles: Readonly<Record<string, string>> = {},
+): LogRow[] {
   const state = tracker.state;
   if (!state) return [];
   const over =
@@ -77,10 +82,11 @@ export function buildRunLog(tracker: RunTracker, runInput: string): LogRow[] {
       status = "running";
     }
     const index = /\[(\d+)\]\.[^[\]]*$/.exec(name)?.[1];
+    const shown = titles[step] ?? step;
     const label =
       index === undefined
-        ? step
-        : `${step} · ${itemFailure ? describeItem(itemFailure.item) || `#${Number(index) + 1}` : `#${Number(index) + 1}`}`;
+        ? shown
+        : `${shown} · ${itemFailure ? describeItem(itemFailure.item) || `#${Number(index) + 1}` : `#${Number(index) + 1}`}`;
     // What ran before this row: everything that finished earlier at the top level, and in the same loop item.
     const scope = name.slice(0, name.length - step.length);
     const input: Record<string, unknown> = { ...base };

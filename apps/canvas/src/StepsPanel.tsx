@@ -1,3 +1,4 @@
+import { StepTitleField } from "./StepTitleField.js";
 import { FieldProblemsContext, useFieldProblems } from "./fieldProblems.js";
 import { PanelError, PanelFooter } from "./Panel";
 import { useEffect, useId, useRef, useState } from "react";
@@ -322,6 +323,19 @@ export function StepsPanel({
             output schema, a transform, validate or dedupe step's expressions, a tool step's tool, a
             stop step's reason and status, or an approval step's message.
           </p>
+        )}
+        {only !== undefined && target && modern && (
+          <StepTitleField
+            stepId={target.name}
+            initial={(target.step as { title?: string }).title ?? ""}
+            onSave={(title) =>
+              onPatch([
+                title === ""
+                  ? { op: "remove", path: [...target.path, "title"] }
+                  : { op: "set", path: [...target.path, "title"], value: title },
+              ])
+            }
+          />
         )}
         {only !== undefined && target && !editing && modern && (
           <p className="md3-body-small md3-field__hint" data-testid="step-not-editable">

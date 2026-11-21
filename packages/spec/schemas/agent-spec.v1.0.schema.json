@@ -663,6 +663,11 @@
               "type": "string",
               "minLength": 1
             },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
             "type": {
               "type": "string",
               "const": "condition"
@@ -690,6 +695,11 @@
               "type": "string",
               "minLength": 1
             },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
             "type": {
               "type": "string",
               "const": "tool"
@@ -709,6 +719,11 @@
               "type": "string",
               "minLength": 1
             },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
             "type": {
               "type": "string",
               "const": "approval"
@@ -726,6 +741,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "type": {
               "type": "string",
@@ -751,6 +771,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "type": {
               "type": "string",
@@ -778,6 +803,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "type": {
               "type": "string",
@@ -808,6 +838,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "action": {
               "type": "string",
@@ -855,6 +890,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "foreach": {
               "type": "object",
@@ -940,6 +980,11 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
                           "type": {
                             "type": "string",
                             "const": "condition"
@@ -967,6 +1012,11 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
                           "type": {
                             "type": "string",
                             "const": "tool"
@@ -986,6 +1036,11 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
                           "type": {
                             "type": "string",
                             "const": "approval"
@@ -1003,6 +1058,11 @@
                           "step": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
                           },
                           "type": {
                             "type": "string",
@@ -1028,6 +1088,11 @@
                           "step": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
                           },
                           "type": {
                             "type": "string",
@@ -1055,6 +1120,11 @@
                           "step": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
                           },
                           "type": {
                             "type": "string",
@@ -1085,6 +1155,11 @@
                           "step": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
                           },
                           "action": {
                             "type": "string",
@@ -1133,6 +1208,11 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
                           "foreach": {}
                         },
                         "required": ["step", "foreach"],
@@ -1144,6 +1224,11 @@
                           "step": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
                           },
                           "branch": {
                             "anyOf": [
@@ -1228,6 +1313,11 @@
                             "type": "string",
                             "minLength": 1
                           },
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
                           "stop": {
                             "type": "object",
                             "properties": {
@@ -1263,6 +1353,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "branch": {
               "anyOf": [
@@ -1346,6 +1441,11 @@
             "step": {
               "type": "string",
               "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
             },
             "stop": {
               "type": "object",

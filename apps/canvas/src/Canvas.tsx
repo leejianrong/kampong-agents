@@ -30,7 +30,7 @@ import {
   type InsertEdgeData,
 } from "./InsertEdge.js";
 import type { StepKind } from "./stepKinds.js";
-import { NodeCard } from "./nodeCard.js";
+import { NodeCard, titleOf } from "./nodeCard.js";
 import { connectorBrands } from "./connectorBrand.js";
 import { ToolLinkEdge } from "./ToolLinkEdge.js";
 import { edgeRun, edgeRunText } from "./edgeRun.js";
@@ -814,6 +814,9 @@ function nodeAriaLabel(node: SpecNode): string {
           ? "Stop"
           : (STEP_KIND_WORD[String(d.type)] ?? "Workflow");
     what = `${kind} step ${name}`;
+    // KAM-290: its plain-words title too, after the id a person or a test may know it by.
+    const title = titleOf(node);
+    if (title !== undefined) what += `, ${title}`;
   }
   if (node.parent) {
     const arm = node.arm !== undefined ? `, ${node.arm}` : "";
