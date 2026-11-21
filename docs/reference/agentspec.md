@@ -154,6 +154,10 @@ expressions, so the panel asks you to upgrade first (see [Upgrading from the can
 
 Three kinds: `webhook`, `schedule` and `poll`.
 
+`kampong dev` never fires a trigger by itself: a schedule, webhook or poll runs there only when you press Run. The
+**Trigger** panel and the status bar chip say "Not running here" and link to [`kampong serve`](cli.md#kampong-serve), which
+runs the trigger for real.
+
 On the canvas, **Trigger** edits `agent.trigger` in place: pick a kind, fill the form, and the save is a patch
 that leaves the rest of the file as it was. The form applies the loader's own rules, so a trigger it builds
 always loads, and the errors name the field. A webhook takes its preset, authentication, response mode, `when`

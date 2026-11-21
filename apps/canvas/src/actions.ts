@@ -63,6 +63,8 @@ export interface ActionContext {
   /** How many vars the spec declares, and what starts a run in words ("Every 6 hours"): shown on the status chips. */
   varCount?: number;
   triggerSummary?: string;
+  /** The local server, where a trigger does not fire by itself (KAM-289). */
+  local?: boolean;
   /** Opens a panel, or closes it when it is already open. */
   toggleForm: (form: OpenForm) => void;
   toggleYaml: () => void;
@@ -174,6 +176,12 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
       form("trigger", "trigger", "status", "Trigger", {
         keywords: ["schedule", "webhook", "poll"],
         ...(ctx.triggerSummary ? { detail: ctx.triggerSummary } : {}),
+        ...(ctx.local && ctx.triggerSummary
+          ? {
+              title:
+                "Not running here: it starts only when you press Run. Deploy it to run on its own.",
+            }
+          : {}),
       }),
       form("add-step", "workflow", "menu", "Add step", {
         title: "Add a step by choosing its kind and place",

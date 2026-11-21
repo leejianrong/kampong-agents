@@ -25,6 +25,7 @@ export function StatusBar({
           // The name starts with the words on the button, as WCAG 2.5.3 wants, then says what the count means.
           aria-label={item.badge ? `${item.label} ${item.badge.words}` : undefined}
           data-testid={`status-${item.id}`}
+          title={item.title}
           onClick={item.run}
         >
           {item.label}

@@ -4158,3 +4158,15 @@ select.md3-text-field {
   padding: 0 1rem 0.5rem;
   color: var(--md-sys-color-on-surface-variant);
 }
+
+/* KAM-289: the trigger panel says a trigger does not fire by itself while building locally. */
+.md3-trigger__local {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-warning-container);
+  color: var(--md-sys-color-on-warning-container);
+}
+.md3-trigger__local a {
+  color: inherit;
+}

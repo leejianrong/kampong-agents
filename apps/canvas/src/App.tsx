@@ -1357,6 +1357,7 @@ export function App({
     replay: runSession.mode === "replay",
     varCount: Object.keys(spec?.vars ?? {}).length,
     ...(spec?.agent.trigger && { triggerSummary: triggerSummary(spec.agent.trigger) }),
+    local: api.listComponents !== undefined,
     toggleForm: (form) => toolbarForm(openForm === form ? null : form),
     toggleYaml: () => setYamlOpen((open) => !open),
     undo: { run: () => void stepHistory("undo"), disabled: history.undoCount === 0 },
@@ -1771,6 +1772,7 @@ export function App({
                         trigger={spec.agent.trigger}
                         onSave={handleSaveTrigger}
                         onRemove={handleRemoveTrigger}
+                        local={api.listComponents !== undefined}
                       />
                     </Panel>
                   )}
