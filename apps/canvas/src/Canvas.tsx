@@ -6,6 +6,9 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useStoreApi,
+  getNodesBounds,
+  getViewportForBounds,
   useUpdateNodeInternals,
   type EdgeChange,
   type NodeChange,
@@ -112,6 +115,8 @@ const MARKER_ID = "insertion-marker";
  */
 const FIT_HEAD = 4;
 const MIN_READABLE_ZOOM = 0.65;
+/** Below this zoom a whole-graph fit makes cards too small to read, so a refit shows the first steps instead. */
+const REFIT_FLOOR = 0.4;
 /** A workflow with more nodes than this gets a minimap (KAM-187). */
 const MINIMAP_OVER = 15;
 
@@ -211,25 +216,34 @@ function RefitOnChange({
   options: object;
 }) {
   const flow = useReactFlow();
+  const store = useStoreApi();
   const seen = useRef(refitOn);
   useEffect(() => {
     if (seen.current === refitOn) return;
     seen.current = refitOn;
     // After the new layout has been laid out, so the fit measures the new size.
     const frame = requestAnimationFrame(() => {
-      // Show it all, as the Fit control does (same floor): the room just shrank, and a cut-off card is worse.
-      if (!moved.current)
-        void flow.fitView({
-          padding: 0.15,
-          maxZoom: 1,
-          ...options,
-          nodes: undefined,
-          minZoom: 0.05,
-          duration: 0,
-        });
+      if (moved.current) return;
+      // Show it all, as the Fit control does, so no card is cut off by the room the panel took. But when that would
+      // shrink the cards below a readable size, open on the first steps instead, as on load (KAM-238).
+      const { width, height } = store.getState();
+      const nodes = flow.getNodes();
+      const all =
+        nodes.length > 0
+          ? getViewportForBounds(getNodesBounds(nodes), width, height, 0.05, 1, 0.15)
+          : undefined;
+      const readable = all === undefined || all.zoom >= REFIT_FLOOR;
+      void flow.fitView({
+        padding: 0.15,
+        maxZoom: 1,
+        ...options,
+        ...(readable && { nodes: undefined }),
+        minZoom: readable ? 0.05 : MIN_READABLE_ZOOM,
+        duration: 0,
+      });
     });
     return () => cancelAnimationFrame(frame);
-  }, [flow, refitOn, moved, options]);
+  }, [flow, store, refitOn, moved, options]);
   return null;
 }
 
