@@ -26,10 +26,6 @@ const MARGIN = 12;
 
 const isPhone = () => window.matchMedia?.("(max-width: 600px)").matches === true;
 
-type Rect = { left: number; top: number; right: number; bottom: number };
-const hits = (a: Rect, b: Rect) =>
-  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-
 interface Place {
   top: number;
   left: number;
