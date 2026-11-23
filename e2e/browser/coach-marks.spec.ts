@@ -130,6 +130,35 @@ for (const size of [
       await expect(mark(page)).toHaveCount(0);
     });
 
+    // KAM-319: the Run mark sits beside the Run button, and the button moves right when the mode switch arrives with
+    // the run options. On a slow runner that is after the card first measured, so the card ended up on the button
+    // and a click on Run could not land. The card follows the bar as it settles.
+    test("the Run mark stays off the Run button when the run options arrive late", async ({
+      page,
+    }) => {
+      await page.route("**/api/run-options", async (route) => {
+        await new Promise((r) => setTimeout(r, 2500));
+        await route.continue();
+      });
+      await page.goto(URL);
+      await page.getByTestId("template-market-etl-use").click();
+      await expect(mark(page)).toHaveAttribute("data-mark", "run");
+      // Let the options arrive and the mode switch appear, then the card must have moved clear of the button.
+      await expect(page.getByRole("group", { name: "Run mode" })).toBeVisible({ timeout: 15000 });
+      await expect
+        .poll(
+          async () => {
+            const run = (await page.getByTestId("run-button").boundingBox())!;
+            const card = (await mark(page).boundingBox())!;
+            return card.x >= run.x + run.width - 1 || card.y >= run.y + run.height - 1;
+          },
+          { timeout: 5000 },
+        )
+        .toBe(true);
+      // And Run can be pressed, which is what the card used to prevent.
+      await page.getByTestId("run-button").click({ timeout: 5000 });
+    });
+
     test("Skip tour turns it off for good, with the keyboard too; Show tour plays it again", async ({
       page,
     }) => {
