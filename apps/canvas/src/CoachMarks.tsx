@@ -4,13 +4,16 @@ import type { Coach, CoachMark } from "./coachMarks.js";
 // The card for the mark the tour is on (KAM-220). It sits near what it points at without taking focus or covering it,
 // is announced politely, and is reachable by keyboard (Tab to Skip tour or Got it; Escape from inside it skips).
 
-const TEXT: Record<CoachMark, (replay: boolean) => string> = {
+const TEXT: Record<CoachMark, (replay: boolean, phone: boolean) => string> = {
   template: () => "Pick a template to start from. You can change every step afterwards.",
   run: (replay) =>
     replay
       ? "Press Run to try it. Replay uses recorded data, so no keys are needed."
       : "Press Run to try the workflow.",
-  step: () => "Click a step to see the data it handled in this run.",
+  step: (_replay, phone) =>
+    phone
+      ? "Tap a step in the list to see the data it handled in this run."
+      : "Click a step to see the data it handled in this run.",
 };
 
 const ANCHOR: Record<CoachMark, string> = {
@@ -20,6 +23,12 @@ const ANCHOR: Record<CoachMark, string> = {
 };
 
 const MARGIN = 12;
+
+const isPhone = () => window.matchMedia?.("(max-width: 600px)").matches === true;
+
+type Rect = { left: number; top: number; right: number; bottom: number };
+const hits = (a: Rect, b: Rect) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
 interface Place {
   top: number;
@@ -60,7 +69,10 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
   useLayoutEffect(() => {
     if (!mark) return;
     function measure() {
-      const target = document.querySelector(ANCHOR[mark!]);
+      const phone = isPhone();
+      // On a phone the open log is a sheet over the canvas, so the step to click is a row in its list (KAM-305).
+      const anchor = mark === "step" && phone ? ".md3-runlog__rows" : ANCHOR[mark!];
+      const target = document.querySelector(anchor);
       const el = card.current;
       if (!el) return;
       // Nothing to point at (the anchor is not on screen): sit at the bottom left rather than vanish.
@@ -76,7 +88,24 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
       const width = el.offsetWidth;
       const height = el.offsetHeight;
       const room = window.innerWidth - width - MARGIN;
-      if (mark === "run") {
+      if (mark === "step" && phone) {
+        // Along the screen's bottom, over the empty part of the sheet below the step's detail.
+        setPlace({
+          top: Math.max(MARGIN, window.innerHeight - height - MARGIN),
+          left: MARGIN,
+          below: false,
+          pointer: 0,
+        });
+      } else if (mark === "run" && window.innerWidth - box.right > width + MARGIN * 2) {
+        // Beside the button, in the run bar's empty stretch, so it covers neither the palette nor the canvas's
+        // first cards (KAM-305).
+        setPlace({
+          top: Math.max(MARGIN, box.top - 4),
+          left: box.right + 10,
+          below: false,
+          pointer: 0,
+        });
+      } else if (mark === "run") {
         const left = Math.max(MARGIN, Math.min(box.left, room));
         setPlace({
           top: box.bottom + 10,
@@ -96,21 +125,59 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
           pointer: 0,
         });
       } else {
-        // In the canvas pane, along its bottom, clear of the controls in its corners.
-        setPlace({
-          top: Math.max(MARGIN, box.bottom - height - 56),
-          left: Math.max(MARGIN, Math.min(box.left + (box.width - width) / 2, room)),
-          below: false,
-          pointer: 0,
-        });
+        // In the canvas pane, clear of the controls in its corners and of every card: the first of these spots
+        // that none of the cards is under (KAM-305), else along the bottom.
+        const centred = Math.max(MARGIN, Math.min(box.left + (box.width - width) / 2, room));
+        const bottom = Math.max(MARGIN, box.bottom - height - 56);
+        const spots = [
+          { left: centred, top: bottom },
+          { left: Math.max(MARGIN, room - 56), top: bottom },
+          { left: box.left + 64, top: bottom },
+          { left: centred, top: box.top + MARGIN },
+        ];
+        // A short canvas has no clear spot; the run bar's empty stretch, to the right of the outcome, is another.
+        const chip = document
+          .querySelector('[data-testid="runbar-status"]')
+          ?.getBoundingClientRect();
+        const bar = document.querySelector(".md3-runbar")?.getBoundingClientRect();
+        if (chip && bar && window.innerWidth - chip.right > width + MARGIN * 2) {
+          spots.push({ left: chip.right + MARGIN, top: Math.max(MARGIN, bar.top + 4) });
+        }
+        const cards = [...document.querySelectorAll(".react-flow__node")].map((n) =>
+          n.getBoundingClientRect(),
+        );
+        // The least of the cards covered: none where there is room, and the smallest area where there is not.
+        const covered = (spot: { left: number; top: number }) => {
+          const r = {
+            left: spot.left,
+            top: spot.top,
+            right: spot.left + width,
+            bottom: spot.top + height,
+          };
+          return cards.reduce((sum, c) => {
+            const w = Math.min(r.right, c.right) - Math.max(r.left, c.left);
+            const h = Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top);
+            return sum + (w > 0 && h > 0 ? w * h : 0);
+          }, 0);
+        };
+        const at = spots.reduce(
+          (best, spot) => (covered(spot) < covered(best) ? spot : best),
+          spots[0]!,
+        );
+        setPlace({ top: at.top, left: at.left, below: false, pointer: 0 });
       }
     }
     measure();
+    // The bar the card sits beside can still be settling (the mode switch arrives with the options), so measure again
+    // once it has laid out; the observer below only sees the target change size, not move (KAM-305).
+    const settle = [requestAnimationFrame(measure), window.setTimeout(measure, 300)] as const;
     window.addEventListener("resize", measure);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     const target = document.querySelector(ANCHOR[mark]);
     if (target) observer?.observe(target);
     return () => {
+      cancelAnimationFrame(settle[0]);
+      clearTimeout(settle[1]);
       window.removeEventListener("resize", measure);
       observer?.disconnect();
     };
@@ -143,7 +210,7 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
         }
       }}
     >
-      <p className="md3-body-medium md3-coach__text">{TEXT[mark](replay)}</p>
+      <p className="md3-body-medium md3-coach__text">{TEXT[mark](replay, isPhone())}</p>
       <div className="md3-coach__actions">
         <span className="md3-body-small md3-coach__count">
           {coach.position.at} of {coach.position.of}

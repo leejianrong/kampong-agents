@@ -83,7 +83,9 @@ describe("useCoachMarks", () => {
     // Playing it again skips what is already done (a workflow exists) and starts at Run.
     act(() => result.current.restart());
     expect(result.current.mark).toBe("run");
-    expect(stored()).toEqual({ status: "active", index: 1 });
+    expect(stored()).toEqual({ status: "active", index: 1, first: 1 });
+    // The tour is two marks long here, so Run reads 1 of 2 (KAM-305), not 2 of 3.
+    expect(result.current.position).toEqual({ at: 1, of: 2 });
   });
 
   it("Skip turns it off for good, across a reload", () => {
