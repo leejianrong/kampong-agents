@@ -40,6 +40,22 @@ import { createDevServer } from "./server.js";
 import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
 import { slackApprovalNotice } from "./slack-notice.js";
+import { SecretStore } from "./secrets.js";
+
+/**
+ * Values saved from the canvas (`.kampong/secrets.env` next to the spec) are what `run`, `serve` and `doctor` should
+ * see too (KAM-307). The environment wins over a saved value; an unreadable file is ignored, not fatal.
+ */
+async function useSavedSecrets(
+  specPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  try {
+    await new SecretStore(join(dirname(resolve(specPath)), ".kampong"), env).loadMissing();
+  } catch {
+    // a missing or unreadable file means nothing was saved
+  }
+}
 
 // The CLI's real command surface (PLAN.md Shape S5, SLICES.md V3 KAN-1109/
 // 1110). `packages/cli/src/index.ts` stays a pure library barrel (imported
@@ -508,6 +524,7 @@ async function runServeCommand(
     io.stderr(`kampong serve: spec file not found: ${resolvedSpecPath}`);
     return EXIT_VALIDATION_FAILURE;
   }
+  await useSavedSecrets(resolvedSpecPath);
 
   let runtime;
   const runnersRef: { current?: ReturnType<typeof startServeRunners> } = {};
@@ -911,6 +928,7 @@ async function runRunCommand(
     return EXIT_USAGE_ERROR;
   }
 
+  await useSavedSecrets(specPath);
   const runSecrets =
     toolsMode === "live" && !modelModeFlag
       ? []
@@ -1364,6 +1382,7 @@ async function runDoctorCommand(
     io.stderr(`kampong doctor: could not read spec file at ${specPath}: ${(err as Error).message}`);
     return EXIT_VALIDATION_FAILURE;
   }
+  await useSavedSecrets(specPath, testOptions.env ?? process.env);
   const { success, spec, errors } = parseSpec(source);
   if (!success || !spec) {
     io.stderr(`kampong doctor: spec validation failed: ${specPath}`);
