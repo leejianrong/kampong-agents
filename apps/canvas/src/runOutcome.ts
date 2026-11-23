@@ -1,7 +1,8 @@
 import type { RunState } from "./api.js";
 import type { LogRow } from "./runLog.js";
 import { explainError } from "./runReason.js";
-import { finishedWithFailures } from "./runSummary.js";
+import { nothingWorked } from "./runErrors.js";
+import { finishedWithFailures, nothingWorkedLabel } from "./runSummary.js";
 
 // ADR-0063 / KAM-269: the answer to "what happened?" in a line or two of plain words, read off the run and its log
 // rows. The run log leads with it; the step list and the data are one click below.
@@ -83,6 +84,20 @@ export function outcomeOf(
     }
     default: {
       const note = skippedNote(extras);
+      if (failed.length > 0 && first && nothingWorked(state.finalOutput)) {
+        // Every item failed: a failed run in words, with the reason when it was the same for all.
+        const reasons = new Set(failed.map((r) => reasonLine(r.error ?? "The step failed.")));
+        const [only] = [...reasons];
+        return {
+          ...(note !== undefined && { note }),
+          tone: "error",
+          headline: nothingWorkedLabel(failed.length).replace(", all", ": all"),
+          detail:
+            reasons.size === 1 && only
+              ? `Every one failed the same way: ${only}`
+              : `First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`,
+        };
+      }
       if (failed.length > 0 && first) {
         return {
           ...(note !== undefined && { note }),

@@ -1,5 +1,5 @@
 import type { RunEventMessage, RunState } from "./api.js";
-import { failedItems } from "./runErrors.js";
+import { failedItems, loopAllFailed } from "./runErrors.js";
 import { missingSecretNames } from "./secretNames.js";
 
 // What a run did to each step, read off the run's event stream (KAM-190). The canvas draws it on the nodes, and
@@ -154,7 +154,16 @@ export function deriveNodeStatuses(
     if (entry.outcome === "failed") {
       info = { status: "failed", message: entry.error ?? "The step failed." };
     } else if (entry.outcome === "completed") {
-      info = { status: "passed", output: entry.output };
+      // A loop that carried on past every one of its items is not "Done": none of them worked (KAM-297).
+      const all = loopAllFailed(entry.output);
+      info =
+        all !== undefined
+          ? {
+              status: "failed",
+              message: `None of the ${all} ${all === 1 ? "item" : "items"} worked.`,
+              output: entry.output,
+            }
+          : { status: "passed", output: entry.output };
     } else if (over) {
       const message = itemFailures.get(step);
       info = message !== undefined ? { status: "failed", message } : { status: "skipped" };
