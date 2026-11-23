@@ -27,6 +27,8 @@ export interface TimelineRow {
   statusWord?: string;
   /** A loop's size in words: "10 items". */
   note?: string;
+  /** For a row that stands for several (the same step failing on many items): each one, for the expander. */
+  group?: TimelineRow[];
 }
 
 export interface TimelineOptions {
@@ -36,6 +38,10 @@ export interface TimelineOptions {
   omitFailure?: boolean;
   /** List every step of a loop, not just the ones that failed. */
   showAll?: boolean;
+  /** Step id to plain-words title (KAM-301), so a row reads as the person named the step. */
+  titles?: Readonly<Record<string, string>>;
+  /** The item a loop step ran on, by the span's name (`each[2].fetch`), when the run says (a failed item). */
+  itemValue?: (spanName: string) => string | undefined;
 }
 
 export interface Fact {
@@ -102,10 +108,19 @@ const tokensOf = (s: TraceSpan): number | undefined =>
 /** A span with the time it was running, using `now` for one still going. */
 const elapsed = (s: TraceSpan, now: number): number => (s.endedAt ?? now) - s.startedAt;
 
-/** A step as a person names it: `each[2].fetch` is "fetch, item 3". */
-export function displayName(name: string): string {
+/**
+ * A step as a person names it: `each[2].fetch` is "fetch, item 3", or with the step's title and the item's value
+ * (KAM-301) "Look up the latest price · MSFT".
+ */
+export function displayName(
+  name: string,
+  options: Pick<TimelineOptions, "titles" | "itemValue"> = {},
+): string {
   const m = /\[(\d+)\]\.([^[\]]*)$/.exec(name);
-  return m ? `${m[2]}, item ${Number(m[1]) + 1}` : name;
+  const title = (id: string) => options.titles?.[id] ?? id;
+  if (!m) return title(name);
+  const value = options.itemValue?.(name);
+  return `${title(m[2]!)}${value !== undefined ? ` · ${value}` : `, item ${Number(m[1]) + 1}`}`;
 }
 
 /** Steps this quick are not worth a number. */
@@ -179,7 +194,8 @@ export function buildTimeline(
     s.kind !== "run" &&
     (options.showAll === true || !insideLoop(s) || (s.status === "error" && s.kind !== "model"));
 
-  const rows: TimelineRow[] = trace.spans.filter(shown).map((s) => {
+  const shownSpans = trace.spans.filter(shown);
+  const built: TimelineRow[] = shownSpans.map((s) => {
     const dur = elapsed(s, now);
     const tokens = tokensOf(s);
     const loop = s.kind === "foreach";
@@ -188,7 +204,7 @@ export function buildTimeline(
     const status: SpanStatus = loop && failed > 0 && s.status === "ok" ? "error" : s.status;
     return {
       id: s.id,
-      label: s.kind === "model" ? (s.model ?? s.name) : displayName(s.name),
+      label: s.kind === "model" ? (s.model ?? s.name) : displayName(s.name, options),
       kindLabel: KIND_LABEL[s.kind] ?? "Step",
       kind: s.kind,
       status,
@@ -207,6 +223,47 @@ export function buildTimeline(
         s.status === "ok" && { statusWord: `Done, ${failed} of ${items || failed} failed` }),
     };
   });
+
+  // KAM-301: the same step failing on many items is one row ("Look up the latest price: 23 failed") with the items
+  // under an expander, not 23 near-identical bars. Listing every step (showAll) keeps them all as they ran.
+  const rows: TimelineRow[] = [];
+  if (options.showAll === true) rows.push(...built);
+  else {
+    const groups = new Map<string, number[]>();
+    shownSpans.forEach((s, i) => {
+      if (s.status !== "error" || s.kind === "model" || !insideLoop(s)) return;
+      const step = /\[\d+\]\.([^[\]]*)$/.exec(s.name)?.[1];
+      if (step === undefined) return;
+      const key = `${s.parentId ?? ""}|${step}`;
+      groups.set(key, [...(groups.get(key) ?? []), i]);
+    });
+    const folded = new Set<number>();
+    const heads = new Map<number, TimelineRow>();
+    for (const members of groups.values()) {
+      if (members.length < 2) continue;
+      const items = members.map((i) => built[i]!);
+      const first = items[0]!;
+      const step = /\[\d+\]\.([^[\]]*)$/.exec(shownSpans[members[0]!]!.name)![1]!;
+      const left = Math.min(...items.map((r) => r.leftPct));
+      const right = Math.max(...items.map((r) => r.leftPct + r.widthPct));
+      members.forEach((i) => folded.add(i));
+      heads.set(members[0]!, {
+        ...first,
+        id: `${first.id}:failed`,
+        label: `${options.titles?.[step] ?? step}: ${items.length} failed`,
+        kindLabel: "Failed items",
+        leftPct: left,
+        widthPct: right - left,
+        statusWord: `${items.length} failed`,
+        group: items,
+      });
+    }
+    built.forEach((row, i) => {
+      const head = heads.get(i);
+      if (head) rows.push(head);
+      else if (!folded.has(i)) rows.push(row);
+    });
+  }
 
   return {
     rows,
@@ -235,19 +292,19 @@ function factsOf(trace: RunTrace, now: number, options: TimelineOptions): Fact[]
   } else if (failed && trace.status === "error") {
     facts.push({
       tone: "error",
-      text: `Stopped at "${displayName(failed.name)}"${detail(failed)}`,
+      text: `Stopped at "${displayName(failed.name, options)}"${detail(failed)}`,
     });
   } else if (failed) {
     // The run went on past these (a loop set to continue on error).
     const n = failures.length;
     facts.push({
       tone: "warn",
-      text: `${n} ${n === 1 ? "step" : "steps"} failed but the run carried on. First: "${displayName(failed.name)}"${detail(failed)}`,
+      text: `${n} ${n === 1 ? "step" : "steps"} failed but the run carried on. First: "${displayName(failed.name, options)}"${detail(failed)}`,
     });
   } else if (rejected) {
     facts.push({
       tone: "warn",
-      text: `"${displayName(rejected.name)}" was rejected${detail(rejected)}`,
+      text: `"${displayName(rejected.name, options)}" was rejected${detail(rejected)}`,
     });
   }
 
@@ -261,7 +318,7 @@ function factsOf(trace: RunTrace, now: number, options: TimelineOptions): Fact[]
   if (slowest && steps.length > 1) {
     facts.push({
       tone: "info",
-      text: `Slowest step: "${displayName(slowest.name)}", ${formatDuration(own(slowest))}.`,
+      text: `Slowest step: "${displayName(slowest.name, options)}", ${formatDuration(own(slowest))}.`,
     });
   }
 
@@ -271,7 +328,7 @@ function factsOf(trace: RunTrace, now: number, options: TimelineOptions): Fact[]
     if (s.kind !== "model" || !s.parentId) continue;
     const parent = trace.spans.find((p) => p.id === s.parentId);
     if (!parent || parent.kind === "run") continue;
-    const entry = perStep.get(parent.id) ?? { name: displayName(parent.name), tokens: 0 };
+    const entry = perStep.get(parent.id) ?? { name: displayName(parent.name, options), tokens: 0 };
     entry.tokens += tokensOf(s) ?? 0;
     perStep.set(parent.id, entry);
   }
