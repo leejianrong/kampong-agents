@@ -9,6 +9,7 @@ import {
   type ExpressionScope,
   type Trigger,
   type TriggerFormInput,
+  type ComponentCatalogEntry,
   type TriggerType,
   type WebhookTrigger,
 } from "@kampong/spec";
@@ -28,12 +29,30 @@ export interface TriggerPanelProps {
   onRemove: () => Promise<boolean>;
   /** The local server: nothing here fires a trigger by itself (KAM-289). The hosted server runs deployed ones. */
   local?: boolean;
+  /** The installed components (KAM-313): a poll's Component and Op are picked from these, and the pair is checked on save. */
+  components?: ComponentCatalogEntry[] | undefined;
 }
 
 export const DEPLOY_DOC =
   "https://leejianrong.github.io/kampong-agents/reference/cli/#kampong-serve";
 
 export const WEBHOOK_DOC = "https://leejianrong.github.io/kampong-agents/tutorial/webhooks/";
+
+/** The one thing wrong with a poll's component and op against what is installed, or undefined (KAM-313). */
+export function pollPairProblem(
+  poll: { use: string; op: string },
+  components: ComponentCatalogEntry[] | undefined,
+): string | undefined {
+  if (!components || components.length === 0) return undefined;
+  const entry = components.find((c) => `${c.id}@${c.version}` === poll.use);
+  if (!entry) {
+    return `${poll.use} is not installed here. Installed: ${components.map((c) => `${c.id}@${c.version}`).join(", ")}.`;
+  }
+  if (!Object.hasOwn(entry.ops, poll.op)) {
+    return `${poll.use} has no op "${poll.op}". It has: ${Object.keys(entry.ops).join(", ")}.`;
+  }
+  return undefined;
+}
 
 function GoLiveBlock({ trigger }: { trigger: WebhookTrigger }) {
   const live = goLive(trigger);
@@ -102,6 +121,7 @@ export function TriggerPanel({
   onSave,
   onRemove,
   local = false,
+  components,
 }: TriggerPanelProps) {
   const [form, setForm] = useState<TriggerFormInput | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -139,6 +159,12 @@ export function TriggerPanel({
     const result = buildTriggerFromForm(form, version);
     if (!result.success) {
       setErrors(result.errors);
+      return;
+    }
+    const wrongPair =
+      result.value.type === "poll" ? pollPairProblem(result.value, components) : undefined;
+    if (wrongPair) {
+      setErrors([wrongPair]);
       return;
     }
     setBusy(true);
@@ -188,6 +214,40 @@ export function TriggerPanel({
       </select>
     </label>
   );
+
+  // KAM-313: with the installed components known, Component and Op are lists to pick from, not words to guess.
+  const picked = components?.find(
+    (c) => form && `${c.id}@${c.version}` === ((form as { use?: string }).use ?? ""),
+  );
+  const componentChoice = () => {
+    const current = (form as { use?: string } | null)?.use ?? "";
+    if (!components || components.length === 0) {
+      return text("Component", "use", { placeholder: "kampong/gmail-imap@1.0.0" });
+    }
+    const ids = components.map((c) => `${c.id}@${c.version}`);
+    return choice("Component", "use", [
+      ["", "Choose a component"],
+      ...ids.map((id): [string, string] => [id, id]),
+      ...(current !== "" && !ids.includes(current)
+        ? [[current, `${current} (not installed)`] as [string, string]]
+        : []),
+    ]);
+  };
+  const opChoice = () => {
+    const current = (form as { op?: string } | null)?.op ?? "";
+    if (!picked) return text("Op", "op", { placeholder: "list_unseen" });
+    const names = Object.keys(picked.ops);
+    return choice("Op", "op", [
+      ["", "Choose an op"],
+      ...names.map((n): [string, string] => [
+        n,
+        picked.ops[n]?.title ? `${picked.ops[n]!.title} (${n})` : n,
+      ]),
+      ...(current !== "" && !names.includes(current)
+        ? [[current, `${current} (not in this component)`] as [string, string]]
+        : []),
+    ]);
+  };
 
   return (
     <FieldProblemsContext.Provider value={fieldProblems}>
@@ -324,15 +384,15 @@ export function TriggerPanel({
               <>
                 {text("Every", "every", { placeholder: "15m", hint: "30s, 15m, 6h or 1d." })}
                 <SchedulePreviewNote every={form.every ?? ""} />
-                {text("Component", "use", { placeholder: "kampong/github@1.0.0" })}
-                {text("Op", "op", { placeholder: "list_issues" })}
+                {componentChoice()}
+                {opChoice()}
                 <label className="md3-field">
                   <span className="md3-body-small md3-field__label">Arguments (JSON)</span>
                   <textarea
                     className="md3-text-field"
                     value={form.with ?? ""}
                     spellCheck={false}
-                    placeholder='{"repo": "owner/name"}'
+                    placeholder='{"mailbox": "INBOX", "limit": 20}'
                     onChange={(e) => patch({ with: e.target.value })}
                   />
                 </label>
@@ -355,7 +415,7 @@ export function TriggerPanel({
                     className="md3-text-field"
                     value={form.secrets ?? ""}
                     spellCheck={false}
-                    placeholder="token: ${GITHUB_TOKEN}"
+                    placeholder="password: ${GMAIL_APP_PASSWORD}"
                     onChange={(e) => patch({ secrets: e.target.value })}
                   />
                   <span className="md3-body-small md3-field__hint">
@@ -366,14 +426,14 @@ export function TriggerPanel({
                   label="Items"
                   value={form.items ?? ""}
                   scope={scoped(ITEM)}
-                  placeholder="issues"
+                  placeholder="messages"
                   onChange={(items) => patch({ items })}
                 />
                 <ExpressionField
                   label="Item id"
                   value={form.id ?? ""}
                   scope={scoped(ITEM)}
-                  placeholder="number"
+                  placeholder="uid"
                   onChange={(id) => patch({ id })}
                 />
                 {choice("New means", "dedupe", [

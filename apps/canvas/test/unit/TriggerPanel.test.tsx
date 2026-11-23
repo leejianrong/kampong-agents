@@ -236,6 +236,73 @@ describe("TriggerPanel", () => {
     );
   });
 
+  // KAM-313: Component and Op are picked from what is installed, and a wrong pair is refused with what exists.
+  describe("a poll's component and op, with the installed components known", () => {
+    const entry = (id: string, ops: string[]) =>
+      ({
+        id,
+        version: "1.0.0",
+        ops: Object.fromEntries(ops.map((o) => [o, { effect: "read" }])),
+      }) as never;
+    const components = [
+      entry("kampong/gmail-imap", ["list_unseen", "get_message"]),
+      entry("kampong/github", ["get_user"]),
+    ];
+
+    it("offers the installed components, then that component's ops", () => {
+      setup({ components });
+      click("Add poll");
+      const component = screen.getByLabelText("Component") as HTMLSelectElement;
+      expect([...component.options].map((o) => o.value)).toEqual([
+        "",
+        "kampong/gmail-imap@1.0.0",
+        "kampong/github@1.0.0",
+      ]);
+      fireEvent.change(component, { target: { value: "kampong/github@1.0.0" } });
+      const op = screen.getByLabelText("Op") as HTMLSelectElement;
+      expect([...op.options].map((o) => o.value)).toEqual(["", "get_user"]);
+    });
+
+    it("refuses a saved poll whose op the component does not have, naming the ones it does", () => {
+      const { onSave } = setup({
+        components,
+        trigger: {
+          type: "poll",
+          every: "5m",
+          use: "kampong/github@1.0.0",
+          op: "list_issues",
+          id: "number",
+          dedupe: "unique",
+        } as never,
+      });
+      click("Edit trigger");
+      // The stale op stays visible in the list, marked, so nothing silently changes.
+      expect((screen.getByLabelText("Op") as HTMLSelectElement).textContent).toContain(
+        "list_issues (not in this component)",
+      );
+      click("Save trigger");
+      expect(onSave).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert").textContent).toContain(
+        'kampong/github@1.0.0 has no op "list_issues". It has: get_user.',
+      );
+    });
+
+    it("pollPairProblem says what is wrong and what exists", async () => {
+      const { pollPairProblem } = await import("../../src/TriggerPanel.js");
+      expect(pollPairProblem({ use: "kampong/github@1.0.0", op: "list_issues" }, components)).toBe(
+        'kampong/github@1.0.0 has no op "list_issues". It has: get_user.',
+      );
+      expect(pollPairProblem({ use: "kampong/nothing@1.0.0", op: "x" }, components)).toContain(
+        "is not installed here. Installed: kampong/gmail-imap@1.0.0, kampong/github@1.0.0",
+      );
+      expect(
+        pollPairProblem({ use: "kampong/github@1.0.0", op: "get_user" }, components),
+      ).toBeUndefined();
+      // Where the installed components are not known (hosted), nothing is refused here.
+      expect(pollPairProblem({ use: "a@1.0.0", op: "x" }, undefined)).toBeUndefined();
+    });
+  });
+
   it("asks for a window with time_window dedupe", () => {
     setup();
     click("Add poll");

@@ -190,6 +190,35 @@ export async function runDoctor(
   // Tools.
   const tools = spec.agent.tools ?? [];
   const registry = registryFor(specPath);
+  // A poll trigger names a component and an op like a tool does (KAM-313). `serve` stops at start-up on a wrong
+  // pair, so say so here, with what the component does have.
+  if (trigger?.type === "poll") {
+    const at = trigger.use.lastIndexOf("@");
+    const label = `poll trigger ${trigger.use}`;
+    if (at <= 0) {
+      add("fail", "component", `${label}: expected "id@version" (for example acme/echo@1.0.0)`);
+    } else {
+      try {
+        const { manifest } = await registry.resolve(
+          trigger.use.slice(0, at),
+          trigger.use.slice(at + 1),
+        );
+        if (manifest.ops[trigger.op]) {
+          add("pass", "component", `${label} has the op "${trigger.op}"`);
+        } else {
+          add(
+            "fail",
+            "component",
+            `${label} has no op "${trigger.op}" (it has: ${Object.keys(manifest.ops).join(", ")})`,
+          );
+        }
+      } catch (err) {
+        // The registry's error names where it looked on disk; the person needs only what is missing.
+        const reason = (err as Error).message.split("\n")[0]!.replace(/\s+\(?\/\S+/g, "");
+        add("fail", "component", `${label} could not be loaded: ${reason}`);
+      }
+    }
+  }
   let lock: ReturnType<typeof readLockfile> | undefined;
   let lockError: string | undefined;
   const lockFor = () => {

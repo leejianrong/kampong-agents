@@ -117,6 +117,29 @@ describe("kampong doctor", () => {
     expect(set.text).not.toContain("whsec");
   });
 
+  // KAM-313: a poll names a component and an op; doctor used to look at neither, so serve found out at start-up.
+  it("checks a poll trigger's component and op, and says what exists (KAM-313)", async () => {
+    const poll = (use: string, op: string) =>
+      spec(HELLO_TOOL)
+        .replace('version: "1.0"', 'version: "1.1"')
+        .replace(
+          "  tools:",
+          `  trigger:\n    type: poll\n    every: 5m\n    use: ${use}\n    op: ${op}\n    id: uid\n    dedupe: unique\n  tools:`,
+        );
+    writeFileSync(path("agent.yaml"), poll("kampong/gmail-imap@1.0.0", "list_unseen"));
+    const good = await doctor([path("agent.yaml")]);
+    expect(good.text).toMatch(/poll trigger.*kampong\/gmail-imap@1\.0\.0.*list_unseen/i);
+
+    writeFileSync(path("agent.yaml"), poll("kampong/gmail-imap@1.0.0", "list_issues"));
+    const badOp = await doctor([path("agent.yaml")]);
+    expect(badOp.text).toMatch(/fail.*poll trigger.*no op "list_issues".*list_unseen/i);
+
+    writeFileSync(path("agent.yaml"), poll("kampong/nothing@1.0.0", "x"));
+    const missing = await doctor([path("agent.yaml")]);
+    expect(missing.text).toMatch(/fail.*poll trigger.*kampong\/nothing@1\.0\.0/i);
+    expect(missing.text).not.toContain("node_modules");
+  });
+
   it("fails when a used component is not installed", async () => {
     writeFileSync(path("agent.yaml"), spec(HELLO_TOOL));
     const { code, text } = await doctor([path("agent.yaml")]);
