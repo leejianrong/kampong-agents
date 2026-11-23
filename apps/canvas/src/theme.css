@@ -2917,6 +2917,13 @@ select.md3-text-field {
   font: inherit;
 }
 
+/* What the run was run with, on its own line under the outcome (KAM-306). */
+.md3-runcontrols__run-with {
+  flex-basis: 100%;
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
 .md3-runcontrols__run-row[aria-pressed="true"] {
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
