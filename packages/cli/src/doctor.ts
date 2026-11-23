@@ -172,12 +172,18 @@ export async function runDoctor(
   }
 
   // Trigger (KAM-192): a webhook that checks a bearer token or signature refuses every request until its secret is
-  // set. A warning, not a failure: the workflow still runs from the canvas and `kampong run` without it.
+  // set, so the trigger is useless without it: a failure (KAM-310), like any other credential a run needs. The
+  // workflow itself still runs from the canvas and `kampong run`; that is what a replay does.
   const trigger = spec.agent.trigger;
   if (trigger?.type === "webhook" && (trigger.preset !== undefined || trigger.auth !== undefined)) {
     const resolved = resolveWebhookAuth(trigger.preset, trigger.auth);
     if (resolved.ok && resolved.auth.type !== "none") {
-      checkEnv(resolved.auth.secretEnv, "webhook trigger secret", "warn");
+      // A replay never receives a webhook, so there it stays a warning.
+      checkEnv(
+        resolved.auth.secretEnv,
+        "webhook trigger secret",
+        options.toolsMode === "replay" ? "warn" : "fail",
+      );
     }
   }
 
