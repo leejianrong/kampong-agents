@@ -2,6 +2,8 @@
 // "completed" and lists each failed item under `<step>.errors` in its output; this reads those back out so the
 // Test Run panel can say "completed with errors" instead of showing a clean green result.
 
+import { explainError } from "./runReason.js";
+
 export interface FailedItem {
   /** The foreach step the item belonged to. */
   loop: string;
@@ -72,6 +74,45 @@ export function nothingWorked(finalOutput: Record<string, unknown> | undefined):
     worked += output["results"].length;
   }
   return failed > 0 && worked === 0;
+}
+
+export interface FailureGroup {
+  /** The reason in plain words: a known kind's headline, else the message cut short with paths and URLs left out. */
+  reason: string;
+  /** What to do about it, when one thing is clearly the right thing. */
+  action?: string;
+  items: FailedItem[];
+}
+
+/** A message as one short line a person can read: no file path, no URL, no provider notice. */
+function plainLine(message: string): string {
+  const flat = message
+    .replace(/https?:\/\/\S+/g, "…")
+    .replace(/(?:\/[\w.@~-]+){2,}/g, "…")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flat.length <= 140 ? flat : `${flat.slice(0, 139).trimEnd()}…`;
+}
+
+/**
+ * Failed items grouped by the reason they failed, biggest group first (KAM-298): 23 items that all had no recording
+ * are one line and a count, not 23 rows, and the one odd failure is not buried under them.
+ */
+export function groupFailures(items: readonly FailedItem[]): FailureGroup[] {
+  const groups = new Map<string, FailureGroup>();
+  for (const item of items) {
+    const why = explainError(item.message);
+    const reason = why.known ? why.headline : plainLine(item.message) || "This step failed.";
+    const group = groups.get(reason);
+    if (group) group.items.push(item);
+    else
+      groups.set(reason, {
+        reason,
+        ...(why.known && why.action && { action: why.action }),
+        items: [item],
+      });
+  }
+  return [...groups.values()].sort((a, b) => b.items.length - a.items.length);
 }
 
 /** An item as one short line of table text. */
