@@ -52,7 +52,31 @@ Things worth checking again, because they regress easily:
 
 ## The log
 
-Newest first. **Next audit due: 2026-11-28**, or sooner under the rules above.
+Newest first. **Next audit due: 2026-11-30**, or sooner under the rules above.
+
+### Round 2: 2026-11-23
+
+- **Auditors:** two, both driving the real app (run log and loops under stress with visual design; triggers end to end
+  with journeys and wording). Epic 589. Cards KAM-296 to KAM-317.
+- **Not covered:** the hosted flow (no Docker on the audit machine), Slack Approve and Reject (needs a public HTTPS
+  URL), a poll that returns real items, and a real succeeding 25-item run (only three recorded fixtures exist).
+- **Verdict (loops and run log):** the readable failure card, keyboard use, themes and speed hold up. The wording and
+  counts do not scale: a loop whose items fail first is miscounted, an all-failed loop still reads as a mild
+  "Finished", and 25 failing items make the Test Run panel thousands of pixels tall.
+- **Verdict (triggers):** webhook auth fails closed and the trigger form's messages are good. But a secret saved in the
+  canvas never reaches `kampong serve`, serve starts and runs silently, and nothing in the Trigger panel shows the
+  URL, the token or the next step.
+
+| Card | Finding | Sev | Status |
+| --- | --- | --- | --- |
+| KAM-296 | A loop item that fails first is counted and listed like the others | high | Open |
+| KAM-297 | Say "nothing worked" when every loop item failed | high | Open |
+| KAM-298 | Test Run panel stays short and readable when many items fail | high | Open |
+| KAM-307 | Secrets saved in the canvas reach `kampong serve`, or the panel says they do not | high | Open |
+| KAM-308 | `kampong serve` says what is wrong at startup and prints a usable URL | high | Open |
+| KAM-309 | `kampong serve` logs each run's start and outcome | high | Open |
+| KAM-299 to KAM-303, KAM-310 to KAM-313, KAM-317 | Banner cause, item counts, Timeline, phone banner, Check setup, trigger form errors, poll form, Trigger panel to live webhook | med | Open |
+| KAM-304 to KAM-306, KAM-314 to KAM-316 | Loop item names, tour, Runs list, schedule wording, serve help, webhook replies | low | Open |
 
 ### Round 1: 2026-11-20
 
@@ -92,5 +116,5 @@ Newest first. **Next audit due: 2026-11-28**, or sooner under the rules above.
 | KAM-290 | Plain titles on cards | low | Done, #309 (optional `title` on every step) |
 | KAM-291 | Saved only after a file exists | low | Done, #302 |
 
-Not covered in round 1, so cover it in round 2: the hosted flow (sign in, workspace, BYOK key, deploy), the
-Test Run panel with a long or failing loop, and the webhook and poll triggers end to end.
+Still not covered after round 2, so cover it in round 3: the hosted flow (sign in, workspace, BYOK key, secrets,
+deploy; needs Docker), Slack approvals, and a poll that returns real items.
