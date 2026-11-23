@@ -1832,6 +1832,7 @@ export function App({
                     >
                       <DoctorPanel
                         run={(options) => api.runDoctor!(options)}
+                        trigger={spec?.agent.trigger}
                         {...(api.listSecrets &&
                           api.setSecret &&
                           api.removeSecret && { onSetSecret: openSecret })}

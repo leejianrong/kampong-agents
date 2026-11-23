@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentCatalogEntry } from "@kampong/spec";
 import { ComponentTrust } from "../../src/ComponentTrust.js";
@@ -111,30 +111,79 @@ describe("DoctorPanel", () => {
   const checks = [
     { status: "pass" as const, area: "spec" as const, message: "spec is valid" },
     { status: "warn" as const, area: "component" as const, message: "could not be confirmed" },
-    { status: "fail" as const, area: "env" as const, message: "TICKETS_TOKEN is not set" },
+    {
+      status: "fail" as const,
+      area: "env" as const,
+      message: "TICKETS_TOKEN is not set (tickets token)",
+    },
   ];
 
-  it("runs only the offline checks by default and summarises the result", async () => {
+  it("runs the offline checks as it opens, with nothing to press, and summarises the result", async () => {
     const run = vi.fn().mockResolvedValue(checks);
     render(<DoctorPanel run={run} />);
-    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
     await waitFor(() => expect(run).toHaveBeenCalledWith({}));
     expect((await screen.findByTestId("doctor-summary")).textContent).toBe(
       "1 failed, 1 to look at.",
     );
-    expect(screen.getByText("TICKETS_TOKEN is not set")).toBeTruthy();
+    expect(screen.getByText(/^Needs your Tickets token/)).toBeTruthy();
     expect(screen.getByText(/^Failed:/)).toBeTruthy();
   });
 
-  it("reaches hosts, or sends credentials, only through its own explicit buttons", async () => {
+  it("lists what to fix first and folds the passes into one line (KAM-311)", async () => {
+    render(<DoctorPanel run={vi.fn().mockResolvedValue(checks)} />);
+    const list = await screen.findByTestId("doctor-checks");
+    const items = within(list).getAllByRole("listitem");
+    expect(items[0]!.textContent).toContain("Tickets token");
+    expect(items[1]!.textContent).toContain("ould not be confirmed");
+    const passed = screen.getByTestId("doctor-passed");
+    expect(passed.textContent).toContain("1 check passed");
+    expect((passed as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("says a model that was not reached is not checked, rather than passed (KAM-311)", async () => {
+    const assistant = {
+      status: "pass" as const,
+      area: "assistant" as const,
+      message:
+        "the assistant would send prompts and the workflow to localhost:11434 (model llama3.1), set up through the environment",
+    };
+    render(<DoctorPanel run={vi.fn().mockResolvedValue([assistant])} />);
+    const list = await screen.findByTestId("doctor-checks");
+    expect(list.textContent).toContain("Not checked");
+    expect(screen.queryByTestId("doctor-passed")).toBeNull();
+  });
+
+  it("shows the trigger as a row of its own (KAM-311)", async () => {
+    render(
+      <DoctorPanel
+        run={vi.fn().mockResolvedValue([checks[0]])}
+        trigger={{ type: "schedule", every: "5m" } as never}
+      />,
+    );
+    const list = await screen.findByTestId("doctor-checks");
+    expect(list.textContent).toContain("Schedule, every 5m");
+    expect(list.textContent).toContain("kampong serve");
+  });
+
+  it("reaches hosts, or sends credentials, only when ticked and confirmed", async () => {
     const run = vi.fn().mockResolvedValue([]);
     render(<DoctorPanel run={run} />);
-    expect(screen.getByText(/Nothing is sent anywhere/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /also reach each host/i }));
-    await waitFor(() => expect(run).toHaveBeenLastCalledWith({ online: true }));
-    fireEvent.click(screen.getByRole("button", { name: /also check credentials/i }));
-    // Nothing is sent until it is confirmed.
+    await screen.findByTestId("doctor-summary");
     expect(run).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Nothing is sent anywhere/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: /also reach each host/i }));
+    expect(run).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
+    await waitFor(() => expect(run).toHaveBeenLastCalledWith({ online: true }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Run checks" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /also check credentials/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
+    // Nothing is sent until it is confirmed.
+    expect(run).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole("button", { name: "Send and check" }));
     await waitFor(() => expect(run).toHaveBeenLastCalledWith({ online: true, probe: true }));
     expect(screen.getByText(/carrying each credential/)).toBeTruthy();
@@ -142,7 +191,6 @@ describe("DoctorPanel", () => {
 
   it("says so when everything checked out", async () => {
     render(<DoctorPanel run={vi.fn().mockResolvedValue([checks[0]])} />);
-    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
     expect((await screen.findByTestId("doctor-summary")).textContent).toBe(
       "Everything checked out.",
     );
@@ -150,7 +198,6 @@ describe("DoctorPanel", () => {
 
   it("shows an error rather than nothing when the checks cannot run", async () => {
     render(<DoctorPanel run={vi.fn().mockRejectedValue(new Error("server went away"))} />);
-    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
     expect((await screen.findByRole("alert")).textContent).toContain("server went away");
   });
 });
@@ -180,5 +227,23 @@ describe("ComponentTrust, revoked (KAN-1838)", () => {
       <ComponentTrust entry={entry({ pin: { state: "changed" }, revoked })} onPin={vi.fn()} />,
     );
     expect(screen.queryByText(/refuses it until you review/)).toBeNull();
+  });
+});
+
+describe("DoctorPanel wording (KAM-311)", () => {
+  it("says which component wants a credential, not slot syntax", async () => {
+    const run = vi.fn().mockResolvedValue([
+      {
+        status: "fail",
+        area: "env",
+        message: "SLACK_BOT_TOKEN is not set (secret slot token of kampong/slack@1.0.0)",
+      },
+    ]);
+    render(<DoctorPanel run={run} />);
+    const row = await screen.findByText(/^Needs your Slack bot token/);
+    expect(row.textContent).toBe(
+      "Needs your Slack bot token (SLACK_BOT_TOKEN), used by kampong/slack@1.0.0.",
+    );
+    cleanup();
   });
 });

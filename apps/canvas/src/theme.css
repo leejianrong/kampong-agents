@@ -427,6 +427,13 @@ select {
   gap: 0.3rem;
 }
 
+/* A tick box and its words on one line (Check setup, a poll's "one run per item"). */
+.md3-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .md3-field__label {
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -1317,9 +1324,14 @@ select.md3-text-field {
 
 .md3-doctor__item {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: baseline;
+}
+
+/* The words take the row, so the tick stays beside them and the button sits at the end. */
+.md3-doctor__item > .md3-body-medium {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .md3-doctor__mark {
@@ -1333,6 +1345,18 @@ select.md3-text-field {
 
 .md3-doctor__item--warn .md3-doctor__mark {
   color: var(--md-sys-color-tertiary);
+}
+
+.md3-doctor__item--unchecked .md3-doctor__mark {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.md3-doctor__passed {
+  margin-top: 0.5rem;
+}
+.md3-doctor__passed summary {
+  cursor: pointer;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .md3-visually-hidden {

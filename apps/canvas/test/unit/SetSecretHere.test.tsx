@@ -163,7 +163,6 @@ describe("DoctorPanel Set it here", () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
     const button = await screen.findByRole("button", {
       name: "Set it here for GITHUB_WEBHOOK_SECRET",
     });
