@@ -237,7 +237,17 @@ describe("when and map", () => {
       "x-github-event": "ping",
     });
     expect(d).toMatchObject({ action: "ignore" });
-    expect((d as { reason: string }).reason).toContain("when");
+    // KAM-316: the reason says what the rule was, not "the predicate was false".
+    expect((d as { reason: string }).reason).toBe(
+      'the request did not meet the trigger\'s rule `trigger.headers.`x-github-event` = "push"`',
+    );
+  });
+  it("an empty body says it had no content", async () => {
+    const d = await call({ when: 'trigger.status = "firing"' }, "", {});
+    expect(d).toMatchObject({ action: "ignore" });
+    expect((d as { reason: string }).reason).toBe(
+      'the request had no content, so the trigger\'s rule `trigger.status = "firing"` could not be met',
+    );
   });
   it("a true predicate runs; it reads headers and body fields", async () => {
     const t = {

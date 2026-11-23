@@ -202,14 +202,16 @@ nothing about which check failed. The `slack` preset also answers Slack's `url_v
 `auth` and no `preset` the webhook is open.
 
 **Order.** authenticate, then `when`, then `map`, then the `respond` mode. An ignored request answers
-`200 { success: true, ignored: true, reason }` and shows in `GET /triggers/ignored`. A `when` or `map` that
-cannot be evaluated answers `422` and nothing runs. Headers that look like credentials are never in
+`200 { success: true, ignored: true, reason }` and shows in `GET /triggers/ignored`; the reason names the rule, for
+example ``the request did not meet the trigger's rule `trigger.status = "firing"` ``, or says the request had no
+content. A body that says it is JSON but is not answers `400 { success: false, error }` with a sentence saying so, and
+nothing runs. A `when` or `map` that cannot be evaluated answers `422` and nothing runs. Headers that look like credentials are never in
 `trigger.headers`.
 
 #### Responding
 
 
-With `respond: async` the POST answers `201` at once with a run id, and the caller polls
+With `respond: async` the POST answers `201` at once with the run id and its `url`, and the caller polls
 `GET /runs/<id>`. With `respond: sync` the POST is held open and answers with the result, for a caller that
 wants an answer (a question-and-answer endpoint):
 
