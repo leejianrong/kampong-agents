@@ -275,3 +275,73 @@ describe("buildTimeline: loops, names, quick steps, Replay (KAM-274)", () => {
     ).not.toContain("did not report");
   });
 });
+
+// KAM-301: the Timeline reads in the person's titles and item values, and folds one step failing on many items.
+describe("a loop's failures in the Timeline (KAM-301)", () => {
+  const item = (i: number, status: "ok" | "error"): RunTrace["spans"][number] => ({
+    id: `i${i}`,
+    parentId: "loop",
+    name: `each[${i}].fetch`,
+    kind: "tool",
+    status,
+    startedAt: 100 + i * 100,
+    endedAt: 150 + i * 100,
+    ...(status === "error" && { error: "no recording" }),
+  });
+  const trace: RunTrace = {
+    id: "t",
+    status: "ok",
+    startedAt: 0,
+    endedAt: 1000,
+    totals: { inputTokens: 0, outputTokens: 0, modelCalls: 0 },
+    spans: [
+      { id: "r", name: "agent", kind: "run", status: "ok", startedAt: 0, endedAt: 1000 },
+      {
+        id: "loop",
+        parentId: "r",
+        name: "each",
+        kind: "foreach",
+        status: "ok",
+        startedAt: 50,
+        endedAt: 900,
+      },
+      item(0, "ok"),
+      item(1, "error"),
+      item(2, "error"),
+      item(3, "error"),
+    ],
+  };
+  const titles = { each: "For every stock", fetch: "Look up the latest price" };
+  const itemValue = (name: string) => ({ "each[1].fetch": "MSFT" })[name];
+
+  it("folds the same step failing on several items into one row that holds them", () => {
+    const { rows } = buildTimeline(trace, 1000, { titles, itemValue });
+    const labels = rows.map((r) => r.label);
+    expect(labels).toEqual(["For every stock", "Look up the latest price: 3 failed"]);
+    const group = rows[1]!;
+    expect(group.group).toHaveLength(3);
+    expect(group.statusWord).toBe("3 failed");
+    // The item the run names is the item's value; the rest are numbered.
+    expect(group.group!.map((r) => r.label)).toEqual([
+      "Look up the latest price · MSFT",
+      "Look up the latest price, item 3",
+      "Look up the latest price, item 4",
+    ]);
+  });
+
+  it("leaves one failure as its own row, and lists everything when asked", () => {
+    const one: RunTrace = {
+      ...trace,
+      spans: trace.spans.filter((s) => s.id !== "i2" && s.id !== "i3"),
+    };
+    expect(buildTimeline(one, 1000, { titles }).rows.map((r) => r.label)).toEqual([
+      "For every stock",
+      "Look up the latest price, item 2",
+    ]);
+    expect(buildTimeline(trace, 1000, { titles, showAll: true }).rows).toHaveLength(5);
+  });
+
+  it("uses the id when there is no title", () => {
+    expect(buildTimeline(trace, 1000).rows[0]!.label).toBe("each");
+  });
+});

@@ -100,4 +100,57 @@ describe("run log timeline", () => {
       "No timing was kept",
     );
   });
+
+  // KAM-301
+  it("folds one step failing on many items into a row with an expander, in the step's title", async () => {
+    const item = (i: number): RunTrace["spans"][number] => ({
+      id: `i${i}`,
+      parentId: "loop",
+      name: `each[${i}].fetch`,
+      kind: "tool",
+      status: "error",
+      startedAt: 100 + i * 100,
+      endedAt: 150 + i * 100,
+      error: "no recording",
+    });
+    const looped: RunTrace = {
+      ...trace,
+      status: "ok",
+      spans: [
+        trace.spans[0]!,
+        {
+          id: "loop",
+          parentId: "r",
+          name: "each",
+          kind: "foreach",
+          status: "ok",
+          startedAt: 50,
+          endedAt: 900,
+        },
+        item(0),
+        item(1),
+        item(2),
+      ],
+    };
+    render(
+      <RunLog
+        session={session(async () => looped)}
+        open
+        onToggle={() => {}}
+        titles={{ each: "For every stock", fetch: "Look up the latest price" }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("run-log-view-timeline"));
+    const view = await screen.findByTestId("run-timeline");
+    let rows = within(view).getAllByTestId("run-timeline-row");
+    expect(rows.map((r) => r.querySelector(".md3-timeline__name")!.textContent)).toEqual([
+      "For every stock",
+      "Look up the latest price: 3 failed",
+    ]);
+    fireEvent.click(within(view).getByRole("button", { name: "Show the 3 items" }));
+    rows = within(view).getAllByTestId("run-timeline-row");
+    expect(rows).toHaveLength(5);
+    fireEvent.click(within(view).getByRole("button", { name: "Hide the items" }));
+    expect(within(view).getAllByTestId("run-timeline-row")).toHaveLength(2);
+  });
 });

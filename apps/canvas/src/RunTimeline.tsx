@@ -71,14 +71,20 @@ export function RunTimeline({
   live,
   replay = false,
   omitFailure = false,
+  titles,
+  itemValue,
 }: {
   trace: RunTrace | undefined;
   loaded: boolean;
   live: boolean;
   replay?: boolean;
   omitFailure?: boolean;
+  titles?: Readonly<Record<string, string>> | undefined;
+  itemValue?: ((spanName: string) => string | undefined) | undefined;
 }) {
   const [showAll, setShowAll] = useState(false);
+  // Which folded rows (the same step failing on many items) are open (KAM-301).
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   // A running span is measured against the clock, which ticks while the run is on.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -87,8 +93,17 @@ export function RunTimeline({
     return () => clearInterval(timer);
   }, [live]);
   const timeline = useMemo(
-    () => (trace ? buildTimeline(trace, now, { replay, showAll, omitFailure }) : undefined),
-    [trace, now, replay, showAll, omitFailure],
+    () =>
+      trace
+        ? buildTimeline(trace, now, {
+            replay,
+            showAll,
+            omitFailure,
+            ...(titles && { titles }),
+            ...(itemValue && { itemValue }),
+          })
+        : undefined,
+    [trace, now, replay, showAll, omitFailure, titles, itemValue],
   );
 
   if (!trace || !timeline) {
@@ -100,6 +115,62 @@ export function RunTimeline({
       </p>
     );
   }
+
+  const renderRow = (row: TimelineRow, head: TimelineRow | undefined) => (
+    <li
+      key={row.id}
+      className={`md3-timeline__row md3-timeline__row--${row.status}`}
+      data-testid="run-timeline-row"
+      data-row-status={row.status}
+      data-row-kind={row.kind}
+    >
+      <div
+        className="md3-timeline__label"
+        style={{ paddingLeft: `${row.depth * 1.25}rem` }}
+        title={row.error}
+      >
+        <span className="md3-label-medium md3-timeline__name">{row.label}</span>
+        <span className="md3-body-small md3-timeline__kind">
+          {row.kindLabel}
+          {row.note && ` · ${row.note}`}
+        </span>
+      </div>
+      <div className="md3-timeline__track" aria-hidden="true">
+        <span
+          className={`md3-timeline__bar md3-timeline__bar--${KIND_CLASS[row.kind] ?? "data"}`}
+          style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
+        />
+      </div>
+      <div className="md3-body-small md3-timeline__figures">
+        <span>
+          {row.statusWord ?? STATUS_WORD[row.status]}
+          {row.durationMs !== undefined && ` · ${formatDuration(row.durationMs)}`}
+        </span>
+        {head?.group && (
+          <button
+            type="button"
+            className="md3-button md3-button-text md3-timeline__expand"
+            aria-expanded={openGroups.has(head.id)}
+            onClick={() =>
+              setOpenGroups((current) => {
+                const next = new Set(current);
+                if (!next.delete(head.id)) next.add(head.id);
+                return next;
+              })
+            }
+          >
+            {openGroups.has(head.id) ? "Hide the items" : `Show the ${head.group.length} items`}
+          </button>
+        )}
+        {row.waitedMs !== undefined && (
+          <span>{formatDuration(row.waitedMs)} waiting for a person</span>
+        )}
+        {row.tokens !== undefined && <span>{formatTokens(row.tokens)} tokens</span>}
+        {row.costUsd !== undefined && <span>{formatCost(row.costUsd)}</span>}
+        {row.approximate && <span>step is approximate</span>}
+      </div>
+    </li>
+  );
 
   return (
     <div className="md3-timeline" data-testid="run-timeline">
@@ -133,45 +204,11 @@ export function RunTimeline({
         {showAll ? "Show fewer steps" : "Show every step"}
       </button>
       <ol className="md3-timeline__rows" aria-label="Steps and model calls over time">
-        {timeline.rows.map((row) => (
-          <li
-            key={row.id}
-            className={`md3-timeline__row md3-timeline__row--${row.status}`}
-            data-testid="run-timeline-row"
-            data-row-status={row.status}
-            data-row-kind={row.kind}
-          >
-            <div
-              className="md3-timeline__label"
-              style={{ paddingLeft: `${row.depth * 1.25}rem` }}
-              title={row.error}
-            >
-              <span className="md3-label-medium md3-timeline__name">{row.label}</span>
-              <span className="md3-body-small md3-timeline__kind">
-                {row.kindLabel}
-                {row.note && ` · ${row.note}`}
-              </span>
-            </div>
-            <div className="md3-timeline__track" aria-hidden="true">
-              <span
-                className={`md3-timeline__bar md3-timeline__bar--${KIND_CLASS[row.kind] ?? "data"}`}
-                style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
-              />
-            </div>
-            <div className="md3-body-small md3-timeline__figures">
-              <span>
-                {row.statusWord ?? STATUS_WORD[row.status]}
-                {row.durationMs !== undefined && ` · ${formatDuration(row.durationMs)}`}
-              </span>
-              {row.waitedMs !== undefined && (
-                <span>{formatDuration(row.waitedMs)} waiting for a person</span>
-              )}
-              {row.tokens !== undefined && <span>{formatTokens(row.tokens)} tokens</span>}
-              {row.costUsd !== undefined && <span>{formatCost(row.costUsd)}</span>}
-              {row.approximate && <span>step is approximate</span>}
-            </div>
-          </li>
-        ))}
+        {timeline.rows.flatMap((row) => {
+          const open = openGroups.has(row.id);
+          const rowsToShow = open && row.group ? [row, ...row.group] : [row];
+          return rowsToShow.map((r) => renderRow(r, r === row ? row : undefined));
+        })}
       </ol>
     </div>
   );

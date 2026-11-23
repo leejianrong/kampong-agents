@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { describeItem, failedItems } from "./runErrors.js";
 import { buildRunLog, loopStates, rowForStep, visibleRows, type LogRow } from "./runLog.js";
 import type { RunSession } from "./runSession.js";
 import { STATUS_ICON, STATUS_LABEL } from "./runStatus.js";
@@ -54,6 +55,15 @@ export function RunLog({
     () => (record ? buildRunLog(record.tracker, record.input, titles) : []),
     [record?.tracker, record?.input, titles],
   );
+  // The item a failed loop step ran on, by its span's name, so the Timeline says "· MSFT" (KAM-301).
+  const itemValue = useMemo(() => {
+    const byName = new Map<string, string>();
+    for (const f of failedItems(record?.tracker.state?.finalOutput)) {
+      const value = describeItem(f.item);
+      if (value !== "") byName.set(`${f.loop}[${f.index}].${f.step}`, value);
+    }
+    return (name: string) => byName.get(name);
+  }, [record?.tracker.state?.finalOutput]);
   const [view, setView] = useState<View>("steps");
   // KAM-269: a loop's items sit under its row, closed unless one of them failed (or is the row on show).
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
@@ -273,6 +283,8 @@ export function RunLog({
               live={state.status === "running" || state.status === "awaiting_approval"}
               replay={record.mode === "replay"}
               omitFailure
+              titles={titles}
+              itemValue={itemValue}
             />
           ) : (
             <>
