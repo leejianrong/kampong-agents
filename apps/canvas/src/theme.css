@@ -4216,3 +4216,26 @@ select.md3-text-field {
 .md3-trigger__local a {
   color: inherit;
 }
+.md3-trigger__golive {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--md-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+}
+.md3-trigger__golive h3 {
+  margin: 0 0 0.25rem;
+}
+.md3-trigger__golive ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+.md3-trigger__curl {
+  margin: 0.25rem 0 0;
+  padding: 0.5rem;
+  overflow-x: auto;
+  border-radius: var(--md-shape-corner-small);
+  background: var(--md-sys-color-surface-container-highest);
+  font-size: 0.75rem;
+  user-select: all;
+}

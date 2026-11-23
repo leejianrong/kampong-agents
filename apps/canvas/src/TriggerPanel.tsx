@@ -10,7 +10,9 @@ import {
   type Trigger,
   type TriggerFormInput,
   type TriggerType,
+  type WebhookTrigger,
 } from "@kampong/spec";
+import { goLive } from "./goLive.js";
 import { ExpressionField } from "./ExpressionField.js";
 
 // The workflow's trigger (KAM-161, a slice of KAM-110): how a deployed run starts, as `agent.trigger`. The form
@@ -30,6 +32,46 @@ export interface TriggerPanelProps {
 
 export const DEPLOY_DOC =
   "https://leejianrong.github.io/kampong-agents/reference/cli/#kampong-serve";
+
+export const WEBHOOK_DOC = "https://leejianrong.github.io/kampong-agents/tutorial/webhooks/";
+
+function GoLiveBlock({ trigger }: { trigger: WebhookTrigger }) {
+  const live = goLive(trigger);
+  return (
+    <section className="md3-trigger__golive" data-testid="trigger-golive">
+      <h3 className="md3-title-small">Go live</h3>
+      <ol className="md3-body-small">
+        <li>
+          In a terminal, run <code>{live.command}</code>
+          {live.secretEnv && (
+            <>
+              , with <code>{live.secretEnv}</code> set to a long random value
+            </>
+          )}
+          .
+        </li>
+        <li>
+          Give the sender this address: <code>{live.url}</code>
+        </li>
+        <li>
+          {live.needs ? (
+            <>The sender must include {live.needs}.</>
+          ) : (
+            <>Nothing else is needed: this webhook is open.</>
+          )}
+        </li>
+      </ol>
+      {live.curl && (
+        <>
+          <span className="md3-body-small">To try it yourself:</span>
+          <pre className="md3-trigger__curl" data-testid="trigger-curl">
+            {live.curl}
+          </pre>
+        </>
+      )}
+    </section>
+  );
+}
 
 const KIND_LABEL: Record<TriggerType, string> = {
   webhook: "Webhook",
@@ -369,12 +411,17 @@ export function TriggerPanel({
           <p className="md3-body-small md3-trigger__local" data-testid="trigger-local-note">
             Not running here: while you build, this does not start by itself. It runs only when you
             press Run. To have it run on its own,{" "}
-            <a href={DEPLOY_DOC} target="_blank" rel="noreferrer">
+            <a
+              href={trigger.type === "webhook" ? WEBHOOK_DOC : DEPLOY_DOC}
+              target="_blank"
+              rel="noreferrer"
+            >
               see how to deploy it
             </a>
             .
           </p>
         )}
+        {trigger?.type === "webhook" && local && <GoLiveBlock trigger={trigger} />}
         {trigger !== undefined && (
           <ul className="md3-doctor__list" data-testid="trigger-summary">
             <li className="md3-secrets__row">
