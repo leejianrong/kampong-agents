@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunState } from "../../src/api.js";
 import { buildRunLog, loopStates, rowForStep, visibleRows, type LogRow } from "../../src/runLog.js";
-import type { RunTracker } from "../../src/runStatus.js";
+import { applyMessage, type RunTracker } from "../../src/runStatus.js";
 
 // KAM-243: the bottom run log reads one run's tracker into rows: a row per step and per loop item, with status,
 // duration, and the Input / Output / Error the selected row shows.
@@ -12,6 +12,66 @@ const tracker = (entries: RunTracker["entries"], runState: RunState): RunTracker
   runId: "r1",
   entries,
   state: runState,
+});
+
+describe("a failed item whose start the stream missed (KAM-296)", () => {
+  // A fast Replay can finish before the event stream opens. The state then carries the finished steps, but a loop item
+  // that failed and was carried past (on_error: continue) is only named in the loop's output, so it had no entry and
+  // no row: the first failed item vanished, and the counts disagreed.
+  const finished = (): RunState =>
+    state({
+      trace: [
+        { step: "each", status: "completed" },
+        { step: "report", status: "completed" },
+      ],
+      finalOutput: {
+        each: {
+          results: [],
+          errors: [
+            { index: 0, step: "fetch", message: "no recorded answer", item: "ZZA" },
+            { index: 1, step: "fetch", message: "no recorded answer", item: "ZZB" },
+            { index: 2, step: "fetch", message: "no recorded answer", item: "ZZC" },
+          ],
+        },
+      },
+    });
+
+  it("gives every failed item a row, the first included", () => {
+    const first = applyMessage(
+      { runId: "r1", entries: {}, state: null },
+      "r1",
+      { type: "state", state: finished() } as never,
+      1000,
+    );
+    const rows = buildRunLog(first, "{}");
+    const failed = rows.filter((r) => r.status === "failed");
+    expect(failed.map((r) => r.label)).toEqual(["fetch · ZZA", "fetch · ZZB", "fetch · ZZC"]);
+    // The first failed item reads first, and before the step that follows the loop.
+    expect(rows.map((r) => r.step)).toEqual(["each", "fetch", "fetch", "fetch", "report"]);
+    expect(loopStates(rows, new Set()).get("each")?.summary).toBe("3 items · 3 failed");
+  });
+
+  it("does not disturb an item whose start was seen", () => {
+    const seen = applyMessage(
+      {
+        runId: "r1",
+        entries: { each: { startedAt: 1 }, "each[1].fetch": { startedAt: 5 } },
+        state: null,
+      },
+      "r1",
+      { type: "state", state: finished() } as never,
+      1000,
+    );
+    expect(seen.entries["each[1].fetch"]?.startedAt).toBe(5);
+    // In item order, ahead of the steps that follow the loop.
+    expect(Object.keys(seen.entries)).toEqual([
+      "each",
+      "each[0].fetch",
+      "each[1].fetch",
+      "each[2].fetch",
+      "report",
+    ]);
+  });
 });
 
 describe("buildRunLog", () => {
