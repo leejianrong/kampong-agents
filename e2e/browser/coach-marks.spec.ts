@@ -82,13 +82,22 @@ for (const size of [
 
       await page.getByTestId("template-market-etl-use").click();
       await expect(mark(page)).toHaveAttribute("data-mark", "run");
+      await expect(page.getByRole("region", { name: "Tour, step 2 of 3" })).toBeVisible();
       await expect(mark(page)).toContainText("no keys are needed");
       await expectInView(page, size);
       await clean();
-      // It hangs under the Run button without covering it.
+      // It sits beside the Run button, not over it or over the palette (KAM-305). The bar settles as the options
+      // arrive, so the card is read once it has.
       const run = (await page.getByTestId("run-button").boundingBox())!;
-      const card = (await mark(page).boundingBox())!;
-      expect(card.y).toBeGreaterThanOrEqual(run.y + run.height);
+      await expect
+        .poll(async () => (await mark(page).boundingBox())!.x)
+        .toBeGreaterThanOrEqual(run.x + run.width);
+      const palette = await page.locator(".md3-palette").first().boundingBox();
+      if (palette) {
+        expect((await mark(page).boundingBox())!.x).toBeGreaterThanOrEqual(
+          palette.x + palette.width,
+        );
+      }
 
       await page.getByTestId("run-button").click();
       await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
@@ -97,6 +106,18 @@ for (const size of [
       await expect(mark(page)).toHaveAttribute("data-mark", "step");
       await expectInView(page, size);
       await clean();
+      // And it covers no card: it points at the canvas, it does not hide it (KAM-305).
+      const stepCard = (await mark(page).boundingBox())!;
+      for (const node of await page.locator(".react-flow__node").all()) {
+        const n = await node.boundingBox();
+        if (!n) continue;
+        const overlaps =
+          stepCard.x < n.x + n.width &&
+          n.x < stepCard.x + stepCard.width &&
+          stepCard.y < n.y + n.height &&
+          n.y < stepCard.y + stepCard.height;
+        expect(overlaps, `the step mark over ${await node.getAttribute("data-id")}`).toBe(false);
+      }
 
       await page
         .locator('.react-flow__node[data-id="workflow:report"]')
@@ -138,6 +159,8 @@ for (const size of [
       await page.getByRole("button", { name: "Menu", exact: true }).click();
       await page.getByRole("menuitem", { name: "Show tour" }).click();
       await expect(mark(page)).toHaveAttribute("data-mark", "run");
+      // Two marks left, so it counts from 1 (KAM-305).
+      await expect(page.getByRole("region", { name: "Tour, step 1 of 2" })).toBeVisible();
       await page.getByTestId("run-button").click();
       await expect(page.getByTestId("runbar-status")).toContainText(/completed|Finished/, {
         timeout: 20000,
@@ -149,3 +172,28 @@ for (const size of [
     });
   });
 }
+
+// KAM-305: at a phone's width the log is a sheet over the canvas, so the step mark points at a row in its list and
+// sits at the bottom, clear of the list and the error it explains.
+test.describe("390x844", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("the step mark says to tap a step in the list and covers neither the list nor the error", async ({
+    page,
+  }) => {
+    await page.goto(URL);
+    await page.getByTestId("template-market-etl-use").click();
+    await page.getByTestId("run-button").click();
+    await expect(page.getByTestId("run-log-outcome")).toContainText("Finished", { timeout: 20000 });
+    await expect(mark(page)).toHaveAttribute("data-mark", "step");
+    await expect(mark(page)).toContainText("Tap a step in the list");
+    await expectInView(page, { width: 390, height: 844 });
+    const card = (await mark(page).boundingBox())!;
+    for (const selector of [".md3-runlog__rows", ".md3-runlog__error"]) {
+      const area = (await page.locator(selector).boundingBox())!;
+      // Clear of the list and of the error message with its technical-detail link: the card sits in the sheet's empty
+      // lower part.
+      expect(card.y, selector).toBeGreaterThanOrEqual(area.y + area.height - 1);
+    }
+  });
+});

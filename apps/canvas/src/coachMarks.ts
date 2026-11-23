@@ -13,13 +13,16 @@ export const COACH_KEY = "kampong:coach-marks";
 
 /** Where the tour is: not started (a workflow that was already there when the canvas first opened), on a mark, or over. */
 export type CoachState =
-  { status: "none" } | { status: "active"; index: number } | { status: "done" } | { status: "off" };
+  | { status: "none" }
+  | { status: "active"; index: number; first?: number }
+  | { status: "done" }
+  | { status: "off" };
 
 export function readCoachState(storage: Pick<Storage, "getItem"> | undefined): CoachState {
   try {
     const raw = storage?.getItem(COACH_KEY);
     if (!raw) return { status: "none" };
-    const parsed = JSON.parse(raw) as { status?: unknown; index?: unknown };
+    const parsed = JSON.parse(raw) as { status?: unknown; index?: unknown; first?: unknown };
     if (parsed.status === "done" || parsed.status === "off") return { status: parsed.status };
     if (
       parsed.status === "active" &&
@@ -27,7 +30,13 @@ export function readCoachState(storage: Pick<Storage, "getItem"> | undefined): C
       parsed.index >= 0 &&
       parsed.index < COACH_ORDER.length
     ) {
-      return { status: "active", index: parsed.index };
+      return {
+        status: "active",
+        index: parsed.index,
+        ...(typeof parsed.first === "number" && parsed.first > 0 && parsed.first <= parsed.index
+          ? { first: parsed.first }
+          : {}),
+      };
     }
   } catch {
     // Unreadable or blocked storage: the tour is simply not remembered.
@@ -108,6 +117,7 @@ export function useCoachMarks(facts: CoachFacts & { loaded: boolean }): Coach {
   }, [facts.loaded, facts.blank, state.status, update]);
 
   const index = state.status === "active" ? state.index : -1;
+  const first = state.status === "active" ? (state.first ?? 0) : 0;
   const shown = markToShow(state, facts);
   // A node that was already selected when the step mark came up does not finish it: the person has to pick one.
   const selectedWhenShown = useRef<string | null>(null);
@@ -120,15 +130,15 @@ export function useCoachMarks(facts: CoachFacts & { loaded: boolean }): Coach {
   useEffect(() => {
     if (index < 0) return;
     const mark = COACH_ORDER[index]!;
-    if (mark === "template" && !facts.blank) update(advance(index));
-    else if (mark === "run" && facts.runCount > runsAtMark.current) update(advance(index));
+    if (mark === "template" && !facts.blank) update(advance(index, first));
+    else if (mark === "run" && facts.runCount > runsAtMark.current) update(advance(index, first));
     else if (
       mark === "step" &&
       shown === "step" &&
       facts.selectedId !== null &&
       facts.selectedId !== selectedWhenShown.current
     ) {
-      update(advance(index));
+      update(advance(index, first));
     }
   }, [index, shown, facts.blank, facts.runCount, facts.selectedId, update]);
 
@@ -141,17 +151,24 @@ export function useCoachMarks(facts: CoachFacts & { loaded: boolean }): Coach {
   const mark = shown;
   return {
     mark,
-    position: mark ? { at: COACH_ORDER.indexOf(mark) + 1, of: COACH_ORDER.length } : null,
+    // Counted from where this tour began (KAM-305): a workflow that is already there has no template mark to count.
+    position: mark
+      ? { at: COACH_ORDER.indexOf(mark) + 1 - first, of: COACH_ORDER.length - first }
+      : null,
     next: () => {
-      if (state.status === "active") update(advance(state.index));
+      if (state.status === "active") update(advance(state.index, state.first ?? 0));
     },
     skip: () => update({ status: "off" }),
-    restart: () => update({ status: "active", index: 0 }),
+    restart: () => {
+      // Begin at the first mark that applies: with a workflow on the canvas, there is nothing to pick a template for.
+      const start = facts.blank && facts.hasTemplates ? 0 : 1;
+      update({ status: "active", index: start, ...(start > 0 && { first: start }) });
+    },
   };
 }
 
-function advance(index: number): CoachState {
+function advance(index: number, first = 0): CoachState {
   return index + 1 >= COACH_ORDER.length
     ? { status: "done" }
-    : { status: "active", index: index + 1 };
+    : { status: "active", index: index + 1, ...(first > 0 && { first }) };
 }
