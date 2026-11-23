@@ -1652,6 +1652,8 @@ select.md3-text-field {
 
 /* The one error box (KAM-178): error container colours, a list of problems, an optional sentence above. */
 .md3-panel__error {
+  /* Room for the sticky Save bar when the box is scrolled into view (KAM-312). */
+  scroll-margin-bottom: 6rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
