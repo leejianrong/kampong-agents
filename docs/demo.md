@@ -54,8 +54,9 @@ You can also set them from the canvas: **Secrets** in the status bar (with a cou
 Slack token, which the Slack component reads on its own, and the secret a webhook trigger checks, such as
 `GITHUB_WEBHOOK_SECRET`), and lets you set or replace a value. When a test run or a check says a variable is not set,
 its error has a **Set it here** button that opens Secrets on that name. Values
-are saved to `.kampong/secrets.env` on this machine and are never shown again. This applies to the canvas
-(`kampong dev`, `make up`); `kampong run` and `kampong serve` still read the process environment.
+are saved to `.kampong/secrets.env` on this machine and are never shown again. `kampong dev`, `make up`,
+`kampong run`, `kampong serve` and `kampong doctor` all use them when run from the same folder as the spec; a variable
+already set in the environment wins over a saved value.
 
 The CLI reads its process environment and does not load `.env` itself, so load it into your shell
 first:

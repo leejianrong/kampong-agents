@@ -40,6 +40,22 @@ export class SecretStore {
     for (const [name, value] of Object.entries(values)) this.apply(name, value);
   }
 
+  /**
+   * For `kampong run`, `serve` and `doctor` (KAM-307): the canvas saved these values, so the command a person runs
+   * next in the same folder must see them. Unlike `load`, the real environment WINS: a name that already has a value
+   * is left alone, as a shell or CI variable is the more deliberate choice. Returns the names it filled in.
+   */
+  async loadMissing(): Promise<string[]> {
+    const values = await this.read();
+    const filled: string[] = [];
+    for (const [name, value] of Object.entries(values)) {
+      if (this.env[name] !== undefined && this.env[name] !== "") continue;
+      this.env[name] = value;
+      filled.push(name);
+    }
+    return filled;
+  }
+
   list(referenced: Iterable<string>): SecretStatus[] {
     const wanted = new Set(referenced);
     const names = new Set([...wanted, ...this.saved]);

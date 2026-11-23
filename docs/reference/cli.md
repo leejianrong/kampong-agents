@@ -125,7 +125,9 @@ kampong serve <spec>.yaml [--port <n>] [--host <host>]
 
 A spec with a `schedule` or `poll` trigger is driven by the unattended runner: one run at a time with an overlap
 lock, jitter and backoff, and a visible failure limit. Pending approvals are persisted and survive a
-restart. Model keys and connector tokens resolve from this process's environment.
+restart. Model keys and connector tokens resolve from this process's environment, then from values saved in the
+canvas (`.kampong/secrets.env` next to the spec); a variable already set in the environment wins. `kampong run` and
+`kampong doctor` do the same.
 
 ## `kampong templates`
 
