@@ -86,6 +86,17 @@ export function createServeServer(options: CreateServeServerOptions): FastifyIns
 }
 
 /** The server plus what `kampong serve` needs to attach the scheduler to the same RunManager. */
+/** A 400 for a body that cannot be read, in a sentence the sender can act on (KAM-316). */
+function badBody(message: string): Error & { statusCode: number; kampongBody: true } {
+  return Object.assign(new Error(message), { statusCode: 400, kampongBody: true as const });
+}
+
+/** Where to poll a run: this server's own address as the sender reached it. */
+function runUrl(request: { protocol: string; headers: { host?: string } }, id: string): string {
+  const host = request.headers.host;
+  return host ? `${request.protocol}://${host}/runs/${id}` : `/runs/${id}`;
+}
+
 export function createServeRuntime({
   specPath,
   run,
@@ -105,6 +116,13 @@ export function createServeRuntime({
   // field documents intent, it isn't required to serve.
 
   const app = Fastify({ logger: false });
+  // The same envelope as every other answer here, for a body that could not be read.
+  app.setErrorHandler((error, _request, reply) => {
+    if ((error as { kampongBody?: boolean }).kampongBody) {
+      return reply.code(400).send({ success: false, error: (error as Error).message });
+    }
+    return reply.send(error);
+  });
   // KAN-1432 (ADR-0021 Slice D): headless -- no canvas is ever attached to
   // `kampong serve` -- so every approval pause here should try to notify
   // Slack when the spec configures a target, unlike `kampong dev`'s canvas
@@ -130,9 +148,12 @@ export function createServeRuntime({
     (req as RawBodyRequest).rawBody = body as Buffer;
     const text = (body as Buffer).toString("utf8");
     if (text === "") {
-      const err = new Error("Body cannot be empty when content-type is set to 'application/json'");
-      (err as Error & { statusCode: number }).statusCode = 400;
-      return done(err, undefined);
+      return done(
+        badBody(
+          "The request says it is JSON but has no body, so no run started. Send a body, or leave out the content type.",
+        ),
+        undefined,
+      );
     }
     try {
       // A "__proto__" key is dropped, as Fastify's default JSON parser does.
@@ -141,8 +162,14 @@ export function createServeRuntime({
         JSON.parse(text, (key, value) => (key === "__proto__" ? undefined : value)),
       );
     } catch (parseError) {
-      (parseError as Error & { statusCode: number }).statusCode = 400;
-      done(parseError as Error, undefined);
+      // The parser's own text ("Expected property name or } in JSON at position 1") means little to a sender.
+      const at = /position (\d+)/.exec((parseError as Error).message)?.[1];
+      done(
+        badBody(
+          `The request body is not valid JSON, so no run started. Check it for a missing quote, comma or bracket${at ? ` near character ${at}` : ""}.`,
+        ),
+        undefined,
+      );
     }
   });
   app.addContentTypeParser("*", { parseAs: "buffer" }, (req, body, done) => {
@@ -183,7 +210,7 @@ export function createServeRuntime({
       const answer = syncAnswer(id, settled ?? state);
       return reply.code(answer.code).send(answer.body);
     }
-    return reply.code(201).send({ success: true, id, state });
+    return reply.code(201).send({ success: true, id, state, url: runUrl(request, id) });
   });
 
   // GET /triggers/ignored -- the requests `when` accepted but did not run (the latest 100): recorded as

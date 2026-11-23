@@ -195,7 +195,15 @@ export async function handleWebhookRequest(
   try {
     if (trigger?.when !== undefined) {
       if (!(await evaluateCondition(trigger.when, scope, options.limits))) {
-        return { action: "ignore", reason: "the trigger's when predicate was false" };
+        // Say what the rule was, so the person reading the ignored list does not have to open the spec.
+        const rule = `\`${trigger.when}\``;
+        return {
+          action: "ignore",
+          reason:
+            rawText.trim() === ""
+              ? `the request had no content, so the trigger's rule ${rule} could not be met`
+              : `the request did not meet the trigger's rule ${rule}`,
+        };
       }
     }
     if (trigger?.map !== undefined) {
