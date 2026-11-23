@@ -239,7 +239,7 @@ describe("when and map", () => {
     expect(d).toMatchObject({ action: "ignore" });
     // KAM-316: the reason says what the rule was, not "the predicate was false".
     expect((d as { reason: string }).reason).toBe(
-      'the request did not meet the trigger\'s rule `trigger.headers.\`x-github-event\` = "push"`',
+      'the request did not meet the trigger\'s rule `trigger.headers.`x-github-event` = "push"`',
     );
   });
   it("an empty body says it had no content", async () => {
