@@ -117,7 +117,7 @@ kampong serve <spec>.yaml [--port <n>] [--host <host>]
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `POST /webhook`             | Start a run; the body is the input. Auth, `when` and `map` apply first (see the `webhook` trigger).     |
 | `GET /runs`                 | The latest runs this process started, newest first, each with its trigger, status and outcome in words. |
-| `GET /runs/:id`             | The run's current state, with its outcome in words.                                                    |
+| `GET /runs/:id`             | The run's current state, with its outcome in words. `success` is `false` for a run that failed, or whose every item failed. |
 | `GET /runs/:id/events`      | Server-sent events stream of the run's progress.                                                       |
 | `POST /runs/:id/approve`    | Resolve a paused run: `{ "approved": boolean, "reason"?: string }`.                                    |
 | `POST /schedule/run-now`    | Start a scheduled spec's run now. `409` if a run holds the lock, `404` if the spec has no schedule.    |

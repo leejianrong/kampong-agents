@@ -251,7 +251,14 @@ export function createServeRuntime({
         .send({ success: false, error: `Unknown run id "${request.params.id}".` });
     }
     const outcome = runManager.outcomeOf(request.params.id);
-    return { success: true, state: run.getState(), ...(outcome && { outcome: outcome.text }) };
+    // `success` says whether the run did its job, not whether the request was understood: a run that failed, or
+    // whose every item failed, is not a success (KAM-316).
+    const failed = run.getState().status === "failed" || outcome?.kind === "failed";
+    return {
+      success: !failed,
+      state: run.getState(),
+      ...(outcome && { outcome: outcome.text }),
+    };
   });
 
   // GET /runs -- KAM-309: the latest runs this process started, newest first, each with its outcome in words. It is
