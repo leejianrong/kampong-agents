@@ -46,6 +46,37 @@ export function baseStepName(name: string): string {
   return name.replace(/^.*\]\./, "");
 }
 
+/**
+ * `entries` with one more, placed where the log should read it: among its own loop's items by item number, not
+ * after whatever came last (a recovered item would otherwise list after the steps that follow the loop).
+ */
+function withEntryInOrder(
+  entries: Record<string, StepEntry>,
+  loop: string,
+  index: number,
+  name: string,
+  entry: StepEntry,
+): Record<string, StepEntry> {
+  const keys = Object.keys(entries);
+  const itemOf = (key: string): number | undefined => {
+    if (!key.startsWith(`${loop}[`)) return undefined;
+    const n = Number(/^\[(\d+)\]/.exec(key.slice(loop.length))?.[1]);
+    return Number.isNaN(n) ? undefined : n;
+  };
+  let at = keys.findIndex((k) => (itemOf(k) ?? -1) > index);
+  if (at < 0) {
+    const last = keys.reduce((found, k, i) => (itemOf(k) !== undefined ? i : found), -1);
+    at = last >= 0 ? last + 1 : keys.indexOf(loop) >= 0 ? keys.indexOf(loop) + 1 : keys.length;
+  }
+  const out: Record<string, StepEntry> = {};
+  keys.forEach((k, i) => {
+    if (i === at) out[name] = entry;
+    out[k] = entries[k]!;
+  });
+  if (at >= keys.length) out[name] = entry;
+  return out;
+}
+
 /** Folds one stream message (or the POST's first state) into the tracker; a message for another run is ignored. */
 export function applyMessage(
   tracker: RunTracker,
@@ -66,6 +97,19 @@ export function applyMessage(
       ...(record.output !== undefined && { output: record.output }),
       ...(record.error !== undefined && { error: record.error }),
     };
+  }
+  // A loop item that failed and was carried past (`on_error: continue`) is never in the trace: only the loop's output
+  // names it. When its start was missed before the stream opened (a fast Replay), nothing else would, and the first
+  // failed item vanished from the list and the counts (KAM-296). Give it an entry so it has a row.
+  if (message.state.status === "completed") {
+    for (const f of failedItems(message.state.finalOutput)) {
+      const name = `${f.loop}[${f.index}].${f.step}`;
+      if (f.step !== "" && !entries[name]) {
+        const placed = withEntryInOrder(entries, f.loop, f.index, name, { endedAt: now });
+        for (const key of Object.keys(entries)) delete entries[key];
+        Object.assign(entries, placed);
+      }
+    }
   }
   if (message.type === "event" && message.event.type === "step_started") {
     const name = message.event.step;
