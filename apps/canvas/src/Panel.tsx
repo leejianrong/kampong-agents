@@ -1,4 +1,12 @@
-import { createContext, useContext, useId, type ReactNode, type Ref } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+  type Ref,
+} from "react";
 
 // The one container every tool panel docks in (KAM-177): a fixed header with the title and a Close action, and a
 // body that scrolls on its own. Panels sit in the side pane above the YAML view, never over the canvas, so no node
@@ -92,9 +100,15 @@ export interface PanelErrorProps {
 
 /** The one error box: an alert in the error container colours. */
 export function PanelError({ messages, intro, testId }: PanelErrorProps) {
+  const box = useRef<HTMLDivElement>(null);
+  const text = messages.join("\n");
+  // The box sits under the last field, behind the sticky Save bar on a short window: bring it into view (KAM-312).
+  useEffect(() => {
+    if (text !== "") box.current?.scrollIntoView?.({ block: "nearest" });
+  }, [text]);
   if (messages.length === 0) return null;
   return (
-    <div role="alert" className="md3-panel__error" data-testid={testId}>
+    <div ref={box} role="alert" className="md3-panel__error" data-testid={testId}>
       {intro !== undefined && <p className="md3-body-small md3-panel__error-intro">{intro}</p>}
       <ul className="md3-panel__error-list">
         {messages.map((message, i) => (
