@@ -65,9 +65,12 @@ for (const size of [
 
       await bar.getByTestId("run-button").click();
       // The template's recorded answer for MSFT is a rate limit, so one item fails and the loop carries on.
-      await expect(bar.getByTestId("runbar-status")).toContainText("Finished, 1 step failed", {
-        timeout: 20000,
-      });
+      await expect(bar.getByTestId("runbar-status")).toContainText(
+        "Finished, 1 of 3 items failed",
+        {
+          timeout: 20000,
+        },
+      );
       await expect(bar.getByTestId("runbar-status")).toContainText(/\d+(\.\d)? s/);
       await expect(
         page.locator('[data-testid="node-run-status"][data-status="passed"]').first(),

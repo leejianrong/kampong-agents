@@ -1,7 +1,7 @@
 import type { RunState } from "./api.js";
 import type { LogRow } from "./runLog.js";
 import { explainError } from "./runReason.js";
-import { nothingWorked } from "./runErrors.js";
+import { loopTotals, nothingWorked } from "./runErrors.js";
 import { finishedWithFailures, nothingWorkedLabel } from "./runSummary.js";
 
 // ADR-0063 / KAM-269: the answer to "what happened?" in a line or two of plain words, read off the run and its log
@@ -45,6 +45,14 @@ const reasonLine = (message: string): string => {
   const r = explainError(message);
   return r.known ? r.headline : oneLine(message);
 };
+
+/** "2 steps ran." and, when a loop went through items, how many: the top-level steps are not the whole of the work. */
+function stepsRan(steps: number, items: number): string {
+  const base = `${steps} ${steps === 1 ? "step" : "steps"} ran`;
+  return items > 0
+    ? `${base}, going through ${items} ${items === 1 ? "item" : "items"}.`
+    : `${base}.`;
+}
 
 const quoted = (row: LogRow): string => `"${row.label}"`;
 
@@ -102,7 +110,7 @@ export function outcomeOf(
         return {
           ...(note !== undefined && { note }),
           tone: "warn",
-          headline: finishedWithFailures(failed.length),
+          headline: finishedWithFailures(failed.length, loopTotals(state.finalOutput).total),
           detail: `The run carried on. First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`,
         };
       }
@@ -111,7 +119,7 @@ export function outcomeOf(
         tone: "ok",
         headline: "Finished, everything worked",
         ...(note !== undefined && { note }),
-        ...(steps > 0 && { detail: `${steps} ${steps === 1 ? "step" : "steps"} ran.` }),
+        ...(steps > 0 && { detail: stepsRan(steps, loopTotals(state.finalOutput).total) }),
       };
     }
   }

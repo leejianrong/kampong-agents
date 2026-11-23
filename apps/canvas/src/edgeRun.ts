@@ -10,6 +10,8 @@ export type EdgeRunState = "passed" | "failed" | "running";
 export interface EdgeRun {
   state: EdgeRunState;
   count: number;
+  /** For a failed step that ran for several items: how many of them failed (KAM-300). */
+  failures?: number;
 }
 
 export function edgeRun(target: NodeRunInfo | undefined): EdgeRun | undefined {
@@ -19,7 +21,12 @@ export function edgeRun(target: NodeRunInfo | undefined): EdgeRun | undefined {
     case "passed":
       return { state: "passed", count };
     case "failed":
-      return { state: "failed", count };
+      return {
+        state: "failed",
+        count,
+        ...(target.failures !== undefined &&
+          target.failures < count && { failures: target.failures }),
+      };
     case "running":
     case "waiting":
       return { state: "running", count };
@@ -35,10 +42,13 @@ export function edgeRunText(run: EdgeRun): string {
   if (run.state === "running") return "Running";
   if (run.state === "passed") return `Passed, ${itemsWord(run.count)}`;
   // A loop's step that ran for several items and failed did not necessarily fail for each of them.
-  return run.count > 1 ? `Failed for at least one of ${run.count} items` : "Failed, 1 item";
+  if (run.failures !== undefined) return `${run.failures} of ${itemsWord(run.count)} failed`;
+  return run.count > 1 ? `Failed, all ${run.count} items` : "Failed, 1 item";
 }
 
 /** What the pill on the line shows: an icon, then the count. */
 export function edgeRunPill(run: EdgeRun): string {
-  return run.state === "running" ? "↻" : `${run.state === "passed" ? "✓" : "✕"} ${run.count}`;
+  if (run.state === "running") return "↻";
+  if (run.state === "passed") return `✓ ${run.count}`;
+  return run.failures !== undefined ? `✕ ${run.failures} of ${run.count}` : `✕ ${run.count}`;
 }

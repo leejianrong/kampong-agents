@@ -85,7 +85,9 @@ describe("RunPanel failed items", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("run-status").textContent).toContain("Finished, 3 steps failed"),
+      expect(screen.getByTestId("run-status").textContent).toContain(
+        "Finished, 3 of 4 items failed",
+      ),
     );
     expect(screen.getByTestId("run-status").innerHTML).toContain("completed_with_errors");
     const rows = screen.getAllByTestId("run-error-row");
@@ -150,7 +152,9 @@ describe("RunPanel failed items", () => {
     const { unmount } = render(<RunPanel api={apiFinishing(one)} />);
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() =>
-      expect(screen.getByTestId("run-status").textContent).toContain("Finished, 1 step failed"),
+      expect(screen.getByTestId("run-status").textContent).toContain(
+        "Finished, 1 of 2 items failed",
+      ),
     );
     unmount();
 

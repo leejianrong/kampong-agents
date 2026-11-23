@@ -120,3 +120,26 @@ export function describeItem(item: unknown): string {
   if (item === undefined) return "";
   return typeof item === "string" ? item : JSON.stringify(item);
 }
+
+/** The items every loop in a run went through, and how many of them failed (KAM-300). `total` is 0 when unknown. */
+export function loopTotals(finalOutput: Record<string, unknown> | undefined): {
+  failed: number;
+  total: number;
+} {
+  let failed = 0;
+  let total = 0;
+  for (const output of Object.values(finalOutput ?? {})) {
+    if (
+      !isRecord(output) ||
+      !Array.isArray(output["results"]) ||
+      !Array.isArray(output["errors"])
+    ) {
+      continue;
+    }
+    const skipped = Array.isArray(output["skipped"]) ? output["skipped"].length : 0;
+    const counted = output["results"].length + output["errors"].length + skipped;
+    failed += output["errors"].length;
+    total += typeof output["count"] === "number" ? Math.max(output["count"], counted) : counted;
+  }
+  return { failed, total };
+}

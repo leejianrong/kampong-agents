@@ -87,7 +87,7 @@ for (const size of [
       page,
     }) => {
       await page.getByRole("button", { name: "Run", exact: true }).click();
-      await expect(page.getByTestId("run-status")).toContainText("Finished, 1 step failed", {
+      await expect(page.getByTestId("run-status")).toContainText("Finished, 1 of 3 items failed", {
         timeout: 20000,
       });
       const rows = page.getByTestId("run-error-row");

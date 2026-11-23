@@ -26,6 +26,38 @@ describe("outcomeOf", () => {
     });
   });
 
+  it("says how many items a loop went through, since the top-level steps are not all of the work (KAM-300)", () => {
+    const o = outcomeOf(
+      run({
+        finalOutput: {
+          each: {
+            results: Array.from({ length: 25 }, (_, i) => ({ index: i })),
+            errors: [],
+            count: 25,
+          },
+        },
+      }),
+      [row("each", "passed"), row("report", "passed")],
+    );
+    expect(o.detail).toBe("2 steps ran, going through 25 items.");
+  });
+
+  it("counts failures against the items the loop went through", () => {
+    const o = outcomeOf(
+      run({
+        finalOutput: {
+          each: {
+            results: Array.from({ length: 2 }, (_, i) => ({ index: i })),
+            errors: [{ index: 2, step: "fetch", message: "x", item: "A" }],
+            count: 3,
+          },
+        },
+      }),
+      [row("fetch · A", "failed", "x", 1)],
+    );
+    expect(o.headline).toBe("Finished, 1 of 3 items failed");
+  });
+
   it("says nothing worked, as an error, when every loop item failed (KAM-297)", () => {
     const o = outcomeOf(
       run({
@@ -75,7 +107,7 @@ describe("outcomeOf", () => {
       row("fetch · MSFT", "failed", "rate limit", 1),
     ]);
     expect(o.tone).toBe("warn");
-    expect(o.headline).toBe("Finished, 1 step failed");
+    expect(o.headline).toBe("Finished, 1 item failed");
     expect(o.detail).toBe(
       'The run carried on. First: "fetch · MSFT": The service\'s usage limit was reached.',
     );

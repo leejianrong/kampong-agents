@@ -109,7 +109,7 @@ for (const size of [
       const pill = (state: string) =>
         page.locator(`[data-testid="edge-run-pill"][data-state="${state}"]`);
       await expect(pill("failed")).toHaveCount(1);
-      await expect(pill("failed")).toContainText("Failed for at least one of 3 items");
+      await expect(pill("failed")).toContainText("1 of 3 items failed");
       await expect(pill("passed").first()).toContainText("Passed, 2 items");
       await expect(page.getByTestId("run-error-row")).toHaveCount(1);
       await expect(page.locator('[data-status="failed"]')).toHaveCount(1);
@@ -128,7 +128,7 @@ for (const size of [
       // with its error showing, and the Input tab shows the item that failed.
       const log = page.getByTestId("run-log");
       await expect(log).toBeVisible();
-      await expect(log.getByTestId("run-log-summary")).toContainText("1 step failed");
+      await expect(log.getByTestId("run-log-summary")).toContainText("1 of 3 items failed");
       const failedRows = log.locator('[data-testid="run-log-row"][data-row-status="failed"]');
       await expect(failedRows).toHaveCount(1);
       await expect(failedRows).toContainText("MSFT");

@@ -1,5 +1,5 @@
 import type { RunState } from "./api.js";
-import { failedItems, nothingWorked } from "./runErrors.js";
+import { failedItems, loopTotals, nothingWorked } from "./runErrors.js";
 
 // One run in a word, an icon and a colour role (KAM-219): the run bar's status chip and the runs drawer both draw
 // from this, so a run is called the same thing in both. A run that finished with failed items carried on past is
@@ -34,9 +34,15 @@ const ICON: Record<RunSummaryKind, string> = {
   rejected: "✕",
 };
 
-/** How a run that carried on past failures is worded, in the run bar, the log and the Test Run panel (KAM-272). */
-export const finishedWithFailures = (n: number): string =>
-  `Finished, ${n} ${n === 1 ? "step" : "steps"} failed`;
+/**
+ * How a run that carried on past failures is worded, in the run bar, the log and the Test Run panel (KAM-272): one
+ * vocabulary and one number, "23 of 25 items failed" (KAM-300). A failure is a loop item, so it is called one; "steps"
+ * is for steps.
+ */
+export const finishedWithFailures = (n: number, total = 0): string =>
+  total >= n && total > 0
+    ? `Finished, ${n} of ${total} ${total === 1 ? "item" : "items"} failed`
+    : `Finished, ${n} ${n === 1 ? "item" : "items"} failed`;
 
 /** How a run whose every loop item failed is worded: said as plainly as a failure, not as a finish (KAM-297). */
 export const nothingWorkedLabel = (n: number): string =>
@@ -54,7 +60,7 @@ export function summarizeRun(state: RunState): RunSummary {
     kind === "nothing_worked"
       ? nothingWorkedLabel(errors)
       : kind === "completed_with_errors"
-        ? finishedWithFailures(errors)
+        ? finishedWithFailures(errors, loopTotals(state.finalOutput).total)
         : kind === "awaiting_approval"
           ? "waiting for approval"
           : kind;
