@@ -107,7 +107,23 @@ export function RunLog({
   // The row picked, a failed one by default, is brought into view in a long list.
   const pickedRow = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    pickedRow.current?.scrollIntoView?.({ block: "nearest" });
+    const row = pickedRow.current;
+    const list = row?.closest<HTMLElement>(".md3-runlog__rows");
+    if (!row || !list) return;
+    const rowBox = row.getBoundingClientRect();
+    const listBox = list.getBoundingClientRect();
+    const hidden = rowBox.top < listBox.top || rowBox.bottom > listBox.bottom;
+    if (!hidden) return;
+    // Only this list moves, never the page or the sheet around it. A row the person has not picked (the failed one
+    // chosen for them) goes near the top, so the list reads from the problem on instead of from its bottom edge
+    // with the first rows scrolled away (KAM-303); a row they moved to by key or click is just brought into view.
+    const delta = rowBox.top - listBox.top;
+    list.scrollTop +=
+      selectedId === null
+        ? delta - 8
+        : rowBox.top < listBox.top
+          ? delta
+          : rowBox.bottom - listBox.bottom;
   }, [selected?.id, open]);
 
   function toggleLoop(id: string) {

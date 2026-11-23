@@ -3999,6 +3999,16 @@ select.md3-text-field {
   .md3-runlog__head .md3-run-mode {
     display: none;
   }
+  /* The banner below says the same in full, so the pill gives way and Close always stays on screen (KAM-303). */
+  .md3-runlog__head .md3-runlog__outcome-pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .md3-runlog__head .md3-runlog__views,
+  .md3-runlog__head .md3-runlog__toggle {
+    flex: none;
+  }
   .md3-runlog__views button {
     padding: 0 0.625rem;
   }
@@ -4137,6 +4147,12 @@ select.md3-text-field {
   }
   .md3-runlog__resizer {
     display: none;
+  }
+  /* The reason is the point of the banner, so on a phone it wraps to as many lines as it needs (KAM-303). */
+  .md3-runlog__outcome {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
   .md3-runlog[data-open="true"] .md3-runlog__toggle {
     width: auto;
