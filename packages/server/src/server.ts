@@ -5,6 +5,7 @@ import { runStartupWiringCheck, type WiringCheckResult } from "./wiring-check.js
 import { createAuth } from "./auth/config.js";
 import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
+import { registerSecretsRoutes } from "./routes/secrets.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
@@ -133,6 +134,7 @@ export function createServer({
     // API. Same db+auth dependency and "only mounted when a db is present"
     // shape as the spec routes above.
     registerByokRoutes(app, { db, auth });
+    registerSecretsRoutes(app, { db, auth });
 
     // KAN-1231 (ADR-0014): durable hosted execution. One HostedRunManager per
     // server holds the live in-flight runs and persists each to the `runs`

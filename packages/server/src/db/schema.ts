@@ -308,6 +308,28 @@ export const byokKeys = pgTable(
   (table) => [unique().on(table.workspaceId, table.provider)],
 );
 
+// KAM-81 (ADR-0016, ADR-0022): workspace-scoped tool secrets, the credentials a hosted workflow's connectors and
+// HTTP tools read through `${NAME}` placeholders (a Slack bot token, an Alpha Vantage key). Same footing as
+// `byok_keys`: an RLS-protected, `workspace_id`-scoped table (policy in drizzle/0017_enable_workspace_secrets_rls.sql),
+// `ciphertext` is the AES-256-GCM envelope under the deployment root key, `lastFour` is a display-only hint, and the
+// plaintext is never stored, logged or returned by any route. Kept apart from `byok_keys`, which is keyed by model
+// provider; this one is keyed by the env-var NAME the spec uses. One row per (workspace, name).
+export const workspaceSecrets = pgTable(
+  "workspace_secrets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    lastFour: text("last_four").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique().on(table.workspaceId, table.name)],
+);
+
 // KAN-1231 (ADR-0014): durable hosted run history -- the Postgres successor
 // to packages/cli's in-memory `RunManager` Map, finally giving PLAN.md Shape
 // S1's long-standing "Local run-history log" placeholder a real

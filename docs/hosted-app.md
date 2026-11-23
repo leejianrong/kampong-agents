@@ -80,6 +80,22 @@ reaches a guardrail or a tool that needs sign-off, the run pauses and asks.
 
 Approve it, and the run finishes; the trace and final output stay on screen.
 
+### Credentials for tools and connectors
+
+A tool or connector reads its credential through a `${NAME}` placeholder, such as `${SLACK_BOT_TOKEN}`. Hosted runs
+start with an empty environment, so each workspace stores its own values on the server. There is no screen for this
+yet; use the API, signed in as a member of the workspace:
+
+```sh
+curl -X PUT  $SERVER/api/secrets/SLACK_BOT_TOKEN -H "cookie: $COOKIE" -H 'content-type: application/json' -d '{"value":"xoxb-..."}'
+curl         $SERVER/api/secrets      -H "cookie: $COOKIE"   # names and the last four characters only
+curl -X DELETE $SERVER/api/secrets/SLACK_BOT_TOKEN -H "cookie: $COOKIE"
+```
+
+A value is encrypted when it is stored and is never shown again; the list returns only each name and its last four
+characters. A run decrypts only the names its spec uses, for that run. If one is not stored, the step that needs it
+fails and the run names the missing variable, as it does locally. A workspace never sees another's values.
+
 ### Where a tool may call
 
 On the hosted server a tool can only reach public internet addresses. A tool whose URL is, or resolves to, a

@@ -55,11 +55,11 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     expect(tableNames).toEqual(
       expect.arrayContaining(["workspaces", "workspace_members", "specs", "layouts"]),
     );
-    // Exactly these fourteen -- KAN-1223's original four (workspaces,
+    // Exactly these fifteen -- KAN-1223's original four (workspaces,
     // workspace_members, specs, layouts), KAN-1226's Better Auth tables
     // (user, session, account, verification, invitation, sso_provider),
     // KAN-1229's byok_keys (ADR-0016), KAN-1231's runs (ADR-0014), and
-    // KAN-1436's deployments (ADR-0022), KAM-113's state_entries -- and no Drizzle-internal
+    // KAN-1436's deployments (ADR-0022), KAM-113's state_entries, KAM-81's workspace_secrets -- and no Drizzle-internal
     // migrations-tracking table counted (it lives in its own "drizzle"
     // schema, not "public").
     expect(tableNames.sort()).toEqual([
@@ -76,6 +76,7 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
       "user",
       "verification",
       "workspace_members",
+      "workspace_secrets",
       "workspaces",
     ]);
   });
