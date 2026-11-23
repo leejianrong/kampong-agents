@@ -232,6 +232,9 @@ for (const size of [
       expect(afterFirst).toContain("Summarize {{ get.body }}");
 
       await ask("make it one sentence");
+      // The follow-up's plan is a second card; `.last()` is the first one's until it arrives, so wait for it by
+      // count, with room for a slow runner (KAM-318), before reading what it says.
+      await expect(panel.getByLabel("Proposed plan")).toHaveCount(2, { timeout: 20_000 });
       await expect(panel.getByLabel("Proposed plan").last()).toContainText("one sentence");
       await expect(node(page, "workflow:summarize").getByTestId("card-mark")).toHaveText("Change");
       // The other steps carry no mark, and the file is still the first apply's.
