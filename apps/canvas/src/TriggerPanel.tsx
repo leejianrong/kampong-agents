@@ -1,10 +1,11 @@
 import { PanelError, PanelFooter } from "./Panel";
-import { SchedulePreviewNote } from "./SchedulePreviewNote.js";
+import { describeInterval, formatRun, SchedulePreviewNote } from "./SchedulePreviewNote.js";
 import { FieldProblemsContext, useFieldProblems } from "./fieldProblems.js";
 import { useState } from "react";
 import { VersionGate } from "./VersionGate.js";
 import {
   buildTriggerFromForm,
+  previewSchedule,
   triggerToFormInput,
   type ExpressionScope,
   type Trigger,
@@ -35,6 +36,14 @@ export interface TriggerPanelProps {
 
 export const DEPLOY_DOC =
   "https://leejianrong.github.io/kampong-agents/reference/cli/#kampong-serve";
+
+const CRON_PRESETS = [
+  { cron: "0 9 * * 1-5", label: "Every weekday at 09:00" },
+  { cron: "0 9 * * *", label: "Every day at 09:00" },
+  { cron: "0 * * * *", label: "Every hour" },
+  { cron: "*/15 * * * *", label: "Every 15 minutes" },
+  { cron: "0 9 * * 1", label: "Every Monday at 09:00" },
+];
 
 export const WEBHOOK_DOC = "https://leejianrong.github.io/kampong-agents/tutorial/webhooks/";
 
@@ -103,8 +112,27 @@ const KIND_LABEL: Record<TriggerType, string> = {
 const INGRESS: ExpressionScope = { vars: [], steps: [], trigger: [], kind: "ingress" };
 const ITEM: ExpressionScope = { vars: [], steps: [], trigger: [], kind: "item" };
 
+/** A schedule as a sentence with its next run (KAM-314): "Runs at 09:00 on weekdays (Asia/Singapore). Next: Tue 24 Nov, 09:00". */
+function describeSchedule(
+  t: { cron?: string | undefined; every?: string | undefined; tz?: string | undefined },
+  now: number,
+): string {
+  const result = previewSchedule(t, now);
+  if (!result.ok) return t.cron !== undefined ? `cron ${t.cron}` : `every ${t.every}`;
+  const { preview } = result;
+  const first = preview.runs[0];
+  const next = first !== undefined ? ` Next: ${formatRun(first, preview.timeZone ?? "UTC")}.` : "";
+  if (preview.intervalMs !== undefined) {
+    return `Runs ${describeInterval(preview.intervalMs)}.${next}`;
+  }
+  const zone = t.tz !== undefined ? ` (${t.tz})` : "";
+  return preview.description
+    ? `Runs ${preview.description}${zone}.${next}`
+    : `cron ${t.cron}${zone}.${next}`;
+}
+
 function describeTrigger(t: Trigger): string {
-  if (t.type === "schedule") return t.cron !== undefined ? `cron ${t.cron}` : `every ${t.every}`;
+  if (t.type === "schedule") return describeSchedule(t, Date.now());
   if (t.type === "poll") return `every ${t.every}: ${t.use} ${t.op}, ${t.dedupe} by ${t.id}`;
   const auth =
     t.preset !== undefined
@@ -361,6 +389,21 @@ export function TriggerPanel({
                   </>
                 ) : (
                   <>
+                    <label className="md3-field">
+                      <span className="md3-body-small md3-field__label">Common schedules</span>
+                      <select
+                        className="md3-text-field"
+                        value={CRON_PRESETS.find((p) => p.cron === form.cron)?.cron ?? ""}
+                        onChange={(e) => e.target.value !== "" && patch({ cron: e.target.value })}
+                      >
+                        <option value="">Pick one, or write your own below</option>
+                        {CRON_PRESETS.map((p) => (
+                          <option key={p.cron} value={p.cron}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     {text("Cron", "cron", {
                       placeholder: "0 9 * * 1-5",
                       hint: "Five fields: minute hour day-of-month month day-of-week.",
@@ -373,9 +416,8 @@ export function TriggerPanel({
                   </>
                 )}
                 {choice("If the last run is still going", "overlap", [
-                  ["", "Skip the tick (default)"],
-                  ["skip", "Skip the tick"],
-                  ["queue", "Queue one"],
+                  ["skip", "Skip this run (default)"],
+                  ["queue", "Run it right after the last one finishes"],
                 ])}
               </>
             )}

@@ -97,7 +97,7 @@ describe("TriggerPanel", () => {
   it("summarises each kind of trigger", () => {
     const cases: [Trigger, RegExp][] = [
       [{ type: "webhook", preset: "github", auth: { secret_env: "S" } }, /github preset, async/],
-      [{ type: "schedule", cron: "0 9 * * *" }, /cron 0 9 \* \* \*/],
+      [{ type: "schedule", cron: "0 9 * * *" }, /Runs at 09:00 every day\. Next: /],
       [
         {
           type: "poll",
@@ -301,6 +301,35 @@ describe("TriggerPanel", () => {
       // Where the installed components are not known (hosted), nothing is refused here.
       expect(pollPairProblem({ use: "a@1.0.0", op: "x" }, undefined)).toBeUndefined();
     });
+  });
+
+  // KAM-314: a schedule in words, presets, and one wording for each overlap choice.
+  it("offers common schedules that fill the cron, and words each overlap choice once", () => {
+    setup();
+    click("Add schedule");
+    const preset = screen.getByLabelText("Common schedules") as HTMLSelectElement;
+    fireEvent.change(preset, { target: { value: "0 9 * * 1-5" } });
+    expect((screen.getByLabelText("Cron", { exact: false }) as HTMLInputElement).value).toBe(
+      "0 9 * * 1-5",
+    );
+    expect(screen.getByTestId("schedule-words").textContent).toContain("on weekdays");
+    // Choosing the placeholder again does not clear what was typed.
+    fireEvent.change(preset, { target: { value: "" } });
+    expect((screen.getByLabelText("Cron", { exact: false }) as HTMLInputElement).value).toBe(
+      "0 9 * * 1-5",
+    );
+    const overlap = screen.getByLabelText("If the last run is still going") as HTMLSelectElement;
+    expect([...overlap.options].map((o) => o.textContent)).toEqual([
+      "Skip this run (default)",
+      "Run it right after the last one finishes",
+    ]);
+  });
+
+  it("describes a saved schedule as a sentence with its next run", () => {
+    setup({ trigger: { type: "schedule", cron: "0 9 * * 1-5", tz: "Asia/Singapore" } as never });
+    const text = screen.getByTestId("trigger-summary").textContent ?? "";
+    expect(text).toContain("Runs at 09:00 on weekdays (Asia/Singapore). Next: ");
+    expect(text).not.toContain("cron 0 9");
   });
 
   it("asks for a window with time_window dedupe", () => {

@@ -638,7 +638,7 @@ step on a `"1.0"` spec, has no form; its panel says so and still offers Delete a
 accessible name (for example "Transform step scratch, in loop") and a focus ring, and the selected node is outlined.
 
 The trigger node says what starts a run: `Manual` when the spec has no trigger, `Schedule: every 6h` (or
-`Schedule: cron 0 9 * * 1-5`), `Webhook (GitHub)` (the preset, if any) or `Poll: every 5m`. It updates when the
+`Schedule: at 09:00 on weekdays (Asia/Singapore)`, or the cron itself when it does not read as words), `Webhook (GitHub)` (the preset, if any) or `Poll: every 5m`. It updates when the
 trigger is saved. A long step name is cut with an ellipsis inside its node (the full name is the tooltip and the
 accessible name), and a workflow of more than 15 nodes gets a minimap in the corner: drag in it to pan, scroll to zoom.
 
