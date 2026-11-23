@@ -69,14 +69,29 @@ Newest first. **Next audit due: 2026-11-30**, or sooner under the rules above.
 
 | Card | Finding | Sev | Status |
 | --- | --- | --- | --- |
-| KAM-296 | A loop item that fails first is counted and listed like the others | high | Open |
-| KAM-297 | Say "nothing worked" when every loop item failed | high | Open |
-| KAM-298 | Test Run panel stays short and readable when many items fail | high | Open |
-| KAM-307 | Secrets saved in the canvas reach `kampong serve`, or the panel says they do not | high | Open |
-| KAM-308 | `kampong serve` says what is wrong at startup and prints a usable URL | high | Open |
-| KAM-309 | `kampong serve` logs each run's start and outcome | high | Open |
-| KAM-299 to KAM-303, KAM-310 to KAM-313, KAM-317 | Banner cause, item counts, Timeline, phone banner, Check setup, trigger form errors, poll form, Trigger panel to live webhook | med | Open |
-| KAM-304 to KAM-306, KAM-314 to KAM-316 | Loop item names, tour, Runs list, schedule wording, serve help, webhook replies | low | Open |
+| KAM-296 | A loop item that fails first is counted and listed like the others | high | Done, #321 |
+| KAM-297 | Say "nothing worked" when every loop item failed | high | Done, #322 |
+| KAM-298 | Test Run panel stays short and readable when many items fail | high | Done, #324 |
+| KAM-307 | Secrets saved in the canvas reach `kampong serve`, or the panel says they do not | high | Done, #315 (serve, run and doctor load them) |
+| KAM-308 | `kampong serve` says what is wrong at startup and prints a usable URL | high | Done, #316 |
+| KAM-309 | `kampong serve` logs each run's start and outcome; `GET /runs` | high | Done, #317 |
+| KAM-299 | Banner names the main cause when failures differ | med | Done, #326 |
+| KAM-300 | One vocabulary and one number: "N of M items failed" | med | Done, #325 |
+| KAM-310 | Unset webhook token counts as a failure in Check setup and doctor | med | Done, #318 |
+| KAM-301 | Timeline shows plain titles and folds repeated loop rows | med | Open |
+| KAM-302 | Switching to Timeline keeps the canvas and step palette usable | med | Open |
+| KAM-303 | Phone width: the outcome banner wraps instead of cutting off the reason | med | Open |
+| KAM-311 | Check setup leads with what to fix, in plain words | med | Open |
+| KAM-312 | Trigger form errors are visible when you press Save | med | Open |
+| KAM-313 | The poll form cannot be filled with a pair that works | med | Open |
+| KAM-317 | From the Trigger panel to a live webhook: the URL, the token, the next step | med | Open |
+| KAM-315 | `kampong serve --help` matches the CLI reference | low | Done, #319 |
+| KAM-316 | Webhook replies explain themselves to the sender | low | Done, #320 |
+| KAM-304 | Name passed loop items by their value like the failed ones | low | Open |
+| KAM-305 | First-run tour numbering and placement | low | Open |
+| KAM-306 | Runs list says what each run was run with | low | Open |
+| KAM-314 | A schedule says when it runs in words, with the next run | low | Open |
+| KAM-318 | Flaky browser spec: assistant follow-up (filed from CI, not the audit) | low | Open |
 
 ### Round 1: 2026-11-20
 
