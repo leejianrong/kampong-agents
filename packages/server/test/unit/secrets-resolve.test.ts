@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { envNamesIn, resolveWorkspaceSecrets, SECRET_NAME_RE } from "../../src/secrets/resolve.js";
+import {
+  envNamesIn,
+  resolveWorkspaceSecrets,
+  SECRET_NAME_RE,
+  secretNamesFor,
+} from "../../src/secrets/resolve.js";
 import type { DbClient } from "../../src/db/client.js";
 
 // KAM-81: which `${NAME}`s a spec reads, and that looking up none touches neither the database nor the root key.
@@ -44,5 +49,45 @@ describe("resolveWorkspaceSecrets", () => {
     expect(
       await resolveWorkspaceSecrets({ db, workspaceId: "w", names: ["not valid"], env: {} }),
     ).toEqual({});
+  });
+});
+
+describe("secretNamesFor", () => {
+  const spec = (secrets?: Record<string, string>) => ({
+    agent: {
+      tools: [
+        {
+          action: "component",
+          use: "kampong/slack@1.0.0",
+          ...(secrets ? { secrets } : {}),
+        },
+        { action: "http_request", headers: { "X-Key": "${PLAIN_KEY}" } },
+      ],
+    },
+  });
+
+  it("adds a first-party component's credential slots to the placeholders in the spec", async () => {
+    const names = await secretNamesFor(spec());
+    expect(names.has("PLAIN_KEY")).toBe(true);
+    expect(names.has("SLACK_BOT_TOKEN")).toBe(true);
+  });
+
+  it("follows the tool's own remap of a slot", async () => {
+    const slot = [...(await secretNamesFor(spec()))].find((n) => n === "SLACK_BOT_TOKEN");
+    expect(slot).toBeDefined();
+    const names = await secretNamesFor(spec({ token: "${TEAM_SLACK_TOKEN}" }));
+    expect(names.has("TEAM_SLACK_TOKEN")).toBe(true);
+  });
+
+  it("ignores a component it cannot resolve instead of failing", async () => {
+    const names = await secretNamesFor({
+      agent: {
+        tools: [
+          { action: "component", use: "acme/nope@9.9.9" },
+          { action: "component", use: "bad" },
+        ],
+      },
+    });
+    expect([...names]).toEqual([]);
   });
 });

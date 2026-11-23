@@ -19,7 +19,7 @@ import type { DbClient } from "../db/client.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
-import { envNamesIn, resolveWorkspaceSecrets } from "../secrets/resolve.js";
+import { resolveWorkspaceSecrets, secretNamesFor } from "../secrets/resolve.js";
 import { PgStateStore } from "./pg-state-store.js";
 import { createGuardedFetch, parseAllowHosts } from "./ssrf-guard.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
@@ -226,7 +226,7 @@ export class HostedRunManager {
     const secrets = await resolveWorkspaceSecrets({
       db: this.db,
       workspaceId,
-      names: envNamesIn(spec),
+      names: await secretNamesFor(spec),
       env: this.options.modelEnv,
     });
 

@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { createFirstPartyRegistry } from "@kampong/engine";
 import type { DbClient } from "../db/client.js";
 import { getByokRootKey } from "../auth/env.js";
 import { decryptSecret } from "../crypto/envelope.js";
@@ -31,6 +32,40 @@ export function envNamesIn(value: unknown, into: Set<string> = new Set()): Set<s
     for (const item of Object.values(value)) envNamesIn(item, into);
   }
   return into;
+}
+
+const firstParty = createFirstPartyRegistry();
+
+/**
+ * Every environment name a spec's run may read: its `${NAME}` placeholders, plus the credential slots of the
+ * first-party components its tools use (a component reads its credential through a slot that never appears as
+ * `${NAME}` in the spec), after the tool's own `secrets` remaps. A component that cannot be resolved adds nothing
+ * here; the run itself reports it.
+ */
+export async function secretNamesFor(spec: unknown): Promise<Set<string>> {
+  const names = envNamesIn(spec);
+  const tools = (spec as { agent?: { tools?: unknown } } | undefined)?.agent?.tools;
+  if (!Array.isArray(tools)) return names;
+  for (const tool of tools as {
+    action?: string;
+    use?: string;
+    secrets?: Record<string, string>;
+  }[]) {
+    if (tool.action !== "component" || typeof tool.use !== "string") continue;
+    const at = tool.use.lastIndexOf("@");
+    if (at <= 0) continue;
+    try {
+      const { manifest } = await firstParty.resolve(tool.use.slice(0, at), tool.use.slice(at + 1));
+      for (const [slot, def] of Object.entries(manifest.auth?.slots ?? {})) {
+        const remap =
+          tool.secrets && Object.hasOwn(tool.secrets, slot) ? tool.secrets[slot] : undefined;
+        names.add(remap === undefined ? def.env : (/^\$\{(.+)\}$/.exec(remap)?.[1] ?? remap));
+      }
+    } catch {
+      // not a first-party component, or a bad id/version: the run reports it
+    }
+  }
+  return names;
 }
 
 export interface ResolveWorkspaceSecretsOptions {
