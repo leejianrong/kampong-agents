@@ -95,6 +95,48 @@ describe("RunPanel failed items", () => {
     expect(within(rows[0]!).getByText("no fixture for AAPL")).toBeTruthy();
   });
 
+  it("keeps 25 failed items short: one group per reason, the items folded, no table (KAM-298)", async () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const message = (n: number) =>
+      `Tool "kampong/alpha-vantage.time_series_daily" HTTP call to https://x.test/q?s=${n} failed: No recorded fixture for tool "x" at /home/jian/projects/a/b/c.json (after 3 attempts)`;
+    const many = {
+      each_symbol: {
+        results: [],
+        skipped: [],
+        count: 25,
+        errors: [
+          ...Array.from({ length: 23 }, (_, i) => ({
+            index: i,
+            item: `Z${i}`,
+            step: "fetch",
+            message: message(i),
+          })),
+          { index: 23, item: "MSFT", step: "fetch", message: "HTTP 429 rate limit" },
+          { index: 24, item: "GOOG", step: "fetch", message: "HTTP 429 rate limit" },
+        ],
+      },
+    };
+    render(<RunPanel api={apiFinishing(many)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => expect(screen.getByTestId("run-errors")).toBeTruthy());
+
+    const groups = screen.getAllByTestId("run-error-group");
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.textContent).toContain("23 items");
+    expect(groups[0]!.textContent).toContain("no recorded answer");
+    expect(groups[1]!.textContent).toContain("2 items");
+    // The big group is folded and the small one is open, so the panel stays short.
+    const folds = groups.map((g) => g.querySelector(":scope > details") as HTMLDetailsElement);
+    expect(folds[0]!.open).toBe(false);
+    expect(folds[1]!.open).toBe(true);
+    expect(screen.getByTestId("run-errors").querySelector("table")).toBeNull();
+    // A file path from the raw message stays under "technical detail", not in the visible summary line.
+    expect(groups[0]!.querySelector(".md3-run-failgroup__head")!.textContent).not.toContain(
+      "/home",
+    );
+    expect(screen.getAllByTestId("run-error-row")).toHaveLength(25);
+  });
+
   it("says 'error' for one and keeps a fully successful run plain completed", async () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     const one = {

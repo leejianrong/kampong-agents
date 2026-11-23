@@ -2570,27 +2570,68 @@ select.md3-text-field {
   border-radius: var(--md-shape-corner-medium);
 }
 
-.md3-run-errors__table {
-  width: 100%;
-  border-collapse: collapse;
+.md3-run-failgroup {
+  padding: 0.5rem 0.75rem;
+  display: grid;
+  gap: 0.25rem;
 }
 
-.md3-run-errors__table th,
-.md3-run-errors__table td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.5rem 0.75rem;
+.md3-run-failgroup + .md3-run-failgroup {
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.md3-run-failgroup__head,
+.md3-run-failgroup__action {
+  margin: 0;
   overflow-wrap: anywhere;
 }
 
-.md3-run-errors__table th {
-  background: var(--md-sys-color-tertiary-container);
-  color: var(--md-sys-color-on-tertiary-container);
-  font-weight: 500;
+.md3-run-failgroup__action {
+  color: var(--md-sys-color-on-surface-variant);
 }
 
-.md3-run-errors__table tr + tr td {
-  border-top: 1px solid var(--md-sys-color-outline-variant);
+.md3-run-failgroup summary {
+  cursor: pointer;
+  color: var(--md-sys-color-primary);
+}
+
+.md3-run-failgroup__items ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.md3-run-failgroup__items li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--md-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.md3-run-failgroup__item {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.md3-run-failgroup__step {
+  color: var(--md-sys-color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+.md3-run-failgroup__raw {
+  flex-basis: 100%;
+}
+
+.md3-run-failgroup__raw pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .md3-run-raw summary {

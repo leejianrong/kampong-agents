@@ -1,7 +1,7 @@
 import { PanelError } from "./Panel";
 import { useEffect, useRef } from "react";
 import type { RunOptionsResponse } from "./api.js";
-import { describeItem, failedItems } from "./runErrors.js";
+import { describeItem, failedItems, groupFailures } from "./runErrors.js";
 import type { RunSession } from "./runSession.js";
 import { baseStepName } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
@@ -222,35 +222,50 @@ function FailedItemsTable({
   items: ReturnType<typeof failedItems>;
   rootRef: React.Ref<HTMLDivElement>;
 }) {
+  const groups = groupFailures(items);
   return (
     <div className="md3-run-errors" data-testid="run-errors" ref={rootRef}>
-      <table className="md3-run-errors__table md3-body-small">
-        <thead>
-          <tr>
-            <th scope="col">Item</th>
-            <th scope="col">Step</th>
-            <th scope="col">Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((f) => (
-            <tr
-              key={`${f.loop}-${f.index}`}
-              data-testid="run-error-row"
-              data-run-step={f.step}
-              data-run-failed=""
-              tabIndex={-1}
-            >
-              <td>{describeItem(f.item) || `#${f.index + 1}`}</td>
-              <td>
-                {f.loop}
-                {f.step && ` / ${f.step}`}
-              </td>
-              <td>{f.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {groups.map((g) => (
+        <section key={g.reason} className="md3-run-failgroup" data-testid="run-error-group">
+          <p className="md3-body-medium md3-run-failgroup__head">
+            <strong>
+              {g.items.length} {g.items.length === 1 ? "item" : "items"}
+            </strong>
+            {": "}
+            {g.reason}
+          </p>
+          {g.action && <p className="md3-body-small md3-run-failgroup__action">{g.action}</p>}
+          {/* A few failures are shown; many are one fold away, so the panel stays short. */}
+          <details className="md3-run-failgroup__items" open={g.items.length <= 3}>
+            <summary className="md3-body-small">
+              {g.items.length === 1 ? "Show the item" : `Show the ${g.items.length} items`}
+            </summary>
+            <ul>
+              {g.items.map((f) => (
+                <li
+                  key={`${f.loop}-${f.index}`}
+                  data-testid="run-error-row"
+                  data-run-step={f.step}
+                  data-run-failed=""
+                  tabIndex={-1}
+                >
+                  <span className="md3-run-failgroup__item">
+                    {describeItem(f.item) || `#${f.index + 1}`}
+                  </span>
+                  <span className="md3-body-small md3-run-failgroup__step">
+                    {f.loop}
+                    {f.step && ` / ${f.step}`}
+                  </span>
+                  <details className="md3-run-failgroup__raw">
+                    <summary className="md3-body-small">Show technical detail</summary>
+                    <pre className="md3-code-block">{f.message}</pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      ))}
     </div>
   );
 }
