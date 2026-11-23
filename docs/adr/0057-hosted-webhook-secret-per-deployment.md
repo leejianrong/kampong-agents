@@ -1,6 +1,6 @@
 # ADR-0057: Hosted webhook secrets are generated per deployment
 
-- Status: Proposed (KAM-203 part C). Needs the product owner's sign-off: it chooses how a hosted tenant provides a secret.
+- Status: Accepted (2026-11-24, by the product owner). It was built first as KAM-203 part C; the choice of how a hosted tenant provides a secret stands.
 - Date: 2026-10-21
 - Deciders: Jian (product owner)
 
