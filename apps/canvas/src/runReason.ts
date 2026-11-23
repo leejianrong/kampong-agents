@@ -11,6 +11,8 @@ export interface Reason {
   action?: string;
   /** A recovery the screen can offer as buttons, when there is one. */
   fix?: "replay_missing";
+  /** What a count of these reads as, "22 had no recorded answer": a verb phrase, for a banner that counts causes. */
+  brief?: string;
   /** True when the headline is a guess from the message's wording rather than a generic fallback. */
   known: boolean;
 }
@@ -36,6 +38,7 @@ export function explainError(message: string): Reason {
       headline: "This input has no recorded answer, so Replay cannot run it.",
       action: "Run it live once, or clear the input and use the recorded one.",
       fix: "replay_missing",
+      brief: "had no recorded answer",
       known: true,
     };
   }
@@ -44,6 +47,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `A key this step needs is not set (${missing.join(", ")}).`,
       action: "Add it under Secrets, then run again.",
+      brief: `needed a key that is not set (${missing.join(", ")})`,
       known: true,
     };
   }
@@ -53,6 +57,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `${service ? `${service}'s` : "The service's"} usage limit was reached.`,
       action: "Wait a while and run again, or use a plan with a higher limit.",
+      brief: "hit the usage limit",
       known: true,
     };
   }
@@ -62,6 +67,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `${who} did not accept the key.`,
       action: "Check the key is right and has access, under Secrets.",
+      brief: "were refused: the key was not accepted",
       known: true,
     };
   }
@@ -69,6 +75,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `${who} could not find what was asked for.`,
       action: "Check the address or the id this step uses.",
+      brief: "could not find what was asked for",
       known: true,
     };
   }
@@ -76,6 +83,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `${who} took too long to answer.`,
       action: "Run again. If it keeps happening, check the service's status page.",
+      brief: "took too long to answer",
       known: true,
     };
   }
@@ -83,6 +91,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `${who} had a problem on its side.`,
       action: "Try again in a moment.",
+      brief: "hit a problem on the service's side",
       known: true,
     };
   }
@@ -90,6 +99,7 @@ export function explainError(message: string): Reason {
     return {
       headline: `Could not reach ${service ?? "the service"}.`,
       action: "Check your connection and the address, then run again.",
+      brief: "could not reach the service",
       known: true,
     };
   }
