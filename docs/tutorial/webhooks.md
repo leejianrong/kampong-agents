@@ -33,9 +33,10 @@ export ALERT_WEBHOOK_TOKEN=$(head -c 24 /dev/urandom | base64 | tr -d '/+=')
 kampong serve agent.yaml
 ```
 
-`serve` prints the address it listens on (`http://localhost:8080/webhook`) and lists anything the workflow needs
-that is not set, such as `SLACK_BOT_TOKEN`. Run `kampong doctor agent.yaml` first to see the same list, and add
-`--tools replay --fixtures fixtures` to run on recorded data with no keys.
+`serve` prints the address it listens on (`http://localhost:8080/webhook`) and, before any request, lists what
+would stop the first run: here `SLACK_BOT_TOKEN` and the local model (Ollama), which the template uses by default.
+The service still starts. `kampong serve` always runs for real; it has no replay mode (use `kampong run` with
+`--tools replay` for that). Run `kampong doctor agent.yaml` for the same list on its own.
 
 ## 3. Send the first request
 
@@ -55,6 +56,9 @@ The answer is `201` and the run's id and URL:
 ```
 
 `GET` that URL for the run's state. The `serve` terminal logs one line when the run starts and one when it ends.
+A `201` means the request was accepted, not that the run worked: with Ollama not running, the run fails a moment
+later and the log says why (`failed: Could not reach the local Ollama server…`). `GET /runs` lists recent runs
+with their outcomes.
 
 ## 4. Check it: what each answer means
 
