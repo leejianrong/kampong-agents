@@ -41,6 +41,12 @@ import { createServeRuntime, ServeSpecInvalidError } from "./serve-server.js";
 import { collectServeJobs, startServeRunners } from "./serve-runner.js";
 import { slackApprovalNotice } from "./slack-notice.js";
 import { SecretStore } from "./secrets.js";
+import {
+  formatFindings,
+  serveStartupFindings,
+  serveTriggerLines,
+  shownHost,
+} from "./serve-notice.js";
 
 /**
  * Values saved from the canvas (`.kampong/secrets.env` next to the spec) are what `run`, `serve` and `doctor` should
@@ -580,16 +586,16 @@ async function runServeCommand(
   );
   runnersRef.current = activeRunners;
 
-  io.stdout(`kampong serve running at http://${host}:${port}`);
+  io.stdout(`kampong serve running at http://${shownHost(host)}:${port}`);
   io.stdout(`  spec:    ${resolvedSpecPath}`);
-  if (served.spec?.agent.trigger?.type === "poll") {
-    const poll = served.spec.agent.trigger;
-    io.stdout(`  trigger: poll ${poll.use} ${poll.op} every ${poll.every}`);
-  } else {
-    io.stdout(`  trigger: POST http://${host}:${port}/webhook`);
-  }
-  if (served.spec?.agent.trigger?.type === "schedule") {
-    io.stdout(`  run now: POST http://${host}:${port}/schedule/run-now`);
+  if (served.spec) {
+    for (const line of serveTriggerLines(served.spec, { host, port })) io.stdout(line);
+    // KAM-308: what would stop the first run, said now rather than per request. Never blocks start-up.
+    const findings = await serveStartupFindings(served.spec, resolvedSpecPath, {
+      env: process.env,
+      ...(testOptions.connect ? { connect: testOptions.connect } : {}),
+    });
+    for (const line of formatFindings(findings)) io.stderr(line);
   }
   io.stdout("Press Ctrl+C to stop.");
 
