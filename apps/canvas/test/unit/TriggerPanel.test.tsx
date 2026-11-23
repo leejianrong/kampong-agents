@@ -27,6 +27,42 @@ const click = (name: string) => fireEvent.click(screen.getByRole("button", { nam
 describe("TriggerPanel", () => {
   afterEach(cleanup);
 
+  // KAM-317: from the panel to a first accepted request.
+  it("shows the command, URL, header and a curl for a bearer webhook, reading the secret from its variable", () => {
+    setup({
+      local: true,
+      trigger: { type: "webhook", preset: "alertmanager", auth: { secret_env: "ALERT_TOKEN" } },
+    } as never);
+    const block = screen.getByTestId("trigger-golive");
+    expect(block.textContent).toContain("kampong serve agent.yaml");
+    expect(block.textContent).toContain("ALERT_TOKEN");
+    expect(block.textContent).toContain("http://localhost:8080/webhook");
+    const curl = screen.getByTestId("trigger-curl").textContent ?? "";
+    expect(curl).toContain("authorization: Bearer ");
+    expect(curl).not.toMatch(/Bearer [a-z0-9]{16}/i);
+  });
+
+  it("names the signature header for a signed webhook and gives no hand-made curl", () => {
+    setup({
+      local: true,
+      trigger: { type: "webhook", preset: "github", auth: { secret_env: "GH_SECRET" } },
+    } as never);
+    expect(screen.getByTestId("trigger-golive").textContent).toContain("X-Hub-Signature-256");
+    expect(screen.queryByTestId("trigger-curl")).toBeNull();
+  });
+
+  it("says an open webhook needs nothing, and shows nothing for a schedule or on the hosted server", () => {
+    setup({ local: true, trigger: { type: "webhook" } as never });
+    expect(screen.getByTestId("trigger-golive").textContent).toContain("open");
+    expect(screen.getByTestId("trigger-curl").textContent).not.toContain("authorization");
+    cleanup();
+    setup({ local: true, trigger: { type: "schedule", every: "5m" } });
+    expect(screen.queryByTestId("trigger-golive")).toBeNull();
+    cleanup();
+    setup({ trigger: { type: "webhook" } as never });
+    expect(screen.queryByTestId("trigger-golive")).toBeNull();
+  });
+
   it("says so when there is no trigger", () => {
     setup();
     expect(screen.getByText("This spec has no trigger.")).toBeTruthy();
