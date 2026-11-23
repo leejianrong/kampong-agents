@@ -230,3 +230,71 @@ describe("buildRunLog with step titles (KAM-290)", () => {
     expect(rowForStep(rows, "fetch")?.label).toBe("Look up the price · MSFT");
   });
 });
+
+describe("naming a passed loop item by its value (KAM-304)", () => {
+  const stream = (events: { step: string; itemLabel?: string }[], runState: RunState) =>
+    events.reduce(
+      (t, e) =>
+        applyMessage(
+          t,
+          "r1",
+          { type: "event", event: { type: "step_started", ...e }, state: runState } as never,
+          1000,
+        ),
+      { runId: "r1", entries: {}, state: null } as RunTracker,
+    );
+
+  it("labels a passed item's row with the item the engine named, and numbers one it did not", () => {
+    const done = state({
+      trace: [
+        { step: "each[0].fetch", status: "completed", output: 1 },
+        { step: "each[1].fetch", status: "completed", output: 2 },
+        { step: "each", status: "completed" },
+      ],
+    });
+    const tracked = stream(
+      [{ step: "each" }, { step: "each[0].fetch", itemLabel: "MSFT" }, { step: "each[1].fetch" }],
+      state({ status: "running" }),
+    );
+    expect(tracked.entries["each[0].fetch"]?.itemLabel).toBe("MSFT");
+    // The final state arrives after the steps ended; a label seen at the start is kept.
+    const after = applyMessage(tracked, "r1", { type: "state", state: done } as never, 2000);
+    expect(after.entries["each[0].fetch"]?.itemLabel).toBe("MSFT");
+    const rows = buildRunLog(after, "{}", { fetch: "Look up the latest price" });
+    expect(rows.filter((r) => r.step === "fetch").map((r) => r.label)).toEqual([
+      "Look up the latest price · MSFT",
+      "Look up the latest price · #2",
+    ]);
+  });
+
+  it("names a passed item even when its start was missed, from the final state (a fast Replay)", () => {
+    const done = state({
+      trace: [
+        { step: "each[0].fetch", status: "completed", output: 1, itemLabel: "AAPL" },
+        { step: "each", status: "completed" },
+      ],
+    });
+    const tracked = applyMessage(
+      { runId: "r1", entries: {}, state: null },
+      "r1",
+      { type: "state", state: done } as never,
+      1000,
+    );
+    const rows = buildRunLog(tracked, "{}");
+    expect(rows.find((r) => r.step === "fetch")?.label).toBe("fetch · AAPL");
+  });
+
+  it("still prefers the failed item's own value", () => {
+    const failed = state({
+      finalOutput: {
+        each: {
+          results: [],
+          errors: [{ index: 0, step: "fetch", message: "no", item: "GOOG" }],
+        },
+      },
+    });
+    const tracked = stream([{ step: "each[0].fetch", itemLabel: "WRONG" }], failed);
+    const rows = buildRunLog(tracked, "{}");
+    expect(rows.find((r) => r.step === "fetch")?.label).toBe("fetch · GOOG");
+  });
+});

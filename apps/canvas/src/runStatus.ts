@@ -24,6 +24,8 @@ export interface NodeRunInfo {
 }
 
 interface StepEntry {
+  /** Inside a loop: the item the step ran on, when the engine said (a short plain value; KAM-304). */
+  itemLabel?: string;
   startedAt?: number;
   endedAt?: number;
   outcome?: "completed" | "failed";
@@ -96,6 +98,8 @@ export function applyMessage(
       outcome: record.status === "completed" ? "completed" : "failed",
       ...(record.output !== undefined && { output: record.output }),
       ...(record.error !== undefined && { error: record.error }),
+      // A start missed before the stream opened still says which item the step ran on (KAM-304).
+      ...(record.itemLabel !== undefined && { itemLabel: record.itemLabel }),
     };
   }
   // A loop item that failed and was carried past (`on_error: continue`) is never in the trace: only the loop's output
@@ -114,7 +118,14 @@ export function applyMessage(
   if (message.type === "event" && message.event.type === "step_started") {
     const name = message.event.step;
     const had = entries[name];
-    if (!had?.outcome) entries[name] = { ...had, startedAt: had?.startedAt ?? now };
+    const itemLabel = message.event.itemLabel;
+    if (!had?.outcome) {
+      entries[name] = {
+        ...had,
+        startedAt: had?.startedAt ?? now,
+        ...(itemLabel !== undefined && { itemLabel }),
+      };
+    }
   }
   return { runId, entries, state: message.state };
 }

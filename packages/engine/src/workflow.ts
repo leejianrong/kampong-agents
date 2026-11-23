@@ -71,7 +71,13 @@ export interface ApprovalDecision {
 }
 
 export type RunEvent =
-  | { type: "step_started"; step: string }
+  | {
+      type: "step_started";
+      step: string;
+      // KAM-304: inside a foreach, the item the step runs on when it is a short plain value, so a run log can say
+      // "Look up the price · MSFT" for a step that passed as it does for one that failed.
+      itemLabel?: string;
+    }
   | { type: "step_completed"; step: string; output: unknown; confidence?: number }
   | {
       type: "awaiting_approval";
@@ -1081,6 +1087,15 @@ async function runDataStep(
   };
 }
 
+/** A loop item as a short label for a step's start event (KAM-304): a plain value only, cut short; else nothing. */
+function itemLabel(item: unknown): { itemLabel: string } | undefined {
+  if (typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean") {
+    return undefined;
+  }
+  const text = String(item);
+  return { itemLabel: text.length <= 40 ? text : `${text.slice(0, 39)}…` };
+}
+
 // ---- foreach (KAN-1858, ADR-0043) ----------------------------------------------------------------------
 
 interface ForEachEnv {
@@ -1296,10 +1311,11 @@ async function* runForEach(
     local: Record<string, unknown>,
   ): Promise<ItemOutcome | undefined> => {
     const data = () => ({ ...scope(), [loop.as]: item, ...local });
+    const onItem = itemLabel(item);
     for (const inner of list) {
       const name = `${step.step}[${index}].${inner.step}`;
       if (isBranchStep(inner)) {
-        emit({ type: "step_started", step: name });
+        emit({ type: "step_started", step: name, ...onItem });
         let picked: PickedArm;
         try {
           picked = await selectArm(inner, data(), deps.expressionLimits);
@@ -1319,7 +1335,7 @@ async function* runForEach(
         continue;
       }
       if (isStopStep(inner)) {
-        emit({ type: "step_started", step: name });
+        emit({ type: "step_started", step: name, ...onItem });
         let reason: string;
         try {
           reason =
@@ -1341,7 +1357,7 @@ async function* runForEach(
           ? { kind: "skipped", step: inner.step, reason }
           : { kind: "done", outputs: local };
       }
-      emit({ type: "step_started", step: name });
+      emit({ type: "step_started", step: name, ...onItem });
       let attempt = 0;
       for (;;) {
         try {

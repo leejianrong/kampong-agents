@@ -43,6 +43,8 @@ export interface StepRecord {
   output?: unknown;
   confidence?: number;
   error?: string;
+  /** Inside a foreach: the item the step ran on, when it is a short plain value (KAM-304). */
+  itemLabel?: string;
 }
 
 export interface RunState {
@@ -71,6 +73,9 @@ export class AgentRun extends EventEmitter {
   ) {
     super();
   }
+
+  /** The item each loop step started on, kept until the step's record is written (KAM-304). */
+  private readonly itemLabels = new Map<string, string>();
 
   getState(): RunState {
     return this.state;
@@ -139,6 +144,7 @@ export class AgentRun extends EventEmitter {
   private applyEvent(event: RunEvent): void {
     switch (event.type) {
       case "step_started":
+        if (event.itemLabel !== undefined) this.itemLabels.set(event.step, event.itemLabel);
         this.state = { ...this.state, status: "running" };
         break;
       case "step_completed":
@@ -153,6 +159,9 @@ export class AgentRun extends EventEmitter {
               status: "completed",
               output: event.output,
               confidence: event.confidence,
+              ...(this.itemLabels.has(event.step) && {
+                itemLabel: this.itemLabels.get(event.step)!,
+              }),
             },
           ],
         };

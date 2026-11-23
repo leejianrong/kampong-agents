@@ -86,7 +86,7 @@ export function buildRunLog(
     const label =
       index === undefined
         ? shown
-        : `${shown} · ${itemFailure ? describeItem(itemFailure.item) || `#${Number(index) + 1}` : `#${Number(index) + 1}`}`;
+        : `${shown} · ${(itemFailure ? describeItem(itemFailure.item) : entry.itemLabel) || `#${Number(index) + 1}`}`;
     // What ran before this row: everything that finished earlier at the top level, and in the same loop item.
     const scope = name.slice(0, name.length - step.length);
     const input: Record<string, unknown> = { ...base };
