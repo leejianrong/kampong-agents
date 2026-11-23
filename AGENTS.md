@@ -64,7 +64,7 @@ active cycle (`--cycle <id>`; `pandan cycle list --board 26`).
 - **Spec versions:** `"1.0"` keeps the original `{step.field}` syntax and string conditions and must keep
   validating. New step kinds (`transform`, `validate`, `dedupe`, `foreach`, `branch`, `stop`), `vars`,
   schedule/webhook auth and `output_schema` are `"1.1"` only. Each carries its own YAML line in errors.
-  The hosted server runs 1.1 specs (ADR-0056) except the `poll` trigger, which waits for per-workspace connector secrets (KAM-81); a deployed `schedule` runs on the hosted scheduler.
+  The hosted server runs 1.1 specs (ADR-0056) except the `poll` trigger (the workspace secret store it needed now exists, KAM-81; the hosted poller is not wired yet); a deployed `schedule` runs on the hosted scheduler.
   Webhook auth presets, `when` and `map` work (a per-deployment secret, ADR-0057). `dedupe` works there, on a Postgres state store scoped per workspace under RLS. (ADR-0027)
 - **Exported projects vendor the engine files** (parity-tested copies, e.g. `workflow.ts`, `run.ts`,
   `schedule.ts`), so a change to a vendored file must keep the parity tests passing. (ADR-0010)

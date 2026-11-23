@@ -113,6 +113,20 @@
       "when": 1792555400000,
       "tag": "0015_list_live_deployments",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795410524579,
+      "tag": "0016_workspace_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795410624579,
+      "tag": "0017_enable_workspace_secrets_rls",
+      "breakpoints": true
     }
   ]
 }

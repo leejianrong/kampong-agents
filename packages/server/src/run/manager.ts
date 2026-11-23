@@ -19,6 +19,7 @@ import type { DbClient } from "../db/client.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
+import { resolveWorkspaceSecrets, secretNamesFor } from "../secrets/resolve.js";
 import { PgStateStore } from "./pg-state-store.js";
 import { createGuardedFetch, parseAllowHosts } from "./ssrf-guard.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
@@ -93,9 +94,9 @@ export interface HostedRunManagerOptions {
   /**
    * The environment a run's tools, components and `${ENV}` var defaults read. Defaults to EMPTY, never
    * the server's `process.env`: a tenant's spec must not be able to name the server's own secrets
-   * (the database URL, the BYOK root key) in a tool header. Workspace-scoped tool secrets are a
-   * separate, not yet built, store; until then a tool that needs a secret fails visibly. Model keys are
-   * unaffected (they come from the BYOK vault, see `resolveWorkspaceModelClient`).
+   * (the database URL, the BYOK root key) in a tool header. A workspace's own tool secrets (KAM-81) are added
+   * per run from its vault (`resolveWorkspaceSecrets`); one it has not stored makes the step that needs it fail
+   * visibly. Model keys come from the BYOK vault (`resolveWorkspaceModelClient`).
    */
   env?: NodeJS.ProcessEnv;
   /** The environment used to build the model client (provider base URL, BYOK root key). Defaults to `process.env`. */
@@ -220,9 +221,18 @@ export class HostedRunManager {
           onUsage: recorder.reportUsage,
         });
 
+    // KAM-81: the `${NAME}`s the spec reads, resolved from this workspace's vault for this run only. Unset ones stay
+    // absent, so the engine fails the step that needs one, naming it.
+    const secrets = await resolveWorkspaceSecrets({
+      db: this.db,
+      workspaceId,
+      names: await secretNamesFor(spec),
+      env: this.options.modelEnv,
+    });
+
     const run = createAgentRun(spec, {
       model: recorder.wrapModel(model),
-      env: this.options.env ?? {},
+      env: { ...(this.options.env ?? {}), ...secrets },
       fetchImpl: this.toolFetch,
       components: this.options.components ?? this.components,
       // A `dedupe` step remembers its keys here (KAM-113): Postgres, scoped to this workspace under RLS. It is
