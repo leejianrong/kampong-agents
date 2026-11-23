@@ -13,6 +13,10 @@ export default defineConfig({
           name: "unit",
           include: ["packages/*/test/unit/**/*.test.ts"],
           environment: "node",
+          // KAM-293: the default 5 s is tight for a test that spawns a process or scans a directory when the pre-push
+          // hook or a busy CI runner has every core taken: a full run under load timed out three different tests
+          // that take milliseconds alone. A hung test still fails, at 20 s.
+          testTimeout: 20_000,
         },
       },
       {
@@ -20,6 +24,7 @@ export default defineConfig({
           name: "unit-web",
           include: ["apps/*/test/unit/**/*.test.{ts,tsx}"],
           environment: "jsdom",
+          testTimeout: 20_000,
         },
       },
       {
