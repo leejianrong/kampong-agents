@@ -64,6 +64,16 @@ export function RunControls({
     return () => document.removeEventListener("mousedown", onDown, true);
   }, [drawerOpen]);
 
+  // Escape closes the drawer wherever focus is, not only inside the bar (KAM-306).
+  useEffect(() => {
+    if (!drawerOpen) return;
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setDrawerOpen(false);
+    }
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [drawerOpen]);
+
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key !== "Escape") return;
     if (confirming) {
@@ -209,7 +219,16 @@ export function RunControls({
         data-testid="runs-drawer-toggle"
         onClick={() => setDrawerOpen((open) => !open)}
       >
-        Runs{runs.length > 0 && <span className="md3-statusbar__badge"> {runs.length}</span>}
+        Runs
+        {runs.length > 0 && (
+          <span
+            className="md3-statusbar__badge"
+            aria-label={`${runs.length} ${runs.length === 1 ? "run" : "runs"} this session`}
+          >
+            {" "}
+            {runs.length}
+          </span>
+        )}
       </button>
 
       {drawerOpen && (
@@ -377,6 +396,11 @@ function RunRow({
         <span className="md3-body-small">
           {took ?? "running"} · {new Date(entry.startedAt).toLocaleTimeString()}
         </span>
+        {entry.ranWith && (
+          <span className="md3-body-small md3-runcontrols__run-with" data-testid="run-with">
+            {entry.ranWith}
+          </span>
+        )}
       </button>
     </li>
   );

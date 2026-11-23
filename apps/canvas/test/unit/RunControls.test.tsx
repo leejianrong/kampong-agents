@@ -115,6 +115,27 @@ describe("Run bar", () => {
     expect(screen.queryByTestId("runs-drawer")).toBeNull();
   });
 
+  it("says what each run was run with, so runs with different input are told apart (KAM-306)", async () => {
+    const { api } = setup(options(), [COMPLETED_WITH_ERRORS, COMPLETED_WITH_ERRORS]);
+    render(<RunHarness api={api} />);
+    await waitFor(() => screen.getByRole("button", { name: "Replay" }));
+    fireEvent.change(screen.getByLabelText("Input"), { target: { value: "first" } });
+    fireEvent.click(screen.getByTestId("run-button"));
+    await screen.findByTestId("runbar-status");
+    fireEvent.change(screen.getByLabelText("Input"), { target: { value: "second" } });
+    fireEvent.click(screen.getByTestId("run-button"));
+    await waitFor(() =>
+      expect(screen.getByTestId("runs-drawer-toggle").textContent).toContain("2"),
+    );
+    fireEvent.click(screen.getByTestId("runs-drawer-toggle"));
+    const rows = within(screen.getByTestId("runs-drawer")).getAllByTestId("run-with");
+    expect(rows.map((r) => r.textContent)).toEqual(["input: second", "input: first"]);
+    expect(screen.getByLabelText("2 runs this session")).toBeTruthy();
+    // Escape closes it from anywhere.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByTestId("runs-drawer")).toBeNull();
+  });
+
   it("keeps the run, and what was typed, when the Test Run panel closes and opens", async () => {
     const { api, push } = setup();
     const view = render(<RunHarness api={api} />);

@@ -1,3 +1,4 @@
+import { describeRunWith } from "./runWith.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ApiClient,
@@ -21,6 +22,8 @@ export interface RunEntry {
   /** The mode the run was started in (KAM-188), as the server reported it; absent from a server with only live runs. */
   mode?: RunMode;
   input: string;
+  /** What the run was run with, in words (KAM-306): the vars changed from their defaults and the input. */
+  ranWith?: string;
   startedAt: number;
   /** Set when the run is over (this browser's clock). */
   endedAt?: number;
@@ -191,12 +194,17 @@ export function useRunSession(
   }, []);
 
   /** Takes a run into this session and follows it: one that began here, or one found on the server after a reload. */
-  function follow(id: string, state: RunState, rest: { mode?: RunMode; input: string }) {
+  function follow(
+    id: string,
+    state: RunState,
+    rest: { mode?: RunMode; input: string; ranWith?: string },
+  ) {
     const now = Date.now();
     const entry: RunEntry = {
       id,
       ...(rest.mode && { mode: rest.mode }),
       input: rest.input,
+      ...(rest.ranWith && { ranWith: rest.ranWith }),
       startedAt: now,
       ...(isOver(state) && { endedAt: now }),
       state,
@@ -263,7 +271,11 @@ export function useRunSession(
         setError(result.error ?? "Failed to start run.");
         return;
       }
-      follow(result.id, result.state, { ...(result.mode && { mode: result.mode }), input });
+      follow(result.id, result.state, {
+        ...(result.mode && { mode: result.mode }),
+        input,
+        ranWith: describeRunWith(input, declaredVars, changed),
+      });
     } finally {
       setStarting(false);
     }
