@@ -438,12 +438,17 @@ async function runDevCommand(args: string[], io: CliIO): Promise<number> {
 
 const SERVE_HELP_TEXT = `kampong serve <spec>.yaml [options]
 
-Runs a spec as a live webhook service: the process stays up
-and starts a run each time something POSTs to /webhook, with the request body as
-the run's input. This is how you run a spec on your own server -- the same engine and spec
-as \`kampong run\`, just triggerable and long-running. Connector tokens
-(\${SLACK_BOT_TOKEN}, ...) and model keys resolve from this process's
-environment, so deploying is "run this with those env vars set".
+Runs a spec as a long-lived service: the self-host and deploy path. It is the same engine and spec as
+\`kampong run\`, but the process stays up and a run starts when the spec's trigger fires:
+
+  webhook   (the default) a run starts each time something POSTs to /webhook; the body is the input.
+            The trigger's auth, \`when\` and \`map\` apply first.
+  schedule  a run starts on the schedule (cron or every); POST /schedule/run-now starts one now.
+  poll      a component's op is polled on an interval and a run starts per new item.
+
+Connector tokens (\${SLACK_BOT_TOKEN}, ...) and model keys resolve from this process's environment, then from values
+saved in the canvas (.kampong/secrets.env next to the spec). Pending approvals are saved and survive a restart.
+At start-up it prints what would stop the first run, and each run logs one line when it starts and when it ends.
 
 Arguments:
   <spec>.yaml            Path to the AgentSpec YAML file to serve
@@ -453,11 +458,14 @@ Options:
   --host <host>          Host/interface to bind (default: 0.0.0.0)
 
 Endpoints:
-  POST /webhook          Start a run; body is the input. Returns { id, state }.
-  GET  /runs/:id         The run's current state.
-  GET  /runs/:id/events  Server-Sent Events stream of the run's progress.
-  POST /runs/:id/approve Resolve a paused run: { approved: boolean, reason? }.
-  GET  /healthz          Liveness check.`;
+  POST /webhook             Start a run; the body is the input. Returns { success, id, state } (201).
+  POST /schedule/run-now    Start a scheduled spec's run now. 409 if one is running, 404 without a schedule.
+  GET  /runs                The latest runs, newest first, each with its trigger, status and outcome.
+  GET  /runs/:id            The run's current state and outcome.
+  GET  /runs/:id/events     Server-Sent Events stream of the run's progress.
+  POST /runs/:id/approve    Resolve a paused run: { approved: boolean, reason? }.
+  GET  /triggers/ignored    The latest 100 webhook requests the trigger's \`when\` ignored.
+  GET  /healthz             Liveness check.`;
 
 const DEFAULT_SERVE_PORT = 8080;
 const DEFAULT_SERVE_HOST = "0.0.0.0";
@@ -519,8 +527,8 @@ async function runServeCommand(
 
   const parsed = parseServeArgs(args);
   if (!parsed.ok) {
-    io.stderr(`kampong serve: ${parsed.error}\n`);
-    io.stderr(SERVE_HELP_TEXT);
+    io.stderr(`kampong serve: ${parsed.error}`);
+    io.stderr("Run `kampong serve --help` for usage.");
     return EXIT_USAGE_ERROR;
   }
   const { specPath, port, host } = parsed.value;
