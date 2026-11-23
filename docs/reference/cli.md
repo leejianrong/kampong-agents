@@ -123,6 +123,11 @@ kampong serve <spec>.yaml [--port <n>] [--host <host>]
 | `GET /triggers/ignored`     | The latest 100 webhook requests that `when` ignored.                                                   |
 | `GET /healthz`              | Liveness check.                                                                                        |
 
+When it starts, `serve` prints the address a sender can use (`localhost`, or the `--host` you gave, never `0.0.0.0`),
+how a run starts (for a schedule, the time of the first run), and what would stop the first run: variables that are
+not set (names only), components that are not installed, and a local model that is not running. These are warnings;
+the service still starts, and `kampong doctor <spec>` gives the full check.
+
 A spec with a `schedule` or `poll` trigger is driven by the unattended runner: one run at a time with an overlap
 lock, jitter and backoff, and a visible failure limit. Pending approvals are persisted and survive a
 restart. Model keys and connector tokens resolve from this process's environment, then from values saved in the
