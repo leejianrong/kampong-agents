@@ -153,8 +153,8 @@ copies nothing; copy the folder yourself, or choose the template in `kampong dev
 
 Checks a spec before you run it: that its components resolve and are pinned, what permissions they ask
 for, and that each credential's environment variable is set (names only, never values). A webhook trigger that
-checks a bearer token or signature also needs its `secret_env` set, or it refuses every request; doctor warns when
-it is not. If the [workflow assistant](#the-workflow-assistant) is set up, doctor names where it would send a
+checks a bearer token or signature also needs its `secret_env` set, or it refuses every request; doctor fails when
+it is not (with `--tools replay`, which never receives a webhook, it only warns). If the [workflow assistant](#the-workflow-assistant) is set up, doctor names where it would send a
 prompt; with `--probe` it also asks that endpoint for its model list, which sends the key.
 
 ```sh

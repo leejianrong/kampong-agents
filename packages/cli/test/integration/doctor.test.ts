@@ -94,7 +94,7 @@ describe("kampong doctor", () => {
   });
 
   // KAM-192: a webhook trigger refuses every request until its secret is set; doctor says so, as a warning.
-  it("warns when a webhook trigger's secret is not set, and passes once it is", async () => {
+  it("fails when a webhook trigger's secret is not set, and passes once it is (KAM-310)", async () => {
     const hook = spec("    []", "- step: go\n      type: action\n      action: x")
       .replace('version: "1.0"', 'version: "1.1"')
       .replace(
@@ -103,8 +103,12 @@ describe("kampong doctor", () => {
       );
     writeFileSync(path("agent.yaml"), hook);
     const missing = await doctor([path("agent.yaml")]);
-    expect(missing.code).toBe(EXIT_SUCCESS);
+    expect(missing.code).toBe(EXIT_EXECUTION_FAILURE);
     expect(missing.text).toMatch(/GITHUB_WEBHOOK_SECRET is not set \(webhook trigger secret\)/);
+    expect(missing.text).toMatch(/\bfail\b.*GITHUB_WEBHOOK_SECRET/i);
+    // A replay never receives a webhook, so there it is only a warning.
+    const replay = await doctor([path("agent.yaml"), "--tools", "replay"]);
+    expect(replay.text).toMatch(/warn.*GITHUB_WEBHOOK_SECRET is not set/i);
     const set = await doctor([path("agent.yaml")], {
       ANTHROPIC_API_KEY: SECRET,
       GITHUB_WEBHOOK_SECRET: "whsec",
