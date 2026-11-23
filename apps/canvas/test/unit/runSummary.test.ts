@@ -34,7 +34,7 @@ describe("summarizeRun", () => {
     } as unknown as RunState);
     expect(s).toMatchObject({
       kind: "completed_with_errors",
-      label: "Finished, 1 step failed",
+      label: "Finished, 1 of 2 items failed",
       errors: 1,
     });
   });

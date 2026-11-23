@@ -40,10 +40,12 @@ function session(finalOutput: Record<string, unknown>): RunSession {
 describe("run log outcome", () => {
   it("leads a run that carried on past a failure with what failed, in a warning pill and banner", () => {
     render(<RunLog session={session(failedLoop)} open onToggle={() => {}} />);
-    expect(screen.getByTestId("run-log-summary").textContent).toContain("Finished, 1 step failed");
+    expect(screen.getByTestId("run-log-summary").textContent).toContain(
+      "Finished, 1 of 3 items failed",
+    );
     expect(screen.getByTestId("run-log-summary").className).toContain("completed_with_errors");
     const banner = screen.getByTestId("run-log-outcome").textContent ?? "";
-    expect(banner).toContain("Finished, 1 step failed");
+    expect(banner).toContain("Finished, 1 of 3 items failed");
     expect(banner).toContain("fetch · MSFT");
     expect(banner).toContain("usage limit was reached");
     // The header no longer carries a start time or step counts; they are in the pill's tooltip.

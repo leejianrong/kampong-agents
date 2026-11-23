@@ -15,6 +15,16 @@ describe("edge run state", () => {
 
   it("is failed when a step failed, running while it goes or waits", () => {
     expect(edgeRun({ status: "failed", runs: 3 })).toEqual({ state: "failed", count: 3 });
+    expect(edgeRun({ status: "failed", runs: 25, failures: 23 })).toEqual({
+      state: "failed",
+      count: 25,
+      failures: 23,
+    });
+    // Every run failed: no "of", the count says it.
+    expect(edgeRun({ status: "failed", runs: 3, failures: 3 })).toEqual({
+      state: "failed",
+      count: 3,
+    });
     expect(edgeRun({ status: "running" })?.state).toBe("running");
     expect(edgeRun({ status: "waiting" })?.state).toBe("running");
   });
@@ -22,9 +32,12 @@ describe("edge run state", () => {
   it("says it in words and in the pill, not by colour", () => {
     expect(edgeRunText({ state: "passed", count: 3 })).toBe("Passed, 3 items");
     expect(edgeRunText({ state: "failed", count: 1 })).toBe("Failed, 1 item");
-    expect(edgeRunText({ state: "failed", count: 3 })).toBe("Failed for at least one of 3 items");
+    expect(edgeRunText({ state: "failed", count: 3 })).toBe("Failed, all 3 items");
+    // KAM-300: a step that ran for 25 items and failed for 23 says so, not just "25".
+    expect(edgeRunText({ state: "failed", count: 25, failures: 23 })).toBe("23 of 25 items failed");
     expect(edgeRunText({ state: "running", count: 1 })).toBe("Running");
     expect(edgeRunPill({ state: "passed", count: 3 })).toBe("✓ 3");
     expect(edgeRunPill({ state: "failed", count: 1 })).toBe("✕ 1");
+    expect(edgeRunPill({ state: "failed", count: 25, failures: 23 })).toBe("✕ 23 of 25");
   });
 });

@@ -5,7 +5,7 @@ import { describeItem, failedItems, groupFailures } from "./runErrors.js";
 import type { RunSession } from "./runSession.js";
 import { baseStepName } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
-import { finishedWithFailures, summarizeRun } from "./runSummary.js";
+import { summarizeRun } from "./runSummary.js";
 import { explainError } from "./runReason.js";
 import { ReasonFix } from "./ReasonFix.js";
 
@@ -152,11 +152,7 @@ export function RunPanel({ session }: RunPanelProps) {
                 completedWithErrors && summary ? summary.kind : state.status
               }`}
             >
-              {completedWithErrors && summary
-                ? summary.kind === "nothing_worked"
-                  ? summary.label
-                  : finishedWithFailures(failed.length)
-                : state.status}
+              {completedWithErrors && summary ? summary.label : state.status}
             </span>
           </div>
           <ol ref={traceRef} data-testid="run-trace" className="md3-run-trace md3-body-medium">
