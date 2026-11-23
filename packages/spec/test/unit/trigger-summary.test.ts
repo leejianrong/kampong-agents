@@ -12,10 +12,18 @@ describe("triggerSummary", () => {
   it("names a schedule by its interval or its cron", () => {
     expect(triggerSummary({ type: "schedule", every: "6h" })).toBe("Schedule: every 6h");
     expect(triggerSummary({ type: "schedule", cron: "0 9 * * 1-5", tz: "Asia/Singapore" })).toBe(
-      "Schedule: cron 0 9 * * 1-5 Asia/Singapore",
+      "Schedule: at 09:00 on weekdays (Asia/Singapore)",
     );
     expect(triggerSummary({ type: "schedule", cron: "0 9 * * *" })).toBe(
-      "Schedule: cron 0 9 * * *",
+      "Schedule: at 09:00 every day",
+    );
+    // Too long for a card: it stays the cron.
+    expect(triggerSummary({ type: "schedule", cron: "0 */6 * * *" })).toBe(
+      "Schedule: cron 0 */6 * * *",
+    );
+    // A cron that does not read as words stays a cron.
+    expect(triggerSummary({ type: "schedule", cron: "0 9 1,15 * *" })).toBe(
+      "Schedule: cron 0 9 1,15 * *",
     );
   });
   it("names a webhook by its preset, else its auth", () => {

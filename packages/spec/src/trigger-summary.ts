@@ -1,4 +1,5 @@
 import type { Trigger } from "./schema.js";
+import { previewSchedule } from "./schedule-preview.js";
 
 // A short human label for what starts a run (KAM-184), for the trigger node on the canvas: "Schedule: every 6h",
 // "Webhook (GitHub)", "Poll: every 5m", or "Manual" when the spec has no trigger. Pure, so the canvas and its
@@ -17,8 +18,14 @@ export function triggerSummary(trigger: Trigger | undefined): string {
     case "schedule": {
       if (trigger.every !== undefined) return `Schedule: every ${trigger.every}`;
       if (trigger.cron !== undefined) {
-        const tz = trigger.tz !== undefined ? ` ${trigger.tz}` : "";
-        return `Schedule: cron ${trigger.cron}${tz}`;
+        // In words when the cron is a shape that reads as words (KAM-314), else the cron itself.
+        const result = previewSchedule({ cron: trigger.cron, tz: trigger.tz }, 0);
+        const tz = trigger.tz !== undefined ? ` (${trigger.tz})` : "";
+        // A long reading would not fit the card, which keeps the cron then; the Trigger panel has the full sentence.
+        if (result.ok && result.preview.description && result.preview.description.length <= 32) {
+          return `Schedule: ${result.preview.description}${tz}`;
+        }
+        return `Schedule: cron ${trigger.cron}${trigger.tz !== undefined ? ` ${trigger.tz}` : ""}`;
       }
       return "Schedule";
     }
