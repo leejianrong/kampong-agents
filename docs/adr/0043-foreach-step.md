@@ -81,6 +81,9 @@ way to repeat some of them for each element of a list.
 - **Events.** The loop emits its own `step_started`/`step_completed` (the completed one carries the output above), and
   each nested step emits both under the name `<loop>[<index>].<step>` (`each_symbol[1].fetch`). Events from
   concurrent items interleave; the `index` in the name tells them apart.
+  A nested step's `step_started` also carries `itemLabel` (KAM-304) when its item is a short plain value (a string,
+  number or boolean, cut to 40 characters), and the run's record of the step keeps it, so a run log can name a passed
+  item as it names a failed one; an object or list item has none.
 
 - **Rejected at validation, for now.**
   - **A `foreach` inside a `foreach`**: "a foreach inside a foreach is not supported yet", at its line. It is accepted

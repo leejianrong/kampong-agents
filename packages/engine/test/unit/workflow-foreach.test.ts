@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSpec } from "@kampong/spec";
 import { runWorkflow, type EngineDeps, type RunEvent } from "../../src/workflow.js";
+import { AgentRun } from "../../src/run.js";
 import type { Clock } from "../../src/pacing.js";
 import type { ModelClient } from "../../src/model.js";
 import { SqliteStateStore } from "../../src/sqlite-state-store.js";
@@ -205,6 +206,64 @@ describe("foreach: collecting", () => {
     expect(
       events.filter((e) => e.type === "step_completed").map((e) => (e as { step: string }).step),
     ).toEqual(["each[0].fetch", "each[0].write", "each"]);
+  });
+});
+
+// KAM-304: a body step's start says which item it is running on, when that is a short plain value, so a run log can
+// name a passed item "· MSFT" as it already names a failed one.
+describe("foreach: naming the item a step runs on", () => {
+  const startedOn = (events: RunEvent[]) =>
+    events
+      .filter((e) => e.type === "step_started")
+      .map((e) => e as { step: string; itemLabel?: string })
+      .filter((e) => e.step.includes("["))
+      .map((e) => [e.step, e.itemLabel]);
+
+  it("carries a scalar item as a short label, and leaves the loop's own start without one", async () => {
+    const { fetchImpl } = fakeFetch();
+    const events = await drive(make({}), { symbols: ["AAA", 7] }, { fetchImpl });
+    expect(startedOn(events)).toEqual([
+      ["each[0].fetch", "AAA"],
+      ["each[0].write", "AAA"],
+      ["each[1].fetch", "7"],
+      ["each[1].write", "7"],
+    ]);
+    expect(events.find((e) => e.type === "step_started" && e.step === "each")).not.toHaveProperty(
+      "itemLabel",
+    );
+  });
+
+  it("keeps the label on the run's own record of each step, for a client that joined late", async () => {
+    const { fetchImpl } = fakeFetch();
+    const run = new AgentRun(make({}), { model, env: {}, fetchImpl });
+    const state = await run.start(JSON.stringify({ symbols: ["AAA", "BBB"] }));
+    const labelled = state.trace
+      .filter((r) => r.step.includes("[") && r.step.endsWith(".fetch"))
+      .map((r) => [r.step, r.itemLabel]);
+    expect(labelled).toEqual([
+      ["each[0].fetch", "AAA"],
+      ["each[1].fetch", "BBB"],
+    ]);
+    expect(state.trace.find((r) => r.step === "each")).not.toHaveProperty("itemLabel");
+  });
+
+  it("cuts a long value, and gives no label for an object or a list", async () => {
+    const { fetchImpl } = fakeFetch();
+    const long = "x".repeat(80);
+    const events = await drive(
+      make({ steps: [STORE_STEPS[0]] }),
+      { symbols: [long] },
+      { fetchImpl },
+    );
+    const [[, label]] = startedOn(events) as [[string, string]];
+    expect(label.length).toBeLessThanOrEqual(40);
+    expect(label.endsWith("…")).toBe(true);
+    const objects = await drive(
+      make({ steps: [STORE_STEPS[0]] }),
+      { symbols: [{ a: 1 }, [1]] },
+      { fetchImpl },
+    );
+    expect(startedOn(objects).map(([, l]) => l)).toEqual([undefined, undefined]);
   });
 });
 
