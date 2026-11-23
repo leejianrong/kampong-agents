@@ -164,17 +164,26 @@ export function CoachMarks({ coach, replay }: { coach: Coach; replay: boolean })
       }
     }
     measure();
-    // The bar the card sits beside can still be settling (the mode switch arrives with the options), so measure again
-    // once it has laid out; the observer below only sees the target change size, not move (KAM-305).
-    const settle = [requestAnimationFrame(measure), window.setTimeout(measure, 300)] as const;
-    window.addEventListener("resize", measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    // Whatever the card sits beside can move without resizing: the mode switch arrives with the run options and
+    // pushes the Run button right, a log opens, a panel docks. A timer cannot know when, so any change to the page's
+    // layout measures again, once per frame (KAM-319: a card that measured before the switch arrived ended up on
+    // the Run button, and a click on Run could not land).
+    let frame = 0;
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    again();
+    window.addEventListener("resize", again);
+    const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver(again);
+    mutations?.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(again);
     const target = document.querySelector(ANCHOR[mark]);
     if (target) observer?.observe(target);
     return () => {
-      cancelAnimationFrame(settle[0]);
-      clearTimeout(settle[1]);
-      window.removeEventListener("resize", measure);
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", again);
+      mutations?.disconnect();
       observer?.disconnect();
     };
   }, [mark]);
