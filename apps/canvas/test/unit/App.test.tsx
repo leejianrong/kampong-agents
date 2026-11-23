@@ -325,8 +325,8 @@ describe("App", () => {
       fireEvent.click(
         within(screen.getByRole("banner")).getByRole("button", { name: "Check setup" }),
       );
-      fireEvent.click(screen.getByRole("button", { name: "Run checks" }));
-      expect(await screen.findByText("X is not set")).toBeTruthy();
+      // It runs as the panel opens (KAM-311).
+      expect(await screen.findByText(/^Needs your X/)).toBeTruthy();
       expect(JSON.parse(calls.find((c) => c.url.endsWith("/api/doctor"))!.body!)).toEqual({});
     });
 
