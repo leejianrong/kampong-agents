@@ -2269,6 +2269,11 @@ select.md3-text-field {
   border-right: 1px solid var(--md-sys-color-outline-variant);
 }
 
+/* Its children keep their height and the rail scrolls, so a short canvas never folds them onto each other (KAM-302). */
+.md3-palette > * {
+  flex: none;
+}
+
 .md3-palette__header {
   display: flex;
   align-items: center;
@@ -2277,6 +2282,8 @@ select.md3-text-field {
 
 .md3-palette--collapsed {
   display: flex;
+  /* Side by side, so on a short canvas they sit above the first card, not on it (KAM-302). */
+  flex-direction: row;
   gap: 0.5rem;
   position: absolute;
   top: 0.5rem;
@@ -3589,7 +3596,8 @@ select.md3-text-field {
 
 .md3-runlog__body {
   display: flex;
-  height: var(--runlog-body-h, min(13rem, 28vh));
+  /* One height for Steps and Timeline, so switching views never moves the canvas (KAM-302). */
+  height: var(--runlog-body-h, min(15rem, 32vh));
   min-height: 0;
   border-top: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -3806,9 +3814,6 @@ select.md3-text-field {
   outline-offset: -2px;
 }
 
-.md3-runlog__body[data-view="timeline"] {
-  height: var(--runlog-body-h, min(24rem, 46vh));
-}
 .md3-timeline {
   flex: 1;
   font-size: var(--md-type-body-small-size);
