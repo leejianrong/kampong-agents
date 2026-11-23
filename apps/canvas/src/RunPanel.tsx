@@ -5,7 +5,7 @@ import { describeItem, failedItems } from "./runErrors.js";
 import type { RunSession } from "./runSession.js";
 import { baseStepName } from "./runStatus.js";
 import { useRunTracker } from "./runTracker.js";
-import { finishedWithFailures } from "./runSummary.js";
+import { finishedWithFailures, summarizeRun } from "./runSummary.js";
 import { explainError } from "./runReason.js";
 import { ReasonFix } from "./ReasonFix.js";
 
@@ -40,6 +40,7 @@ export function RunPanel({ session }: RunPanelProps) {
   const failed = state?.status === "completed" ? failedItems(state.finalOutput) : [];
   const reason = state?.error ? explainError(state.error) : undefined;
   const completedWithErrors = failed.length > 0;
+  const summary = state ? summarizeRun(state) : undefined;
 
   // KAM-190: a failed node on the canvas links here; show the message it is about.
   const request = tracker?.messageRequest ?? null;
@@ -148,10 +149,14 @@ export function RunPanel({ session }: RunPanelProps) {
             Status:{" "}
             <span
               className={`md3-status-pill md3-status-pill--${
-                completedWithErrors ? "completed_with_errors" : state.status
+                completedWithErrors && summary ? summary.kind : state.status
               }`}
             >
-              {completedWithErrors ? finishedWithFailures(failed.length) : state.status}
+              {completedWithErrors && summary
+                ? summary.kind === "nothing_worked"
+                  ? summary.label
+                  : finishedWithFailures(failed.length)
+                : state.status}
             </span>
           </div>
           <ol ref={traceRef} data-testid="run-trace" className="md3-run-trace md3-body-medium">

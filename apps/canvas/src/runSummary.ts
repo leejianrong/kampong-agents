@@ -1,12 +1,18 @@
 import type { RunState } from "./api.js";
-import { failedItems } from "./runErrors.js";
+import { failedItems, nothingWorked } from "./runErrors.js";
 
 // One run in a word, an icon and a colour role (KAM-219): the run bar's status chip and the runs drawer both draw
 // from this, so a run is called the same thing in both. A run that finished with failed items carried on past is
 // "finished, N steps failed", a warning, never "completed".
 
 export type RunSummaryKind =
-  "running" | "awaiting_approval" | "completed" | "completed_with_errors" | "failed" | "rejected";
+  | "running"
+  | "awaiting_approval"
+  | "completed"
+  | "completed_with_errors"
+  | "nothing_worked"
+  | "failed"
+  | "rejected";
 
 export interface RunSummary {
   kind: RunSummaryKind;
@@ -23,6 +29,7 @@ const ICON: Record<RunSummaryKind, string> = {
   awaiting_approval: "⏸",
   completed: "✓",
   completed_with_errors: "!",
+  nothing_worked: "✕",
   failed: "✕",
   rejected: "✕",
 };
@@ -31,15 +38,26 @@ const ICON: Record<RunSummaryKind, string> = {
 export const finishedWithFailures = (n: number): string =>
   `Finished, ${n} ${n === 1 ? "step" : "steps"} failed`;
 
+/** How a run whose every loop item failed is worded: said as plainly as a failure, not as a finish (KAM-297). */
+export const nothingWorkedLabel = (n: number): string =>
+  `Nothing worked, all ${n} ${n === 1 ? "item" : "items"} failed`;
+
 export function summarizeRun(state: RunState): RunSummary {
   const errors = state.status === "completed" ? failedItems(state.finalOutput).length : 0;
-  const kind: RunSummaryKind = errors > 0 ? "completed_with_errors" : state.status;
+  const none = errors > 0 && nothingWorked(state.finalOutput);
+  const kind: RunSummaryKind = none
+    ? "nothing_worked"
+    : errors > 0
+      ? "completed_with_errors"
+      : state.status;
   const label =
-    kind === "completed_with_errors"
-      ? finishedWithFailures(errors)
-      : kind === "awaiting_approval"
-        ? "waiting for approval"
-        : kind;
+    kind === "nothing_worked"
+      ? nothingWorkedLabel(errors)
+      : kind === "completed_with_errors"
+        ? finishedWithFailures(errors)
+        : kind === "awaiting_approval"
+          ? "waiting for approval"
+          : kind;
   return { kind, label, icon: ICON[kind], errors };
 }
 

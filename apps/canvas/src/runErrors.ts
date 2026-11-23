@@ -43,6 +43,37 @@ export function failedItems(finalOutput: Record<string, unknown> | undefined): F
   return found;
 }
 
+/**
+ * How many items a loop's own output says failed when NONE of them worked (no results, at least one error), else
+ * undefined. A loop that carried on past every item reads as finished, though nothing it did came of it (KAM-297).
+ */
+export function loopAllFailed(output: unknown): number | undefined {
+  if (!isRecord(output) || !Array.isArray(output["results"]) || !Array.isArray(output["errors"])) {
+    return undefined;
+  }
+  return output["results"].length === 0 && output["errors"].length > 0
+    ? output["errors"].length
+    : undefined;
+}
+
+/** True when a run's loops had failed items and not one item worked, in any loop. */
+export function nothingWorked(finalOutput: Record<string, unknown> | undefined): boolean {
+  let failed = 0;
+  let worked = 0;
+  for (const output of Object.values(finalOutput ?? {})) {
+    if (
+      !isRecord(output) ||
+      !Array.isArray(output["results"]) ||
+      !Array.isArray(output["errors"])
+    ) {
+      continue;
+    }
+    failed += output["errors"].length;
+    worked += output["results"].length;
+  }
+  return failed > 0 && worked === 0;
+}
+
 /** An item as one short line of table text. */
 export function describeItem(item: unknown): string {
   if (item === undefined) return "";

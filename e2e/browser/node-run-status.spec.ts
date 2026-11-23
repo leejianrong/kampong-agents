@@ -160,9 +160,12 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
-        timeout: 20000,
-      });
+      await expect(page.getByTestId("run-status")).toContainText(
+        "Nothing worked, all 3 items failed",
+        {
+          timeout: 20000,
+        },
+      );
 
       const failed = badge(page, /Tool step fetch/);
       // A credential that is not set is "Needs key", not a bug, and the card says which one.
@@ -205,9 +208,12 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
-        timeout: 20000,
-      });
+      await expect(page.getByTestId("run-status")).toContainText(
+        "Nothing worked, all 3 items failed",
+        {
+          timeout: 20000,
+        },
+      );
       await expect(badge(page, /Tool step fetch/)).toContainText("Needs key");
       expect(readFileSync(join(keyless.dir, "agent.yaml"), "utf8")).toBe(keyless.spec);
     });

@@ -339,6 +339,7 @@ select {
 }
 
 .md3-status-pill--rejected,
+.md3-status-pill--nothing_worked,
 .md3-status-pill--failed {
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);

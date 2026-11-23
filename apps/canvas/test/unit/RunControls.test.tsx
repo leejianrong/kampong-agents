@@ -30,7 +30,7 @@ const COMPLETED_WITH_ERRORS = {
   trace: [],
   finalOutput: {
     each: {
-      results: [],
+      results: [{ index: 1 }],
       errors: [{ index: 0, step: "fetch", message: "429 slow down", item: "MSFT" }],
     },
   },

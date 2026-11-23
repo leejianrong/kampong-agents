@@ -14,7 +14,7 @@ class FakeEventSource {
 
 const THREE_FAILED = {
   each_symbol: {
-    results: [],
+    results: [{ index: 0 }],
     count: 3,
     skipped: [],
     errors: ["AAPL", "MSFT", "NVDA"].map((item, index) => ({
@@ -99,7 +99,7 @@ describe("RunPanel failed items", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     const one = {
       loop: {
-        results: [],
+        results: [{ index: 0 }],
         skipped: [],
         count: 1,
         errors: [{ index: 0, item: 1, step: "s", message: "m" }],

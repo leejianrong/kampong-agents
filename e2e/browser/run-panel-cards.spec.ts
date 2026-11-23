@@ -66,13 +66,16 @@ for (const size of [
         .click();
     }
 
-    test("KAM-189: a run whose symbols all failed is finished with 3 failed steps, in a table", async ({
+    test("KAM-189, KAM-297: a run whose symbols all failed says nothing worked, with the failed items in a table", async ({
       page,
     }) => {
       await runLive(page);
-      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
-        timeout: 20000,
-      });
+      await expect(page.getByTestId("run-status")).toContainText(
+        "Nothing worked, all 3 items failed",
+        {
+          timeout: 20000,
+        },
+      );
       const rows = page.getByTestId("run-error-row");
       await expect(rows).toHaveCount(3);
       await expect(rows.first()).toContainText("AAPL");

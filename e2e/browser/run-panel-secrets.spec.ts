@@ -81,9 +81,12 @@ for (const size of [
         .getByRole("alertdialog", { name: "Run live?" })
         .getByRole("button", { name: "Run live" })
         .click();
-      await expect(page.getByTestId("run-status")).toContainText("Finished, 3 steps failed", {
-        timeout: 20000,
-      });
+      await expect(page.getByTestId("run-status")).toContainText(
+        "Nothing worked, all 3 items failed",
+        {
+          timeout: 20000,
+        },
+      );
       await page.getByRole("button", { name: "Set it here" }).click();
 
       // The Secrets panel is open on that one name, ready for a value.

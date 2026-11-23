@@ -26,6 +26,49 @@ describe("outcomeOf", () => {
     });
   });
 
+  it("says nothing worked, as an error, when every loop item failed (KAM-297)", () => {
+    const o = outcomeOf(
+      run({
+        finalOutput: {
+          each: {
+            results: [],
+            errors: [
+              { index: 0, step: "fetch", message: "rate limit", item: "A" },
+              { index: 1, step: "fetch", message: "rate limit", item: "B" },
+            ],
+          },
+        },
+      }),
+      [
+        row("each", "passed"),
+        row("fetch · A", "failed", "rate limit", 1),
+        row("fetch · B", "failed", "rate limit", 1),
+      ],
+    );
+    expect(o.tone).toBe("error");
+    expect(o.headline).toBe("Nothing worked: all 2 items failed");
+    expect(o.detail).toBe("Every one failed the same way: The service's usage limit was reached.");
+  });
+
+  it("names the first failure when the items failed for different reasons", () => {
+    const o = outcomeOf(
+      run({
+        finalOutput: {
+          each: {
+            results: [],
+            errors: [
+              { index: 0, step: "fetch", message: "rate limit", item: "A" },
+              { index: 1, step: "fetch", message: "boom", item: "B" },
+            ],
+          },
+        },
+      }),
+      [row("fetch · A", "failed", "rate limit", 1), row("fetch · B", "failed", "boom", 1)],
+    );
+    expect(o.tone).toBe("error");
+    expect(o.detail).toMatch(/^First: "fetch · A"/);
+  });
+
   it("leads a run that carried on past a failure with what failed and why", () => {
     const o = outcomeOf(run({}), [
       row("each", "passed"),

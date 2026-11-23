@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const failedLoop = {
   each: {
-    results: [],
+    results: [{ index: 0 }, { index: 2 }],
     errors: [{ index: 1, step: "fetch", message: "rate limited", item: "MSFT" }],
   },
 };

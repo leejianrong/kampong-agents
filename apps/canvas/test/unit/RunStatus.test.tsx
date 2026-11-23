@@ -96,6 +96,40 @@ describe("baseStepName", () => {
   });
 });
 
+describe("a loop whose every item failed (KAM-297)", () => {
+  it("is Failed, not Done, and says none of the items worked", () => {
+    const output = {
+      results: [],
+      errors: [{ index: 0, step: "fetch", message: "no recording", item: "ZZA" }],
+      count: 1,
+    };
+    const s = state({
+      status: "completed",
+      trace: [{ step: "each_item", status: "completed", output }],
+      finalOutput: { each_item: output },
+    });
+    const got = deriveNodeStatuses(fold([{ type: "state", state: s } as RunEventMessage]), IDS);
+    expect(got["workflow:each_item"]).toMatchObject({
+      status: "failed",
+      message: "None of the 1 item worked.",
+    });
+  });
+
+  it("stays Done when some items worked", () => {
+    const output = {
+      results: [{ index: 1 }],
+      errors: [{ index: 0, step: "fetch", message: "x", item: "A" }],
+    };
+    const s = state({
+      status: "completed",
+      trace: [{ step: "each_item", status: "completed", output }],
+      finalOutput: { each_item: output },
+    });
+    const got = deriveNodeStatuses(fold([{ type: "state", state: s } as RunEventMessage]), IDS);
+    expect(got["workflow:each_item"]).toMatchObject({ status: "passed" });
+  });
+});
+
 describe("deriveNodeStatuses", () => {
   it("marks a started step running and a finished one passed, with its output and timing", () => {
     const s1 = state({});
