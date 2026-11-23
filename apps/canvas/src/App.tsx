@@ -1784,6 +1784,7 @@ export function App({
                         onSave={handleSaveTrigger}
                         onRemove={handleRemoveTrigger}
                         local={api.listComponents !== undefined}
+                        components={catalog?.components}
                       />
                     </Panel>
                   )}
