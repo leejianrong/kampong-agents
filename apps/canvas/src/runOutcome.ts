@@ -1,7 +1,7 @@
 import type { RunState } from "./api.js";
 import type { LogRow } from "./runLog.js";
 import { explainError } from "./runReason.js";
-import { loopTotals, nothingWorked } from "./runErrors.js";
+import { failedItems, groupFailures, loopTotals, nothingWorked } from "./runErrors.js";
 import { finishedWithFailures, nothingWorkedLabel } from "./runSummary.js";
 
 // ADR-0063 / KAM-269: the answer to "what happened?" in a line or two of plain words, read off the run and its log
@@ -52,6 +52,20 @@ function stepsRan(steps: number, items: number): string {
   return items > 0
     ? `${base}, going through ${items} ${items === 1 ? "item" : "items"}.`
     : `${base}.`;
+}
+
+/**
+ * Said under "Finished, 23 of 25 items failed": the biggest cause first, with counts, so a one-off (a rate limit) is
+ * not presented as the story when 22 failed for another reason (KAM-299). One failure keeps its name and reason.
+ */
+function carriedOnDetail(state: RunState, first: LogRow): string {
+  const groups = groupFailures(failedItems(state.finalOutput));
+  const failures = groups.reduce((n, g) => n + g.items.length, 0);
+  if (failures > 1) {
+    const causes = groups.map((g) => `${g.items.length} ${g.brief}`);
+    return `The run carried on. ${causes.join("; ")}.`;
+  }
+  return `The run carried on. First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`;
 }
 
 const quoted = (row: LogRow): string => `"${row.label}"`;
@@ -111,7 +125,7 @@ export function outcomeOf(
           ...(note !== undefined && { note }),
           tone: "warn",
           headline: finishedWithFailures(failed.length, loopTotals(state.finalOutput).total),
-          detail: `The run carried on. First: ${quoted(first)}${first.error ? `: ${reasonLine(first.error)}` : "."}`,
+          detail: carriedOnDetail(state, first),
         };
       }
       const steps = rows.filter((r) => r.depth === 0 && r.status === "passed").length;

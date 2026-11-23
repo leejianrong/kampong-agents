@@ -81,6 +81,8 @@ export interface FailureGroup {
   reason: string;
   /** What to do about it, when one thing is clearly the right thing. */
   action?: string;
+  /** What a count of this group reads as, "had no recorded answer" (KAM-299). */
+  brief: string;
   items: FailedItem[];
 }
 
@@ -109,6 +111,7 @@ export function groupFailures(items: readonly FailedItem[]): FailureGroup[] {
       groups.set(reason, {
         reason,
         ...(why.known && why.action && { action: why.action }),
+        brief: why.known && why.brief ? why.brief : `failed: ${reason}`,
         items: [item],
       });
   }

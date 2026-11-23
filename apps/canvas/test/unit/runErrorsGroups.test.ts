@@ -24,6 +24,8 @@ describe("groupFailures", () => {
     expect(groups[0]!.reason).toBe("This input has no recorded answer, so Replay cannot run it.");
     expect(groups[0]!.action).toMatch(/Run it live once/);
     expect(groups[1]!.reason).toMatch(/usage limit/);
+    // KAM-299: a short phrase a banner can put after a count.
+    expect(groups.map((g) => g.brief)).toEqual(["had no recorded answer", "hit the usage limit"]);
   });
 
   it("keeps file paths and URLs out of a reason it does not recognise", () => {
@@ -34,6 +36,7 @@ describe("groupFailures", () => {
       ),
     ]);
     expect(g!.reason).toBe("Widget exploded at … while calling …");
+    expect(g!.brief).toBe("failed: Widget exploded at … while calling …");
     expect(g!.reason).not.toContain("/home");
     expect(g!.reason).not.toContain("http");
   });

@@ -42,6 +42,28 @@ describe("outcomeOf", () => {
     expect(o.detail).toBe("2 steps ran, going through 25 items.");
   });
 
+  it("leads with the biggest cause and counts each, not the first failure alone (KAM-299)", () => {
+    const missing = (i: number) =>
+      `Tool "kampong/alpha-vantage.time_series_daily" failed: No recorded fixture for tool "x" (item ${i})`;
+    const errors = [
+      { index: 0, step: "fetch", message: "HTTP 429 rate limit", item: "MSFT" },
+      ...Array.from({ length: 22 }, (_, i) => ({
+        index: i + 1,
+        step: "fetch",
+        message: missing(i),
+        item: `Z${i}`,
+      })),
+    ];
+    const o = outcomeOf(
+      run({
+        finalOutput: { each: { results: [{ index: 23 }, { index: 24 }], errors, count: 25 } },
+      }),
+      errors.map((e) => row(`fetch · ${e.item}`, "failed", e.message, 1)),
+    );
+    expect(o.headline).toBe("Finished, 23 of 25 items failed");
+    expect(o.detail).toBe("The run carried on. 22 had no recorded answer; 1 hit the usage limit.");
+  });
+
   it("counts failures against the items the loop went through", () => {
     const o = outcomeOf(
       run({
