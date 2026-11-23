@@ -23,6 +23,7 @@ import {
 } from "@kampong/engine";
 import type { AgentSpec } from "@kampong/spec";
 import type { ReplayDeps } from "./run-options.js";
+import { describeOutcome, type Outcome } from "./run-outcome.js";
 
 // Holds the in-flight test runs `kampong dev`'s server exposes over HTTP
 // (PLAN.md Shape S5, SLICES.md V2 KAN-1107). Runs are process-local and
@@ -84,7 +85,24 @@ export interface RunManagerOptions {
   statePath?: string;
   /** How long a persisted approval stays resolvable (default 7 days). */
   approvalTtlMs?: number;
+  /**
+   * KAM-309: one plain line when a run starts, pauses for approval and ends (`kampong serve` logs them; nothing
+   * else sets it). The run's own state is untouched.
+   */
+  log?: (line: string) => void;
 }
+
+/** A run as `GET /runs` lists it: what started it, when, and how it is going, in words. */
+export interface RunSummary {
+  id: string;
+  /** What started it: `webhook`, `schedule`, `poll`, or `run` for a spec with no trigger. */
+  trigger: string;
+  status: RunState["status"];
+  outcome: string;
+  startedAt: string;
+  endedAt?: string;
+}
+const MAX_SUMMARIES = 100;
 
 /** How long a `respond: sync` webhook waits for the run before answering with its id (KAM-109). */
 export const DEFAULT_SYNC_TIMEOUT_MS = 30_000;
@@ -130,6 +148,8 @@ export class RunManager {
   // ADR-0063: each run has a recorder that builds its trace from the run's events; it goes when the run does.
   private readonly recorders = new WeakMap<AgentRun, TraceRecorder>();
   private readonly evictionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // KAM-309: the latest runs, kept after a run is evicted so a failed one stays findable.
+  private readonly summaries: RunSummary[] = [];
   private readonly evictAfterMs: number;
 
   constructor(private readonly options: RunManagerOptions = {}) {
@@ -229,9 +249,46 @@ export class RunManager {
     return run && this.recorders.get(run)?.snapshot();
   }
 
+  /** The latest runs this process started, newest first (KAM-309). A run keeps its place after it is evicted. */
+  listRuns(limit = 50): RunSummary[] {
+    return this.summaries.slice(0, limit).map((s) => ({ ...s }));
+  }
+
+  /** A run's outcome in one sentence, for the log and the API; undefined for an unknown or evicted run. */
+  outcomeOf(id: string): Outcome | undefined {
+    const run = this.runs.get(id);
+    return run && describeOutcome(run.getState(), this.recorders.get(run)?.snapshot());
+  }
+
+  private track(id: string, trigger: string, run: AgentRun): void {
+    const summary: RunSummary = {
+      id,
+      trigger,
+      status: "running",
+      outcome: "running",
+      startedAt: new Date().toISOString(),
+    };
+    this.summaries.unshift(summary);
+    if (this.summaries.length > MAX_SUMMARIES) this.summaries.pop();
+    const log = this.options.log;
+    const short = id.slice(0, 8);
+    const stamp = () => `${new Date().toISOString().slice(0, 19)}Z`;
+    log?.(`${stamp()} run ${short} started (${trigger})`);
+    run.on("event", (event: RunEvent) => {
+      const waiting = event.type === "awaiting_approval";
+      if (!waiting && !TERMINAL_EVENT_TYPES.has(event.type)) return;
+      const outcome = describeOutcome(run.getState(), this.recorders.get(run)?.snapshot());
+      summary.status = run.getState().status;
+      summary.outcome = outcome.text;
+      if (!waiting) summary.endedAt = new Date().toISOString();
+      log?.(`${stamp()} run ${short} (${trigger}) ${outcome.text}`);
+    });
+  }
+
   /** Adds a run to the map under a fresh id and wires its eviction and Slack notification hooks. */
   private register(spec: AgentSpec, run: AgentRun): string {
     const id = randomUUID();
+    this.track(id, spec.agent.trigger?.type ?? "run", run);
     run.on("event", (event: RunEvent) => {
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
     });

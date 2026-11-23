@@ -223,8 +223,13 @@ export function createServeRuntime({
         .code(404)
         .send({ success: false, error: `Unknown run id "${request.params.id}".` });
     }
-    return { success: true, state: run.getState() };
+    const outcome = runManager.outcomeOf(request.params.id);
+    return { success: true, state: run.getState(), ...(outcome && { outcome: outcome.text }) };
   });
+
+  // GET /runs -- KAM-309: the latest runs this process started, newest first, each with its outcome in words. It is
+  // how a failed run is found without keeping its id; it forgets on restart (stored runs are V13).
+  app.get("/runs", async () => ({ success: true, runs: runManager.listRuns() }));
 
   app.post<{ Params: { id: string }; Body: { approved?: boolean; reason?: string } }>(
     "/runs/:id/approve",
