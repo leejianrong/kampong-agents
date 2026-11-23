@@ -79,18 +79,13 @@ export function DoctorPanel({ run, onSetSecret, trigger }: DoctorPanelProps) {
           <input
             type="checkbox"
             checked={online || probe}
-            disabled={busy || probe}
+            disabled={probe}
             onChange={(e) => setOnline(e.target.checked)}
           />
           <span className="md3-body-medium">Also reach each host</span>
         </label>
         <label className="md3-field md3-field--inline">
-          <input
-            type="checkbox"
-            checked={probe}
-            disabled={busy}
-            onChange={(e) => setProbe(e.target.checked)}
-          />
+          <input type="checkbox" checked={probe} onChange={(e) => setProbe(e.target.checked)} />
           <span className="md3-body-medium">Also check credentials</span>
         </label>
       </div>
