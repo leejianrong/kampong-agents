@@ -1,4 +1,5 @@
 import { Agent } from "@mastra/core/agent";
+import { noopLogger } from "@mastra/core/logger";
 import type { MastraModelConfig } from "@mastra/core/llm";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -534,8 +535,8 @@ export function createMastraModelClient(
   const timeoutMs = options.timeoutMs ?? modelConfig.timeout_ms ?? DEFAULT_MODEL_TIMEOUT_MS;
   const timeoutFetch = createTimeoutFetch(options.fetchImpl, timeoutMs, modelConfig.provider);
 
-  const buildAgent = (modelName: string) =>
-    new Agent({
+  const buildAgent = (modelName: string) => {
+    const agent = new Agent({
       id: spec.agent.id,
       name: spec.agent.name,
       instructions: `Role: ${spec.agent.role}\nGoal: ${spec.agent.goal}`,
@@ -548,6 +549,11 @@ export function createMastraModelClient(
       // model call must surface at once and is never retried (ADR-0004), so the defaults are off.
       errorProcessorDefaults: false,
     });
+    // A failed call already throws an error the run reports (and `kampong serve` logs in one line). Mastra would
+    // also dump its own log of it, the whole HTTP error with the request, into the terminal (KAM-309).
+    agent.__setLogger(noopLogger);
+    return agent;
+  };
   // One agent per model name, built on first use, so a step's `model` override costs nothing when unused.
   const agents = new Map<string, Agent>([[modelConfig.name, buildAgent(modelConfig.name)]]);
   const agentFor = (modelName: string | undefined): Agent => {

@@ -116,7 +116,8 @@ kampong serve <spec>.yaml [--port <n>] [--host <host>]
 | Endpoint                    | What it does                                                                                           |
 | --------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `POST /webhook`             | Start a run; the body is the input. Auth, `when` and `map` apply first (see the `webhook` trigger).     |
-| `GET /runs/:id`             | The run's current state.                                                                               |
+| `GET /runs`                 | The latest runs this process started, newest first, each with its trigger, status and outcome in words. |
+| `GET /runs/:id`             | The run's current state, with its outcome in words.                                                    |
 | `GET /runs/:id/events`      | Server-sent events stream of the run's progress.                                                       |
 | `POST /runs/:id/approve`    | Resolve a paused run: `{ "approved": boolean, "reason"?: string }`.                                    |
 | `POST /schedule/run-now`    | Start a scheduled spec's run now. `409` if a run holds the lock, `404` if the spec has no schedule.    |
@@ -127,6 +128,12 @@ When it starts, `serve` prints the address a sender can use (`localhost`, or the
 how a run starts (for a schedule, the time of the first run), and what would stop the first run: variables that are
 not set (names only), components that are not installed, and a local model that is not running. These are warnings;
 the service still starts, and `kampong doctor <spec>` gives the full check.
+
+Every run leaves one line in the log when it starts and one when it ends (or pauses for approval), for example
+`2026-11-23T07:11:27Z run b97148fa (schedule) finished, but nothing worked: every item failed (3 failures). First: …`.
+A run whose loop items all failed says so, though the run itself ended `completed`. `GET /runs` lists the same
+outcomes, so a failed run can be found without keeping its id; the list is kept in memory and starts empty after a
+restart. A failed model call logs its short error once, not the provider's whole response.
 
 A spec with a `schedule` or `poll` trigger is driven by the unattended runner: one run at a time with an overlap
 lock, jitter and backoff, and a visible failure limit. Pending approvals are persisted and survive a

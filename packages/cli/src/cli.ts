@@ -539,7 +539,11 @@ async function runServeCommand(
     runtime = createServeRuntime({
       specPath: resolvedSpecPath,
       getRunners: () => runnersRef.current,
-      ...(fakeModel ? { run: { createModel: () => fakeModel } } : {}),
+      // KAM-309: each run's start and outcome, one plain line each.
+      run: {
+        ...(fakeModel ? { createModel: () => fakeModel } : {}),
+        log: (line: string) => io.stdout(line),
+      },
     });
   } catch (err) {
     // An invalid spec (including an unsupported trigger, which the schema
