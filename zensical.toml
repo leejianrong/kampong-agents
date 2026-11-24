@@ -32,6 +32,14 @@ nav = [
     { "Spec editing API" = "reference/spec-api.md" },
   ] },
   { "Design decisions" = "design-decisions.md" },
+  { "Hosted plan" = [
+    { "Overview" = "hosted/index.md" },
+    { "Architecture" = "hosted/architecture.md" },
+    { "Flows" = "hosted/flows.md" },
+    { "Data and trust" = "hosted/data-and-trust.md" },
+    { "Enterprise readiness" = "hosted/enterprise-readiness.md" },
+    { "Build plan" = "hosted/build-plan.md" },
+  ] },
 ]
 
 [theme]
