@@ -1,6 +1,6 @@
 # ADR-0058: Hosted tool HTTP may only reach public addresses
 
-- Status: Proposed (KAM-232). The guard itself is a security default; the operator allow-list in "Decision" is the one new surface and needs the product owner's sign-off.
+- Status: Accepted (2026-11-24, by the product owner), including the operator allow-list in "Decision". Built as KAM-232.
 - Date: 2026-10-22
 - Deciders: Jian (product owner)
 
