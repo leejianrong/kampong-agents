@@ -59,7 +59,11 @@ describe.skipIf(!DATABASE_URL)("Deployment routes against a real Postgres", () =
     delete process.env["GITHUB_CLIENT_ID"];
     delete process.env["GITHUB_CLIENT_SECRET"];
 
-    app = createServer({ db, run: { createModel: fakeModel } });
+    app = createServer({
+      db,
+      run: { createModel: fakeModel },
+      publicBaseUrl: "https://kampong.test",
+    });
     await app.ready();
   });
 
@@ -159,6 +163,8 @@ describe.skipIf(!DATABASE_URL)("Deployment routes against a real Postgres", () =
     const { deploymentId, status, webhookPath } = deploy.json();
     expect(status).toBe("live");
     expect(webhookPath).toBe(`/hooks/w/${workspaceId}/${deploymentId}`);
+    // KAM-321: the full address is PUBLIC_BASE_URL plus the path, on deploy and on read.
+    expect(deploy.json().webhookUrl).toBe(`https://kampong.test${webhookPath}`);
 
     // GET reflects it.
     const get = await app.inject({
@@ -168,6 +174,7 @@ describe.skipIf(!DATABASE_URL)("Deployment routes against a real Postgres", () =
     });
     expect(get.statusCode).toBe(200);
     expect(get.json().deploymentId).toBe(deploymentId);
+    expect(get.json().webhookUrl).toBe(`https://kampong.test${webhookPath}`);
 
     // Redeploying (PUT again) is idempotent: same deployment id/URL.
     const redeploy = await app.inject({

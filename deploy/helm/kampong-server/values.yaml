@@ -27,6 +27,10 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
+# The public origin webhook addresses are built from (PUBLIC_BASE_URL, KAM-321), e.g. https://kampong.abangai.dev.
+# Leave empty to derive it from ingress.host (https when ingress.tls.enabled, else http).
+publicBaseUrl: ""
+
 service:
   type: ClusterIP
   port: 80

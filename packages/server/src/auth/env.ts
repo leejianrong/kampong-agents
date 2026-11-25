@@ -75,6 +75,35 @@ export function getAuthBaseUrl(env: NodeJS.ProcessEnv = process.env): string | u
 }
 
 /**
+ * Reads `PUBLIC_BASE_URL` (KAM-321): the public origin this server is reached at, such as
+ * `https://kampong.abangai.dev`. Webhook addresses shown to people are this plus the route's path, so they stay
+ * right behind a proxy or when the public host is not the host the page was opened on. Returns `undefined` when
+ * unset (the canvas then falls back to its own origin). A trailing slash is dropped. An unusable value throws
+ * at startup: a wrong address printed to a customer is worse than a refused start.
+ */
+export function getPublicBaseUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env["PUBLIC_BASE_URL"]?.trim();
+  if (!raw) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      `PUBLIC_BASE_URL is not a valid URL: "${raw}". Use an origin such as https://kampong.abangai.dev.`,
+    );
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error(`PUBLIC_BASE_URL must start with http:// or https://, got "${raw}".`);
+  }
+  if ((url.pathname !== "/" && url.pathname !== "") || url.search !== "" || url.hash !== "") {
+    throw new Error(
+      `PUBLIC_BASE_URL must be an origin with no path, query or fragment, got "${raw}".`,
+    );
+  }
+  return url.origin;
+}
+
+/**
  * Reads `BYOK_ROOT_KEY` (KAN-1229/ADR-0016: the base64-encoded 32-byte root
  * key every stored BYOK provider key is AES-256-GCM-encrypted under) and
  * returns it as a `Buffer`, throwing a clear, actionable error if it is unset

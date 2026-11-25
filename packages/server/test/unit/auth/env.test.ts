@@ -5,6 +5,7 @@ import {
   getAuthSecret,
   getByokRootKey,
   getGithubOAuthConfig,
+  getPublicBaseUrl,
 } from "../../../src/auth/env.js";
 
 // KAN-1226 (ADR-0015): mirrors test/unit/db/client.test.ts's own coverage of
@@ -84,6 +85,32 @@ describe("getAuthBaseUrl", () => {
   it("returns the value from the given env", () => {
     expect(getAuthBaseUrl({ BETTER_AUTH_URL: "https://kampong.example.com" })).toBe(
       "https://kampong.example.com",
+    );
+  });
+});
+
+describe("getPublicBaseUrl (KAM-321)", () => {
+  it("is undefined when unset or blank", () => {
+    expect(getPublicBaseUrl({})).toBeUndefined();
+    expect(getPublicBaseUrl({ PUBLIC_BASE_URL: "  " })).toBeUndefined();
+  });
+
+  it("returns the origin and drops a trailing slash", () => {
+    expect(getPublicBaseUrl({ PUBLIC_BASE_URL: "https://kampong.abangai.dev/" })).toBe(
+      "https://kampong.abangai.dev",
+    );
+    expect(getPublicBaseUrl({ PUBLIC_BASE_URL: "http://localhost:8080" })).toBe(
+      "http://localhost:8080",
+    );
+  });
+
+  it("refuses a value that is not a plain http(s) origin", () => {
+    expect(() => getPublicBaseUrl({ PUBLIC_BASE_URL: "kampong.abangai.dev" })).toThrow(/valid URL/);
+    expect(() => getPublicBaseUrl({ PUBLIC_BASE_URL: "ftp://kampong.abangai.dev" })).toThrow(
+      /http:\/\/ or https:\/\//,
+    );
+    expect(() => getPublicBaseUrl({ PUBLIC_BASE_URL: "https://kampong.abangai.dev/app" })).toThrow(
+      /no path/,
     );
   });
 });
