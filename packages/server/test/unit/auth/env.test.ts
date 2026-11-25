@@ -6,6 +6,8 @@ import {
   getByokRootKey,
   getGithubOAuthConfig,
   getPreviewNotice,
+  getIngressLimits,
+  getTrustProxy,
   getPublicBaseUrl,
 } from "../../../src/auth/env.js";
 
@@ -124,5 +126,34 @@ describe("getPreviewNotice (KAM-320)", () => {
   });
   it("refuses a notice that is too long to be a banner", () => {
     expect(() => getPreviewNotice({ PREVIEW_NOTICE: "x".repeat(301) })).toThrow(/300/);
+  });
+});
+
+describe("getIngressLimits (KAM-322)", () => {
+  it("leaves out anything unset so the defaults apply", () => {
+    expect(getIngressLimits({})).toEqual({});
+  });
+  it("reads each limit", () => {
+    expect(
+      getIngressLimits({
+        INGRESS_DEPLOYMENT_PER_MINUTE: "30",
+        INGRESS_IP_PER_MINUTE: "100",
+        INGRESS_MAX_BODY_BYTES: "65536",
+      }),
+    ).toEqual({ deploymentPerMinute: 30, ipPerMinute: 100, maxBodyBytes: 65536 });
+  });
+  it("refuses a value that is not a whole number of at least 1", () => {
+    expect(() => getIngressLimits({ INGRESS_IP_PER_MINUTE: "0" })).toThrow(/INGRESS_IP_PER_MINUTE/);
+    expect(() => getIngressLimits({ INGRESS_MAX_BODY_BYTES: "lots" })).toThrow(
+      /INGRESS_MAX_BODY_BYTES/,
+    );
+  });
+});
+
+describe("getTrustProxy (KAM-322)", () => {
+  it("is on only for the exact value true", () => {
+    expect(getTrustProxy({})).toBe(false);
+    expect(getTrustProxy({ TRUST_PROXY: "1" })).toBe(false);
+    expect(getTrustProxy({ TRUST_PROXY: "true" })).toBe(true);
   });
 });

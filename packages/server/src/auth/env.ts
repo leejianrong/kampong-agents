@@ -111,6 +111,40 @@ export function getPublicBaseUrl(env: NodeJS.ProcessEnv = process.env): string |
   return url.origin;
 }
 
+function positiveInt(env: NodeJS.ProcessEnv, name: string): number | undefined {
+  const raw = env[name]?.trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`${name} must be a whole number of at least 1, got "${raw}".`);
+  }
+  return n;
+}
+
+/**
+ * Reads the public webhook ingress limits (KAM-322): `INGRESS_DEPLOYMENT_PER_MINUTE`, `INGRESS_IP_PER_MINUTE` and
+ * `INGRESS_MAX_BODY_BYTES`. Each one that is unset is left out, so the defaults in run/rate-limit.ts apply.
+ */
+export function getIngressLimits(env: NodeJS.ProcessEnv = process.env): {
+  deploymentPerMinute?: number;
+  ipPerMinute?: number;
+  maxBodyBytes?: number;
+} {
+  const deploymentPerMinute = positiveInt(env, "INGRESS_DEPLOYMENT_PER_MINUTE");
+  const ipPerMinute = positiveInt(env, "INGRESS_IP_PER_MINUTE");
+  const maxBodyBytes = positiveInt(env, "INGRESS_MAX_BODY_BYTES");
+  return {
+    ...(deploymentPerMinute !== undefined && { deploymentPerMinute }),
+    ...(ipPerMinute !== undefined && { ipPerMinute }),
+    ...(maxBodyBytes !== undefined && { maxBodyBytes }),
+  };
+}
+
+/** `TRUST_PROXY=true`: believe `X-Forwarded-For` (set only when the server sits behind an ingress controller). */
+export function getTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env["TRUST_PROXY"] === "true";
+}
+
 /**
  * Reads `BYOK_ROOT_KEY` (KAN-1229/ADR-0016: the base64-encoded 32-byte root
  * key every stored BYOK provider key is AES-256-GCM-encrypted under) and

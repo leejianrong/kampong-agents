@@ -3,7 +3,7 @@ import { RateLimiter } from "../../src/run/rate-limit.js";
 
 describe("RateLimiter (KAM-322)", () => {
   it("allows a burst up to capacity, then refuses with a retry time", () => {
-    let t = 0;
+    const t = 0;
     const limiter = new RateLimiter({ perMinute: 60, capacity: 3, now: () => t });
     expect(limiter.take("a")).toEqual({ ok: true });
     expect(limiter.take("a")).toEqual({ ok: true });
