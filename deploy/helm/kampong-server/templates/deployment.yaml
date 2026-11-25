@@ -38,6 +38,24 @@ spec:
               value: {{ .Values.service.targetPort | quote }}
             - name: HOST
               value: "0.0.0.0"
+            {{- if .Values.ingress.enabled }}
+            - name: TRUST_PROXY
+              value: "true"
+            {{- end }}
+            {{- with .Values.ingressLimits }}
+            {{- if .deploymentPerMinute }}
+            - name: INGRESS_DEPLOYMENT_PER_MINUTE
+              value: {{ .deploymentPerMinute | quote }}
+            {{- end }}
+            {{- if .ipPerMinute }}
+            - name: INGRESS_IP_PER_MINUTE
+              value: {{ .ipPerMinute | quote }}
+            {{- end }}
+            {{- if .maxBodyBytes }}
+            - name: INGRESS_MAX_BODY_BYTES
+              value: {{ .maxBodyBytes | quote }}
+            {{- end }}
+            {{- end }}
             {{- $publicBaseUrl := .Values.publicBaseUrl | default (ternary (printf "https://%s" .Values.ingress.host) (printf "http://%s" .Values.ingress.host) .Values.ingress.tls.enabled) }}
             {{- if .Values.ingress.enabled }}
             - name: PUBLIC_BASE_URL

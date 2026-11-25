@@ -290,6 +290,34 @@ describe.skipIf(!DATABASE_URL)("Deployment routes against a real Postgres", () =
     }
   });
 
+  it("turns a flood and an oversize body away without saying which ids are real (KAM-322)", async () => {
+    const limited = createServer({
+      db,
+      run: { createModel: fakeModel },
+      // Capacity is a quarter of a minute's allowance: 4 a minute is a burst of 1.
+      ingressLimits: { deploymentPerMinute: 4, ipPerMinute: 600, maxBodyBytes: 1024 },
+    });
+    await limited.ready();
+    try {
+      const ghost = `/hooks/w/${randomUUID()}/${randomUUID()}`;
+      const first = await limited.inject({ method: "POST", url: ghost, payload: {} });
+      expect(first.statusCode).toBe(404);
+      const second = await limited.inject({ method: "POST", url: ghost, payload: {} });
+      expect(second.statusCode).toBe(429);
+      expect(Number(second.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+
+      const big = await limited.inject({
+        method: "POST",
+        url: `/hooks/w/${randomUUID()}/${randomUUID()}`,
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ pad: "x".repeat(4096) }),
+      });
+      expect(big.statusCode).toBe(413);
+    } finally {
+      await limited.close();
+    }
+  });
+
   it("returns 404 for a well-formed but unknown workspaceId/deploymentId webhook path", async () => {
     const res = await app.inject({
       method: "POST",

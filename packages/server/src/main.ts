@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "./server.js";
 import { createDbClient } from "./db/client.js";
-import { getPreviewNotice, getPublicBaseUrl } from "./auth/env.js";
+import { getIngressLimits, getPreviewNotice, getPublicBaseUrl, getTrustProxy } from "./auth/env.js";
 
 // The process entry point the Dockerfile's runtime stage actually runs
 // (CMD ["node", "packages/server/dist/main.js"]) -- kept separate from
@@ -69,6 +69,8 @@ async function main(): Promise<void> {
     staticDir,
     db,
     scheduler: true,
+    ingressLimits: getIngressLimits(),
+    trustProxy: getTrustProxy(),
     ...(getPublicBaseUrl() && { publicBaseUrl: getPublicBaseUrl()! }),
     ...(getPreviewNotice() && { previewNotice: getPreviewNotice()! }),
   });

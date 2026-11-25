@@ -11,6 +11,7 @@ import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
 import { HostedScheduler, type HostedSchedulerOptions } from "./run/scheduler.js";
 import type { DbClient } from "./db/client.js";
+import type { IngressLimits } from "./run/rate-limit.js";
 
 // The hosted variant of packages/cli/src/server.ts (ADR-0013, KAN-1221 --
 // the first V5 implementation card). No real spec-CRUD/BYOK/execution
@@ -52,6 +53,10 @@ export interface CreateServerOptions {
   publicBaseUrl?: string;
   /** A notice the hosted canvas pins to the top of every screen (`PREVIEW_NOTICE`, KAM-320), reported on /healthz. */
   previewNotice?: string;
+  /** Rate and size limits on the public webhook ingress (KAM-322); omitted fields use defaults. */
+  ingressLimits?: Partial<IngressLimits>;
+  /** Trust `X-Forwarded-For`, so per-client limits see the real caller behind an ingress controller. Only set behind one. */
+  trustProxy?: boolean;
 }
 
 export function createServer({
@@ -61,8 +66,10 @@ export function createServer({
   scheduler: schedulerOptions,
   publicBaseUrl,
   previewNotice,
+  ingressLimits,
+  trustProxy,
 }: CreateServerOptions = {}): FastifyInstance {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, ...(trustProxy && { trustProxy: true }) });
 
   // Runs once, synchronously, before any route is registered -- see
   // wiring-check.ts's docstring for why this belongs at startup rather than
@@ -161,6 +168,7 @@ export function createServer({
       manager: runManager,
       ...(scheduler && { scheduler }),
       ...(publicBaseUrl && { publicBaseUrl }),
+      ...(ingressLimits && { ingressLimits }),
     });
     if (scheduler) {
       // After listen, so a slow scan never delays the port; a failure is logged, not fatal.

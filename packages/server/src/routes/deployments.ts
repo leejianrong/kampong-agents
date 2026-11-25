@@ -22,6 +22,7 @@ import {
 } from "@kampong/engine";
 import { getByokRootKey } from "../auth/env.js";
 import type { HostedScheduler } from "../run/scheduler.js";
+import { DEFAULT_INGRESS_LIMITS, RateLimiter, type IngressLimits } from "../run/rate-limit.js";
 import { decryptSecret, encryptSecret } from "../crypto/envelope.js";
 
 // The name of the env var a spec's webhook auth reads its secret from, or undefined when the trigger needs no
@@ -74,6 +75,8 @@ export interface DeploymentRoutesDeps {
   scheduler?: HostedScheduler;
   /** The public origin from `PUBLIC_BASE_URL`; when set, responses also carry `webhookUrl`. */
   publicBaseUrl?: string;
+  /** Rate and size limits on the public webhook ingress (KAM-322); each omitted field uses its default. */
+  ingressLimits?: Partial<IngressLimits>;
 }
 
 /** The webhook's path, plus the full address when the server knows its public origin. */
@@ -90,7 +93,7 @@ export function webhookLocation(
 
 export function registerDeploymentRoutes(
   app: FastifyInstance,
-  { db, auth, manager, scheduler, publicBaseUrl }: DeploymentRoutesDeps,
+  { db, auth, manager, scheduler, publicBaseUrl, ingressLimits }: DeploymentRoutesDeps,
 ): void {
   // PUT /api/specs/:id/deployment -- deploy (or redeploy) this workspace's
   // spec. Upserts on the spec's unique deployment slot, always setting status
@@ -308,6 +311,26 @@ export function registerDeploymentRoutes(
   // signature (hmac) is over the exact body, which Fastify's default JSON parser throws away. The parsers
   // mirror `kampong serve`'s (packages/cli/src/serve-server.ts).
   void app.register(async (hooks) => {
+    // KAM-322: anyone holding the URL can start a paid run, so turn floods away before the database, the secret
+    // check or a model call. Both limits apply to every path under /hooks alike, whether or not the deployment
+    // exists, so a 429 or 413 tells a caller nothing about which ids are real.
+    const limits = { ...DEFAULT_INGRESS_LIMITS, ...ingressLimits };
+    const perDeployment = new RateLimiter({ perMinute: limits.deploymentPerMinute });
+    const perClient = new RateLimiter({ perMinute: limits.ipPerMinute });
+    hooks.addHook("onRequest", async (request, reply) => {
+      const deploymentId = (request.params as { deploymentId?: string } | undefined)?.deploymentId;
+      const decisions = [
+        perClient.take(request.ip),
+        ...(deploymentId ? [perDeployment.take(deploymentId)] : []),
+      ];
+      const refused = decisions.find((d) => !d.ok);
+      if (refused && !refused.ok) {
+        return reply
+          .code(429)
+          .header("retry-after", String(refused.retryAfterSeconds))
+          .send({ success: false, error: "Too many requests. Slow down and retry." });
+      }
+    });
     hooks.addContentTypeParser("application/json", { parseAs: "buffer" }, (req, body, done) => {
       (req as unknown as RawBodyRequest).rawBody = body as Buffer;
       const text = (body as Buffer).toString("utf8");
@@ -341,6 +364,7 @@ export function registerDeploymentRoutes(
     // requests in both. Authentication comes first; `when` and `map` follow. Body becomes the run input.
     hooks.post<{ Params: { workspaceId: string; deploymentId: string } }>(
       "/hooks/w/:workspaceId/:deploymentId",
+      { bodyLimit: limits.maxBodyBytes },
       async (request, reply) => {
         const { workspaceId, deploymentId } = request.params;
 

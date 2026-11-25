@@ -36,6 +36,13 @@ fullnameOverride: ""
 # Leave empty to derive it from ingress.host (https when ingress.tls.enabled, else http).
 publicBaseUrl: ""
 
+# Limits on the public webhook endpoint (KAM-322). Empty uses the server defaults: 120 requests a minute per
+# deployment, 600 per client address, and a 256 KiB body. Limits are per replica.
+ingressLimits: {}
+#  deploymentPerMinute: 120
+#  ipPerMinute: 600
+#  maxBodyBytes: 262144
+
 service:
   type: ClusterIP
   port: 80
