@@ -74,6 +74,14 @@ export function getAuthBaseUrl(env: NodeJS.ProcessEnv = process.env): string | u
   return env["BETTER_AUTH_URL"];
 }
 
+/** `PREVIEW_NOTICE` (KAM-320): the sentence the hosted canvas pins to the top of every screen. Unset or blank is none. */
+export function getPreviewNotice(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env["PREVIEW_NOTICE"]?.trim();
+  if (!raw) return undefined;
+  if (raw.length > 300) throw new Error("PREVIEW_NOTICE must be 300 characters or fewer.");
+  return raw;
+}
+
 /**
  * Reads `PUBLIC_BASE_URL` (KAM-321): the public origin this server is reached at, such as
  * `https://kampong.abangai.dev`. Webhook addresses shown to people are this plus the route's path, so they stay

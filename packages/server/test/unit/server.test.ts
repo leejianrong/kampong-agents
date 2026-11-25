@@ -27,6 +27,21 @@ describe("createServer -- boots without throwing", () => {
   });
 });
 
+describe("GET /healthz preview notice (KAM-320)", () => {
+  it("carries the notice when one is set and leaves it out otherwise", async () => {
+    const withNotice = createServer({ previewNotice: "Preview: no SLA." });
+    expect((await withNotice.inject({ method: "GET", url: "/healthz" })).json().previewNotice).toBe(
+      "Preview: no SLA.",
+    );
+    await withNotice.close();
+    const without = createServer();
+    expect((await without.inject({ method: "GET", url: "/healthz" })).json()).not.toHaveProperty(
+      "previewNotice",
+    );
+    await without.close();
+  });
+});
+
 describe("GET /healthz", () => {
   let app: FastifyInstance;
 

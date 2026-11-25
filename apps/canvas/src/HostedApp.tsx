@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { App } from "./App.js";
 import { AuthScreen } from "./AuthScreen.js";
 import { ByokScreen } from "./ByokScreen.js";
+import { PreviewBanner } from "./PreviewBanner.js";
 import { SpecList } from "./SpecList.js";
 import { WorkspaceScreen } from "./WorkspaceScreen.js";
 import {
@@ -30,7 +31,17 @@ export interface HostedAppProps {
 type Phase = "loading" | "auth" | "workspace" | "home";
 type HomeView = "specs" | "editor" | "byok";
 
+/** The hosted shell under the operator's preview notice, when there is one (KAM-320). */
 export function HostedApp({ apiBaseUrl = "" }: HostedAppProps) {
+  return (
+    <div className="md3-hosted-root">
+      <PreviewBanner baseUrl={apiBaseUrl} />
+      <HostedShell apiBaseUrl={apiBaseUrl} />
+    </div>
+  );
+}
+
+function HostedShell({ apiBaseUrl = "" }: HostedAppProps) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [view, setView] = useState<HomeView>("specs");
