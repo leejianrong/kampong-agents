@@ -151,7 +151,7 @@ The pre-push hook (`.husky/pre-push`) runs lint + format:check + build + typeche
 - Delete the branch after the PR merges. PRs are squash-merged, so git can't tell a merged branch from an
   unmerged one; check `gh pr list --state merged --head <branch>` before pruning.
 - A new architectural decision, or a `QUESTIONS.md` default that turns out to be load-bearing, gets its own
-  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0065).
+  `docs/adr/NNNN-*.md`, numbered from the highest existing one (currently 0066).
 - Every bug or flake becomes a regression test before the fix.
 - **UX audits are periodic.** Two agents drive the real app in a browser and file findings as cards. The process,
   the rules for when one is due (7 days since the last, or five merged UI slices) and the running log are in

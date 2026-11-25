@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "./server.js";
 import { createDbClient } from "./db/client.js";
-import { getPublicBaseUrl } from "./auth/env.js";
+import { getPreviewNotice, getPublicBaseUrl } from "./auth/env.js";
 
 // The process entry point the Dockerfile's runtime stage actually runs
 // (CMD ["node", "packages/server/dist/main.js"]) -- kept separate from
@@ -70,6 +70,7 @@ async function main(): Promise<void> {
     db,
     scheduler: true,
     ...(getPublicBaseUrl() && { publicBaseUrl: getPublicBaseUrl()! }),
+    ...(getPreviewNotice() && { previewNotice: getPreviewNotice()! }),
   });
 
   await app.listen({ port, host });

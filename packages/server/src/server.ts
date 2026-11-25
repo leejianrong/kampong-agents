@@ -50,6 +50,8 @@ export interface CreateServerOptions {
   scheduler?: HostedSchedulerOptions | true;
   /** The public origin (`PUBLIC_BASE_URL`, KAM-321): deployment responses add a full `webhookUrl` built from it. Omit and they carry the path only. */
   publicBaseUrl?: string;
+  /** A notice the hosted canvas pins to the top of every screen (`PREVIEW_NOTICE`, KAM-320), reported on /healthz. */
+  previewNotice?: string;
 }
 
 export function createServer({
@@ -58,6 +60,7 @@ export function createServer({
   run,
   scheduler: schedulerOptions,
   publicBaseUrl,
+  previewNotice,
 }: CreateServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
@@ -173,7 +176,7 @@ export function createServer({
   }
 
   app.get("/healthz", async () => {
-    return { status: "ok", checks: wiringCheck };
+    return { status: "ok", checks: wiringCheck, ...(previewNotice && { previewNotice }) };
   });
 
   return app;

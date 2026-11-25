@@ -1183,6 +1183,28 @@ select.md3-text-field {
   outline-offset: 2px;
 }
 
+/* The notice strip (KAM-320) sits above whichever hosted screen is showing; the screen takes the rest. */
+.md3-hosted-root {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+}
+
+.md3-hosted-root > :not(.md3-preview-banner) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.md3-preview-banner {
+  flex: none;
+  margin: 0;
+  border-radius: 0;
+  justify-content: center;
+  text-align: center;
+}
+
 /* Top app bar for the hosted shell (M3 top app bar). */
 .md3-hosted-shell {
   display: flex;

@@ -5,6 +5,7 @@ import {
   getAuthSecret,
   getByokRootKey,
   getGithubOAuthConfig,
+  getPreviewNotice,
   getPublicBaseUrl,
 } from "../../../src/auth/env.js";
 
@@ -112,5 +113,16 @@ describe("getPublicBaseUrl (KAM-321)", () => {
     expect(() => getPublicBaseUrl({ PUBLIC_BASE_URL: "https://kampong.abangai.dev/app" })).toThrow(
       /no path/,
     );
+  });
+});
+
+describe("getPreviewNotice (KAM-320)", () => {
+  it("is undefined when unset or blank, trimmed when set", () => {
+    expect(getPreviewNotice({})).toBeUndefined();
+    expect(getPreviewNotice({ PREVIEW_NOTICE: "  " })).toBeUndefined();
+    expect(getPreviewNotice({ PREVIEW_NOTICE: " Preview, no SLA " })).toBe("Preview, no SLA");
+  });
+  it("refuses a notice that is too long to be a banner", () => {
+    expect(() => getPreviewNotice({ PREVIEW_NOTICE: "x".repeat(301) })).toThrow(/300/);
   });
 });
