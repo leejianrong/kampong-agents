@@ -38,6 +38,14 @@ spec:
               value: {{ .Values.service.targetPort | quote }}
             - name: HOST
               value: "0.0.0.0"
+            {{- $publicBaseUrl := .Values.publicBaseUrl | default (ternary (printf "https://%s" .Values.ingress.host) (printf "http://%s" .Values.ingress.host) .Values.ingress.tls.enabled) }}
+            {{- if .Values.ingress.enabled }}
+            - name: PUBLIC_BASE_URL
+              value: {{ $publicBaseUrl | quote }}
+            {{- else if .Values.publicBaseUrl }}
+            - name: PUBLIC_BASE_URL
+              value: {{ .Values.publicBaseUrl | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

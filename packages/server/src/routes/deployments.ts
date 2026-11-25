@@ -72,11 +72,25 @@ export interface DeploymentRoutesDeps {
   manager: HostedRunManager;
   /** Runs `schedule` triggers; kept in step with the deployment's status. Absent in tests that don't need it. */
   scheduler?: HostedScheduler;
+  /** The public origin from `PUBLIC_BASE_URL`; when set, responses also carry `webhookUrl`. */
+  publicBaseUrl?: string;
+}
+
+/** The webhook's path, plus the full address when the server knows its public origin. */
+export function webhookLocation(
+  publicBaseUrl: string | undefined,
+  workspaceId: string,
+  deploymentId: string,
+): { webhookPath: string; webhookUrl?: string } {
+  const webhookPath = `/hooks/w/${workspaceId}/${deploymentId}`;
+  return publicBaseUrl
+    ? { webhookPath, webhookUrl: `${publicBaseUrl}${webhookPath}` }
+    : { webhookPath };
 }
 
 export function registerDeploymentRoutes(
   app: FastifyInstance,
-  { db, auth, manager, scheduler }: DeploymentRoutesDeps,
+  { db, auth, manager, scheduler, publicBaseUrl }: DeploymentRoutesDeps,
 ): void {
   // PUT /api/specs/:id/deployment -- deploy (or redeploy) this workspace's
   // spec. Upserts on the spec's unique deployment slot, always setting status
@@ -138,7 +152,7 @@ export function registerDeploymentRoutes(
         success: true,
         deploymentId: row!.id,
         status: row!.status,
-        webhookPath: `/hooks/w/${ctx.workspaceId}/${row!.id}`,
+        ...webhookLocation(publicBaseUrl, ctx.workspaceId, row!.id),
         // Present only in the response that created it; it cannot be read back. Lose it and rotate.
         ...(issuedSecret ? { webhookSecret: issuedSecret } : {}),
       });
@@ -178,7 +192,7 @@ export function registerDeploymentRoutes(
       success: true,
       deploymentId: row.id,
       status: row.status,
-      webhookPath: `/hooks/w/${ctx.workspaceId}/${row.id}`,
+      ...webhookLocation(publicBaseUrl, ctx.workspaceId, row.id),
     };
   });
 

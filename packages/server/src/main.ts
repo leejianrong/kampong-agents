@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "./server.js";
 import { createDbClient } from "./db/client.js";
+import { getPublicBaseUrl } from "./auth/env.js";
 
 // The process entry point the Dockerfile's runtime stage actually runs
 // (CMD ["node", "packages/server/dist/main.js"]) -- kept separate from
@@ -64,7 +65,12 @@ async function main(): Promise<void> {
   // unset (getDatabaseUrl, ./db/client.ts), the same "read-env-or-throw"
   // pattern as everything else this process needs to start for real.
   const { db } = createDbClient();
-  const app = createServer({ staticDir, db, scheduler: true });
+  const app = createServer({
+    staticDir,
+    db,
+    scheduler: true,
+    ...(getPublicBaseUrl() && { publicBaseUrl: getPublicBaseUrl()! }),
+  });
 
   await app.listen({ port, host });
   console.log(`kampong server listening at http://${host}:${port}`);

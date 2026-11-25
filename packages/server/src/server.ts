@@ -48,6 +48,8 @@ export interface CreateServerOptions {
    * and a test that wants it passes `{}` (or seams). Only consulted when a `db` is given.
    */
   scheduler?: HostedSchedulerOptions | true;
+  /** The public origin (`PUBLIC_BASE_URL`, KAM-321): deployment responses add a full `webhookUrl` built from it. Omit and they carry the path only. */
+  publicBaseUrl?: string;
 }
 
 export function createServer({
@@ -55,6 +57,7 @@ export function createServer({
   db,
   run,
   scheduler: schedulerOptions,
+  publicBaseUrl,
 }: CreateServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
@@ -154,6 +157,7 @@ export function createServer({
       auth,
       manager: runManager,
       ...(scheduler && { scheduler }),
+      ...(publicBaseUrl && { publicBaseUrl }),
     });
     if (scheduler) {
       // After listen, so a slow scan never delays the port; a failure is logged, not fatal.
