@@ -124,12 +124,18 @@ export interface HostedRunManagerOptions {
   evictAfterMs?: number;
 }
 
+export type RunSource = "webhook" | "schedule" | "manual";
+
 /** What a caller may supply for one run, like `kampong run --var` and a webhook's headers and body. */
 export interface StartRunOptions {
   /** Values for the spec's `vars` (version 1.1); the engine checks names and types and fails the run visibly. */
   vars?: Record<string, unknown>;
   /** True when a deployment's webhook starts the run, so the trigger is checked too. */
   viaWebhook?: boolean;
+  /** How the run started, recorded on its row (KAM-324). Defaults to `webhook` for a webhook run and `manual` otherwise. */
+  source?: RunSource;
+  /** Who or what started it: a user id for a manual run, a fixed label for a webhook or a schedule. */
+  triggeredBy?: string;
   trigger?: { headers?: Record<string, string>; body?: unknown; fields?: Record<string, unknown> };
 }
 
@@ -255,6 +261,8 @@ export class HostedRunManager {
           input,
           status: initialState.status,
           traceJson: initialState.trace,
+          source: runOptions.source ?? (runOptions.viaWebhook ? "webhook" : "manual"),
+          ...(runOptions.triggeredBy !== undefined && { triggeredBy: runOptions.triggeredBy }),
         })
         .returning({ id: runs.id });
       return row!.id;

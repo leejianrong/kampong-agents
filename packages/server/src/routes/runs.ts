@@ -1,9 +1,18 @@
+import { and, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { RunEvent } from "@kampong/engine";
 import type { AuthInstance } from "../auth/config.js";
 import type { DbClient } from "../db/client.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
+import { withWorkspaceScope } from "../db/workspace-scope.js";
+import { runs, specs } from "../db/schema.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
+import {
+  describeOutcome,
+  parseRunListLimit,
+  type PendingApprovalItem,
+  type RunListItem,
+} from "../run/run-list.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
 import {
   HostedRunManager,
@@ -31,6 +40,98 @@ export function registerRunRoutes(
   app: FastifyInstance,
   { db, auth, manager }: RunRoutesDeps,
 ): void {
+  // GET /api/specs/:id/runs?limit= -- this spec's recent runs, newest first (KAM-324): what the Deploy dashboard
+  // lists. 404 when the spec is not in the caller's workspace.
+  app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
+    "/api/specs/:id/runs",
+    async (request, reply) => {
+      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      if (!ctx) return reply;
+      const specId = request.params.id;
+      const limit = parseRunListLimit(request.query.limit);
+      const rows = await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
+        const [spec] = await tx
+          .select({ id: specs.id })
+          .from(specs)
+          .where(and(eq(specs.id, specId), eq(specs.workspaceId, ctx.workspaceId)));
+        if (!spec) return undefined;
+        return tx
+          .select({
+            id: runs.id,
+            status: runs.status,
+            source: runs.source,
+            triggeredBy: runs.triggeredBy,
+            startedAt: runs.startedAt,
+            completedAt: runs.completedAt,
+            error: runs.error,
+            costUsd: runs.costUsd,
+          })
+          .from(runs)
+          .where(and(eq(runs.specId, specId), eq(runs.workspaceId, ctx.workspaceId)))
+          .orderBy(desc(runs.startedAt))
+          .limit(limit);
+      });
+      if (!rows) {
+        return reply
+          .code(404)
+          .send({ success: false, error: `No spec "${specId}" in this workspace.` });
+      }
+      const items: RunListItem[] = rows.map((r) => ({
+        id: r.id,
+        status: r.status,
+        source: r.source,
+        triggeredBy: r.triggeredBy,
+        startedAt: r.startedAt.toISOString(),
+        completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+        outcome: describeOutcome(r.status, r.error),
+        costUsd: r.costUsd === null ? null : Number(r.costUsd),
+      }));
+      return { success: true, runs: items };
+    },
+  );
+
+  // GET /api/specs/:id/approvals -- this spec's runs waiting for a person (KAM-324).
+  app.get<{ Params: { id: string } }>("/api/specs/:id/approvals", async (request, reply) => {
+    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    if (!ctx) return reply;
+    const specId = request.params.id;
+    const rows = await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
+      const [spec] = await tx
+        .select({ id: specs.id })
+        .from(specs)
+        .where(and(eq(specs.id, specId), eq(specs.workspaceId, ctx.workspaceId)));
+      if (!spec) return undefined;
+      return tx
+        .select({ id: runs.id, startedAt: runs.startedAt })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.specId, specId),
+            eq(runs.workspaceId, ctx.workspaceId),
+            eq(runs.status, "awaiting_approval"),
+          ),
+        )
+        .orderBy(desc(runs.startedAt))
+        .limit(50);
+    });
+    if (!rows) {
+      return reply
+        .code(404)
+        .send({ success: false, error: `No spec "${specId}" in this workspace.` });
+    }
+    const approvals: PendingApprovalItem[] = [];
+    for (const r of rows) {
+      const pending = (await manager.get(ctx.workspaceId, r.id))?.pendingApproval;
+      approvals.push({
+        runId: r.id,
+        startedAt: r.startedAt.toISOString(),
+        step: pending?.step ?? null,
+        reason: pending?.reason ?? null,
+      });
+    }
+    return { success: true, approvals };
+  });
+
   // POST /api/specs/:id/runs -- start a run of this workspace's spec.
   app.post<{ Params: { id: string }; Body: { input?: unknown; vars?: unknown } }>(
     "/api/specs/:id/runs",
@@ -58,12 +159,11 @@ export function registerRunRoutes(
       }
 
       try {
-        const { id, state } = await manager.start(
-          ctx.workspaceId,
-          request.params.id,
-          input,
-          vars ? { vars: vars as Record<string, unknown> } : {},
-        );
+        const { id, state } = await manager.start(ctx.workspaceId, request.params.id, input, {
+          source: "manual",
+          triggeredBy: ctx.userId,
+          ...(vars ? { vars: vars as Record<string, unknown> } : {}),
+        });
         return reply.code(201).send({ success: true, id, state });
       } catch (err) {
         if (err instanceof SpecNotFoundError) {

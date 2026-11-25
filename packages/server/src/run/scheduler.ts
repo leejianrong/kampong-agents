@@ -130,7 +130,10 @@ export class HostedScheduler {
       ...(this.options.clock ? { clock: this.options.clock } : {}),
       ...(this.options.random ? { random: this.options.random } : {}),
       job: async (signal) => {
-        const { id, state } = await this.manager.start(workspaceId, specId, "");
+        const { id, state } = await this.manager.start(workspaceId, specId, "", {
+          source: "schedule",
+          triggeredBy: "schedule",
+        });
         let final = state;
         // Hold the overlap lock until the run stops running; a run paused for approval is handed to the
         // approval routes, so the tick is done with it.

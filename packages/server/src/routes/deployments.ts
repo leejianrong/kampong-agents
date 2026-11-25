@@ -121,10 +121,10 @@ export function registerDeploymentRoutes(
 
         const rows = await tx
           .insert(deployments)
-          .values({ workspaceId: ctx.workspaceId, specId })
+          .values({ workspaceId: ctx.workspaceId, specId, deployedBy: ctx.userId })
           .onConflictDoUpdate({
             target: deployments.specId,
-            set: { status: "live", updatedAt: new Date() },
+            set: { status: "live", deployedBy: ctx.userId, updatedAt: new Date() },
           })
           .returning({
             id: deployments.id,
@@ -414,6 +414,8 @@ export function registerDeploymentRoutes(
         try {
           const { id, state } = await manager.start(workspaceId, row.specId, input, {
             viaWebhook: true,
+            source: "webhook",
+            triggeredBy: "webhook",
             ...(runTrigger ? { trigger: runTrigger } : {}),
           });
           return reply.code(201).send({ success: true, id, state });

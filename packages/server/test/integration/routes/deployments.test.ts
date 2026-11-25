@@ -232,6 +232,64 @@ describe.skipIf(!DATABASE_URL)("Deployment routes against a real Postgres", () =
     expect(hookAfterDelete.statusCode).toBe(404);
   });
 
+  it("lists a spec's runs with how each started, and only to its own workspace (KAM-324)", async () => {
+    const { cookie } = await newUserWithWorkspace();
+    const specId = await createSpec(cookie);
+    const deploy = await app.inject({
+      method: "PUT",
+      url: `/api/specs/${specId}/deployment`,
+      headers: { cookie },
+    });
+    const { webhookPath } = deploy.json();
+    const hook = await app.inject({ method: "POST", url: webhookPath, payload: {} });
+    expect(hook.statusCode).toBe(201);
+    const manual = await app.inject({
+      method: "POST",
+      url: `/api/specs/${specId}/runs`,
+      headers: { cookie },
+      payload: { input: "hello" },
+    });
+    expect(manual.statusCode).toBe(201);
+    await waitForTerminal(cookie, hook.json().id);
+    await waitForTerminal(cookie, manual.json().id);
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/specs/${specId}/runs?limit=10`,
+      headers: { cookie },
+    });
+    expect(list.statusCode).toBe(200);
+    const listed = list.json().runs as Array<{
+      id: string;
+      source: string;
+      triggeredBy: string;
+      outcome: string;
+    }>;
+    expect(listed.map((r) => r.source).sort()).toEqual(["manual", "webhook"]);
+    expect(listed.find((r) => r.source === "webhook")?.triggeredBy).toBe("webhook");
+    expect(listed.find((r) => r.source === "manual")?.triggeredBy).toMatch(/\S/);
+    expect(listed.every((r) => r.outcome === "Finished")).toBe(true);
+
+    const approvals = await app.inject({
+      method: "GET",
+      url: `/api/specs/${specId}/approvals`,
+      headers: { cookie },
+    });
+    expect(approvals.statusCode).toBe(200);
+    expect(approvals.json().approvals).toEqual([]);
+
+    // Another workspace cannot read this spec's runs or approvals.
+    const other = await newUserWithWorkspace();
+    for (const path of ["runs", "approvals"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/specs/${specId}/${path}`,
+        headers: { cookie: other.cookie },
+      });
+      expect(res.statusCode).toBe(404);
+    }
+  });
+
   it("returns 404 for a well-formed but unknown workspaceId/deploymentId webhook path", async () => {
     const res = await app.inject({
       method: "POST",

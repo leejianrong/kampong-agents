@@ -127,6 +127,13 @@
       "when": 1795410624579,
       "tag": "0017_enable_workspace_secrets_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795594291871,
+      "tag": "0018_run_source_and_cost",
+      "breakpoints": true
     }
   ]
 }

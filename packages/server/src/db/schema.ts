@@ -7,6 +7,7 @@ import {
   jsonb,
   boolean,
   bigint,
+  numeric,
   primaryKey,
   unique,
 } from "drizzle-orm/pg-core";
@@ -359,6 +360,15 @@ export const runs = pgTable("runs", {
   traceJson: jsonb("trace_json").notNull(),
   finalOutput: jsonb("final_output"),
   error: text("error"),
+  // KAM-324: how the run started (`webhook`, `schedule` or `manual`), and who or what did: a user id for a
+  // manual run, a fixed label for the other two. Plain text, like `status`; the manager owns the value set.
+  source: text("source").notNull().default("manual"),
+  triggeredBy: text("triggered_by"),
+  // Model usage and its estimated cost, filled in when a run ends (KAM-325). Null until then, and for a run
+  // that never called a model.
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
@@ -404,6 +414,8 @@ export const deployments = pgTable(
     // and stored encrypted under the BYOK root key (same envelope as byok_keys.ciphertext). Null when the
     // trigger needs no secret. Never in the spec, never in a response after the one that created it.
     webhookSecretCiphertext: text("webhook_secret_ciphertext"),
+    // KAM-324: the user who last pressed Deploy, for the audit trail and the dashboard. Null for rows from before.
+    deployedBy: text("deployed_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
