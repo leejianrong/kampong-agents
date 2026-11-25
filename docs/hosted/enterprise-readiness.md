@@ -75,11 +75,11 @@ a trial with real staff, and **later** is worth doing but does not block either.
 | 15  | Invites, member removal and session revocation                        | pilot          | KAM-338                 |
 | 16  | Traces hold prompts and outputs with no expiry or redaction           | pilot          | KAM-339                 |
 | 17  | Approvers not separated from run authors on sensitive steps           | pilot          | KAM-327                 |
-| 18  | Billing: a paying customer needs it, or manual invoicing stated       | pilot          | KAM-86, 87, 88          |
+| 18  | Billing: manual invoicing first, Stripe later                         | first customer | KAM-346 (Stripe: KAM-86, 87, 88, later)          |
 | 19  | Support channel and response targets                                  | pilot          | KAM-345                 |
 | 20  | Data residency choice                                                 | later          | KAM-341                 |
 | 21  | Hosted poller and synchronous replies                                 | later          | KAM-342                 |
-| 22  | Self-hosted install guide                                             | later          | KAM-343                 |
+| 22  | Self-hosted and local (minikube, k3s) install guide                   | first customer | KAM-343                 |
 
 ## Wrong or unverified claims in the first plan
 
@@ -88,7 +88,7 @@ These were found by the review and are corrected in this version:
 - "Egress guard" is true for tool HTTP only; model and connector paths are unverified (gap 7).
 - "Two replicas never fire one tick twice" was asserted without being run on two replicas.
 - "Postgres with backups" meant the chart exists; no restore had been tested.
-- "About 12 points" left out audit, roles, quotas, SSO and trust work. The honest total is about 146 points
+- "About 12 points" left out audit, roles, quotas, SSO and trust work. The honest total is about 151 points
   across the epic (see the [build plan](build-plan.md)).
 - "Pricing is per seat, no usage columns" ignored the infrastructure cost per run and gave the customer no
   spend visibility.
