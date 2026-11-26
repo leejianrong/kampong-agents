@@ -146,12 +146,12 @@ describe.skipIf(!DATABASE_URL)("Workspace roles on every route (KAM-328)", () =>
 
     for (const role of ["editor", "approver", "viewer"]) {
       const cookie = await signUp();
-      const session = await app.inject({
+      const me = await app.inject({
         method: "GET",
         url: "/api/auth/get-session",
         headers: { cookie },
       });
-      const userId = session.json().user.id as string;
+      const userId = me.json().user.id as string;
       await withWorkspaceScope(db, workspaceId, (tx) =>
         tx.insert(workspaceMembers).values({ workspaceId, userId, role }),
       );
