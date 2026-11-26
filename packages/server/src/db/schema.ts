@@ -364,6 +364,9 @@ export const runs = pgTable("runs", {
   // manual run, a fixed label for the other two. Plain text, like `status`; the manager owns the value set.
   source: text("source").notNull().default("manual"),
   triggeredBy: text("triggered_by"),
+  // KAM-348: the key of the approval this run is paused on, so any replica can resume it from the state store.
+  // Null when the run is not paused.
+  pendingApprovalKey: text("pending_approval_key"),
   // Model usage and its estimated cost, filled in when a run ends (KAM-325). Null until then, and for a run
   // that never called a model.
   tokensIn: integer("tokens_in"),
