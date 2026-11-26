@@ -41,6 +41,11 @@ export async function openPanel(page: Page, name: string): Promise<void> {
       .click();
     return;
   }
+  // KAM-326: the hosted Deploy panel, in the top bar.
+  if (name === "Deploy") {
+    await page.getByRole("banner").getByRole("button", { name: "Deploy", exact: true }).click();
+    return;
+  }
   if (name === "Test Run") {
     await page.getByRole("button", { name: "Test Run", exact: true }).click();
     return;
