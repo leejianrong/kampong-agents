@@ -141,6 +141,20 @@
       "when": 1795656764318,
       "tag": "0019_run_pending_approval_key",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795658725644,
+      "tag": "0020_audit_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795658785644,
+      "tag": "0021_enable_audit_events_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,8 @@ import { registerByokRoutes } from "./routes/byok.js";
 import { registerSecretsRoutes } from "./routes/secrets.js";
 import { registerRunRoutes } from "./routes/runs.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
+import { registerAuditRoutes } from "./routes/audit.js";
+import { registerAuditHook } from "./audit/audit.js";
 import { HostedRunManager, type HostedRunManagerOptions } from "./run/manager.js";
 import { HostedScheduler, type HostedSchedulerOptions } from "./run/scheduler.js";
 import type { DbClient } from "./db/client.js";
@@ -141,6 +143,8 @@ export function createServer({
     // routes above already use -- these need both a real Postgres (for RLS
     // scoping) and the same `auth` instance (to resolve the request's
     // session/workspace), so they live inside this block alongside it.
+    registerAuditHook(app, db);
+    registerAuditRoutes(app, { db, auth });
     registerSpecRoutes(app, { db, auth });
 
     // KAN-1229 (ADR-0016): the workspace-scoped, masked BYOK key-management

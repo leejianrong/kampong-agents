@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { runMigrations } from "../../../src/db/migrate.js";
 import { createDbClient, type DbClient } from "../../../src/db/client.js";
 import { createServer } from "../../../src/server.js";
-import { session, workspaceMembers, workspaces } from "../../../src/db/schema.js";
+import { auditEvents, session, workspaceMembers, workspaces } from "../../../src/db/schema.js";
 import { withWorkspaceScope } from "../../../src/db/workspace-scope.js";
 
 // KAM-328: every route that needs a permission refuses a member whose role lacks it, with a 403 that names it.
@@ -77,6 +77,7 @@ const ROUTES: Route[] = [
   { method: "GET", url: "/api/secrets", permission: "secret:read" },
   { method: "PUT", url: "/api/secrets/NAME", payload: { value: "v" }, permission: "secret:write" },
   { method: "DELETE", url: "/api/secrets/NAME", permission: "secret:write" },
+  { method: "GET", url: "/api/audit", permission: "audit:read" },
   { method: "GET", url: "/api/byok", permission: "byok:read" },
   {
     method: "PUT",
@@ -196,5 +197,81 @@ describe.skipIf(!DATABASE_URL)("Workspace roles on every route (KAM-328)", () =>
     const mutating = ROUTES.filter((r) => r.method !== "GET");
     expect(mutating.length).toBeGreaterThan(10);
     for (const r of mutating) expect(ALLOWED["viewer"]).not.toContain(r.permission);
+  });
+
+  describe("audit log (KAM-66)", () => {
+    const get = (role: string, url: string) =>
+      app.inject({
+        method: "GET",
+        url,
+        headers: { cookie: cookies[role]!, origin: "http://localhost:3000" },
+      });
+
+    it("records an allowed change without its value, and a refused one as a deny", async () => {
+      const name = `AUDIT_${randomUUID().slice(0, 8).toUpperCase()}`;
+      const value = "super-secret-value-xyz";
+      const ok = await app.inject({
+        method: "PUT",
+        url: `/api/secrets/${name}`,
+        headers: { cookie: cookies["admin"]!, origin: "http://localhost:3000" },
+        payload: { value },
+      });
+      expect(ok.statusCode).toBeLessThan(400);
+      const refused = await app.inject({
+        method: "PUT",
+        url: `/api/secrets/${name}`,
+        headers: { cookie: cookies["viewer"]!, origin: "http://localhost:3000" },
+        payload: { value },
+      });
+      expect(refused.statusCode).toBe(403);
+
+      const res = await get("admin", `/api/audit?action=secret.set&limit=50`);
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.version).toBe(1);
+      const mine = body.events.filter((e: { target: string }) => e.target === name);
+      expect(mine.map((e: { outcome: string }) => e.outcome).sort()).toEqual(["allow", "deny"]);
+      const deny = mine.find((e: { outcome: string }) => e.outcome === "deny");
+      expect(deny.detail).toMatchObject({
+        role: "viewer",
+        permission: "secret:write",
+        status: 403,
+      });
+      expect(JSON.stringify(body)).not.toContain(value);
+
+      const onlyDeny = await get("admin", "/api/audit?outcome=deny");
+      expect(onlyDeny.json().events.every((e: { outcome: string }) => e.outcome === "deny")).toBe(
+        true,
+      );
+    });
+
+    it("pages with a cursor, newest first", async () => {
+      const first = (await get("admin", "/api/audit?limit=1")).json();
+      expect(first.events).toHaveLength(1);
+      expect(first.nextCursor).toBeTruthy();
+      const second = (await get("admin", `/api/audit?limit=1&cursor=${first.nextCursor}`)).json();
+      expect(second.events[0].id).not.toBe(first.events[0].id);
+      expect(new Date(second.events[0].at).getTime()).toBeLessThanOrEqual(
+        new Date(first.events[0].at).getTime(),
+      );
+    });
+
+    it("is for admins only, and rejects bad filters", async () => {
+      expect((await get("editor", "/api/audit")).statusCode).toBe(403);
+      expect((await get("admin", "/api/audit?outcome=maybe")).statusCode).toBe(400);
+      expect((await get("admin", "/api/audit?since=yesterday-ish")).statusCode).toBe(400);
+    });
+
+    it("is append only: an update or a delete changes nothing", async () => {
+      const before = (await get("admin", "/api/audit?limit=500")).json().events.length;
+      expect(before).toBeGreaterThan(0);
+      await withWorkspaceScope(db, workspaceId, (tx) =>
+        tx.update(auditEvents).set({ actor: "tampered" }),
+      );
+      await withWorkspaceScope(db, workspaceId, (tx) => tx.delete(auditEvents));
+      const after = (await get("admin", "/api/audit?limit=500")).json().events;
+      expect(after.length).toBe(before);
+      expect(after.some((e: { actor: string }) => e.actor === "tampered")).toBe(false);
+    });
   });
 });
