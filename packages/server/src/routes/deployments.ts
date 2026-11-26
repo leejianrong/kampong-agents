@@ -100,7 +100,7 @@ export function registerDeploymentRoutes(
   // back to "live" -- covers both "deploy for the first time" and "redeploy
   // after a pause" with one route.
   app.put<{ Params: { id: string } }>("/api/specs/:id/deployment", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "deployment:manage");
     if (!ctx) return reply;
 
     const specId = request.params.id;
@@ -176,7 +176,7 @@ export function registerDeploymentRoutes(
   // if any. 404 (not an empty 200) when never deployed, matching the
   // spec/byok-key "no such row" convention elsewhere in this API.
   app.get<{ Params: { id: string } }>("/api/specs/:id/deployment", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "deployment:read");
     if (!ctx) return reply;
 
     const specId = request.params.id;
@@ -206,7 +206,7 @@ export function registerDeploymentRoutes(
   app.patch<{ Params: { id: string }; Body: { status?: unknown } }>(
     "/api/specs/:id/deployment",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "deployment:manage");
       if (!ctx) return reply;
 
       const status = request.body?.status;
@@ -239,7 +239,7 @@ export function registerDeploymentRoutes(
   // afterward gets a fresh deploymentId, so any leaked webhook URL stops
   // working for good, not just until the next redeploy).
   app.delete<{ Params: { id: string } }>("/api/specs/:id/deployment", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "deployment:manage");
     if (!ctx) return reply;
 
     const specId = request.params.id;
@@ -263,7 +263,7 @@ export function registerDeploymentRoutes(
   app.post<{ Params: { id: string } }>(
     "/api/specs/:id/deployment/webhook-secret",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "deployment:manage");
       if (!ctx) return reply;
       const specId = request.params.id;
       const secret = newWebhookSecret();

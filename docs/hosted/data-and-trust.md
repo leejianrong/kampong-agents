@@ -193,6 +193,29 @@ connector calls as bypassing it, and the buyer review flagged that as unverified
 and either routes them through the guard or records the exception in an ADR. Until then, do not tell a
 customer that all outbound traffic is restricted.
 
+## Roles
+
+Four roles, checked on every session route (KAM-64, KAM-328, `packages/server/src/auth/roles.ts`). A route names the
+permission it needs and the check lives in one place, so a new route cannot skip it. A refusal is a 403 that names
+the permission.
+
+| Permission            | admin | editor | approver | viewer |
+| --------------------- | :---: | :----: | :------: | :----: |
+| `spec:read`           |  yes  |  yes   |   yes    |  yes   |
+| `run:read`            |  yes  |  yes   |   yes    |  yes   |
+| `deployment:read`     |  yes  |  yes   |   yes    |  yes   |
+| `spec:write`          |  yes  |  yes   |          |        |
+| `run:start`           |  yes  |  yes   |          |        |
+| `deployment:manage`   |  yes  |  yes   |          |        |
+| `approval:resolve`    |  yes  |  yes   |   yes    |        |
+| `secret:read` (names) |  yes  |  yes   |          |        |
+| `secret:write`        |  yes  |        |          |        |
+| `byok:read`, `byok:write` | yes |      |          |        |
+
+Better Auth's own `owner` counts as admin and `member` as editor, so a workspace made before roles existed keeps
+working. A member may hold several roles (comma-separated) and gets the union. Editors can approve by default so a
+small team is not blocked; a separate-approver rule (four-eyes, KAM-327) comes later. Custom roles are not in scope.
+
 ## API
 
 | Route                                         | Who     | Does                                                                   | State        |
@@ -203,7 +226,7 @@ customer that all outbound traffic is restricted.
 | `DELETE /api/specs/:id/deployment`            | session | Remove the deployment                                                  | exists       |
 | `POST /api/specs/:id/deployment/webhook-secret` | session | Rotate the secret (shown once)                                       | exists       |
 | `POST /hooks/w/:ws/:dep`                      | secret  | Start a run; gains rate and size limits                                | exists, S7   |
-| `POST /api/runs/:id/approve`                  | session | Approve or reject a paused run; gains a role check                     | exists, S1b  |
+| `POST /api/runs/:id/approve`                  | session | Approve or reject a paused run; needs `approval:resolve`               | exists       |
 | `GET /api/specs/:id/runs?limit=`              | session | Recent runs of this spec, newest first                                 | new (S1)     |
 | `GET /api/specs/:id/approvals`                | session | Runs of this spec waiting for a person                                 | new (S1)     |
 | `GET /api/workspaces/:id/usage`               | session | Runs, tokens and cost by day and by deployment                         | new (S3)     |

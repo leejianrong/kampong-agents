@@ -5,6 +5,7 @@ import type { AuthInstance } from "./config.js";
 import type { DbClient } from "../db/client.js";
 import { InvalidWorkspaceIdError, withWorkspaceScope } from "../db/workspace-scope.js";
 import { workspaceMembers } from "../db/schema.js";
+import { can, type Permission } from "./roles.js";
 
 // KAN-1227 (ADR-0014/ADR-0015, ADR-0019): resolves the authenticated user
 // and the workspace an incoming request is scoped to, for every
@@ -28,7 +29,7 @@ import { workspaceMembers } from "../db/schema.js";
 // does below.
 
 export type WorkspaceContext =
-  | { ok: true; userId: string; workspaceId: string }
+  | { ok: true; userId: string; workspaceId: string; role: string }
   | { ok: false; status: 401 | 403; error: string };
 
 /**
@@ -70,14 +71,14 @@ export async function resolveWorkspaceContext(
     };
   }
 
-  let isMember: boolean;
+  let membership: { role: string } | undefined;
   try {
-    isMember = await withWorkspaceScope(db, workspaceId, async (tx) => {
+    membership = await withWorkspaceScope(db, workspaceId, async (tx) => {
       const rows = await tx
-        .select({ userId: workspaceMembers.userId })
+        .select({ role: workspaceMembers.role })
         .from(workspaceMembers)
         .where(eq(workspaceMembers.userId, session.user.id));
-      return rows.length > 0;
+      return rows[0];
     });
   } catch (err) {
     // A non-UUID `activeOrganizationId` can only mean a tampered/corrupt
@@ -88,15 +89,15 @@ export async function resolveWorkspaceContext(
     throw err;
   }
 
-  if (!isMember) {
+  if (!membership) {
     return { ok: false, status: 403, error: "You are not a member of the active workspace." };
   }
 
-  return { ok: true, userId: session.user.id, workspaceId };
+  return { ok: true, userId: session.user.id, workspaceId, role: membership.role };
 }
 
 /**
- * The one-line gate every authenticated, workspace-scoped route opens with:
+ * The one-line gate every authenticated, workspace-scoped route opens with (and the permission it needs, KAM-64):
  * resolve + authorize the request's workspace, or send the typed 401/403 body
  * and return `undefined` so the caller bails. Shared by the spec, BYOK, and
  * run routes so the auth-gate shape stays in exactly one place.
@@ -106,10 +107,20 @@ export async function authorizeWorkspace(
   db: DbClient,
   request: FastifyRequest,
   reply: FastifyReply,
+  permission: Permission,
 ): Promise<Extract<WorkspaceContext, { ok: true }> | undefined> {
   const ctx = await resolveWorkspaceContext(auth, db, request);
   if (!ctx.ok) {
     void reply.code(ctx.status).send({ success: false, error: ctx.error });
+    return undefined;
+  }
+  // KAM-328: the permission is required, so a new route cannot skip the role check.
+  if (!can(ctx.role, permission)) {
+    void reply.code(403).send({
+      success: false,
+      error: `Your role in this workspace (${ctx.role}) does not allow this (needs ${permission}).`,
+      permission,
+    });
     return undefined;
   }
   return ctx;

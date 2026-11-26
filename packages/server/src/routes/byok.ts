@@ -37,7 +37,7 @@ export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoute
   // GET /api/byok -- list the workspace's configured providers, masked. Never
   // selects `ciphertext`, so a decrypted or encrypted key can't leak here.
   app.get("/api/byok", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "byok:read");
     if (!ctx) return reply;
 
     const keys = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
@@ -58,7 +58,7 @@ export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoute
   app.put<{ Params: { provider: string }; Body: { key?: unknown } }>(
     "/api/byok/:provider",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "byok:write");
       if (!ctx) return reply;
 
       const provider = request.params.provider;
@@ -104,7 +104,7 @@ export function registerByokRoutes(app: FastifyInstance, { db, auth }: ByokRoute
 
   // DELETE /api/byok/:provider -- remove this workspace's key for a provider.
   app.delete<{ Params: { provider: string } }>("/api/byok/:provider", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "byok:write");
     if (!ctx) return reply;
 
     const provider = request.params.provider;

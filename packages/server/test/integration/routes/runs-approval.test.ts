@@ -148,10 +148,16 @@ describe.skipIf(!DATABASE_URL)("Hosted run approval + SSE routes against a real 
     return start.json().id;
   }
 
-  async function waitForStatus(cookie: string, id: string, statuses: string[], timeoutMs = 4000) {
+  async function waitForStatus(
+    cookie: string,
+    id: string,
+    statuses: string[],
+    timeoutMs = 4000,
+    via: FastifyInstance = app,
+  ) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const res = await app.inject({ method: "GET", url: `/api/runs/${id}`, headers: { cookie } });
+      const res = await via.inject({ method: "GET", url: `/api/runs/${id}`, headers: { cookie } });
       const state = res.json().state;
       if (state && statuses.includes(state.status)) return state;
       await new Promise((r) => setTimeout(r, 25));
@@ -242,6 +248,9 @@ describe.skipIf(!DATABASE_URL)("Hosted run approval + SSE routes against a real 
       // A second server on the same database holds no live run: it stands in for the other replica.
       const other = createServer({ db, run: { createModel: fakeModel, fetchImpl } });
       try {
+        // The first replica reports the pause from memory a moment before its row is written; the other
+        // replica reads only the row, so wait until it sees the pause too.
+        await waitForStatus(cookie, runId, ["awaiting_approval"], 4000, other);
         const approve = await other.inject({
           method: "POST",
           url: `/api/runs/${runId}/approve`,
@@ -275,6 +284,9 @@ describe.skipIf(!DATABASE_URL)("Hosted run approval + SSE routes against a real 
       await waitForStatus(cookie, runId, ["awaiting_approval"]);
       const other = createServer({ db, run: { createModel: fakeModel, fetchImpl } });
       try {
+        // The first replica reports the pause from memory a moment before its row is written; the other
+        // replica reads only the row, so wait until it sees the pause too.
+        await waitForStatus(cookie, runId, ["awaiting_approval"], 4000, other);
         const reject = await other.inject({
           method: "POST",
           url: `/api/runs/${runId}/approve`,

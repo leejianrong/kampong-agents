@@ -29,7 +29,7 @@ export interface SpecRoutesDeps {
 
 export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoutesDeps): void {
   app.get("/api/specs", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:read");
     if (!ctx) return reply;
 
     const specs = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
@@ -43,7 +43,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   });
 
   app.post<{ Body: { name?: unknown; source?: unknown } }>("/api/specs", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:write");
     if (!ctx) return reply;
 
     const { name, source } = request.body ?? {};
@@ -72,7 +72,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   });
 
   app.get<{ Params: { id: string } }>("/api/specs/:id", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:read");
     if (!ctx) return reply;
 
     try {
@@ -97,7 +97,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   app.put<{ Params: { id: string }; Body: { positions?: unknown } }>(
     "/api/specs/:id/layout",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:write");
       if (!ctx) return reply;
 
       const positions = request.body?.positions;
@@ -129,7 +129,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   app.put<{ Params: { id: string }; Body: { ops?: SpecOp[]; baseRevision?: string } }>(
     "/api/specs/:id",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:write");
       if (!ctx) return reply;
 
       const ops = request.body?.ops;
@@ -172,7 +172,7 @@ export function registerSpecRoutes(app: FastifyInstance, { db, auth }: SpecRoute
   app.put<{ Params: { id: string }; Body: { source?: unknown; baseRevision?: string } }>(
     "/api/specs/:id/source",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "spec:write");
       if (!ctx) return reply;
 
       const source = request.body?.source;
