@@ -45,7 +45,7 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     await pool?.end();
   });
 
-  it("creates exactly the fourteen expected tables in the public schema", async () => {
+  it("creates exactly the fifteen expected tables in the public schema", async () => {
     const { rows } = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -64,6 +64,7 @@ describe.skipIf(!DATABASE_URL)("drizzle migrations against a real Postgres", () 
     // schema, not "public").
     expect(tableNames.sort()).toEqual([
       "account",
+      "audit_events",
       "byok_keys",
       "deployments",
       "invitation",
