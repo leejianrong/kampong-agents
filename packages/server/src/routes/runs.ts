@@ -45,7 +45,7 @@ export function registerRunRoutes(
   app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     "/api/specs/:id/runs",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "run:read");
       if (!ctx) return reply;
       const specId = request.params.id;
       const limit = parseRunListLimit(request.query.limit);
@@ -92,7 +92,7 @@ export function registerRunRoutes(
 
   // GET /api/specs/:id/approvals -- this spec's runs waiting for a person (KAM-324).
   app.get<{ Params: { id: string } }>("/api/specs/:id/approvals", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "run:read");
     if (!ctx) return reply;
     const specId = request.params.id;
     const rows = await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
@@ -136,7 +136,7 @@ export function registerRunRoutes(
   app.post<{ Params: { id: string }; Body: { input?: unknown; vars?: unknown } }>(
     "/api/specs/:id/runs",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "run:start");
       if (!ctx) return reply;
 
       const input = request.body?.input;
@@ -189,7 +189,7 @@ export function registerRunRoutes(
   // its persisted snapshot). 404 if no such run in this workspace -- RLS makes
   // another workspace's run indistinguishable from a nonexistent one.
   app.get<{ Params: { id: string } }>("/api/runs/:id", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "run:read");
     if (!ctx) return reply;
 
     const state = await manager.get(ctx.workspaceId, request.params.id);
@@ -204,7 +204,7 @@ export function registerRunRoutes(
   // GET /api/runs/:id/trace -- the span tree of a run still resident in the server (ADR-0063); 404 for an
   // unknown, another workspace's or an evicted run, until traces are stored (KAM-257).
   app.get<{ Params: { id: string } }>("/api/runs/:id/trace", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "run:read");
     if (!ctx) return reply;
 
     const trace = await manager.getTrace(ctx.workspaceId, request.params.id);
@@ -221,7 +221,7 @@ export function registerRunRoutes(
   // (no live run left), sends that final state once and closes. 404 if the run
   // isn't this workspace's.
   app.get<{ Params: { id: string } }>("/api/runs/:id/events", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "run:read");
     if (!ctx) return;
 
     const resolved = await manager.resolveForStream(ctx.workspaceId, request.params.id);
@@ -259,7 +259,7 @@ export function registerRunRoutes(
   app.post<{ Params: { id: string }; Body: { approved?: unknown; reason?: unknown } }>(
     "/api/runs/:id/approve",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "approval:resolve");
       if (!ctx) return reply;
 
       const { approved, reason } = request.body ?? {};

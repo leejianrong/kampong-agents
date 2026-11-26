@@ -1,3 +1,10 @@
+import { createAccessControl } from "better-auth/plugins/access";
+import {
+  adminAc,
+  defaultStatements,
+  memberAc,
+  ownerAc,
+} from "better-auth/plugins/organization/access";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins/organization";
@@ -19,6 +26,8 @@ import { getAuthBaseUrl, getAuthSecret, getGithubOAuthConfig } from "./env.js";
 // entire scope is "Better Auth's own sign-up/sign-in/session/OAuth-callback
 // endpoints work end to end against this project's Postgres" (verified in
 // test/integration/db/auth.test.ts), nothing more.
+
+const roleAccess = createAccessControl(defaultStatements);
 
 export type AuthInstance = ReturnType<typeof createAuth>;
 
@@ -106,6 +115,19 @@ export function createAuth(db: DbClient, env: NodeJS.ProcessEnv = process.env) {
       // userId/role/createdAt) already matches a same-named column on the
       // target table, so only `organizationId` needs remapping.
       organization({
+        // KAM-64: the workspace roles. Better Auth only accepts a role it knows, so the four product roles are
+        // registered here with a plain member's organization rights (none over members or invitations beyond
+        // that); what each may do in the product is src/auth/roles.ts. "owner" and "member" stay for
+        // workspaces made before roles existed.
+        ac: roleAccess,
+        roles: {
+          owner: ownerAc,
+          admin: adminAc,
+          member: memberAc,
+          editor: roleAccess.newRole(memberAc.statements),
+          approver: roleAccess.newRole(memberAc.statements),
+          viewer: roleAccess.newRole(memberAc.statements),
+        },
         schema: {
           organization: {
             modelName: "workspaces",

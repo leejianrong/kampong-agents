@@ -23,7 +23,7 @@ export interface SecretsRoutesDeps {
 export function registerSecretsRoutes(app: FastifyInstance, { db, auth }: SecretsRoutesDeps): void {
   // GET /api/secrets: the names stored for this workspace, masked. Never selects `ciphertext`.
   app.get("/api/secrets", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "secret:read");
     if (!ctx) return reply;
     const secrets = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
       tx
@@ -41,7 +41,7 @@ export function registerSecretsRoutes(app: FastifyInstance, { db, auth }: Secret
   app.put<{ Params: { name: string }; Body: { value?: unknown } }>(
     "/api/secrets/:name",
     async (request, reply) => {
-      const ctx = await authorizeWorkspace(auth, db, request, reply);
+      const ctx = await authorizeWorkspace(auth, db, request, reply, "secret:write");
       if (!ctx) return reply;
 
       const name = request.params.name;
@@ -83,7 +83,7 @@ export function registerSecretsRoutes(app: FastifyInstance, { db, auth }: Secret
 
   // DELETE /api/secrets/:name
   app.delete<{ Params: { name: string } }>("/api/secrets/:name", async (request, reply) => {
-    const ctx = await authorizeWorkspace(auth, db, request, reply);
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "secret:write");
     if (!ctx) return reply;
     const name = request.params.name;
     const deleted = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
