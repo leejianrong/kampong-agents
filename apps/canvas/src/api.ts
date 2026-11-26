@@ -212,6 +212,48 @@ export interface SecretStatusDto {
   referenced: boolean;
 }
 
+/** A spec's deployment (KAM-326). `webhookSecret` is present only in the response that created it; it cannot be read back. */
+export interface DeploymentDto {
+  deploymentId: string;
+  status: string;
+  webhookPath: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
+}
+
+/** One run in the Deploy panel's list (KAM-324): how it started and how it ended, in words. */
+export interface DeployRunDto {
+  id: string;
+  status: string;
+  source: string;
+  triggeredBy: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  outcome: string;
+  costUsd: number | null;
+}
+
+/** A run of this spec waiting for a person (KAM-324). */
+export interface DeployApprovalDto {
+  runId: string;
+  startedAt: string;
+  step: string | null;
+  reason: string | null;
+}
+
+/** The hosted server's go-live calls for one spec (KAM-326). Absent from the local client. */
+export interface DeployApi {
+  /** The deployment, or null when the spec has never been deployed. */
+  get(): Promise<DeploymentDto | null>;
+  deploy(): Promise<DeploymentDto>;
+  setStatus(status: "live" | "paused"): Promise<void>;
+  remove(): Promise<void>;
+  /** A new signing secret, shown once. The old one stops working at once. */
+  rotateSecret(): Promise<string>;
+  listRuns(): Promise<DeployRunDto[]>;
+  listApprovals(): Promise<DeployApprovalDto[]>;
+}
+
 export interface PinComponentResponse {
   success: boolean;
   catalog?: ComponentCatalog;
@@ -383,6 +425,8 @@ export interface ApiClient {
   listSecrets?(): Promise<SecretStatusDto[]>;
   setSecret?(name: string, value: string): Promise<SecretStatusDto[]>;
   removeSecret?(name: string): Promise<SecretStatusDto[]>;
+  /** Go live, pause, rotate and watch runs (KAM-326). Hosted server only. */
+  deploy?: DeployApi;
   /**
    * The modes a test run can use and, for a live run, the tools it would call (KAM-188). Only the local
    * server can replay recorded fixtures; the hosted client omits this, so the panel shows no mode switch.
@@ -928,6 +972,17 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     subscribeToRunEvents: c.subscribeToRunEvents.bind(c),
     ...(c.getRunTrace && { getRunTrace: c.getRunTrace.bind(c) }),
     ...(c.listPendingRuns && { listPendingRuns: c.listPendingRuns.bind(c) }),
+    ...(c.deploy && {
+      deploy: {
+        get: wrap(c.deploy.get.bind(c.deploy)),
+        deploy: wrap(c.deploy.deploy.bind(c.deploy)),
+        setStatus: wrap(c.deploy.setStatus.bind(c.deploy)),
+        remove: wrap(c.deploy.remove.bind(c.deploy)),
+        rotateSecret: wrap(c.deploy.rotateSecret.bind(c.deploy)),
+        listRuns: wrap(c.deploy.listRuns.bind(c.deploy)),
+        listApprovals: wrap(c.deploy.listApprovals.bind(c.deploy)),
+      },
+    }),
   });
   return {
     getSession: client.getSession.bind(client),
@@ -1013,6 +1068,52 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
       const res = await fetch(`${baseUrl}/api/runs/${id}/trace`, { credentials: "include" });
       if (!res.ok) return undefined;
       return ((await res.json()) as { trace?: RunTrace }).trace;
+    },
+
+    deploy: createDeployApi(baseUrl, specId),
+  };
+}
+
+/** The hosted go-live calls for one spec (KAM-326). Each failure carries the server's own words. */
+export function createDeployApi(baseUrl: string, specId: string): DeployApi {
+  const base = `${baseUrl}/api/specs/${specId}`;
+  const fail = async (res: Response, what: string): Promise<never> => {
+    throw new ApiError(await errorMessageFor(res, `${what} (HTTP ${res.status}).`), res.status);
+  };
+  return {
+    async get() {
+      const res = await fetch(`${base}/deployment`, withCredentials());
+      if (res.status === 404) return null;
+      if (!res.ok) return fail(res, "Could not load the deployment");
+      return (await res.json()) as DeploymentDto;
+    },
+    async deploy() {
+      const res = await fetch(`${base}/deployment`, jsonInit({}, { method: "PUT" }));
+      if (!res.ok) return fail(res, "Could not go live");
+      return (await res.json()) as DeploymentDto;
+    },
+    async setStatus(status) {
+      const res = await fetch(`${base}/deployment`, jsonInit({ status }, { method: "PATCH" }));
+      if (!res.ok) return fail(res, "Could not change the deployment");
+    },
+    async remove() {
+      const res = await fetch(`${base}/deployment`, withCredentials({ method: "DELETE" }));
+      if (!res.ok) return fail(res, "Could not delete the deployment");
+    },
+    async rotateSecret() {
+      const res = await fetch(`${base}/deployment/webhook-secret`, jsonInit({}));
+      if (!res.ok) return fail(res, "Could not issue a new secret");
+      return ((await res.json()) as { webhookSecret: string }).webhookSecret;
+    },
+    async listRuns() {
+      const res = await fetch(`${base}/runs?limit=20`, withCredentials());
+      if (!res.ok) return fail(res, "Could not load the runs");
+      return ((await res.json()) as { runs: DeployRunDto[] }).runs;
+    },
+    async listApprovals() {
+      const res = await fetch(`${base}/approvals`, withCredentials());
+      if (!res.ok) return fail(res, "Could not load the approvals");
+      return ((await res.json()) as { approvals: DeployApprovalDto[] }).approvals;
     },
   };
 }

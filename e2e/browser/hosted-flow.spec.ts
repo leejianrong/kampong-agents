@@ -177,3 +177,59 @@ agent:
   await page.waitForTimeout(300);
   expect(await flowY()).toBe(Math.round(moved));
 });
+
+// KAM-326: go live from the Deploy panel, send a request to the address it shows, see the run it started, and
+// approve it from the panel (no test-run session is involved: the run is the webhook's, not this page's).
+test("hosted: Deploy panel goes live, a webhook starts a run, and the pending approval is decided there", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("auth-toggle").click();
+  await page.getByLabel("Name").fill("Deploy Tester");
+  await page.getByLabel("Email").fill(`e2e-${randomUUID()}@example.com`);
+  await page.getByLabel("Password").fill("correct-horse-battery-staple");
+  await page.getByRole("button", { name: "Sign up" }).click();
+  await page.getByLabel("New workspace name").fill("Deploy Workspace");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page.getByTestId("spec-list-empty")).toBeVisible();
+
+  const created = await page.request.post("/api/specs", {
+    data: { name: "Refund Agent", source: TOOL_APPROVAL_SPEC },
+  });
+  expect(created.ok()).toBeTruthy();
+  await page.reload();
+  await page.getByRole("button", { name: /Refund Agent/ }).click();
+
+  await openPanel(page, "Deploy");
+  const deploy = page.getByTestId("deploy-panel");
+  await expect(deploy.getByRole("button", { name: "Go live" })).toBeVisible();
+  await deploy.getByRole("button", { name: "Go live" }).click();
+  await expect(page.getByTestId("deploy-status")).toHaveText("Live");
+
+  const address = (await page.getByTestId("deploy-address").textContent()) ?? "";
+  expect(address).toContain("/hooks/w/");
+  const fired = await page.request.post(address, { data: { text: "Refund order #1" } });
+  expect(fired.status()).toBeLessThan(500);
+
+  // The run pauses at the approval gate; the panel lists it under "Waiting for you".
+  const waiting = page.getByTestId("deploy-approvals");
+  await expect(async () => {
+    await deploy.getByRole("button", { name: "Refresh" }).click();
+    await expect(waiting).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  await waiting.getByRole("button", { name: "Approve" }).click();
+
+  // Decided: nothing is waiting, and the run list says it finished and that a web address started it.
+  await expect(async () => {
+    await deploy.getByRole("button", { name: "Refresh" }).click();
+    await expect(page.getByTestId("deploy-no-approvals")).toBeVisible({ timeout: 1000 });
+    await expect(page.getByTestId("deploy-runs")).toContainText("Finished", { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(page.getByTestId("deploy-runs")).toContainText("Web address");
+
+  // Pausing makes the address answer like one that never existed.
+  await deploy.getByRole("button", { name: "Pause" }).click();
+  await expect(page.getByTestId("deploy-status")).toHaveText("Paused");
+  const paused = await page.request.post(address, { data: { text: "again" } });
+  expect(paused.status()).toBe(404);
+});

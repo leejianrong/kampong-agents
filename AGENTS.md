@@ -15,7 +15,7 @@ replacement for reading those before you implement a slice.
   `kampong dev|run|export`, TypeScript exporter) and V9 (webhook triggers, connectors, Slack approvals).
 - **Built but parked until deployed:** V5 hosted/BYOK server (`packages/server`: Postgres + RLS,
   Better Auth, BYOK vault, Helm in `deploy/`). V10 managed go-live is partly built (KAM-203 in progress;
-  Deploy dashboard and billing open). The plan, diagrams and enterprise-readiness gaps are in `docs/hosted/`
+  the canvas Deploy panel (go live, secret, pause, runs, approvals) is built; billing open). The plan, diagrams and enterprise-readiness gaps are in `docs/hosted/`
   (epic KAM-E45; the server is to run at kampong.abangai.dev).
 - **In progress: V11**, authorable real-world workflows. Shipped: spec version `"1.1"` (JSONata
   expressions, `vars`), `output_schema`, component repository (`kampong/*` first-party components),

@@ -15,7 +15,8 @@ export type OpenForm =
   | "steps"
   | "edit-tool"
   | "import"
-  | "templates";
+  | "templates"
+  | "deploy";
 
 /** Where an action is drawn: the run bar, the status bar, or the menu (everything that is not frequent). */
 export type ActionSurface = "run" | "runbar" | "yaml" | "status" | "topbar" | "menu";
@@ -52,6 +53,8 @@ export interface ActionContext {
   /** The server can list secrets / run the checks (the hosted server cannot yet). */
   hasSecrets: boolean;
   hasChecks: boolean;
+  /** The hosted server can deploy this spec (KAM-326): the Deploy panel is offered. */
+  hasDeploy?: boolean;
   /** The server has ready-made templates to start from (KAM-216); the hosted server has none yet. */
   hasTemplates?: boolean;
   /** No spec file yet: only the actions that need no spec are offered. */
@@ -170,6 +173,14 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
         ? [
             form("checks", "checks", "topbar", "Check setup", {
               keywords: ["checks", "doctor", "validate"],
+            }),
+          ]
+        : []),
+      ...(ctx.hasDeploy
+        ? [
+            form("deploy", "deploy", "topbar", "Deploy", {
+              title: "Go live: run this workflow on its own, and watch its runs",
+              keywords: ["go live", "publish", "webhook", "schedule", "runs", "approvals"],
             }),
           ]
         : []),

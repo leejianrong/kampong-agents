@@ -31,6 +31,8 @@ export function TopBar({ name, saveState, actions, onBack, editorActive, onEdito
   const run = actions.find((a) => a.surface === "run");
   const checks = actions.find((a) => a.id === "checks");
   const yaml = actions.find((a) => a.surface === "yaml");
+  // KAM-326: the hosted Deploy panel is the one verb that gets its own button; only the hosted client offers it.
+  const deploy = actions.find((a) => a.id === "deploy");
   const menu = actions.filter((a) => a.surface === "menu");
   return (
     <header className="md3-runbar">
@@ -77,6 +79,14 @@ export function TopBar({ name, saveState, actions, onBack, editorActive, onEdito
         </div>
       )}
       <span className="md3-runbar__spacer" />
+      {deploy && (
+        <BarButton
+          action={deploy}
+          variant="tonal"
+          className="md3-runbar__code"
+          testId="deploy-toggle"
+        />
+      )}
       {yaml && (
         <BarButton
           action={yaml}

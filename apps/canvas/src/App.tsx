@@ -46,6 +46,7 @@ import { Canvas } from "./Canvas.js";
 import { EmptyState } from "./EmptyState.js";
 import { DoctorPanel } from "./DoctorPanel.js";
 import { SecretsPanel } from "./SecretsPanel.js";
+import { DeployPanel } from "./DeployPanel.js";
 import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
@@ -1360,6 +1361,7 @@ export function App({
     yamlOpen,
     hasSecrets: api.listSecrets !== undefined,
     hasChecks: api.runDoctor !== undefined,
+    hasDeploy: api.deploy !== undefined,
     hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
     noSpecYet: emptyKind === "new",
     ...(missingSecrets !== undefined && { missingSecrets }),
@@ -1822,6 +1824,19 @@ export function App({
                         focus={secretFocus}
                         save={(name, value) => api.setSecret!(name, value).then(tally)}
                         remove={(name) => api.removeSecret!(name).then(tally)}
+                      />
+                    </Panel>
+                  )}
+                  {openForm === "deploy" && api.deploy && (
+                    <Panel
+                      title="Deploy"
+                      purpose="Run this workflow on its own, from a web address or a schedule, and watch what it does."
+                      testId="deploy-panel"
+                      onClose={() => setOpenForm(null)}
+                    >
+                      <DeployPanel
+                        api={api.deploy}
+                        approve={(id, approved) => api.approveRun(id, approved)}
                       />
                     </Panel>
                   )}
