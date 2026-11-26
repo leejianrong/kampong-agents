@@ -21,13 +21,14 @@ export const PERMISSIONS = [
   "secret:write",
   "byok:read",
   "byok:write",
+  "audit:read",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 const READ: Permission[] = ["spec:read", "run:read", "deployment:read"];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  // Everything, including the workspace's secrets and model keys.
+  // Everything, including the workspace's secrets, model keys and audit log.
   admin: PERMISSIONS,
   // Builds, runs, deploys and approves. Cannot read or change secrets or model keys.
   editor: [

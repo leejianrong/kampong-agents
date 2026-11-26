@@ -6,6 +6,7 @@ import type { DbClient } from "../db/client.js";
 import { InvalidWorkspaceIdError, withWorkspaceScope } from "../db/workspace-scope.js";
 import { workspaceMembers } from "../db/schema.js";
 import { can, type Permission } from "./roles.js";
+import { markAudited, recordDenied } from "../audit/audit.js";
 
 // KAN-1227 (ADR-0014/ADR-0015, ADR-0019): resolves the authenticated user
 // and the workspace an incoming request is scoped to, for every
@@ -115,7 +116,10 @@ export async function authorizeWorkspace(
     return undefined;
   }
   // KAM-328: the permission is required, so a new route cannot skip the role check.
+  const mark = { workspaceId: ctx.workspaceId, userId: ctx.userId, role: ctx.role, permission };
   if (!can(ctx.role, permission)) {
+    // KAM-66: a refusal is itself an event. Reads are not audited when allowed, but a refused read is.
+    await recordDenied(db, request, mark);
     void reply.code(403).send({
       success: false,
       error: `Your role in this workspace (${ctx.role}) does not allow this (needs ${permission}).`,
@@ -123,5 +127,6 @@ export async function authorizeWorkspace(
     });
     return undefined;
   }
+  markAudited(request, mark);
   return ctx;
 }

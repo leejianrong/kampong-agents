@@ -10,6 +10,7 @@ import {
   numeric,
   primaryKey,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 // The V5 initial schema (ADR-0014, KAN-1223): originally exactly the four
@@ -442,4 +443,25 @@ export const stateEntries = pgTable(
     expiresAt: bigint("expires_at", { mode: "number" }),
   },
   (table) => [primaryKey({ columns: [table.workspaceId, table.key] })],
+);
+
+// KAM-66: the audit log. One row per change a person made through the API and per request a role refused
+// (outcome "allow" | "deny"), append only: the RLS policies in 0021 allow select and insert and nothing else.
+// `detail` never holds a request body, so a secret value cannot reach it.
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    // The user id; later also "scim" or "system" for changes no person made.
+    actor: text("actor").notNull(),
+    action: text("action").notNull(),
+    target: text("target"),
+    outcome: text("outcome").notNull(),
+    detail: jsonb("detail").notNull().default({}),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("audit_events_workspace_at_idx").on(table.workspaceId, table.at.desc())],
 );

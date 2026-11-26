@@ -211,10 +211,32 @@ the permission.
 | `secret:read` (names) |  yes  |  yes   |          |        |
 | `secret:write`        |  yes  |        |          |        |
 | `byok:read`, `byok:write` | yes |      |          |        |
+| `audit:read`          |  yes  |        |          |        |
 
 Better Auth's own `owner` counts as admin and `member` as editor, so a workspace made before roles existed keeps
 working. A member may hold several roles (comma-separated) and gets the union. Editors can approve by default so a
 small team is not blocked; a separate-approver rule (four-eyes, KAM-327) comes later. Custom roles are not in scope.
+
+## Audit log
+
+Every change a person makes through the API, and every request a role refuses, is a row in `audit_events` (KAM-66).
+The table is append only: row-level security allows select and insert for the workspace and nothing else, so an
+update or delete through the application changes no rows.
+
+- **Allowed changes** are written by one `onResponse` hook for every mutating session route that answers below 400,
+  so a new route is audited without anyone remembering to. Failed attempts change nothing and are not recorded.
+- **Refusals** are written where the role check fails, with the role and the permission that was missing. A refused
+  read is recorded; an allowed read is not.
+- **Contents:** who (`actor`, a user id), what (`action`, such as `secret.set` or `deployment.deploy`, otherwise
+  `METHOD /route`), the `target` (the first path id or name), the outcome (`allow` or `deny`), and `detail` with the
+  method, route, status, role, permission and the caller's address. Never a request body, so a secret value cannot
+  reach it.
+- **Export:** `GET /api/audit`, admins only, newest first. Filters `action`, `actor`, `outcome`, `since`, `until`;
+  pages with `limit` (default 100, max 500) and `cursor`. The response carries `version: 1`; a breaking change bumps it.
+- **Failure mode:** a failed audit write is logged and does not fail the request, so an audit-table outage cannot take
+  the product down. A buyer who needs fail-closed can have it as an option later.
+- **Not yet audited:** egress-guard blocks (KAM-337 adds them with the egress checks on model and connector paths),
+  webhook-started runs (their source is on the run row), sign-in and member changes (they arrive with SSO and SCIM).
 
 ## API
 
@@ -230,7 +252,7 @@ small team is not blocked; a separate-approver rule (four-eyes, KAM-327) comes l
 | `GET /api/specs/:id/runs?limit=`              | session | Recent runs of this spec, newest first                                 | new (S1)     |
 | `GET /api/specs/:id/approvals`                | session | Runs of this spec waiting for a person                                 | new (S1)     |
 | `GET /api/workspaces/:id/usage`               | session | Runs, tokens and cost by day and by deployment                         | new (S3)     |
-| `GET /api/workspaces/:id/audit`               | admin   | Audit events, filterable, JSON for a SIEM (KAM-66)                     | new (S1)     |
+| `GET /api/audit`                              | admin   | Audit events, filterable, versioned JSON for a SIEM (KAM-66)           | exists       |
 | `/scim/v2/Users`, `/scim/v2/Groups`           | bearer  | Provision members from the identity provider (KAM-333)                 | new (pilot)  |
 
 The shapes the dashboard needs, as new types:
