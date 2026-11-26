@@ -1,0 +1,1 @@
+ALTER TABLE "runs" ADD COLUMN "pending_approval_key" text;

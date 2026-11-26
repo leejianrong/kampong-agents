@@ -9,8 +9,9 @@
 # actually consuming a DB connection string from packages/server's own
 # routes is out of scope here (KAN-1224+).
 
-# One replica until an approval can be resolved on any replica (KAM-348) and two replicas are shown to fire a
-# schedule once (KAM-340). Raise it to 2 after both; limits are then per replica (KAM-322). See ADR-0066.
+# One replica until two replicas are shown to fire a schedule once (KAM-340). An approval can now be resolved on
+# any replica (KAM-348). Limits are per replica (KAM-322). See ADR-0066. A live run's event stream still only
+# updates on the replica running it; approvals and reads work from any.
 replicaCount: 1
 
 # A sentence pinned to the top of every screen (PREVIEW_NOTICE, KAM-320). Set it while the service has no SLA.

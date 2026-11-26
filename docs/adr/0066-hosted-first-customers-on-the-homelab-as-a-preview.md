@@ -29,9 +29,11 @@ needs more can run Kampong themselves.
 - No SLA is offered, and the status page (KAM-330) says "preview" until that changes.
 - Anyone who wants more control can self-host or try it locally on minikube or k3s (KAM-343, in the first
   customer gate), which is also an enterprise expectation.
-- **Replicas.** The chart defaults to one. Two replicas wait on KAM-348 (an approval must be resolvable on any
-  replica, today it returns 409 on a replica that is not running the run) and on KAM-340 (a test that two
-  replicas fire a scheduled tick once). Rate limits are per replica (KAM-322).
+- **Replicas.** The chart defaults to one. Two replicas wait on KAM-340 (a test that two replicas fire a
+  scheduled tick once). An approval can be resolved on any replica (KAM-348, done): a paused run records its
+  approval key, and a replica that does not hold the run resumes it from the shared state store, where the
+  engine's claim lets exactly one caller win. The live event stream of a run still updates only on the replica
+  running it. Rate limits are per replica (KAM-322).
 - **Backups.** A backup that has not been restored is not a backup. KAM-329 runs and times a restore before any
   customer pays.
 - **Invoicing** is manual (KAM-346) and says so.

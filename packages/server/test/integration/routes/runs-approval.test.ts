@@ -233,6 +233,61 @@ describe.skipIf(!DATABASE_URL)("Hosted run approval + SSE routes against a real 
       expect(late.statusCode).toBe(409);
     });
 
+    it("resolves an approval on a replica that is not running the run (KAM-348)", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const specId = await createSpec(cookie, TOOL_APPROVAL_SPEC);
+      const runId = await startRun(cookie, specId);
+      await waitForStatus(cookie, runId, ["awaiting_approval"]);
+
+      // A second server on the same database holds no live run: it stands in for the other replica.
+      const other = createServer({ db, run: { createModel: fakeModel, fetchImpl } });
+      try {
+        const approve = await other.inject({
+          method: "POST",
+          url: `/api/runs/${runId}/approve`,
+          headers: { cookie },
+          payload: { approved: true },
+        });
+        expect(approve.statusCode).toBe(200);
+        expect(approve.json().state.status).toBe("completed");
+
+        // The same decision cannot be applied twice, on either replica.
+        const again = await app.inject({
+          method: "POST",
+          url: `/api/runs/${runId}/approve`,
+          headers: { cookie },
+          payload: { approved: true },
+        });
+        expect(again.statusCode).toBe(409);
+
+        // And the stored run reads as completed from either side.
+        const seen = await waitForStatus(cookie, runId, ["completed"]);
+        expect(seen.status).toBe("completed");
+      } finally {
+        await other.close();
+      }
+    });
+
+    it("a rejection on the other replica ends the run as rejected (KAM-348)", async () => {
+      const { cookie } = await newUserWithWorkspace();
+      const specId = await createSpec(cookie, TOOL_APPROVAL_SPEC);
+      const runId = await startRun(cookie, specId);
+      await waitForStatus(cookie, runId, ["awaiting_approval"]);
+      const other = createServer({ db, run: { createModel: fakeModel, fetchImpl } });
+      try {
+        const reject = await other.inject({
+          method: "POST",
+          url: `/api/runs/${runId}/approve`,
+          headers: { cookie },
+          payload: { approved: false, reason: "no" },
+        });
+        expect(reject.statusCode).toBe(200);
+        expect(reject.json().state.status).toBe("rejected");
+      } finally {
+        await other.close();
+      }
+    });
+
     it("one workspace cannot approve another workspace's paused run", async () => {
       const a = await newUserWithWorkspace();
       const b = await newUserWithWorkspace();

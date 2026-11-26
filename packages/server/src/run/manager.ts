@@ -153,6 +153,14 @@ export interface StartRunResult {
   state: RunState;
 }
 
+/** A run that failed only because another caller had already resolved (or the record had expired for) its approval. */
+function isLostApproval(state: RunState): boolean {
+  return (
+    state.status === "failed" &&
+    (state.errorCode === "already_resolved" || state.errorCode === "approval_not_found")
+  );
+}
+
 export class HostedRunManager {
   private readonly live = new Map<string, AgentRun>();
   // ADR-0063: a resident run's trace recorder; it goes with the run.
@@ -180,23 +188,15 @@ export class HostedRunManager {
   }
 
   /**
-   * Starts a run of workspace `workspaceId`'s spec `specId` server-side.
-   * Persists the run's initial row, resolves the workspace's model client,
-   * and kicks the run off (fire-and-forget, like the CLI's RunManager),
-   * persisting the run state after every event. Returns immediately with the
-   * durable run id and its initial state; callers drive further updates off
-   * `get()` (and, once wired, the SSE stream).
-   *
-   * Throws `SpecNotFoundError` if the spec isn't in this workspace, and
-   * whatever `resolveWorkspaceModelClient` throws (e.g.
-   * `WorkspaceApiKeyNotConfiguredError`) when the model client can't be built.
+   * Builds an unstarted run of the workspace's spec: resolves the spec, the workspace's model client and the
+   * secrets the spec reads. Shared by `start` and by an approval resumed on a replica that did not start the run.
+   * Approvals are persisted (KAM-348) so any replica can resolve one.
    */
-  async start(
+  private async buildRun(
     workspaceId: string,
     specId: string,
-    input: string,
-    runOptions: StartRunOptions = {},
-  ): Promise<StartRunResult> {
+    runOptions: StartRunOptions,
+  ): Promise<{ run: AgentRun; recorder: TraceRecorder }> {
     const source = await withWorkspaceScope(this.db, workspaceId, async (tx) => {
       const [row] = await tx
         .select({ yamlSource: specs.yamlSource })
@@ -237,6 +237,7 @@ export class HostedRunManager {
     });
 
     const run = createAgentRun(spec, {
+      persistApprovals: true,
       model: recorder.wrapModel(model),
       env: { ...(this.options.env ?? {}), ...secrets },
       fetchImpl: this.toolFetch,
@@ -250,6 +251,28 @@ export class HostedRunManager {
     });
     recorder.attach(run);
     this.recorders.set(run, recorder);
+    return { run, recorder };
+  }
+
+  /**
+   * Starts a run of workspace `workspaceId`'s spec `specId` server-side.
+   * Persists the run's initial row, resolves the workspace's model client,
+   * and kicks the run off (fire-and-forget, like the CLI's RunManager),
+   * persisting the run state after every event. Returns immediately with the
+   * durable run id and its initial state; callers drive further updates off
+   * `get()` (and, once wired, the SSE stream).
+   *
+   * Throws `SpecNotFoundError` if the spec isn't in this workspace, and
+   * whatever `resolveWorkspaceModelClient` throws (e.g.
+   * `WorkspaceApiKeyNotConfiguredError`) when the model client can't be built.
+   */
+  async start(
+    workspaceId: string,
+    specId: string,
+    input: string,
+    runOptions: StartRunOptions = {},
+  ): Promise<StartRunResult> {
+    const { run } = await this.buildRun(workspaceId, specId, runOptions);
     const initialState = run.getState();
 
     const id = await withWorkspaceScope(this.db, workspaceId, async (tx) => {
@@ -269,10 +292,7 @@ export class HostedRunManager {
     });
 
     this.live.set(id, run);
-    run.on("event", (event: RunEvent) => {
-      this.enqueuePersist(workspaceId, id, run.getState());
-      if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
-    });
+    this.watch(workspaceId, id, run);
 
     // Fire-and-forget (workflow.ts already converts every real failure into a
     // "failed" RunEvent, so a rejection here is genuinely unexpected -- log,
@@ -366,11 +386,62 @@ export class HostedRunManager {
     const owned = await this.resolveOwned(workspaceId, id);
     if (!owned) return undefined;
     if (!owned.run) {
-      throw new Error(`Run "${id}" is no longer live and cannot be approved.`);
+      if (owned.persisted.status !== "awaiting_approval" || !owned.pendingApprovalKey) {
+        throw new Error(`Run "${id}" is not awaiting approval.`);
+      }
+      return this.resumeFromStore(workspaceId, id, owned, approved, reason);
     }
     // resume() itself throws if the run isn't awaiting approval -- surfaced as
     // a 409 by the route, same as the CLI's own approve path.
-    return owned.run.resume(approved, reason);
+    const state = await owned.run.resume(approved, reason);
+    if (isLostApproval(state)) {
+      throw new Error(
+        `Run "${id}" was already resolved by another caller, or its approval expired.`,
+      );
+    }
+    return state;
+  }
+
+  /**
+   * Resumes a paused run this replica does not hold (KAM-348): another replica started it, or it was evicted or
+   * the process restarted. The engine claims the stored approval record, so of two callers only one resumes it;
+   * the other gets a 409. The run continues here, under the same run id.
+   */
+  private async resumeFromStore(
+    workspaceId: string,
+    id: string,
+    owned: { specId: string; pendingApprovalKey?: string },
+    approved: boolean,
+    reason: string | undefined,
+  ): Promise<RunState> {
+    const { run } = await this.buildRun(workspaceId, owned.specId, {});
+    // Nothing is persisted until the claim has succeeded: a lost race reports failed, and must not overwrite
+    // the row the winner is updating.
+    const state = await run.resumeByKey(owned.pendingApprovalKey!, approved, reason);
+    if (isLostApproval(state)) {
+      throw new Error(
+        `Run "${id}" was already resolved by another caller, or its approval expired.`,
+      );
+    }
+    this.live.set(id, run);
+    this.enqueuePersist(workspaceId, id, state);
+    this.watch(workspaceId, id, run);
+    if (TERMINAL_STATUSES.has(state.status)) this.scheduleEviction(id);
+    return state;
+  }
+
+  /** Persists a live run's state after every event, and schedules its eviction once it ends. */
+  private watch(workspaceId: string, id: string, run: AgentRun): void {
+    run.on("event", (event: RunEvent) => {
+      const state = run.getState();
+      // This replica lost the race to resolve the run's approval: the winner owns the row.
+      if (isLostApproval(state)) {
+        this.live.delete(id);
+        return;
+      }
+      this.enqueuePersist(workspaceId, id, state);
+      if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
+    });
   }
 
   /**
@@ -383,7 +454,15 @@ export class HostedRunManager {
   private async resolveOwned(
     workspaceId: string,
     id: string,
-  ): Promise<{ run: AgentRun | undefined; persisted: RunState } | undefined> {
+  ): Promise<
+    | {
+        run: AgentRun | undefined;
+        persisted: RunState;
+        specId: string;
+        pendingApprovalKey?: string;
+      }
+    | undefined
+  > {
     const [row] = await withWorkspaceScope(this.db, workspaceId, (tx) =>
       tx
         .select()
@@ -393,6 +472,8 @@ export class HostedRunManager {
     if (!row) return undefined;
     return {
       run: this.live.get(id),
+      specId: row.specId,
+      ...(row.pendingApprovalKey ? { pendingApprovalKey: row.pendingApprovalKey } : {}),
       persisted: {
         status: row.status as RunState["status"],
         trace: row.traceJson as RunState["trace"],
@@ -422,6 +503,7 @@ export class HostedRunManager {
           traceJson: state.trace,
           finalOutput: state.finalOutput ?? null,
           error: state.error ?? null,
+          pendingApprovalKey: state.pendingApproval?.key ?? null,
           completedAt: terminal ? new Date() : null,
         })
         .where(and(eq(runs.id, id), eq(runs.workspaceId, workspaceId))),
