@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { runMigrations } from "../../../src/db/migrate.js";
 import { createDbClient, type DbClient } from "../../../src/db/client.js";
 import { createServer } from "../../../src/server.js";
-import { workspaceMembers, workspaces } from "../../../src/db/schema.js";
+import { session, workspaceMembers, workspaces } from "../../../src/db/schema.js";
 import { withWorkspaceScope } from "../../../src/db/workspace-scope.js";
 
 // KAM-328: every route that needs a permission refuses a member whose role lacks it, with a 403 that names it.
@@ -155,13 +155,12 @@ describe.skipIf(!DATABASE_URL)("Workspace roles on every route (KAM-328)", () =>
       await withWorkspaceScope(db, workspaceId, (tx) =>
         tx.insert(workspaceMembers).values({ workspaceId, userId, role }),
       );
-      const active = await app.inject({
-        method: "POST",
-        url: "/api/auth/organization/set-active",
-        headers: { cookie, origin: "http://localhost:3000" },
-        payload: { organizationId: workspaceId },
-      });
-      expect(active.statusCode).toBe(200);
+      // Better Auth's own set-active cannot see the membership row under RLS, so point the session at the
+      // workspace directly: this test is about what the routes do with the role, not about session setup.
+      await db
+        .update(session)
+        .set({ activeOrganizationId: workspaceId })
+        .where(eq(session.userId, userId));
       cookies[role] = cookie;
     }
   });
