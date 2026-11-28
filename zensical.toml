@@ -34,6 +34,7 @@ nav = [
   { "Design decisions" = "design-decisions.md" },
   { "Hosted plan" = [
     { "Overview" = "hosted/index.md" },
+    { "Run it yourself (minikube, k3s)" = "hosted/self-host.md" },
     { "Architecture" = "hosted/architecture.md" },
     { "Flows" = "hosted/flows.md" },
     { "Data and trust" = "hosted/data-and-trust.md" },

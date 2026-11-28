@@ -7,7 +7,7 @@ COMPOSE := docker compose
 
 .PHONY: help up down restart logs build shell ps clean \
         install check test test-unit test-integration test-e2e lint fmt typecheck \
-        try try-demo try-reset try-hosted e2e-browser verify
+        try try-demo try-reset try-hosted try-cluster e2e-browser verify
 
 help:
 	@echo "Docker stack (see README.md#run-with-docker):"
@@ -34,6 +34,7 @@ help:
 	@echo "  make try-demo       Canvas on the market-etl template, ready to Replay"
 	@echo "  make try-reset      Delete .try/"
 	@echo "  make try-hosted     Hosted server on a throwaway Postgres (needs Docker)"
+	@echo "  make try-cluster    Hosted stack on minikube, k3s or kind, then the smoke flow (docs/hosted/self-host.md)"
 	@echo ""
 	@echo "Full manual verification:"
 	@echo "  make e2e-browser    Playwright suite (hosted-flow on a throwaway Postgres if Docker works)"
@@ -122,6 +123,9 @@ try-reset:
 
 try-hosted:
 	scripts/try-hosted.sh
+
+try-cluster:
+	scripts/try-cluster.sh
 
 e2e-browser:
 	scripts/e2e-browser.sh

@@ -1,5 +1,5 @@
-# A throwaway Postgres for the smoke job (KAM-340). Not the CloudNativePG chart: this job tests the server chart and
-# the server, and needs only a database. It makes the same shape of role the real one has: a NON-superuser that owns
+# A throwaway Postgres for trying Kampong on a local cluster (KAM-343) and for the smoke job (KAM-340). Not the
+# CloudNativePG chart: it has no backups, no failover and keeps nothing across a pod restart. It needs only a database. It makes the same shape of role the real one has: a NON-superuser that owns
 # its database, because a superuser bypasses row-level security and would make every isolation check pass vacuously.
 apiVersion: v1
 kind: ConfigMap
