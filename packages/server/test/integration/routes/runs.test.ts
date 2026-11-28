@@ -345,7 +345,7 @@ describe.skipIf(!DATABASE_URL)("Hosted run routes against a real Postgres", () =
         method: "POST",
         url: `/api/specs/${created.json().id}/runs`,
         headers: { cookie },
-        payload: {},
+        payload: { input: "go" },
       });
       expect(started.statusCode).toBe(201);
       const deadline = Date.now() + 6000;
