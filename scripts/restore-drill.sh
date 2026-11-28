@@ -51,7 +51,7 @@ spec:
   pluginConfiguration:
     name: barman-cloud.cloudnative-pg.io
 EOF
-kubectl wait --for=jsonpath='{.status.phase}'=completed "backup/$BACKUP" --timeout=900s
+kubectl wait --for=jsonpath='{.status.phase}'=completed "backup/$BACKUP" --timeout=300s
 t1=$(now)
 BACKUP_SECS=$((t1 - t0))
 note "backup: ${BACKUP_SECS}s for a database of $(sql "$SOURCE" "select pg_size_pretty(pg_database_size('$DB'))")"

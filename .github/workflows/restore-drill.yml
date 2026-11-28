@@ -75,6 +75,8 @@ jobs:
           kubectl get cluster,backup,pods -A || true
           kubectl describe pods -l app=s3 | grep -A8 -E 'Events|Failed|Back-off' || true
           kubectl describe cluster kampong-postgres || true
+          for p in $(kubectl get pods -l cnpg.io/cluster=kampong-postgres -o name); do echo "--- $p plugin sidecar"; kubectl logs $p -c plugin-barman-cloud --tail=60 || true; done
+          kubectl get backup -o yaml | grep -A12 'status:' || true
           kubectl logs -n cnpg-system deploy/cnpg-cloudnative-pg --tail=80 || true
           kubectl logs -n cnpg-system deploy/plugin-barman-cloud --tail=80 || true
           kubectl get cluster -o name | grep restore | xargs -r -n1 kubectl describe || true
