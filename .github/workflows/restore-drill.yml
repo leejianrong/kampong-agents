@@ -73,6 +73,7 @@ jobs:
         if: failure()
         run: |
           kubectl get cluster,backup,pods -A || true
+          kubectl describe pods -l app=minio | grep -A8 -E 'Events|Failed|Back-off' || true
           kubectl describe cluster kampong-postgres || true
           kubectl logs -n cnpg-system deploy/cnpg-cloudnative-pg --tail=80 || true
           kubectl logs -n cnpg-system deploy/plugin-barman-cloud --tail=80 || true
