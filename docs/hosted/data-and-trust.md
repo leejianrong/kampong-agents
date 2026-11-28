@@ -186,12 +186,24 @@ flowchart LR
   classDef new stroke-dasharray: 5 4,stroke:#a4531a
 ```
 
-### Egress coverage is unverified
+### Egress coverage
 
-The egress guard (ADR-0058) covers HTTP made by tools. The first version of this plan drew model-provider and
-connector calls as bypassing it, and the buyer review flagged that as unverified. KAM-337 audits those paths
-and either routes them through the guard or records the exception in an ADR. Until then, do not tell a
-customer that all outbound traffic is restricted.
+The egress guard (ADR-0058) now sits in front of all three ways a hosted run reaches the network (KAM-337):
+
+| Path                          | What sends it                                        | Guarded by                                   |
+| ----------------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| Tool HTTP                     | the engine's tool fetch                              | the guard                                    |
+| First-party connectors        | the same fetch, handed to each component             | the guard                                    |
+| Model provider calls          | the model client's fetch (`agent.model.base_url`)    | the guard, with the operator's LiteLLM host allowed |
+
+The model path was the gap: a spec can name its own `agent.model.base_url`, and before KAM-337 that request went out
+unguarded, so a tenant could aim the server at the metadata address or the cluster. A refusal fails the step with a
+message naming the origin and is written to the audit log as `egress.blocked` (actor `system`, outcome `deny`,
+target the origin only, never a path or query).
+
+Two limits remain. The guard checks where a request goes, not what it carries, and there is no per-workspace
+allowlist yet (KAM-336). The connector path is covered because it shares the tool fetch; it has no test of its
+own beyond the guard's.
 
 ## Roles
 
@@ -235,8 +247,8 @@ update or delete through the application changes no rows.
   pages with `limit` (default 100, max 500) and `cursor`. The response carries `version: 1`; a breaking change bumps it.
 - **Failure mode:** a failed audit write is logged and does not fail the request, so an audit-table outage cannot take
   the product down. A buyer who needs fail-closed can have it as an option later.
-- **Not yet audited:** egress-guard blocks (KAM-337 adds them with the egress checks on model and connector paths),
-  webhook-started runs (their source is on the run row), sign-in and member changes (they arrive with SSO and SCIM).
+- **Egress blocks** are recorded as `egress.blocked` (KAM-337).
+- **Not yet audited:** webhook-started runs (their source is on the run row), sign-in and member changes (they arrive with SSO and SCIM).
 
 ## API
 

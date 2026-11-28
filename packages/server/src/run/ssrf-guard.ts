@@ -15,6 +15,22 @@ import { Agent } from "undici";
 // A request that fails the rule never leaves the process. Local mode does not use this: a developer's own tools
 // legitimately call localhost. `allowHosts` is the self-host exception, for internal services an operator chooses.
 
+/**
+ * Thrown when a request is refused for where it would go. A distinct class so the caller can record the refusal (KAM-337)
+ * without parsing a message. `origin` is scheme, host and port only: a path or query could hold a secret.
+ */
+export class EgressBlockedError extends ToolCallError {
+  constructor(
+    message: string,
+    public readonly origin: string,
+    public readonly reason: string,
+    public readonly toolName: string | undefined,
+  ) {
+    super(message, "permission", false);
+    this.name = "EgressBlockedError";
+  }
+}
+
 const BLOCKED = new BlockList();
 for (const [net, bits] of [
   ["0.0.0.0", 8], // "this network"
@@ -158,11 +174,12 @@ export function createGuardedFetch(options: GuardedFetchOptions = {}): ToolFetch
   }
 
   function refuse(toolName: string | undefined, url: URL, why: string): never {
-    throw new ToolCallError(
+    throw new EgressBlockedError(
       `${toolName ? `Tool "${toolName}": ` : ""}outbound call to ${url.origin} was blocked: ${why}. ` +
-        `Hosted tools may only reach public internet addresses.`,
-      "permission",
-      false,
+        `Hosted runs may only reach public internet addresses.`,
+      url.origin,
+      why,
+      toolName,
     );
   }
 

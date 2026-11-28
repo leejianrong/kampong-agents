@@ -26,9 +26,8 @@ There is no landing page in this plan. The server is the product surface at `kam
 - A webhook secret per deployment, shown once and stored encrypted (ADR-0057).
 - A scheduler for `schedule` triggers, tied to live or paused.
 - Per-workspace connector secrets and model keys, encrypted (KAM-81, BYOK).
-- An egress guard: hosted tools reach public addresses only (ADR-0058). It covers tool HTTP; see
-  [the trust page](data-and-trust.md#egress-coverage-is-unverified) for the open question about model and
-  connector calls.
+- An egress guard: hosted tool, connector and model calls reach public addresses only (ADR-0058, KAM-337), and
+  a blocked call is audited. See [the trust page](data-and-trust.md#egress-coverage).
 - Postgres with row-level security, durable runs, an approval route and a run trace.
 - Helm charts for the server and for Postgres with scheduled backups.
 
