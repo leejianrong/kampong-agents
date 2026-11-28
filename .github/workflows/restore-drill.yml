@@ -1,0 +1,76 @@
+name: Restore drill
+
+# KAM-329: proves the hosted database's backups restore. On a throwaway kind cluster it installs cert-manager, the
+# CloudNativePG operator, the Barman Cloud plugin and a MinIO bucket, installs deploy/helm/kampong-postgres with two
+# instances, then runs scripts/restore-drill.sh: write data, back up, write more, restore into a NEW cluster from the
+# bucket alone, compare, and kill the primary to time the failover. The timings land in the job summary.
+# It runs when the chart or the script changes, weekly, and on demand. It is not a required check.
+
+on:
+  pull_request:
+    paths:
+      - "deploy/helm/kampong-postgres/**"
+      - "deploy/local/minio.yaml"
+      - "scripts/restore-drill.sh"
+      - ".github/workflows/restore-drill.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: restore-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drill:
+    name: Restore drill (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: drill
+
+      - name: Install cert-manager, the CNPG operator and the Barman Cloud plugin
+        run: |
+          helm repo add jetstack https://charts.jetstack.io --force-update
+          helm repo add cnpg https://cloudnative-pg.github.io/charts --force-update
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager --create-namespace --set crds.enabled=true --wait --timeout 300s
+          helm upgrade --install cnpg cnpg/cloudnative-pg \
+            --namespace cnpg-system --create-namespace --version 0.29.0 --wait --timeout 300s
+          helm upgrade --install plugin-barman-cloud cnpg/plugin-barman-cloud \
+            --namespace cnpg-system --version 0.8.0 --wait --timeout 300s
+
+      - name: Start MinIO and its bucket
+        run: |
+          kubectl apply -f deploy/local/minio.yaml
+          kubectl rollout status deployment/minio --timeout=180s
+          kubectl wait --for=condition=complete job/minio-make-bucket --timeout=180s
+
+      - name: Install the Postgres chart with two instances
+        run: |
+          helm install kampong-postgres deploy/helm/kampong-postgres \
+            --set cluster.instances=2 \
+            --set cluster.storage.size=2Gi \
+            --set cluster.resources.requests.cpu=100m \
+            --set cluster.resources.requests.memory=256Mi \
+            --set cluster.resources.limits.cpu=1 \
+            --set cluster.resources.limits.memory=768Mi \
+            --set backup.objectStore.bucket=kampong-postgres-backups \
+            --set backup.objectStore.endpointURL=http://minio:9000
+
+      - name: Run the drill
+        run: scripts/restore-drill.sh
+
+      - name: Show the state when it failed
+        if: failure()
+        run: |
+          kubectl get cluster,backup,pods -A || true
+          kubectl describe cluster kampong-postgres || true
+          kubectl logs -n cnpg-system deploy/cnpg-cloudnative-pg --tail=80 || true
+          kubectl logs -n cnpg-system deploy/plugin-barman-cloud --tail=80 || true
+          kubectl get cluster -o name | grep restore | xargs -r -n1 kubectl describe || true
