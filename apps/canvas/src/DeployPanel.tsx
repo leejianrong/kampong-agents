@@ -99,7 +99,7 @@ export function DeployPanel({
   const setStatus = (status: "live" | "paused") =>
     act(async () => {
       await api.setStatus(status);
-      setDeployment((d) => (d ? { ...d, status } : d));
+      setDeployment((d) => (d ? { ...d, status, pausedReason: null } : d));
     });
 
   const rotate = () =>
@@ -180,6 +180,12 @@ export function DeployPanel({
               {paused ? "Resume" : "Pause"}
             </button>
           </div>
+          {paused && deployment.pausedReason === "monthly_limit" && (
+            <p className="md3-body-small" role="status" data-testid="deploy-paused-reason">
+              Paused because this workspace used its runs for the month. Resume it once the limit is
+              raised or the month turns over.
+            </p>
+          )}
 
           <div className="md3-deploy__block">
             <span className="md3-body-small md3-field__label">

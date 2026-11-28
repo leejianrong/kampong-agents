@@ -205,6 +205,24 @@ Two limits remain. The guard checks where a request goes, not what it carries, a
 allowlist yet (KAM-336). The connector path is covered because it shares the tool fetch; it has no test of its
 own beyond the guard's.
 
+## Limits per workspace
+
+One workspace cannot use more than its share of the server (KAM-323). The limits are the same for every workspace
+and are set by the operator (`runLimits` in the chart, or `RUN_MAX_CONCURRENT`, `RUN_MAX_PER_MONTH` and
+`RUN_MAX_MINUTES`; 0 turns one off).
+
+| Limit                  | Default | When it is reached                                                                                                                 |
+| ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Runs going at once     | 5       | A start is refused with 429, a reason and `Retry-After`. A scheduled tick is skipped, not failed.                                  |
+| Runs per calendar month (UTC) | 3000 | A start is refused with 429. The workspace's live deployments are paused with the reason `monthly_limit`, which the Deploy panel shows, and the pause is audited. A person resumes them. |
+| Minutes a run may work | 15      | The run is stopped and recorded as failed ("Stopped: this run took longer than ..."), and audited as `run.timeout`. Time spent waiting for an approval does not count. |
+
+The engine has no cancel, so a run over its time is ended by making its next model or tool call fail, and its row is
+written as failed at once. A call already in flight finishes in the background. The count and the insert happen in
+one transaction under a per-workspace advisory lock, so two replicas cannot both take the last slot. A `running` row
+older than twice the time limit is ignored by the count, so a crashed process cannot hold a slot for ever. There is
+no spend ceiling yet, only run counts; cost needs the usage panel (KAM-325).
+
 ## Roles
 
 Four roles, checked on every session route (KAM-64, KAM-328, `packages/server/src/auth/roles.ts`). A route names the

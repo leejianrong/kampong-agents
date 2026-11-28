@@ -7,6 +7,7 @@ import {
   getGithubOAuthConfig,
   getPreviewNotice,
   getIngressLimits,
+  getRunLimits,
   getTrustProxy,
   getPublicBaseUrl,
 } from "../../../src/auth/env.js";
@@ -155,5 +156,20 @@ describe("getTrustProxy (KAM-322)", () => {
     expect(getTrustProxy({})).toBe(false);
     expect(getTrustProxy({ TRUST_PROXY: "1" })).toBe(false);
     expect(getTrustProxy({ TRUST_PROXY: "true" })).toBe(true);
+  });
+});
+
+describe("getRunLimits (KAM-323)", () => {
+  it("leaves out anything unset so the defaults apply", () => {
+    expect(getRunLimits({})).toEqual({});
+  });
+  it("reads each limit, with minutes turned into milliseconds, and 0 means off", () => {
+    expect(
+      getRunLimits({ RUN_MAX_CONCURRENT: "3", RUN_MAX_PER_MONTH: "0", RUN_MAX_MINUTES: "20" }),
+    ).toEqual({ maxConcurrent: 3, maxPerMonth: 0, maxRuntimeMs: 1_200_000 });
+  });
+  it("refuses a value that is not a whole number of at least 0", () => {
+    expect(() => getRunLimits({ RUN_MAX_CONCURRENT: "-1" })).toThrow(/RUN_MAX_CONCURRENT/);
+    expect(() => getRunLimits({ RUN_MAX_MINUTES: "soon" })).toThrow(/RUN_MAX_MINUTES/);
   });
 });

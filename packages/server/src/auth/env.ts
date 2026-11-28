@@ -140,6 +140,35 @@ export function getIngressLimits(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
+function wholeNumber(env: NodeJS.ProcessEnv, name: string): number | undefined {
+  const raw = env[name]?.trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new Error(`${name} must be a whole number of at least 0 (0 turns it off), got "${raw}".`);
+  }
+  return n;
+}
+
+/**
+ * Reads the per-workspace run limits (KAM-323): `RUN_MAX_CONCURRENT`, `RUN_MAX_PER_MONTH` and `RUN_MAX_MINUTES`.
+ * Each one that is unset is left out, so the defaults in run/limits.ts apply. 0 turns that limit off.
+ */
+export function getRunLimits(env: NodeJS.ProcessEnv = process.env): {
+  maxConcurrent?: number;
+  maxPerMonth?: number;
+  maxRuntimeMs?: number;
+} {
+  const maxConcurrent = wholeNumber(env, "RUN_MAX_CONCURRENT");
+  const maxPerMonth = wholeNumber(env, "RUN_MAX_PER_MONTH");
+  const minutes = wholeNumber(env, "RUN_MAX_MINUTES");
+  return {
+    ...(maxConcurrent !== undefined && { maxConcurrent }),
+    ...(maxPerMonth !== undefined && { maxPerMonth }),
+    ...(minutes !== undefined && { maxRuntimeMs: minutes * 60_000 }),
+  };
+}
+
 /** `TRUST_PROXY=true`: believe `X-Forwarded-For` (set only when the server sits behind an ingress controller). */
 export function getTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean {
   return env["TRUST_PROXY"] === "true";
