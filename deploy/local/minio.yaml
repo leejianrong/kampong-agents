@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+          image: quay.io/minio/minio:RELEASE.2024-10-13T13-34-11Z
           args: ["server", "/data"]
           env:
             - { name: MINIO_ROOT_USER, value: drill }
@@ -53,7 +53,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: mc
-          image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+          image: quay.io/minio/mc:RELEASE.2024-10-08T09-37-26Z
           command:
             - sh
             - -c
