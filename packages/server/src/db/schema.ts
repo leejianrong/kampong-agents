@@ -420,6 +420,9 @@ export const deployments = pgTable(
     webhookSecretCiphertext: text("webhook_secret_ciphertext"),
     // KAM-324: the user who last pressed Deploy, for the audit trail and the dashboard. Null for rows from before.
     deployedBy: text("deployed_by"),
+    // KAM-323: why a deployment is paused when the system, not a person, paused it ("monthly_limit"). Null for a
+    // person's pause and for a live deployment, so the panel can say why instead of showing a bare "paused".
+    pausedReason: text("paused_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

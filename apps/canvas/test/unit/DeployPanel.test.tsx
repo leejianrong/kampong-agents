@@ -89,6 +89,18 @@ describe("DeployPanel (KAM-326)", () => {
     expect(api.setStatus).toHaveBeenLastCalledWith("live");
   });
 
+  it("says why a deployment the system paused is paused, and drops the note on resume (KAM-323)", async () => {
+    const api = fakeApi({
+      get: vi.fn(async () => ({ ...DEPLOYED, status: "paused", pausedReason: "monthly_limit" })),
+    });
+    panel(api);
+    expect((await screen.findByTestId("deploy-paused-reason")).textContent).toMatch(
+      /used its runs for the month/,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    await waitFor(() => expect(screen.queryByTestId("deploy-paused-reason")).toBeNull());
+  });
+
   it("rotating shows the new secret once", async () => {
     const api = fakeApi({ get: vi.fn(async () => DEPLOYED) });
     panel(api);

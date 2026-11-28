@@ -44,6 +44,14 @@ ingressLimits: {}
 #  ipPerMinute: 600
 #  maxBodyBytes: 262144
 
+# What one workspace may use (KAM-323). Empty uses the server defaults: 5 runs at once, 3000 runs a calendar month
+# (UTC) and 15 minutes a run. 0 turns a limit off. Over the monthly figure the workspace's deployments are paused
+# with the reason shown in the Deploy panel. The same limits apply to every workspace.
+runLimits: {}
+#  maxConcurrent: 5
+#  maxPerMonth: 3000
+#  maxMinutes: 15
+
 service:
   type: ClusterIP
   port: 80

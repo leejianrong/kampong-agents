@@ -15,6 +15,7 @@ import { specs } from "../db/schema.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
 import { PgStateStore } from "./pg-state-store.js";
 import type { HostedRunManager } from "./manager.js";
+import { RunLimitError } from "./limits.js";
 
 // KAM-203 (ADR-0056): runs a deployed spec's `schedule` trigger on the hosted server. One engine runner
 // (`runUnattended`, the same one `kampong serve` uses) per live deployment: its overlap lock lives in the
@@ -130,10 +131,22 @@ export class HostedScheduler {
       ...(this.options.clock ? { clock: this.options.clock } : {}),
       ...(this.options.random ? { random: this.options.random } : {}),
       job: async (signal) => {
-        const { id, state } = await this.manager.start(workspaceId, specId, "", {
-          source: "schedule",
-          triggeredBy: "schedule",
-        });
+        let started: Awaited<ReturnType<HostedRunManager["start"]>>;
+        try {
+          started = await this.manager.start(workspaceId, specId, "", {
+            source: "schedule",
+            triggeredBy: "schedule",
+          });
+        } catch (err) {
+          if (err instanceof RunLimitError) {
+            // Too many runs going (KAM-323): skip this tick, it is not a failure of the workflow. The monthly
+            // ceiling has paused the deployment, so this job stops for good.
+            if (err.code === "monthly") controller.abort();
+            return;
+          }
+          throw err;
+        }
+        const { id, state } = started;
         let final = state;
         // Hold the overlap lock until the run stops running; a run paused for approval is handed to the
         // approval routes, so the tick is done with it.

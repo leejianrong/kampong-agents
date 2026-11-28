@@ -155,6 +155,13 @@
       "when": 1795658785644,
       "tag": "0021_enable_audit_events_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795851079606,
+      "tag": "0022_deployment_paused_reason",
+      "breakpoints": true
     }
   ]
 }

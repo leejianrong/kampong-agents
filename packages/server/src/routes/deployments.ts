@@ -8,6 +8,7 @@ import { InvalidWorkspaceIdError, withWorkspaceScope } from "../db/workspace-sco
 import { deployments, specs } from "../db/schema.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
+import { RunLimitError } from "../run/limits.js";
 import {
   HostedRunManager,
   InvalidStoredSpecError,
@@ -127,7 +128,12 @@ export function registerDeploymentRoutes(
           .values({ workspaceId: ctx.workspaceId, specId, deployedBy: ctx.userId })
           .onConflictDoUpdate({
             target: deployments.specId,
-            set: { status: "live", deployedBy: ctx.userId, updatedAt: new Date() },
+            set: {
+              status: "live",
+              pausedReason: null,
+              deployedBy: ctx.userId,
+              updatedAt: new Date(),
+            },
           })
           .returning({
             id: deployments.id,
@@ -182,7 +188,11 @@ export function registerDeploymentRoutes(
     const specId = request.params.id;
     const [row] = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
       tx
-        .select({ id: deployments.id, status: deployments.status })
+        .select({
+          id: deployments.id,
+          status: deployments.status,
+          pausedReason: deployments.pausedReason,
+        })
         .from(deployments)
         .where(and(eq(deployments.specId, specId), eq(deployments.workspaceId, ctx.workspaceId))),
     );
@@ -195,6 +205,8 @@ export function registerDeploymentRoutes(
       success: true,
       deploymentId: row.id,
       status: row.status,
+      // Set when the system paused it, e.g. "monthly_limit" (KAM-323); null when a person did, or it is live.
+      pausedReason: row.pausedReason,
       ...webhookLocation(publicBaseUrl, ctx.workspaceId, row.id),
     };
   });
@@ -220,7 +232,7 @@ export function registerDeploymentRoutes(
       const [row] = await withWorkspaceScope(db, ctx.workspaceId, (tx) =>
         tx
           .update(deployments)
-          .set({ status, updatedAt: new Date() })
+          .set({ status, pausedReason: null, updatedAt: new Date() })
           .where(and(eq(deployments.specId, specId), eq(deployments.workspaceId, ctx.workspaceId)))
           .returning({ id: deployments.id, status: deployments.status }),
       );
@@ -448,6 +460,12 @@ export function registerDeploymentRoutes(
             // The spec was deleted after being deployed (the FK would have cascade-deleted this row too, so
             // this is only reachable via a genuine race) -- not this caller's fault to see.
             return reply.code(404).send({ success: false, error: "Unknown or inactive webhook." });
+          }
+          if (err instanceof RunLimitError) {
+            return reply
+              .code(429)
+              .header("retry-after", err.code === "concurrency" ? "30" : "3600")
+              .send({ success: false, error: err.message, code: err.code });
           }
           if (
             err instanceof InvalidStoredSpecError ||

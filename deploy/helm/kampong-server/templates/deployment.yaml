@@ -56,6 +56,20 @@ spec:
               value: {{ .maxBodyBytes | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.runLimits }}
+            {{- if hasKey . "maxConcurrent" }}
+            - name: RUN_MAX_CONCURRENT
+              value: {{ .maxConcurrent | quote }}
+            {{- end }}
+            {{- if hasKey . "maxPerMonth" }}
+            - name: RUN_MAX_PER_MONTH
+              value: {{ .maxPerMonth | quote }}
+            {{- end }}
+            {{- if hasKey . "maxMinutes" }}
+            - name: RUN_MAX_MINUTES
+              value: {{ .maxMinutes | quote }}
+            {{- end }}
+            {{- end }}
             {{- $publicBaseUrl := .Values.publicBaseUrl | default (ternary (printf "https://%s" .Values.ingress.host) (printf "http://%s" .Values.ingress.host) .Values.ingress.tls.enabled) }}
             {{- if .Values.ingress.enabled }}
             - name: PUBLIC_BASE_URL

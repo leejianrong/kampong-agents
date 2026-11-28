@@ -216,6 +216,8 @@ export interface SecretStatusDto {
 export interface DeploymentDto {
   deploymentId: string;
   status: string;
+  /** Set when the system paused it, not a person (KAM-323): "monthly_limit". */
+  pausedReason?: string | null;
   webhookPath: string;
   webhookUrl?: string;
   webhookSecret?: string;

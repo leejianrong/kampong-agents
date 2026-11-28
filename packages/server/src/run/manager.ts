@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gte, sql } from "drizzle-orm";
 import {
   createTraceRecorder,
   type Trace,
@@ -13,14 +13,21 @@ import {
   type RunEvent,
   type RunState,
   type ToolFetchImpl,
+  ToolCallError,
 } from "@kampong/engine";
 import { parseSpec, type AgentSpec } from "@kampong/spec";
 import type { DbClient } from "../db/client.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
-import { runs, specs } from "../db/schema.js";
+import { deployments, runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
 import { resolveWorkspaceSecrets, secretNamesFor } from "../secrets/resolve.js";
 import { PgStateStore } from "./pg-state-store.js";
+import {
+  DEFAULT_RUN_LIMITS,
+  PAUSED_FOR_MONTHLY_LIMIT,
+  RunLimitError,
+  type RunLimits,
+} from "./limits.js";
 import { recordAudit } from "../audit/audit.js";
 import { createGuardedFetch, EgressBlockedError, parseAllowHosts } from "./ssrf-guard.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
@@ -121,6 +128,8 @@ export interface HostedRunManagerOptions {
    * behavior is exercised deterministically with no network and no stored key.
    */
   createModel?: (spec: AgentSpec) => ModelClient | Promise<ModelClient>;
+  /** Per-workspace run limits (KAM-323); fields left out use the defaults in limits.ts. 0 turns one off. */
+  limits?: Partial<RunLimits>;
   /** Test-only seam: how long a terminal run stays in the live map before eviction (default 10 minutes). */
   evictAfterMs?: number;
 }
@@ -178,12 +187,20 @@ export class HostedRunManager {
   // model path needs the same rule as a tool. The operator's own LiteLLM gateway is on the allow list: it is
   // internal by design and not tenant-controlled.
   private readonly modelFetch: typeof fetch;
+  private readonly limits: RunLimits;
+  // KAM-323: a run stopped for taking too long, by id, with the reason. Its row is already terminal, so later events
+  // from the engine must not overwrite it.
+  private readonly stopped = new Map<string, string>();
+  private readonly runtimeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // What lets the manager end a run it cannot cancel: once `stopped` is set, the next model or tool call it makes fails.
+  private readonly leases = new WeakMap<AgentRun, RunLease>();
 
   constructor(
     private readonly db: DbClient,
     private readonly options: HostedRunManagerOptions = {},
   ) {
     this.evictAfterMs = options.evictAfterMs ?? DEFAULT_EVICT_AFTER_MS;
+    this.limits = { ...DEFAULT_RUN_LIMITS, ...options.limits };
     const allowHosts =
       options.egressAllowHosts ?? parseAllowHosts(process.env["KAMPONG_EGRESS_ALLOW_HOSTS"]);
     this.toolFetch = options.fetchImpl ?? createGuardedFetch({ allowHosts });
@@ -283,11 +300,12 @@ export class HostedRunManager {
       env: this.options.modelEnv,
     });
 
+    const lease: RunLease = {};
     const run = createAgentRun(spec, {
       persistApprovals: true,
-      model: recorder.wrapModel(model),
+      model: stoppable(lease, recorder.wrapModel(model)),
       env: { ...(this.options.env ?? {}), ...secrets },
-      fetchImpl: this.audited(workspaceId, specId, "tool", this.toolFetch),
+      fetchImpl: stoppableFetch(lease, this.audited(workspaceId, specId, "tool", this.toolFetch)),
       components: this.options.components ?? this.components,
       // A `dedupe` step remembers its keys here (KAM-113): Postgres, scoped to this workspace under RLS. It is
       // only a handle (every call opens its own scoped transaction), so a workflow with no dedupe step never
@@ -298,6 +316,7 @@ export class HostedRunManager {
     });
     recorder.attach(run);
     this.recorders.set(run, recorder);
+    this.leases.set(run, lease);
     return { run, recorder };
   }
 
@@ -322,7 +341,66 @@ export class HostedRunManager {
     const { run } = await this.buildRun(workspaceId, specId, runOptions);
     const initialState = run.getState();
 
-    const id = await withWorkspaceScope(this.db, workspaceId, async (tx) => {
+    let id: string;
+    try {
+      id = await this.insertRun(workspaceId, specId, input, runOptions, initialState);
+    } catch (err) {
+      if (err instanceof RunLimitError && err.code === "monthly")
+        await this.pauseForMonthlyLimit(workspaceId);
+      throw err;
+    }
+
+    this.live.set(id, run);
+    this.watch(workspaceId, id, run);
+    this.armRuntime(workspaceId, id, run);
+    run.start(input).catch((err: unknown) => {
+      console.error(`Hosted run ${id} failed unexpectedly:`, err);
+    });
+
+    return { id, state: initialState };
+  }
+
+  /**
+   * Checks the workspace's limits and inserts the run row in one transaction. An advisory lock keyed on the
+   * workspace makes the count and the insert atomic across replicas, so two starts cannot both take the last slot.
+   */
+  private async insertRun(
+    workspaceId: string,
+    specId: string,
+    input: string,
+    runOptions: StartRunOptions,
+    initialState: RunState,
+  ): Promise<string> {
+    return withWorkspaceScope(this.db, workspaceId, async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`);
+      const { maxConcurrent, maxPerMonth, maxRuntimeMs } = this.limits;
+      if (maxConcurrent > 0) {
+        // A `running` row older than twice the time limit belongs to a run that died with its process; it must not
+        // hold a slot for ever.
+        const cutoff = new Date(
+          Date.now() - (maxRuntimeMs > 0 ? maxRuntimeMs * 2 : 24 * 3_600_000),
+        );
+        const [row] = await tx
+          .select({ n: count() })
+          .from(runs)
+          .where(
+            and(
+              eq(runs.workspaceId, workspaceId),
+              eq(runs.status, "running"),
+              gte(runs.startedAt, cutoff),
+            ),
+          );
+        if ((row?.n ?? 0) >= maxConcurrent) throw new RunLimitError("concurrency", maxConcurrent);
+      }
+      if (maxPerMonth > 0) {
+        const now = new Date();
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const [row] = await tx
+          .select({ n: count() })
+          .from(runs)
+          .where(and(eq(runs.workspaceId, workspaceId), gte(runs.startedAt, monthStart)));
+        if ((row?.n ?? 0) >= maxPerMonth) throw new RunLimitError("monthly", maxPerMonth);
+      }
       const [row] = await tx
         .insert(runs)
         .values({
@@ -337,18 +415,80 @@ export class HostedRunManager {
         .returning({ id: runs.id });
       return row!.id;
     });
+  }
 
-    this.live.set(id, run);
-    this.watch(workspaceId, id, run);
+  /** The workspace used its runs for the month: its live deployments pause, with the reason, and the event is audited. */
+  private async pauseForMonthlyLimit(workspaceId: string): Promise<void> {
+    try {
+      const paused = await withWorkspaceScope(this.db, workspaceId, (tx) =>
+        tx
+          .update(deployments)
+          .set({ status: "paused", pausedReason: PAUSED_FOR_MONTHLY_LIMIT, updatedAt: new Date() })
+          .where(and(eq(deployments.workspaceId, workspaceId), eq(deployments.status, "live")))
+          .returning({ id: deployments.id }),
+      );
+      if (paused.length > 0) {
+        await recordAudit(this.db, {
+          workspaceId,
+          actor: "system",
+          action: "deployment.paused_by_limit",
+          outcome: "deny",
+          detail: { reason: PAUSED_FOR_MONTHLY_LIMIT, deployments: paused.length },
+        });
+      }
+    } catch (err) {
+      console.error("Pausing deployments at the monthly run limit failed:", err);
+    }
+  }
 
-    // Fire-and-forget (workflow.ts already converts every real failure into a
-    // "failed" RunEvent, so a rejection here is genuinely unexpected -- log,
-    // don't crash the server).
-    run.start(input).catch((err: unknown) => {
-      console.error(`Hosted run ${id} failed unexpectedly:`, err);
+  /**
+   * Starts the run's clock while it is working and stops it while it waits for a person (a run paused for approval
+   * may wait for days). Past the limit the run is stopped (KAM-323).
+   */
+  private armRuntime(workspaceId: string, id: string, run: AgentRun): void {
+    if (this.limits.maxRuntimeMs <= 0 || this.runtimeTimers.has(id)) return;
+    const timer = setTimeout(() => {
+      this.runtimeTimers.delete(id);
+      void this.stopForTime(workspaceId, id, run);
+    }, this.limits.maxRuntimeMs);
+    timer.unref?.();
+    this.runtimeTimers.set(id, timer);
+  }
+
+  private disarmRuntime(id: string): void {
+    const timer = this.runtimeTimers.get(id);
+    if (timer) clearTimeout(timer);
+    this.runtimeTimers.delete(id);
+  }
+
+  /**
+   * Ends a run that has run too long. The engine has no cancel, so the run's next model or tool call is made to
+   * fail, and the row is written as failed now so nobody waits on a call that may never return.
+   */
+  private async stopForTime(workspaceId: string, id: string, run: AgentRun): Promise<void> {
+    const state = run.getState();
+    if (state.status !== "running") return;
+    const minutes = Math.round(this.limits.maxRuntimeMs / 60_000);
+    const message = `Stopped: this run took longer than ${minutes} minute${minutes === 1 ? "" : "s"}, the limit for a workspace.`;
+    this.stopped.set(id, message);
+    const lease = this.leases.get(run);
+    if (lease) lease.stopped = message;
+    this.live.delete(id);
+    this.persistTails.set(
+      id,
+      (this.persistTails.get(id) ?? Promise.resolve())
+        .then(() => this.persist(workspaceId, id, { ...state, status: "failed", error: message }))
+        .catch((err: unknown) => console.error(`Persisting stopped run ${id} failed:`, err)),
+    );
+    await recordAudit(this.db, {
+      workspaceId,
+      actor: "system",
+      action: "run.timeout",
+      target: id,
+      outcome: "deny",
+      detail: { limitMs: this.limits.maxRuntimeMs },
     });
-
-    return { id, state: initialState };
+    this.scheduleEviction(id);
   }
 
   /**
@@ -486,7 +626,10 @@ export class HostedRunManager {
         this.live.delete(id);
         return;
       }
+      if (this.stopped.has(id)) return;
       this.enqueuePersist(workspaceId, id, state);
+      if (state.status === "running") this.armRuntime(workspaceId, id, run);
+      else this.disarmRuntime(id);
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
     });
   }
@@ -564,10 +707,33 @@ export class HostedRunManager {
       this.live.delete(id);
       this.evictionTimers.delete(id);
       this.persistTails.delete(id);
+      this.stopped.delete(id);
     }, this.evictAfterMs);
     timer.unref?.();
     this.evictionTimers.set(id, timer);
   }
+}
+
+/** Set once a run has been stopped for time; the run's model and tool calls then fail (KAM-323). */
+interface RunLease {
+  stopped?: string;
+}
+
+function stoppable(lease: RunLease, model: ModelClient): ModelClient {
+  return {
+    generateText: (input) =>
+      lease.stopped ? Promise.reject(new Error(lease.stopped)) : model.generateText(input),
+    generateStructured: (input) =>
+      lease.stopped ? Promise.reject(new Error(lease.stopped)) : model.generateStructured(input),
+  };
+}
+
+function stoppableFetch(lease: RunLease, send: ToolFetchImpl): ToolFetchImpl {
+  const wrapped = ((input, init, context) =>
+    lease.stopped
+      ? Promise.reject(new ToolCallError(lease.stopped, "timeout", false))
+      : send(input, init, context)) as ToolFetchImpl;
+  return Object.assign(wrapped, send);
 }
 
 function hostOf(url: string | undefined): string | undefined {

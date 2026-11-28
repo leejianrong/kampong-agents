@@ -14,6 +14,7 @@ import {
   type RunListItem,
 } from "../run/run-list.js";
 import { WorkspaceApiKeyNotConfiguredError } from "../model/resolve.js";
+import { RunLimitError } from "../run/limits.js";
 import {
   HostedRunManager,
   InvalidStoredSpecError,
@@ -170,6 +171,12 @@ export function registerRunRoutes(
           return reply
             .code(404)
             .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
+        }
+        if (err instanceof RunLimitError) {
+          return reply
+            .code(429)
+            .header("retry-after", err.code === "concurrency" ? "30" : "3600")
+            .send({ success: false, error: err.message, code: err.code });
         }
         if (err instanceof InvalidStoredSpecError || err instanceof UnsupportedOnHostedError) {
           return reply.code(422).send({ success: false, error: err.message });
