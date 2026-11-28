@@ -159,6 +159,13 @@ async function main() {
   const health = await fetch(BASE + "/healthz");
   check(health.ok, `/healthz: HTTP ${health.status}`);
   console.log("ok  /healthz");
+  const ready = await fetch(BASE + "/readyz");
+  const readyBody = await ready.json();
+  check(
+    ready.status === 200 && readyBody.database === "ok",
+    `/readyz: HTTP ${ready.status} ${JSON.stringify(readyBody)}`,
+  );
+  console.log("ok  /readyz asks the database");
 
   const a = await new Tenant("a", BASE).signUp();
   const b = await new Tenant("b", BASE).signUp();
