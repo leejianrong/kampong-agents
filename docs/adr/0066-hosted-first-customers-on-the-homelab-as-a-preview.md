@@ -26,7 +26,9 @@ needs more can run Kampong themselves.
 - The app shows a notice on every screen while it is a preview. The server reads it from `PREVIEW_NOTICE` and
   reports it on `/healthz`; the hosted canvas pins it to the top. Suggested text: "Preview: no uptime
   guarantee. Back up anything you cannot lose."
-- No SLA is offered, and the status page (KAM-330) says "preview" until that changes.
+- No SLA is offered, and the status page (KAM-330) says "preview" until that changes. `docs/hosted/availability.md`
+  states the aim, the measurement (an outside probe of `/readyz`) and the incident process; the monitor and the status
+  page themselves need the owner's accounts and are not yet live.
 - Anyone who wants more control can self-host or try it locally on minikube or k3s (KAM-343, in the first
   customer gate), which is also an enterprise expectation.
 - **Replicas.** The chart defaults to one. Two replicas wait on KAM-340 (a test that two replicas fire a

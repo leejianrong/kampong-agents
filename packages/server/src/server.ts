@@ -7,6 +7,7 @@ import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
 import { registerSecretsRoutes } from "./routes/secrets.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { checkReadiness } from "./readiness.js";
 import { buildSecurityTxt, type SecurityTxtConfig } from "./security-txt.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
@@ -196,6 +197,14 @@ export function createServer({
   app.get("/.well-known/security.txt", async (_request, reply) => {
     if (!securityTxt) return reply.code(404).send({ error: "Not found" });
     return reply.type("text/plain; charset=utf-8").send(buildSecurityTxt(securityTxt));
+  });
+
+  // KAM-330: unlike /healthz, this asks the database, so an uptime monitor sees "up but useless" as down.
+  app.get("/readyz", async (_request, reply) => {
+    const result = await checkReadiness(db);
+    return reply
+      .code(result.ok ? 200 : 503)
+      .send({ status: result.ok ? "ok" : "unavailable", database: result.database });
   });
 
   app.get("/healthz", async () => {

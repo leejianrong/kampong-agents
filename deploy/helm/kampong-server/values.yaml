@@ -157,9 +157,11 @@ livenessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
 
+# Readiness asks the database (/readyz, KAM-330): a pod that cannot reach it is taken out of service. Liveness stays on
+# /healthz so a database outage does not restart the pod.
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: http
   initialDelaySeconds: 5
   periodSeconds: 10
