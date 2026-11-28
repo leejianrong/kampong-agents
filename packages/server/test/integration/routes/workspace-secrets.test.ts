@@ -225,6 +225,53 @@ describe.skipIf(!DATABASE_URL)("Workspace tool secrets against a real Postgres (
     });
   });
 
+  it("lists, for an open spec, every name it reads with whether it is stored, and no value (KAM-204)", async () => {
+    const { cookie } = await newUserWithWorkspace();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/specs",
+      headers: { cookie },
+      payload: { name: "etl", source: TEMPLATE },
+    });
+    const specId = created.json().id as string;
+    await putSecret(cookie, "SLACK_BOT_TOKEN", "xoxb-listed-5555");
+    await putSecret(cookie, "UNRELATED_KEY", "other-6666");
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/specs/${specId}/secrets`,
+      headers: { cookie },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const rows = res.json().secrets as { name: string; source: string; referenced: boolean }[];
+    const by = (n: string) => rows.find((r) => r.name === n);
+    expect(by("SLACK_BOT_TOKEN")).toEqual({
+      name: "SLACK_BOT_TOKEN",
+      source: "saved",
+      referenced: true,
+    });
+    expect(by("ALPHAVANTAGE_API_KEY")).toEqual({
+      name: "ALPHAVANTAGE_API_KEY",
+      source: "unset",
+      referenced: true,
+    });
+    expect(by("UNRELATED_KEY")).toEqual({
+      name: "UNRELATED_KEY",
+      source: "saved",
+      referenced: false,
+    });
+    expect(res.body).not.toContain("xoxb-listed");
+    expect(res.body).not.toContain("other-6666");
+
+    const other = await newUserWithWorkspace();
+    const peek = await app.inject({
+      method: "GET",
+      url: `/api/specs/${specId}/secrets`,
+      headers: { cookie: other.cookie },
+    });
+    expect(peek.statusCode).toBe(404);
+  }, 30_000);
+
   it("resolves only the names asked for, and nothing at all for no names", async () => {
     const { cookie, workspaceId } = await newUserWithWorkspace();
     await putSecret(cookie, "SLACK_BOT_TOKEN", "xoxb-one-1111");

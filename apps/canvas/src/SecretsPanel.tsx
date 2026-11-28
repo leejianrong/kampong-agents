@@ -15,6 +15,8 @@ export interface SecretsPanelProps {
    * do. A new `nonce` asks again, so the same name can be asked for twice.
    */
   focus?: { name: string; nonce: number };
+  /** Where a value is kept, for the line under the button: this machine's file (local) or the workspace on the server (hosted, KAM-204). */
+  storage?: "machine" | "workspace";
 }
 
 const SOURCE = {
@@ -25,7 +27,13 @@ const SOURCE = {
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
+export function SecretsPanel({
+  list,
+  save,
+  remove,
+  focus,
+  storage = "machine",
+}: SecretsPanelProps) {
   const [rows, setRows] = useState<SecretStatusDto[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -101,7 +109,14 @@ export function SecretsPanel({ list, save, remove, focus }: SecretsPanelProps) {
         </button>
       </div>
       <p className="md3-body-small md3-field__hint">
-        Values are stored on this machine in <code>.kampong/secrets.env</code>, outside your spec.
+        {storage === "workspace" ? (
+          <>Values are encrypted and kept in this workspace on the server, outside your spec. </>
+        ) : (
+          <>
+            Values are stored on this machine in <code>.kampong/secrets.env</code>, outside your
+            spec.{" "}
+          </>
+        )}
         They can be set and replaced but never shown again.
       </p>
 

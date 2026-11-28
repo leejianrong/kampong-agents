@@ -240,3 +240,36 @@ test("hosted: Deploy panel goes live, a webhook starts a run, and the pending ap
   await expect(usage.getByTestId("usage-limits")).toContainText("Runs this month: 1 of");
   await expect(usage.getByTestId("usage-deployments")).toContainText("Refund Agent");
 });
+
+// KAM-204: a workflow's credentials are set in the Secrets panel, on the hosted canvas, with no terminal.
+test("hosted: the Secrets panel lists what the workflow reads and saves a value without showing it back", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("auth-toggle").click();
+  await page.getByLabel("Name").fill("Secrets Tester");
+  await page.getByLabel("Email").fill(`e2e-${randomUUID()}@example.com`);
+  await page.getByLabel("Password").fill("correct-horse-battery-staple");
+  await page.getByRole("button", { name: "Sign up" }).click();
+  await page.getByLabel("New workspace name").fill("Secrets Workspace");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page.getByTestId("spec-list-empty")).toBeVisible();
+
+  const created = await page.request.post("/api/specs", {
+    data: { name: "Needs A Token", source: TOOL_APPROVAL_SPEC },
+  });
+  expect(created.ok()).toBeTruthy();
+  await page.reload();
+  await page.getByRole("button", { name: /Needs A Token/ }).click();
+
+  await openPanel(page, "Secrets");
+  const panel = page.getByTestId("secrets-panel");
+  await expect(panel).toContainText("kept in this workspace on the server");
+  await panel.getByRole("button", { name: "Add secret" }).click();
+  await panel.getByPlaceholder("SLACK_BOT_TOKEN").fill("SLACK_BOT_TOKEN");
+  await panel.getByLabel("Value").fill("xoxb-typed-in-the-browser");
+  await panel.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("secrets-list")).toContainText("SLACK_BOT_TOKEN");
+  await expect(page.getByTestId("secrets-list")).toContainText("Saved here");
+  expect(await page.content()).not.toContain("xoxb-typed-in-the-browser");
+});
