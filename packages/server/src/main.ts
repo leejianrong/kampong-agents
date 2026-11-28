@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "./server.js";
+import { getSecurityTxtConfig } from "./security-txt.js";
 import { createDbClient } from "./db/client.js";
 import {
   getIngressLimits,
@@ -79,6 +80,7 @@ async function main(): Promise<void> {
     ingressLimits: getIngressLimits(),
     run: { limits: getRunLimits(), ...(getModelPricing() && { pricing: getModelPricing()! }) },
     trustProxy: getTrustProxy(),
+    ...(getSecurityTxtConfig() && { securityTxt: getSecurityTxtConfig()! }),
     ...(getPublicBaseUrl() && { publicBaseUrl: getPublicBaseUrl()! }),
     ...(getPreviewNotice() && { previewNotice: getPreviewNotice()! }),
   });
