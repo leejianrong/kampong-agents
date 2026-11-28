@@ -65,6 +65,11 @@ agent:
   name: "Smoke ${tag}"
   role: "r"
   goal: "g"
+  # Every workflow names a model, even one that never calls it (a missing one is refused at start). Ollama needs no
+  # key, and no step here calls it.
+  model:
+    provider: ollama
+    name: llama3
   workflow:
     - step: stamp
       type: transform
