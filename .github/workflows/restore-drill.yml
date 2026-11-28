@@ -33,6 +33,9 @@ jobs:
         uses: helm/kind-action@v1.10.0
         with:
           cluster_name: drill
+          # cert-manager's CRDs use a field older Kubernetes does not know; the default node was too old.
+          version: v0.29.0
+          node_image: kindest/node:v1.33.1
 
       - name: Install cert-manager, the CNPG operator and the Barman Cloud plugin
         run: |
