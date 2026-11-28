@@ -147,8 +147,9 @@ async function fire(tenant, path) {
     headers: { "content-type": "application/json" },
     body: "{}",
   });
-  check(res.status === 201, `webhook ${path}: HTTP ${res.status} ${await res.text()}`);
-  return (await res.json()).id;
+  const text = await res.text();
+  check(res.status === 201, `webhook ${path}: HTTP ${res.status} ${text}`);
+  return JSON.parse(text).id;
 }
 
 async function main() {
