@@ -98,7 +98,13 @@ export function useRunSession(
 ): RunSession {
   const [input, setInput] = useState("");
   const [options, setOptions] = useState<RunOptionsResponse | null>(null);
-  const [optionsPending, setOptionsPending] = useState(() => api.getRunOptions !== undefined);
+  // The (client, spec text) the options were last loaded for. Pending is derived from it rather than set by the
+  // effect, so the bar is already waiting in the render where the spec changed. Setting it in the effect left Run
+  // enabled for one paint, and a press in that window was swallowed when it went disabled again (KAM-349).
+  const [loadedFor, setLoadedFor] = useState<{ api: ApiClient; key: unknown } | null>(null);
+  const optionsPending =
+    api.getRunOptions !== undefined &&
+    !(loadedFor?.api === api && loadedFor.key === config.refreshKey);
   const [mode, setModeState] = useState<RunMode>("live");
   // Whether the person has picked a mode (KAM-205): until they have, the bar follows what the spec offers by default.
   const picked = useRef(false);
@@ -126,7 +132,6 @@ export function useRunSession(
   useEffect(() => {
     if (!api.getRunOptions) return;
     let cancelled = false;
-    setOptionsPending(true);
     void (async () => {
       try {
         const loaded = await api.getRunOptions?.();
@@ -158,7 +163,7 @@ export function useRunSession(
       } catch {
         // A server that cannot describe its runs gets the plain bar: no switch, a live run as before.
       } finally {
-        if (!cancelled) setOptionsPending(false);
+        if (!cancelled) setLoadedFor({ api, key: config.refreshKey });
       }
     })();
     return () => {

@@ -114,6 +114,11 @@ export function RunControls({
       data-testid="run-controls"
       onKeyDown={onKeyDown}
     >
+      {session.optionsPending && (
+        // Holds the switch's place while the run options load, so Run does not jump sideways the moment it can be
+        // pressed (KAM-349).
+        <span className="md3-runcontrols__mode-hold" aria-hidden="true" />
+      )}
       {options && canChoose && (
         <div
           className="md3-segmented-button md3-runcontrols__mode"
