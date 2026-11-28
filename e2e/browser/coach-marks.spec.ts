@@ -207,6 +207,36 @@ for (const size of [
 test.describe("390x844", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
+  // KAM-349: after a template loaded, Run was enabled for a few milliseconds, then disabled again while the run options
+  // reloaded, and the Replay/Live switch appeared in front of it. A tap in that window did nothing. Once it can be
+  // pressed it must stay pressable and stay put.
+  test("the Run button stays pressable and in place once it first can be pressed", async ({
+    page,
+  }) => {
+    await page.goto(URL);
+    await page.getByTestId("template-market-etl-use").click();
+    const changes = await page.evaluate(async () => {
+      const out: string[] = [];
+      let enabledAt = -1;
+      let first = "";
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1500) {
+        const b = document.querySelector<HTMLButtonElement>('[data-testid="run-button"]');
+        if (b && !b.disabled) {
+          const r = b.getBoundingClientRect();
+          const at = `${Math.round(r.x)},${Math.round(r.y)}`;
+          if (enabledAt < 0) {
+            enabledAt = performance.now();
+            first = at;
+          } else if (at !== first) out.push(`moved to ${at} from ${first}`);
+        } else if (b && enabledAt >= 0) out.push("disabled again");
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      return out;
+    });
+    expect(changes).toEqual([]);
+  });
+
   test("the step mark says to tap a step in the list and covers neither the list nor the error", async ({
     page,
   }) => {

@@ -2888,6 +2888,13 @@ select.md3-text-field {
   outline-offset: 2px;
 }
 
+/* About the width of the Replay/Live switch it stands in for. */
+.md3-runcontrols__mode-hold {
+  flex: none;
+  width: 7.25rem;
+  height: 2.5rem;
+}
+
 .md3-runcontrols__secrets {
   display: inline-flex;
   flex-wrap: wrap;
