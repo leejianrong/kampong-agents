@@ -77,6 +77,7 @@ const ROUTES: Route[] = [
   { method: "GET", url: "/api/secrets", permission: "secret:read" },
   { method: "PUT", url: "/api/secrets/NAME", payload: { value: "v" }, permission: "secret:write" },
   { method: "DELETE", url: "/api/secrets/NAME", permission: "secret:write" },
+  { method: "GET", url: "/api/usage", permission: "run:read" },
   { method: "GET", url: "/api/audit", permission: "audit:read" },
   { method: "GET", url: "/api/byok", permission: "byok:read" },
   {

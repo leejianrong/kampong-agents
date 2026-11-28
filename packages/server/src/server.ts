@@ -7,6 +7,7 @@ import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
 import { registerSecretsRoutes } from "./routes/secrets.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { registerUsageRoutes } from "./routes/usage.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuditHook } from "./audit/audit.js";
@@ -158,6 +159,7 @@ export function createServer({
     // table; the routes start/read them scoped to the request's workspace.
     const runManager = new HostedRunManager(db, run);
     registerRunRoutes(app, { db, auth, manager: runManager });
+    registerUsageRoutes(app, { db, auth, manager: runManager });
 
     // KAN-1436 (ADR-0022): the managed "go live" lifecycle API + the public
     // webhook-ingress route. Shares the same `HostedRunManager` instance as

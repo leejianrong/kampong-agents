@@ -70,6 +70,10 @@ spec:
               value: {{ .maxMinutes | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.modelPricing }}
+            - name: MODEL_PRICING_JSON
+              value: {{ .Values.modelPricing | toJson | quote }}
+            {{- end }}
             {{- $publicBaseUrl := .Values.publicBaseUrl | default (ternary (printf "https://%s" .Values.ingress.host) (printf "http://%s" .Values.ingress.host) .Values.ingress.tls.enabled) }}
             {{- if .Values.ingress.enabled }}
             - name: PUBLIC_BASE_URL

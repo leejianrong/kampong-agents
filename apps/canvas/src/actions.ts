@@ -16,7 +16,8 @@ export type OpenForm =
   | "edit-tool"
   | "import"
   | "templates"
-  | "deploy";
+  | "deploy"
+  | "usage";
 
 /** Where an action is drawn: the run bar, the status bar, or the menu (everything that is not frequent). */
 export type ActionSurface = "run" | "runbar" | "yaml" | "status" | "topbar" | "menu";
@@ -55,6 +56,8 @@ export interface ActionContext {
   hasChecks: boolean;
   /** The hosted server can deploy this spec (KAM-326): the Deploy panel is offered. */
   hasDeploy?: boolean;
+  /** The hosted server can report usage (KAM-325). */
+  hasUsage?: boolean;
   /** The server has ready-made templates to start from (KAM-216); the hosted server has none yet. */
   hasTemplates?: boolean;
   /** No spec file yet: only the actions that need no spec are offered. */
@@ -194,6 +197,14 @@ export function buildActions(ctx: ActionContext): ActionDescriptor[] {
             }
           : {}),
       }),
+      ...(ctx.hasUsage
+        ? [
+            form("usage", "usage", "menu", "Usage", {
+              title: "Runs, model tokens and estimated cost, and the limits",
+              keywords: ["cost", "spend", "tokens", "limit", "runs", "billing"],
+            }),
+          ]
+        : []),
       form("add-step", "workflow", "menu", "Add step", {
         title: "Add a step by choosing its kind and place",
         keywords: ["workflow step", "new step"],

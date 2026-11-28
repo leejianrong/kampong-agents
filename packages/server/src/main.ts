@@ -7,6 +7,7 @@ import { createServer } from "./server.js";
 import { createDbClient } from "./db/client.js";
 import {
   getIngressLimits,
+  getModelPricing,
   getRunLimits,
   getPreviewNotice,
   getPublicBaseUrl,
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
     db,
     scheduler: true,
     ingressLimits: getIngressLimits(),
-    run: { limits: getRunLimits() },
+    run: { limits: getRunLimits(), ...(getModelPricing() && { pricing: getModelPricing()! }) },
     trustProxy: getTrustProxy(),
     ...(getPublicBaseUrl() && { publicBaseUrl: getPublicBaseUrl()! }),
     ...(getPreviewNotice() && { previewNotice: getPreviewNotice()! }),

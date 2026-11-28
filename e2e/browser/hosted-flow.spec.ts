@@ -232,4 +232,11 @@ test("hosted: Deploy panel goes live, a webhook starts a run, and the pending ap
   await expect(page.getByTestId("deploy-status")).toHaveText("Paused");
   const paused = await page.request.post(address, { data: { text: "again" } });
   expect(paused.status()).toBe(404);
+
+  // KAM-325: the Usage panel, from the menu, counts the run this test made and shows the limits beside it.
+  await openPanel(page, "Usage");
+  const usage = page.getByTestId("usage-panel");
+  await expect(usage.getByTestId("usage-totals")).toBeVisible();
+  await expect(usage.getByTestId("usage-limits")).toContainText("Runs this month: 1 of");
+  await expect(usage.getByTestId("usage-deployments")).toContainText("Refund Agent");
 });

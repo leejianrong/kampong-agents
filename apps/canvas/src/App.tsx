@@ -47,6 +47,7 @@ import { EmptyState } from "./EmptyState.js";
 import { DoctorPanel } from "./DoctorPanel.js";
 import { SecretsPanel } from "./SecretsPanel.js";
 import { DeployPanel } from "./DeployPanel.js";
+import { UsagePanel } from "./UsagePanel.js";
 import type { PinResult } from "./ComponentTrust.js";
 import { GuardrailsForm } from "./GuardrailsForm.js";
 import { VarsPanel } from "./VarsPanel.js";
@@ -1362,6 +1363,7 @@ export function App({
     hasSecrets: api.listSecrets !== undefined,
     hasChecks: api.runDoctor !== undefined,
     hasDeploy: api.deploy !== undefined,
+    hasUsage: api.getUsage !== undefined,
     hasTemplates: api.startFromTemplate !== undefined && templates.length > 0,
     noSpecYet: emptyKind === "new",
     ...(missingSecrets !== undefined && { missingSecrets }),
@@ -1838,6 +1840,16 @@ export function App({
                         api={api.deploy}
                         approve={(id, approved) => api.approveRun(id, approved)}
                       />
+                    </Panel>
+                  )}
+                  {openForm === "usage" && api.getUsage && (
+                    <Panel
+                      title="Usage"
+                      purpose="What this workspace has run, how many model tokens that used, and what it cost, against its limits."
+                      testId="usage-panel"
+                      onClose={() => setOpenForm(null)}
+                    >
+                      <UsagePanel load={(days) => api.getUsage!(days)} />
                     </Panel>
                   )}
                   {openForm === "checks" && api.runDoctor && (
