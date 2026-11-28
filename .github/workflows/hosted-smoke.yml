@@ -67,6 +67,7 @@ jobs:
           helm install kampong deploy/helm/kampong-server \
             --set image.repository=kampong-server --set image.tag=smoke --set image.pullPolicy=Never \
             --set ingress.enabled=false \
+            --set runLimits.maxConcurrent=40 \
             --set migrationJob.databaseSecretName=kampong-postgres-app \
             --set 'extraEnv[0].name=DATABASE_URL' \
             --set 'extraEnv[0].valueFrom.secretKeyRef.name=kampong-postgres-app' \
