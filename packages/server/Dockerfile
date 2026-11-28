@@ -78,6 +78,11 @@ COPY apps/canvas/package.json apps/canvas/package.json
 # a native postinstall step, so skipping lifecycle scripts entirely is safe
 # here.
 RUN npm ci --omit=dev --ignore-scripts
+# npm nests a workspace's own copy of a dependency under packages/<name>/node_modules when its version differs from
+# the one hoisted to the root (packages/server's better-auth is one). The runtime stage must carry those too: without
+# them the server crashed on start with "Cannot find package 'better-auth'" (found by the KAM-340 smoke job). The
+# mkdir makes the COPY below safe for a workspace that has none.
+RUN mkdir -p packages/spec/node_modules packages/engine/node_modules packages/server/node_modules
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
@@ -92,12 +97,15 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/package.json /app/package-lock.json ./
 
 COPY packages/spec/package.json packages/spec/package.json
+COPY --from=prod-deps /app/packages/spec/node_modules packages/spec/node_modules
 COPY --from=build /app/packages/spec/dist packages/spec/dist
 
 COPY packages/engine/package.json packages/engine/package.json
+COPY --from=prod-deps /app/packages/engine/node_modules packages/engine/node_modules
 COPY --from=build /app/packages/engine/dist packages/engine/dist
 
 COPY packages/server/package.json packages/server/package.json
+COPY --from=prod-deps /app/packages/server/node_modules packages/server/node_modules
 COPY --from=build /app/packages/server/dist packages/server/dist
 # The checked-in SQL migration files (KAN-1223, ADR-0014) -- static source,
 # not a build artifact, so copied straight from the build context rather

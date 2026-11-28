@@ -1,0 +1,48 @@
+# A throwaway Postgres for the smoke job (KAM-340). Not the CloudNativePG chart: this job tests the server chart and
+# the server, and needs only a database. It makes the same shape of role the real one has: a NON-superuser that owns
+# its database, because a superuser bypasses row-level security and would make every isolation check pass vacuously.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smoke-postgres-init
+data:
+  init.sql: |
+    CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS;
+    CREATE DATABASE kampong OWNER app;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smoke-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: smoke-postgres }
+  template:
+    metadata:
+      labels: { app: smoke-postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          env:
+            - { name: POSTGRES_PASSWORD, value: postgres }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            periodSeconds: 3
+          volumeMounts:
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+      volumes:
+        - name: init
+          configMap: { name: smoke-postgres-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smoke-postgres
+spec:
+  selector: { app: smoke-postgres }
+  ports:
+    - port: 5432
