@@ -1,7 +1,7 @@
 name: Restore drill
 
 # KAM-329: proves the hosted database's backups restore. On a throwaway kind cluster it installs cert-manager, the
-# CloudNativePG operator, the Barman Cloud plugin and a MinIO bucket, installs deploy/helm/kampong-postgres with two
+# CloudNativePG operator, the Barman Cloud plugin and an S3 (LocalStack) bucket, installs deploy/helm/kampong-postgres with two
 # instances, then runs scripts/restore-drill.sh: write data, back up, write more, restore into a NEW cluster from the
 # bucket alone, compare, and kill the primary to time the failover. The timings land in the job summary.
 # It runs when the chart or the script changes, weekly, and on demand. It is not a required check.
@@ -10,7 +10,7 @@ on:
   pull_request:
     paths:
       - "deploy/helm/kampong-postgres/**"
-      - "deploy/local/minio.yaml"
+      - "deploy/local/s3.yaml"
       - "scripts/restore-drill.sh"
       - ".github/workflows/restore-drill.yml"
   schedule:
@@ -48,11 +48,11 @@ jobs:
           helm upgrade --install plugin-barman-cloud cnpg/plugin-barman-cloud \
             --namespace cnpg-system --version 0.8.0 --wait --timeout 300s
 
-      - name: Start MinIO and its bucket
+      - name: Start an S3 store and its bucket
         run: |
-          kubectl apply -f deploy/local/minio.yaml
-          kubectl rollout status deployment/minio --timeout=180s
-          kubectl wait --for=condition=complete job/minio-make-bucket --timeout=180s
+          kubectl apply -f deploy/local/s3.yaml
+          kubectl rollout status deployment/s3 --timeout=300s
+          kubectl wait --for=condition=complete job/s3-make-bucket --timeout=180s
 
       - name: Install the Postgres chart with two instances
         run: |
@@ -64,7 +64,7 @@ jobs:
             --set cluster.resources.limits.cpu=1 \
             --set cluster.resources.limits.memory=768Mi \
             --set backup.objectStore.bucket=kampong-postgres-backups \
-            --set backup.objectStore.endpointURL=http://minio:9000
+            --set backup.objectStore.endpointURL=http://s3:4566
 
       - name: Run the drill
         run: scripts/restore-drill.sh
@@ -73,7 +73,7 @@ jobs:
         if: failure()
         run: |
           kubectl get cluster,backup,pods -A || true
-          kubectl describe pods -l app=minio | grep -A8 -E 'Events|Failed|Back-off' || true
+          kubectl describe pods -l app=s3 | grep -A8 -E 'Events|Failed|Back-off' || true
           kubectl describe cluster kampong-postgres || true
           kubectl logs -n cnpg-system deploy/cnpg-cloudnative-pg --tail=80 || true
           kubectl logs -n cnpg-system deploy/plugin-barman-cloud --tail=80 || true
