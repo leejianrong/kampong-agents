@@ -69,14 +69,14 @@ agent:
     - step: stamp
       type: transform
       set:
-        owner: "${tag}"
+        owner: "'${tag}'"
     - step: review
       type: approval
       message: "Continue for ${tag}?"
     - step: done
       type: transform
       set:
-        owner: "${tag}"
+        owner: "'${tag}'"
 `;
 
 function check(cond, message) {

@@ -42,7 +42,7 @@ agent:
     - step: shape
       type: transform
       set:
-        owner: "${owner}"
+        owner: "'${owner}'"
 `;
 
 const owned = (owner: string) => `version: "1.1"
@@ -55,7 +55,7 @@ agent:
     - step: stamp
       type: transform
       set:
-        owner: "${owner}"
+        owner: "'${owner}'"
 `;
 
 /** The isolation check itself: another workspace asking for this run must be told it does not exist. */
