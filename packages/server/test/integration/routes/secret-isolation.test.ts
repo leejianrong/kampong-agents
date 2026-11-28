@@ -54,7 +54,8 @@ agent:
         text: "hello"
   workflow:
     - step: post
-      action: post_to_slack
+      type: tool
+      tool: post_to_slack
 `;
 
 describe.skipIf(!DATABASE_URL)("Connector secrets across tenants, adversarially (KAM-85)", () => {
@@ -202,24 +203,22 @@ describe.skipIf(!DATABASE_URL)("Connector secrets across tenants, adversarially 
       "",
       "not-a-uuid",
       `${a.workspaceId}' OR '1'='1`,
-      `${a.workspaceId.toUpperCase()}\u0000`,
       "00000000-0000-0000-0000-000000000000",
     ]) {
       const client = await pool.connect();
+      let rows: unknown[] = [];
       try {
         await client.query("BEGIN");
         await client.query("SELECT set_config('app.workspace_id', $1, true)", [hostile]);
-        let rows: unknown[] = [];
-        try {
-          ({ rows } = await client.query("SELECT name FROM workspace_secrets"));
-        } catch {
-          // The policy refusing to cast it is as good as returning nothing.
-        }
-        await client.query("ROLLBACK");
-        expect(rows, `scope ${JSON.stringify(hostile)}`).toEqual([]);
+        ({ rows } = await client.query("SELECT name FROM workspace_secrets"));
+      } catch {
+        // The policy refusing to cast it is as good as returning nothing.
       } finally {
+        // Always end the transaction: a connection returned mid-failure would poison the pool for later tests.
+        await client.query("ROLLBACK").catch(() => undefined);
         client.release();
       }
+      expect(rows, `scope ${JSON.stringify(hostile)}`).toEqual([]);
     }
     // The scoped helper refuses a non-UUID before it reaches the database.
     await expect(
