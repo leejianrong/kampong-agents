@@ -1,0 +1,65 @@
+# A throwaway S3-compatible store for the restore drill (KAM-329): LocalStack's S3 only. Credentials are fixed and
+# public on purpose: it holds nothing and is never exposed. (MinIO would be the usual choice, but its community images
+# are no longer published.) A real install points the chart at its own bucket (docs/hosted/restore-runbook.md).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kampong-postgres-s3-credentials
+stringData:
+  ACCESS_KEY_ID: drill
+  ACCESS_SECRET_KEY: drill-secret-key
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: s3 }
+  template:
+    metadata:
+      labels: { app: s3 }
+    spec:
+      containers:
+        - name: localstack
+          image: localstack/localstack:4.5.0
+          env:
+            - { name: SERVICES, value: s3 }
+          ports:
+            - containerPort: 4566
+          readinessProbe:
+            httpGet: { path: /_localstack/health, port: 4566 }
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3
+spec:
+  selector: { app: s3 }
+  ports:
+    - port: 4566
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s3-make-bucket
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: aws
+          image: amazon/aws-cli:2.17.40
+          env:
+            - { name: AWS_ACCESS_KEY_ID, value: drill }
+            - { name: AWS_SECRET_ACCESS_KEY, value: drill-secret-key }
+            - { name: AWS_DEFAULT_REGION, value: us-east-1 }
+          command:
+            [
+              "sh",
+              "-c",
+              "aws --endpoint-url http://s3:4566 s3 mb s3://kampong-postgres-backups || aws --endpoint-url http://s3:4566 s3 ls s3://kampong-postgres-backups",
+            ]

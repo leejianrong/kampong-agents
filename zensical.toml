@@ -35,6 +35,7 @@ nav = [
   { "Hosted plan" = [
     { "Overview" = "hosted/index.md" },
     { "Run it yourself (minikube, k3s)" = "hosted/self-host.md" },
+    { "Backup and restore runbook" = "hosted/restore-runbook.md" },
     { "Architecture" = "hosted/architecture.md" },
     { "Flows" = "hosted/flows.md" },
     { "Data and trust" = "hosted/data-and-trust.md" },
