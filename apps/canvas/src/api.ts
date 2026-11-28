@@ -1001,6 +1001,9 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     ...(c.getRunTrace && { getRunTrace: c.getRunTrace.bind(c) }),
     ...(c.listPendingRuns && { listPendingRuns: c.listPendingRuns.bind(c) }),
     ...(c.getUsage && { getUsage: wrap(c.getUsage.bind(c)) }),
+    ...(c.listSecrets && { listSecrets: wrap(c.listSecrets.bind(c)) }),
+    ...(c.setSecret && { setSecret: wrap(c.setSecret.bind(c)) }),
+    ...(c.removeSecret && { removeSecret: wrap(c.removeSecret.bind(c)) }),
     ...(c.deploy && {
       deploy: {
         get: wrap(c.deploy.get.bind(c.deploy)),
@@ -1100,6 +1103,31 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
     },
 
     deploy: createDeployApi(baseUrl, specId),
+
+    // KAM-204: the workspace's credentials for the open spec. The list is the server's own (what the spec reads and
+    // whether each is stored); a save or a removal answers with the list again, so the panel always shows what is true.
+    async listSecrets(): Promise<SecretStatusDto[]> {
+      const res = await fetch(`${baseUrl}/api/specs/${specId}/secrets`, withCredentials());
+      return secretsFrom(res, "Could not load the variables");
+    },
+
+    async setSecret(name: string, value: string): Promise<SecretStatusDto[]> {
+      const res = await fetch(
+        `${baseUrl}/api/secrets/${encodeURIComponent(name)}`,
+        jsonInit({ value }, { method: "PUT" }),
+      );
+      if (!res.ok) await secretsFrom(res, "Could not save the variable");
+      return this.listSecrets!();
+    },
+
+    async removeSecret(name: string): Promise<SecretStatusDto[]> {
+      const res = await fetch(
+        `${baseUrl}/api/secrets/${encodeURIComponent(name)}`,
+        withCredentials({ method: "DELETE" }),
+      );
+      if (!res.ok) await secretsFrom(res, "Could not remove the variable");
+      return this.listSecrets!();
+    },
 
     async getUsage(days: number): Promise<UsageDto> {
       const res = await fetch(`${baseUrl}/api/usage?days=${days}`, { credentials: "include" });

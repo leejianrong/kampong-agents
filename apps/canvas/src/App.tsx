@@ -1824,6 +1824,7 @@ export function App({
                       <SecretsPanel
                         list={listSecrets}
                         focus={secretFocus}
+                        storage={api.listComponents ? "machine" : "workspace"}
                         save={(name, value) => api.setSecret!(name, value).then(tally)}
                         remove={(name) => api.removeSecret!(name).then(tally)}
                       />

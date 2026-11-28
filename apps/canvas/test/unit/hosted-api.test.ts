@@ -188,6 +188,63 @@ describe("createHostedSpecClient", () => {
   });
 });
 
+describe("createHostedSpecClient secrets (KAM-204)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const LISTED = [
+    { name: "SLACK_BOT_TOKEN", source: "unset", referenced: true },
+    { name: "OLD_KEY", source: "saved", referenced: false },
+  ];
+
+  it("lists what the open spec reads from the spec's own route", async () => {
+    const fetchMock = routedFetch({
+      "GET /api/specs/s1/secrets": () => jsonResponse(200, { success: true, secrets: LISTED }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHostedSpecClient("", "s1");
+    await expect(client.listSecrets!()).resolves.toEqual(LISTED);
+  });
+
+  it("saves by name, sends the value only in the body, and answers with the fresh list", async () => {
+    const fetchMock = routedFetch({
+      "PUT /api/secrets/SLACK_BOT_TOKEN": () => jsonResponse(200, { success: true }),
+      "GET /api/specs/s1/secrets": () => jsonResponse(200, { success: true, secrets: LISTED }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createHostedSpecClient("", "s1");
+    await expect(client.setSecret!("SLACK_BOT_TOKEN", "xoxb-1")).resolves.toEqual(LISTED);
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(String(put[0])).not.toContain("xoxb-1");
+    expect(JSON.parse(String(put[1]?.body))).toEqual({ value: "xoxb-1" });
+  });
+
+  it("removes by name and answers with the fresh list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routedFetch({
+        "DELETE /api/secrets/OLD_KEY": () => jsonResponse(200, { success: true }),
+        "GET /api/specs/s1/secrets": () => jsonResponse(200, { success: true, secrets: LISTED }),
+      }),
+    );
+    await expect(createHostedSpecClient("", "s1").removeSecret!("OLD_KEY")).resolves.toEqual(
+      LISTED,
+    );
+  });
+
+  it("carries the server's words when an editor may not write a secret (403)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      routedFetch({
+        "PUT /api/secrets/SLACK_BOT_TOKEN": () =>
+          jsonResponse(403, { success: false, error: "Your role cannot do this (secret:write)." }),
+      }),
+    );
+    await expect(
+      createHostedSpecClient("", "s1").setSecret!("SLACK_BOT_TOKEN", "x"),
+    ).rejects.toMatchObject({ status: 403, message: expect.stringContaining("secret:write") });
+  });
+});
+
 describe("guardUnauthorized", () => {
   afterEach(() => vi.unstubAllGlobals());
 

@@ -6,8 +6,9 @@ import { getByokRootKey } from "../auth/env.js";
 import { encryptSecret, maskLastFour } from "../crypto/envelope.js";
 import { authorizeWorkspace } from "../auth/request-context.js";
 import { withWorkspaceScope } from "../db/workspace-scope.js";
-import { workspaceSecrets } from "../db/schema.js";
-import { SECRET_NAME_RE } from "../secrets/resolve.js";
+import { specs, workspaceSecrets } from "../db/schema.js";
+import { SECRET_NAME_RE, secretNamesFor } from "../secrets/resolve.js";
+import { parseSpec } from "@kampong/spec";
 
 // KAM-81 (ADR-0016): the workspace-scoped, masked management API for the credentials a workflow's connectors read
 // (`${SLACK_BOT_TOKEN}`). Same shape and guarantees as the BYOK routes (routes/byok.ts): authorize the request's
@@ -34,6 +35,39 @@ export function registerSecretsRoutes(app: FastifyInstance, { db, auth }: Secret
         })
         .from(workspaceSecrets),
     );
+    return { success: true, secrets };
+  });
+
+  // GET /api/specs/:id/secrets (KAM-204): what the canvas's Secrets panel lists for the open spec. Every name the spec
+  // reads through `${NAME}` (and the credential slots of its first-party components) with whether the workspace has
+  // stored a value, plus every other stored name. The same shape as the local server's list, so the panel and the
+  // Run bar's "Needed, not set" prompt work unchanged. Names and a stored/not-stored flag only, never a value.
+  app.get<{ Params: { id: string } }>("/api/specs/:id/secrets", async (request, reply) => {
+    const ctx = await authorizeWorkspace(auth, db, request, reply, "secret:read");
+    if (!ctx) return reply;
+    const found = await withWorkspaceScope(db, ctx.workspaceId, async (tx) => {
+      const [spec] = await tx
+        .select({ yamlSource: specs.yamlSource })
+        .from(specs)
+        .where(and(eq(specs.id, request.params.id), eq(specs.workspaceId, ctx.workspaceId)));
+      if (!spec) return undefined;
+      const stored = await tx.select({ name: workspaceSecrets.name }).from(workspaceSecrets);
+      return { source: spec.yamlSource, stored: new Set(stored.map((r) => r.name)) };
+    });
+    if (!found) {
+      return reply
+        .code(404)
+        .send({ success: false, error: `No spec "${request.params.id}" in this workspace.` });
+    }
+    const parsed = parseSpec(found.source);
+    const referenced =
+      parsed.success && parsed.spec ? await secretNamesFor(parsed.spec) : new Set<string>();
+    const names = new Set([...referenced, ...found.stored]);
+    const secrets = [...names].sort().map((name) => ({
+      name,
+      source: found.stored.has(name) ? ("saved" as const) : ("unset" as const),
+      referenced: referenced.has(name),
+    }));
     return { success: true, secrets };
   });
 

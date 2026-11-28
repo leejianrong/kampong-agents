@@ -75,6 +75,7 @@ const ROUTES: Route[] = [
     permission: "deployment:manage",
   },
   { method: "GET", url: "/api/secrets", permission: "secret:read" },
+  { method: "GET", url: `/api/specs/${SOME}/secrets`, permission: "secret:read" },
   { method: "PUT", url: "/api/secrets/NAME", payload: { value: "v" }, permission: "secret:write" },
   { method: "DELETE", url: "/api/secrets/NAME", permission: "secret:write" },
   { method: "GET", url: "/api/usage", permission: "run:read" },

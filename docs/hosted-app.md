@@ -83,18 +83,26 @@ Approve it, and the run finishes; the trace and final output stay on screen.
 ### Credentials for tools and connectors
 
 A tool or connector reads its credential through a `${NAME}` placeholder, such as `${SLACK_BOT_TOKEN}`. Hosted runs
-start with an empty environment, so each workspace stores its own values on the server. There is no screen for this
-yet; use the API, signed in as a member of the workspace:
+start with an empty environment, so each workspace stores its own values on the server.
+
+Open **Secrets** in the status bar along the bottom. It lists every name the open workflow reads, marks the ones with
+no value as **Needed, not set**, and lets you **Set** or **Replace** each one and **Add secret** for another. A run that
+fails for a missing one also offers **Set it here**. A value is encrypted when you save it and is **never shown again**;
+the screen shows a name and whether it is saved, nothing more.
+
+Only a workspace **admin** can save or remove a value. Editors can see which names are set, so they know what a
+workflow needs, but the server refuses their save with a message that says so.
+
+A run decrypts only the names its workflow uses, for that run. If one is not stored, the step that needs it fails and
+the run names the missing variable, as it does locally. A workspace never sees another's values.
+
+The same thing from a terminal, signed in as an admin of the workspace:
 
 ```sh
 curl -X PUT  $SERVER/api/secrets/SLACK_BOT_TOKEN -H "cookie: $COOKIE" -H 'content-type: application/json' -d '{"value":"xoxb-..."}'
 curl         $SERVER/api/secrets      -H "cookie: $COOKIE"   # names and the last four characters only
 curl -X DELETE $SERVER/api/secrets/SLACK_BOT_TOKEN -H "cookie: $COOKIE"
 ```
-
-A value is encrypted when it is stored and is never shown again; the list returns only each name and its last four
-characters. A run decrypts only the names its spec uses, for that run. If one is not stored, the step that needs it
-fails and the run names the missing variable, as it does locally. A workspace never sees another's values.
 
 ### Where a tool may call
 
