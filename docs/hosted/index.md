@@ -64,3 +64,5 @@ All pages use Mermaid. The same encoding holds throughout:
 | [Data and trust](data-and-trust.md)             | Data model, state diagrams, trust boundaries, API shapes                     |
 | [Enterprise readiness](enterprise-readiness.md) | The buyer review, the competitor matrix, and every gap with its gate         |
 | [Build plan](build-plan.md)                     | Slices, dependency graph, points, risks and open decisions                   |
+
+To try the stack on your own machine, see [Run it yourself on minikube or k3s](self-host.md).

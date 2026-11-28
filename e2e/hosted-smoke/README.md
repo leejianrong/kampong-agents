@@ -1,7 +1,7 @@
 # Hosted smoke and isolation gate (KAM-340)
 
 `smoke.mjs` drives a deployed hosted server over HTTP with no dependencies. The `Hosted smoke` workflow builds the
-server image, installs `deploy/helm/kampong-server` on a throwaway kind cluster against a plain Postgres (a
+server image and runs `scripts/try-cluster.sh` on a throwaway kind cluster, which installs `deploy/helm/kampong-server` against a plain Postgres (a
 non-superuser role, so row-level security applies), and runs it.
 
 It checks, in order:

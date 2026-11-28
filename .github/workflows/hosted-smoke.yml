@@ -12,6 +12,7 @@ on:
       - "packages/server/**"
       - "packages/engine/**"
       - "deploy/**"
+      - "scripts/try-cluster.sh"
       - "e2e/hosted-smoke/**"
       - ".github/workflows/hosted-smoke.yml"
   push:
@@ -41,52 +42,15 @@ jobs:
         with:
           cluster_name: smoke
 
-      - name: Load the image
-        run: kind load docker-image kampong-server:smoke --name smoke
-
-      - name: Start Postgres
-        run: |
-          kubectl apply -f e2e/hosted-smoke/postgres.yaml
-          kubectl rollout status deployment/smoke-postgres --timeout=180s
-          # The init script runs once, at first start; wait for the role to exist.
-          for i in $(seq 1 30); do
-            kubectl exec deploy/smoke-postgres -- psql -U postgres -tAc "select 1 from pg_roles where rolname='app'" | grep -q 1 && break
-            sleep 2
-          done
-
-      - name: Create the secrets the chart reads
-        run: |
-          kubectl create secret generic kampong-postgres-app \
-            --from-literal=uri=postgres://app:app@smoke-postgres:5432/kampong
-          kubectl create secret generic kampong-server-secrets \
-            --from-literal=auth-secret="$(openssl rand -base64 32)" \
-            --from-literal=byok-root-key="$(openssl rand -base64 32)"
-
-      - name: Install the server chart
-        run: |
-          helm install kampong deploy/helm/kampong-server \
-            --set image.repository=kampong-server --set image.tag=smoke --set image.pullPolicy=Never \
-            --set ingress.enabled=false \
-            --set runLimits.maxConcurrent=40 \
-            --set migrationJob.databaseSecretName=kampong-postgres-app \
-            --set 'extraEnv[0].name=DATABASE_URL' \
-            --set 'extraEnv[0].valueFrom.secretKeyRef.name=kampong-postgres-app' \
-            --set 'extraEnv[0].valueFrom.secretKeyRef.key=uri' \
-            --set 'extraEnv[1].name=BETTER_AUTH_SECRET' \
-            --set 'extraEnv[1].valueFrom.secretKeyRef.name=kampong-server-secrets' \
-            --set 'extraEnv[1].valueFrom.secretKeyRef.key=auth-secret' \
-            --set 'extraEnv[2].name=BYOK_ROOT_KEY' \
-            --set 'extraEnv[2].valueFrom.secretKeyRef.name=kampong-server-secrets' \
-            --set 'extraEnv[2].valueFrom.secretKeyRef.key=byok-root-key' \
-            --set 'extraEnv[3].name=BETTER_AUTH_URL' \
-            --set 'extraEnv[3].value=http://127.0.0.1:8080' \
-            --wait --timeout 240s
-
-      - name: Run the smoke and isolation gate
-        run: |
-          kubectl port-forward svc/kampong-kampong-server 8080:80 &
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/healthz && break; sleep 1; done
-          BASE_URL=http://127.0.0.1:8080 node e2e/hosted-smoke/smoke.mjs
+      # The same script a person runs on minikube or k3s (docs/hosted/self-host.md): load the image, start Postgres,
+      # create the secrets, install the chart, port-forward and run the smoke flow.
+      - name: Install the stack and run the smoke and isolation gate
+        env:
+          CLUSTER: kind
+          IMAGE: kampong-server:smoke
+          BUILD: "0"
+          KEEP: "0"
+        run: scripts/try-cluster.sh
 
       - name: Show the server's log when it failed
         if: failure()
