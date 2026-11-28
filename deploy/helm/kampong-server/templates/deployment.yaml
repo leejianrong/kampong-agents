@@ -70,6 +70,16 @@ spec:
               value: {{ .maxMinutes | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.security }}
+            {{- if .contact }}
+            - name: SECURITY_CONTACT
+              value: {{ .contact | quote }}
+            {{- end }}
+            {{- if .policy }}
+            - name: SECURITY_POLICY_URL
+              value: {{ .policy | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.modelPricing }}
             - name: MODEL_PRICING_JSON
               value: {{ .Values.modelPricing | toJson | quote }}

@@ -7,6 +7,7 @@ import { registerSpecRoutes } from "./routes/specs.js";
 import { registerByokRoutes } from "./routes/byok.js";
 import { registerSecretsRoutes } from "./routes/secrets.js";
 import { registerRunRoutes } from "./routes/runs.js";
+import { buildSecurityTxt, type SecurityTxtConfig } from "./security-txt.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { registerDeploymentRoutes } from "./routes/deployments.js";
 import { registerAuditRoutes } from "./routes/audit.js";
@@ -58,6 +59,8 @@ export interface CreateServerOptions {
   previewNotice?: string;
   /** Rate and size limits on the public webhook ingress (KAM-322); omitted fields use defaults. */
   ingressLimits?: Partial<IngressLimits>;
+  /** Where to report a vulnerability (KAM-331): served as /.well-known/security.txt. Omit and the route answers 404. */
+  securityTxt?: SecurityTxtConfig;
   /** Trust `X-Forwarded-For`, so per-client limits see the real caller behind an ingress controller. Only set behind one. */
   trustProxy?: boolean;
 }
@@ -70,6 +73,7 @@ export function createServer({
   publicBaseUrl,
   previewNotice,
   ingressLimits,
+  securityTxt,
   trustProxy,
 }: CreateServerOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false, ...(trustProxy && { trustProxy: true }) });
@@ -188,6 +192,11 @@ export function createServer({
       });
     }
   }
+
+  app.get("/.well-known/security.txt", async (_request, reply) => {
+    if (!securityTxt) return reply.code(404).send({ error: "Not found" });
+    return reply.type("text/plain; charset=utf-8").send(buildSecurityTxt(securityTxt));
+  });
 
   app.get("/healthz", async () => {
     return { status: "ok", checks: wiringCheck, ...(previewNotice && { previewNotice }) };

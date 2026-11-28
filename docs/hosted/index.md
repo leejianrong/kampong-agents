@@ -66,3 +66,5 @@ All pages use Mermaid. The same encoding holds throughout:
 | [Build plan](build-plan.md)                     | Slices, dependency graph, points, risks and open decisions                   |
 
 To try the stack on your own machine, see [Run it yourself on minikube or k3s](self-host.md).
+
+For a security review: [Security and data handling](security.md), [Subprocessors](subprocessors.md) and the [draft data processing agreement](dpa.md).

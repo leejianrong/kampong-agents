@@ -57,6 +57,12 @@ runLimits: {}
 modelPricing: {}
 #  gpt-4o-mini: { inputPerMTok: 0.15, outputPerMTok: 0.6 }
 
+# Where to report a vulnerability, served as /.well-known/security.txt (SECURITY_CONTACT, KAM-331). A mailto: address or
+# an https:// URL. Leave empty and the file is not served. `policy` is the page that states the disclosure policy.
+security: {}
+#  contact: "mailto:security@your-domain.example"
+#  policy: "https://your-domain.example/security"
+
 service:
   type: ClusterIP
   port: 80

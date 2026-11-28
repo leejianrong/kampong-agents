@@ -63,7 +63,7 @@ a trial with real staff, and **later** is worth doing but does not block either.
 | 3   | Roles: any member can deploy, rotate or delete                        | first customer | KAM-64, KAM-328         |
 | 4   | No audit log, so deploy, rotate and delete are unattributed           | first customer | KAM-66, KAM-324         |
 | 5   | Nowhere to run it; no SLA, status page or proven restore              | first customer | KAM-320, 329, 330       |
-| 6   | No DPA, subprocessor list, `security.txt` or disclosure policy        | first customer | KAM-331                 |
+| 6   | DPA, subprocessor list, `security.txt`, disclosure policy: drafted, owner to fill and sign off | first customer | KAM-331 (drafted)       |
 | 7   | Model calls bypassed the egress guard (fixed; blocks are audited)     | first customer | KAM-337 (done)          |
 | 8   | Tenant isolation under concurrent runs is not tested end to end       | first customer | KAM-340, KAM-85         |
 | 9   | SSO (OIDC, SAML)                                                      | pilot          | KAM-62                  |
