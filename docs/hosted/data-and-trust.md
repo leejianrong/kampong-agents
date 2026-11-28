@@ -333,3 +333,16 @@ classDiagram
   DeploymentView "1" --> "0..*" PendingApproval : waiting on a person
   DeploymentView "1" --> "0..*" UsageSummary : usage
 ```
+
+## Usage
+
+`GET /api/usage?days=30` (default 30, at most 90; any role that can read runs) returns this workspace's runs, model
+tokens and estimated cost by UTC day and by deployment, with the monthly and concurrent run limits beside current use
+(`version: 1`). The canvas shows it in **Usage**, in the menu.
+
+- **Where the figures come from.** The run manager writes `tokens_in`, `tokens_out` and `cost_usd` on each run's row
+  as the run goes, from the same recorder that builds the trace. A run resumed after an approval adds to what it had.
+- **Cost is a stated estimate.** A price is never guessed. The operator supplies dollars per million tokens by model
+  name in `MODEL_PRICING_JSON` (chart value `modelPricing`); a model without one adds tokens and no cost, and the report
+  says how many runs the cost covers (`costRuns`) so a shortfall is not read as free.
+- **Not here:** invoices (manual, KAM-346), per-user attribution, and a spend ceiling (limits count runs).

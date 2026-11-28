@@ -169,6 +169,44 @@ export function getRunLimits(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
+/**
+ * Reads `MODEL_PRICING_JSON` (KAM-325): dollars per million tokens by model name, e.g.
+ * `{"gpt-4o-mini":{"inputPerMTok":0.15,"outputPerMTok":0.6}}`. Unset means no prices, so runs record tokens and no
+ * cost: a price is never guessed.
+ */
+export function getModelPricing(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, { inputPerMTok: number; outputPerMTok: number }> | undefined {
+  const raw = env["MODEL_PRICING_JSON"]?.trim();
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("MODEL_PRICING_JSON is not valid JSON.");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("MODEL_PRICING_JSON must be an object keyed by model name.");
+  }
+  const out: Record<string, { inputPerMTok: number; outputPerMTok: number }> = {};
+  for (const [model, price] of Object.entries(parsed as Record<string, unknown>)) {
+    const p = price as { inputPerMTok?: unknown; outputPerMTok?: unknown } | null;
+    if (
+      !p ||
+      typeof p.inputPerMTok !== "number" ||
+      typeof p.outputPerMTok !== "number" ||
+      p.inputPerMTok < 0 ||
+      p.outputPerMTok < 0
+    ) {
+      throw new Error(
+        `MODEL_PRICING_JSON: "${model}" needs numeric inputPerMTok and outputPerMTok of at least 0.`,
+      );
+    }
+    out[model] = { inputPerMTok: p.inputPerMTok, outputPerMTok: p.outputPerMTok };
+  }
+  return out;
+}
+
 /** `TRUST_PROXY=true`: believe `X-Forwarded-For` (set only when the server sits behind an ingress controller). */
 export function getTrustProxy(env: NodeJS.ProcessEnv = process.env): boolean {
   return env["TRUST_PROXY"] === "true";

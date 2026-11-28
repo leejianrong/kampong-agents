@@ -9,6 +9,7 @@ const MENU: Record<string, string> = {
   "Edit Steps": "Edit steps",
   "Import YAML": "Import YAML",
   "Export YAML": "Export YAML",
+  Usage: "Usage",
 };
 
 const STATUS: Record<string, RegExp> = {

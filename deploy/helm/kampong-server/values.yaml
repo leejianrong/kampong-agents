@@ -52,6 +52,11 @@ runLimits: {}
 #  maxPerMonth: 3000
 #  maxMinutes: 15
 
+# Dollars per million tokens, by model name, so the Usage panel can estimate cost (MODEL_PRICING_JSON, KAM-325).
+# Empty means tokens are counted and no cost is shown: a price is never guessed.
+modelPricing: {}
+#  gpt-4o-mini: { inputPerMTok: 0.15, outputPerMTok: 0.6 }
+
 service:
   type: ClusterIP
   port: 80

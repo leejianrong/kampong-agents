@@ -223,6 +223,30 @@ export interface DeploymentDto {
   webhookSecret?: string;
 }
 
+/** One bucket of the usage report (KAM-325): a day, a deployment or the whole window. */
+export interface UsageBucketDto {
+  runs: number;
+  tokensIn: number;
+  tokensOut: number;
+  /** Null when no run in it had a model with a price. */
+  costUsd: number | null;
+  /** How many of the runs the cost covers. */
+  costRuns: number;
+}
+
+export interface UsageDto {
+  from: string;
+  to: string;
+  totals: UsageBucketDto;
+  days: Array<UsageBucketDto & { day: string }>;
+  deployments: Array<UsageBucketDto & { specId: string; name: string }>;
+  limits: {
+    monthlyRuns: { used: number; limit: number };
+    concurrentRuns: { running: number; limit: number };
+    maxRunMinutes: number;
+  };
+}
+
 /** One run in the Deploy panel's list (KAM-324): how it started and how it ended, in words. */
 export interface DeployRunDto {
   id: string;
@@ -429,6 +453,8 @@ export interface ApiClient {
   removeSecret?(name: string): Promise<SecretStatusDto[]>;
   /** Go live, pause, rotate and watch runs (KAM-326). Hosted server only. */
   deploy?: DeployApi;
+  /** The workspace's runs, tokens and estimated cost (KAM-325). Only the hosted server has it. */
+  getUsage?(days: number): Promise<UsageDto>;
   /**
    * The modes a test run can use and, for a live run, the tools it would call (KAM-188). Only the local
    * server can replay recorded fixtures; the hosted client omits this, so the panel shows no mode switch.
@@ -974,6 +1000,7 @@ export function guardUnauthorized(client: HostedClient, onUnauthorized: () => vo
     subscribeToRunEvents: c.subscribeToRunEvents.bind(c),
     ...(c.getRunTrace && { getRunTrace: c.getRunTrace.bind(c) }),
     ...(c.listPendingRuns && { listPendingRuns: c.listPendingRuns.bind(c) }),
+    ...(c.getUsage && { getUsage: wrap(c.getUsage.bind(c)) }),
     ...(c.deploy && {
       deploy: {
         get: wrap(c.deploy.get.bind(c.deploy)),
@@ -1073,6 +1100,17 @@ export function createHostedSpecClient(baseUrl: string, specId: string): ApiClie
     },
 
     deploy: createDeployApi(baseUrl, specId),
+
+    async getUsage(days: number): Promise<UsageDto> {
+      const res = await fetch(`${baseUrl}/api/usage?days=${days}`, { credentials: "include" });
+      if (!res.ok) {
+        throw new ApiError(
+          await errorMessageFor(res, `Could not load usage (HTTP ${res.status}).`),
+          res.status,
+        );
+      }
+      return (await res.json()) as UsageDto;
+    },
   };
 }
 

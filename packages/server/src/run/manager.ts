@@ -10,7 +10,9 @@ import {
   type AgentRun,
   type ComponentDispatcher,
   type ModelClient,
+  type ModelUsage,
   type RunEvent,
+  type Pricing,
   type RunState,
   type ToolFetchImpl,
   ToolCallError,
@@ -127,7 +129,12 @@ export interface HostedRunManagerOptions {
    * (`resolveWorkspaceModelClient`) with a fake `ModelClient`, so run-lifecycle
    * behavior is exercised deterministically with no network and no stored key.
    */
-  createModel?: (spec: AgentSpec) => ModelClient | Promise<ModelClient>;
+  createModel?: (
+    spec: AgentSpec,
+    hooks: { onUsage: (usage: ModelUsage) => void },
+  ) => ModelClient | Promise<ModelClient>;
+  /** Dollars per million tokens by model name (KAM-325). Without a price a run records tokens and no cost. */
+  pricing?: Pricing;
   /** Per-workspace run limits (KAM-323); fields left out use the defaults in limits.ts. 0 turns one off. */
   limits?: Partial<RunLimits>;
   /** Test-only seam: how long a terminal run stays in the live map before eviction (default 10 minutes). */
@@ -188,9 +195,19 @@ export class HostedRunManager {
   // internal by design and not tenant-controlled.
   private readonly modelFetch: typeof fetch;
   private readonly limits: RunLimits;
+
+  /** The limits in force, for the usage report (KAM-325). */
+  get runLimits(): RunLimits {
+    return this.limits;
+  }
   // KAM-323: a run stopped for taking too long, by id, with the reason. Its row is already terminal, so later events
   // from the engine must not overwrite it.
   private readonly stopped = new Map<string, string>();
+  // KAM-325: usage an earlier stretch of a resumed run already wrote, to add to the new recorder's count.
+  private readonly usageBase = new Map<
+    string,
+    { tokensIn: number; tokensOut: number; cost: number | null }
+  >();
   private readonly runtimeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // What lets the manager end a run it cannot cancel: once `stopped` is set, the next model or tool call it makes fails.
   private readonly leases = new WeakMap<AgentRun, RunLease>();
@@ -279,9 +296,12 @@ export class HostedRunManager {
     const unsupported = hostedUnsupportedFeature(spec, { webhook: runOptions.viaWebhook });
     if (unsupported) throw new UnsupportedOnHostedError(unsupported);
 
-    const recorder = createTraceRecorder(spec);
+    const recorder = createTraceRecorder(
+      spec,
+      this.options.pricing ? { pricing: this.options.pricing } : {},
+    );
     const model = this.options.createModel
-      ? await this.options.createModel(spec)
+      ? await this.options.createModel(spec, { onUsage: recorder.reportUsage })
       : await resolveWorkspaceModelClient({
           db: this.db,
           workspaceId,
@@ -597,11 +617,16 @@ export class HostedRunManager {
   private async resumeFromStore(
     workspaceId: string,
     id: string,
-    owned: { specId: string; pendingApprovalKey?: string },
+    owned: {
+      specId: string;
+      pendingApprovalKey?: string;
+      usage: { tokensIn: number; tokensOut: number; cost: number | null } | undefined;
+    },
     approved: boolean,
     reason: string | undefined,
   ): Promise<RunState> {
     const { run } = await this.buildRun(workspaceId, owned.specId, {});
+    if (owned.usage) this.usageBase.set(id, owned.usage);
     // Nothing is persisted until the claim has succeeded: a lost race reports failed, and must not overwrite
     // the row the winner is updating.
     const state = await run.resumeByKey(owned.pendingApprovalKey!, approved, reason);
@@ -611,7 +636,7 @@ export class HostedRunManager {
       );
     }
     this.live.set(id, run);
-    this.enqueuePersist(workspaceId, id, state);
+    this.enqueuePersist(workspaceId, id, state, run);
     this.watch(workspaceId, id, run);
     if (TERMINAL_STATUSES.has(state.status)) this.scheduleEviction(id);
     return state;
@@ -627,7 +652,7 @@ export class HostedRunManager {
         return;
       }
       if (this.stopped.has(id)) return;
-      this.enqueuePersist(workspaceId, id, state);
+      this.enqueuePersist(workspaceId, id, state, run);
       if (state.status === "running") this.armRuntime(workspaceId, id, run);
       else this.disarmRuntime(id);
       if (TERMINAL_EVENT_TYPES.has(event.type)) this.scheduleEviction(id);
@@ -650,6 +675,7 @@ export class HostedRunManager {
         persisted: RunState;
         specId: string;
         pendingApprovalKey?: string;
+        usage: { tokensIn: number; tokensOut: number; cost: number | null } | undefined;
       }
     | undefined
   > {
@@ -663,6 +689,14 @@ export class HostedRunManager {
     return {
       run: this.live.get(id),
       specId: row.specId,
+      usage:
+        row.tokensIn === null && row.tokensOut === null
+          ? undefined
+          : {
+              tokensIn: row.tokensIn ?? 0,
+              tokensOut: row.tokensOut ?? 0,
+              cost: row.costUsd === null ? null : Number(row.costUsd),
+            },
       ...(row.pendingApprovalKey ? { pendingApprovalKey: row.pendingApprovalKey } : {}),
       persisted: {
         status: row.status as RunState["status"],
@@ -673,17 +707,45 @@ export class HostedRunManager {
     };
   }
 
-  private enqueuePersist(workspaceId: string, id: string, state: RunState): void {
+  /**
+   * The model usage to write with this state (KAM-325): what the run's recorder has counted, plus what an earlier
+   * stretch of the same run already wrote (a run resumed after an approval on another replica starts a fresh
+   * recorder). Undefined when no model was called, so the columns stay null.
+   */
+  private usageOf(id: string, run: AgentRun | undefined): RunUsage | undefined {
+    const recorder = run ? this.recorders.get(run) : undefined;
+    if (!recorder) return undefined;
+    const totals = recorder.snapshot().totals;
+    const base = this.usageBase.get(id);
+    if (totals.modelCalls === 0 && !base) return undefined;
+    const cost =
+      totals.costUsd === undefined && base?.cost == null
+        ? null
+        : (totals.costUsd ?? 0) + (base?.cost ?? 0);
+    return {
+      tokensIn: totals.inputTokens + (base?.tokensIn ?? 0),
+      tokensOut: totals.outputTokens + (base?.tokensOut ?? 0),
+      cost,
+    };
+  }
+
+  private enqueuePersist(workspaceId: string, id: string, state: RunState, run?: AgentRun): void {
+    const usage = this.usageOf(id, run);
     const prev = this.persistTails.get(id) ?? Promise.resolve();
     const next = prev
-      .then(() => this.persist(workspaceId, id, state))
+      .then(() => this.persist(workspaceId, id, state, usage))
       .catch((err: unknown) => {
         console.error(`Persisting hosted run ${id} failed:`, err);
       });
     this.persistTails.set(id, next);
   }
 
-  private async persist(workspaceId: string, id: string, state: RunState): Promise<void> {
+  private async persist(
+    workspaceId: string,
+    id: string,
+    state: RunState,
+    usage?: RunUsage,
+  ): Promise<void> {
     const terminal = TERMINAL_STATUSES.has(state.status);
     await withWorkspaceScope(this.db, workspaceId, (tx) =>
       tx
@@ -695,6 +757,11 @@ export class HostedRunManager {
           error: state.error ?? null,
           pendingApprovalKey: state.pendingApproval?.key ?? null,
           completedAt: terminal ? new Date() : null,
+          ...(usage && {
+            tokensIn: usage.tokensIn,
+            tokensOut: usage.tokensOut,
+            costUsd: usage.cost === null ? null : usage.cost.toFixed(6),
+          }),
         })
         .where(and(eq(runs.id, id), eq(runs.workspaceId, workspaceId))),
     );
@@ -708,10 +775,18 @@ export class HostedRunManager {
       this.evictionTimers.delete(id);
       this.persistTails.delete(id);
       this.stopped.delete(id);
+      this.usageBase.delete(id);
     }, this.evictAfterMs);
     timer.unref?.();
     this.evictionTimers.set(id, timer);
   }
+}
+
+/** What a run has used of a model so far (KAM-325); `cost` is null when no model it called had a price. */
+interface RunUsage {
+  tokensIn: number;
+  tokensOut: number;
+  cost: number | null;
 }
 
 /** Set once a run has been stopped for time; the run's model and tool calls then fail (KAM-323). */
