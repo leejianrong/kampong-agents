@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: localstack
-          image: localstack/localstack:3.8.1
+          image: localstack/localstack:4.5.0
           env:
             - { name: SERVICES, value: s3 }
           ports:
