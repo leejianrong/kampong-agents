@@ -35,7 +35,8 @@ needs more can run Kampong themselves.
   engine's claim lets exactly one caller win. The live event stream of a run still updates only on the replica
   running it. Rate limits are per replica (KAM-322).
 - **Backups.** A backup that has not been restored is not a backup. KAM-329 runs and times a restore before any
-  customer pays.
+  customer pays: the drill and runbook are in `docs/hosted/restore-runbook.md`, and the drill passes in CI on a test
+  cluster. It still has to be run, and its time recorded, on the real homelab install.
 - **Invoicing** is manual (KAM-346) and says so.
 
 ## When to move to a cloud host
