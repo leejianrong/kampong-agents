@@ -310,4 +310,71 @@ describe.skipIf(!DATABASE_URL)("Hosted run routes against a real Postgres", () =
     });
     expect(asB.statusCode).toBe(404);
   });
+  // KAM-337: a spec that points its model at a private address never sends the request, fails the run visibly, and
+  // leaves an audit event naming the origin (not the path).
+  it("refuses a model base_url on a private address and records the block in the audit log", async () => {
+    // The default server resolves a real model client, so build one that does (no createModel seam).
+    const real = createServer({ db });
+    await real.ready();
+    try {
+      const signUp = await real.inject({
+        method: "POST",
+        url: "/api/auth/sign-up/email",
+        payload: { email: uniqueEmail(), password: "correct-horse-battery-staple", name: "T" },
+      });
+      const setCookie = signUp.headers["set-cookie"];
+      const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)!.split(";")[0]!;
+      const org = await real.inject({
+        method: "POST",
+        url: "/api/auth/organization/create",
+        headers: { cookie, origin: "http://localhost:3000" },
+        payload: { name: "WS", slug: `ws-${randomUUID()}` },
+      });
+      createdWorkspaceIds.push(org.json().id);
+      const source = GREETER_SPEC.replace(
+        '  goal: "Greet visitors."',
+        '  goal: "Greet visitors."\n  model:\n    provider: ollama\n    name: llama3\n    base_url: http://169.254.169.254:11434/secret/path?token=abc',
+      );
+      const created = await real.inject({
+        method: "POST",
+        url: "/api/specs",
+        headers: { cookie },
+        payload: { name: "egress", source },
+      });
+      const started = await real.inject({
+        method: "POST",
+        url: `/api/specs/${created.json().id}/runs`,
+        headers: { cookie },
+        payload: {},
+      });
+      expect(started.statusCode).toBe(201);
+      const deadline = Date.now() + 6000;
+      let events: Array<{
+        actor: string;
+        target: string;
+        outcome: string;
+        detail: Record<string, unknown>;
+      }> = [];
+      while (Date.now() < deadline && events.length === 0) {
+        const audit = await real.inject({
+          method: "GET",
+          url: "/api/audit?action=egress.blocked",
+          headers: { cookie },
+        });
+        events = audit.json().events ?? [];
+        if (events.length === 0) await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        actor: "system",
+        outcome: "deny",
+        target: "http://169.254.169.254:11434",
+        detail: { via: "model" },
+      });
+      expect(JSON.stringify(events[0])).not.toContain("secret/path");
+      expect(JSON.stringify(events[0])).not.toContain("token=abc");
+    } finally {
+      await real.close();
+    }
+  });
 });

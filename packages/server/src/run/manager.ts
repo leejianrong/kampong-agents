@@ -21,7 +21,8 @@ import { runs, specs } from "../db/schema.js";
 import { resolveWorkspaceModelClient } from "../model/resolve.js";
 import { resolveWorkspaceSecrets, secretNamesFor } from "../secrets/resolve.js";
 import { PgStateStore } from "./pg-state-store.js";
-import { createGuardedFetch, parseAllowHosts } from "./ssrf-guard.js";
+import { recordAudit } from "../audit/audit.js";
+import { createGuardedFetch, EgressBlockedError, parseAllowHosts } from "./ssrf-guard.js";
 import { SpecNotFoundError } from "../db/spec-repository.js";
 
 // KAN-1231 (ADR-0014): the hosted, durable successor to packages/cli's
@@ -173,18 +174,63 @@ export class HostedRunManager {
   private readonly evictAfterMs: number;
   private readonly components = firstPartyDispatcher();
   private readonly toolFetch: ToolFetchImpl;
+  // What the model client sends its requests with (KAM-337). A spec may name its own `agent.model.base_url`, so the
+  // model path needs the same rule as a tool. The operator's own LiteLLM gateway is on the allow list: it is
+  // internal by design and not tenant-controlled.
+  private readonly modelFetch: typeof fetch;
 
   constructor(
     private readonly db: DbClient,
     private readonly options: HostedRunManagerOptions = {},
   ) {
     this.evictAfterMs = options.evictAfterMs ?? DEFAULT_EVICT_AFTER_MS;
-    this.toolFetch =
-      options.fetchImpl ??
-      createGuardedFetch({
-        allowHosts:
-          options.egressAllowHosts ?? parseAllowHosts(process.env["KAMPONG_EGRESS_ALLOW_HOSTS"]),
-      });
+    const allowHosts =
+      options.egressAllowHosts ?? parseAllowHosts(process.env["KAMPONG_EGRESS_ALLOW_HOSTS"]);
+    this.toolFetch = options.fetchImpl ?? createGuardedFetch({ allowHosts });
+    const gateway = hostOf((options.modelEnv ?? process.env)["LITELLM_BASE_URL"]);
+    const modelGuard = createGuardedFetch({
+      allowHosts: gateway ? [...allowHosts, gateway] : allowHosts,
+    });
+    this.modelFetch =
+      options.fetchImpl !== undefined
+        ? (((input, init) =>
+            options.fetchImpl!(input, init, { toolName: "model" })) as typeof fetch)
+        : (((input, init) => modelGuard(input, init, { toolName: "model" })) as typeof fetch);
+  }
+
+  /**
+   * Wraps a request sender so a refusal by the egress guard is written to the workspace's audit log (KAM-337) before
+   * it goes on to fail the step. Only the origin is recorded, never a path or query.
+   */
+  private audited<F extends (...args: never[]) => Promise<Response>>(
+    workspaceId: string,
+    specId: string,
+    via: "tool" | "model",
+    send: F,
+  ): F {
+    const wrapped = (async (...args: Parameters<F>) => {
+      try {
+        return await send(...args);
+      } catch (err) {
+        if (err instanceof EgressBlockedError) {
+          await recordAudit(this.db, {
+            workspaceId,
+            actor: "system",
+            action: "egress.blocked",
+            target: err.origin,
+            outcome: "deny",
+            detail: {
+              via,
+              ...(err.toolName && via === "tool" ? { tool: err.toolName } : {}),
+              reason: err.reason,
+              specId,
+            },
+          });
+        }
+        throw err;
+      }
+    }) as unknown as F;
+    return Object.assign(wrapped, send);
   }
 
   /**
@@ -225,6 +271,7 @@ export class HostedRunManager {
           spec,
           env: this.options.modelEnv,
           onUsage: recorder.reportUsage,
+          fetchImpl: this.audited(workspaceId, specId, "model", this.modelFetch),
         });
 
     // KAM-81: the `${NAME}`s the spec reads, resolved from this workspace's vault for this run only. Unset ones stay
@@ -240,7 +287,7 @@ export class HostedRunManager {
       persistApprovals: true,
       model: recorder.wrapModel(model),
       env: { ...(this.options.env ?? {}), ...secrets },
-      fetchImpl: this.toolFetch,
+      fetchImpl: this.audited(workspaceId, specId, "tool", this.toolFetch),
       components: this.options.components ?? this.components,
       // A `dedupe` step remembers its keys here (KAM-113): Postgres, scoped to this workspace under RLS. It is
       // only a handle (every call opens its own scoped transaction), so a workflow with no dedupe step never
@@ -520,5 +567,14 @@ export class HostedRunManager {
     }, this.evictAfterMs);
     timer.unref?.();
     this.evictionTimers.set(id, timer);
+  }
+}
+
+function hostOf(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  } catch {
+    return undefined;
   }
 }

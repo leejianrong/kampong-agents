@@ -41,7 +41,7 @@ Checked in `packages/server` and `deploy/helm`:
 | Uptime SLA, status page  | None                             | Status page, preview label (KAM-330)   | Not verified                            | Not verified                                         | Dedicated SLA on Enterprise                                  | Not verified                                 |
 | Approvals and review     | Persisted, resumable approvals   | Role-checked, four-eyes (KAM-327)      | Not compared                            | Not compared                                         | Not compared                                                 | Not compared                                 |
 | Secrets and keys         | Per-workspace, encrypted         | Rotation and KMS (KAM-334)             | Not verified                            | Not verified                                         | External secrets on Enterprise                               | Not verified                                 |
-| Egress controls          | Public addresses only, tools     | Allowlist, network policy (KAM-335, 336) | Not verified                          | Not verified                                         | Not verified                                                 | Not verified                                 |
+| Egress controls          | Public addresses only, all paths | Allowlist, network policy (KAM-335, 336) | Not verified                          | Not verified                                         | Not verified                                                 | Not verified                                 |
 | Usage and cost view      | None                             | Usage panel and ceilings (KAM-323, 325) | Not verified                           | Not verified                                         | Not verified                                                 | Not verified                                 |
 
 Zapier Agents and Dify were also looked at. Zapier lists SAML and SCIM on Enterprise, keeps its SOC 2 report
@@ -64,7 +64,7 @@ a trial with real staff, and **later** is worth doing but does not block either.
 | 4   | No audit log, so deploy, rotate and delete are unattributed           | first customer | KAM-66, KAM-324         |
 | 5   | Nowhere to run it; no SLA, status page or proven restore              | first customer | KAM-320, 329, 330       |
 | 6   | No DPA, subprocessor list, `security.txt` or disclosure policy        | first customer | KAM-331                 |
-| 7   | Model and connector calls may bypass the egress guard                 | first customer | KAM-337                 |
+| 7   | Model calls bypassed the egress guard (fixed; blocks are audited)     | first customer | KAM-337 (done)          |
 | 8   | Tenant isolation under concurrent runs is not tested end to end       | first customer | KAM-340, KAM-85         |
 | 9   | SSO (OIDC, SAML)                                                      | pilot          | KAM-62                  |
 | 10  | SCIM provisioning                                                     | pilot          | KAM-333                 |
@@ -85,7 +85,7 @@ a trial with real staff, and **later** is worth doing but does not block either.
 
 These were found by the review and are corrected in this version:
 
-- "Egress guard" is true for tool HTTP only; model and connector paths are unverified (gap 7).
+- "Egress guard" was true for tool HTTP only. The model path bypassed it through a spec's `base_url`; fixed in KAM-337 (gap 7).
 - "Two replicas never fire one tick twice" was asserted without being run on two replicas.
 - "Postgres with backups" meant the chart exists; no restore had been tested.
 - "About 12 points" left out audit, roles, quotas, SSO and trust work. The honest total is about 151 points

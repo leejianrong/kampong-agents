@@ -53,3 +53,10 @@ name; the network was the remaining way in. It predates spec 1.1 and has to be c
 - The guard adds one DNS lookup per call. Answers are not cached here; the system resolver's cache does that.
 - `undici` becomes a direct dependency of `packages/server`. It was already in the tree (the same major as Node 24's
   built-in fetch).
+
+## Addendum (KAM-337): the model path
+
+The guard first covered tool and connector HTTP. A spec can also name `agent.model.base_url`, and that request was
+sent by the model client without it. The hosted run manager now gives the model client the guarded fetch too, with
+the host of the operator's `LITELLM_BASE_URL` allowed, since that gateway is internal by design and not tenant
+controlled. A refusal is written to the audit log as `egress.blocked`, with the origin only.

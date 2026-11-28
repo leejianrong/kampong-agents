@@ -52,6 +52,11 @@ export interface ResolveWorkspaceModelClientOptions {
   env?: NodeJS.ProcessEnv;
   /** Receives each call's token counts (feeds the run's trace, ADR-0063). */
   onUsage?: CreateMastraModelClientOptions["onUsage"];
+  /**
+   * What sends the model's HTTP requests. The hosted run manager passes the egress-guarded one, because a spec may
+   * name its own `agent.model.base_url` (KAM-337).
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -68,6 +73,7 @@ export async function resolveWorkspaceModelClient({
   spec,
   env = process.env,
   onUsage,
+  fetchImpl,
 }: ResolveWorkspaceModelClientOptions): Promise<ModelClient> {
   const modelConfig = spec.agent.model;
 
@@ -75,6 +81,7 @@ export async function resolveWorkspaceModelClient({
   const options: CreateMastraModelClientOptions = {
     ...(baseUrlOverride ? { baseUrlOverride } : {}),
     ...(onUsage ? { onUsage } : {}),
+    ...(fetchImpl ? { fetchImpl } : {}),
   };
 
   // No model, or a keyless provider (ollama): defer to the engine's own
